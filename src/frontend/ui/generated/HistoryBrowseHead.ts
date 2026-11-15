@@ -11,10 +11,14 @@ export type HistoryBrowseHead = {
  */
 machines: Array<HistoryMachine>, 
 /**
- * 几个项目 · 组里一共几个会话（按项目看时列表头那一句）。
+ * 组里一共几个会话（几个项目只进列表头那一句 `said`）。
  */
-projects: number, grouped: number, 
+grouped: number, 
 /**
  * 按时间看的段头（按项目看 ⇒ 空）。
  */
-sections: Array<HistorySection>, };
+sections: Array<HistorySection>, 
+/**
+ * 列表头那一句（按时间 ⇒ 几个会话；按项目 ⇒ 几个项目 · 几个会话），界面照抄。
+ */
+said: string, };

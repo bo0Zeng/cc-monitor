@@ -30,7 +30,7 @@ import { banner } from "./kit/banner";
 import { detailOf } from "./kit/detail";
 import { icon } from "./kit/icon";
 import { splitButton } from "./kit/split-button";
-import { defaultPick, pickAsk, resumeAccounts, resumeHint, resumeMenuItems, type ResumeAccounts, type ResumePick } from "./resume-menu";
+import { defaultPick, pickAsk, resumeAccounts, resumeHint, resumeMenuItems, resumeOff, type ResumeAccounts, type ResumePick } from "./resume-menu";
 import { openSession } from "./session-open";
 import { standingOf } from "./sessions-where";
 import type { Launch } from "./generated/Launch";
@@ -46,6 +46,7 @@ import { SWITCH_TO_SESSION_EVENT } from "./window-events";
 import { windowStatus, windowTitle } from "./viewer-window-text";
 import { frontBlocked, isLive, isUnclear } from "./face-can";
 import { bootstrapAgentWindow } from "./views/agent-window";
+import { displayNameOf } from "./agent-profile";
 
 // Vite HMR：任何热更新一律整页重载（理由见 `main.ts` 同名那段）。
 if (import.meta.hot) {
@@ -164,6 +165,7 @@ async function bootstrapViewer(sid: string, origin: Machine): Promise<void> {
   repaint = paint;
   await viewer.load({
     jsonlPath: r.jsonlPath,
+    sessionId: r.sessionId,
     displayTitle: r.label,
     origin,
     cwd: r.projectPath,
@@ -259,10 +261,12 @@ function actionsOf(r: HistoryRow, live: boolean): HTMLElement[] {
 
 /** ［恢复 ▾］：与历史页同一个组件；起了 ⇒ 主窗口那边等它出现（窗口留着）；没起 ⇒ 那一句已经说过。 */
 function resumeControl(r: HistoryRow): HTMLElement {
+  const agent = r.agent;
+  if (agent === undefined) return resumeOff(r.can.resumeWhy ?? null);
   const origin = r.origin;
   const pick: ResumePick = defaultPick();
   let accounts: ResumeAccounts = !r.can.accounts
-    ? { kind: "none", agentName: r.agentTag ?? r.agent }
+    ? { kind: "none", agentName: r.agentTag ?? displayNameOf(agent) }
     : r.lastAccount
       ? { kind: "list", items: [{ name: r.lastAccount, label: r.lastAccount, quota: null, last: true }] }
       : { kind: "off" };
@@ -282,7 +286,7 @@ function resumeControl(r: HistoryRow): HTMLElement {
     moreLabel: copyText("history.resume.more"),
     items: async () => {
       const [a, where] = await Promise.all([
-        resumeAccounts(origin, r.agent, { hasAccounts: r.can.accounts, agentName: r.agentTag ?? r.agent, last: r.lastAccount }),
+        resumeAccounts(origin, { agent, hasAccounts: r.can.accounts, agentName: r.agentTag ?? displayNameOf(agent), last: r.lastAccount }),
         standingOf(origin, r.sessionId),
       ]);
       accounts = a;
@@ -293,14 +297,13 @@ function resumeControl(r: HistoryRow): HTMLElement {
         pick,
         machineRun,
         onChange: (p) => (sb.main.title = resumeHint(accounts, p, machineRun)),
-        newInDir: () => void openNewSession({ origin, cwd: r.projectPath, agent: r.agent }),
+        newInDir: () => void openNewSession({ origin, cwd: r.projectPath, agent }),
       });
     },
   });
   sb.root.dataset.role = "resume";
-  if (r.can.resume === "bg") {
-    setDisabled(sb.main, copyText("history.row.bgHint"));
-    setDisabled(sb.more, copyText("history.row.bgHint"));
-  }
+  const blocked = r.can.resumeWhy ?? null;
+  setDisabled(sb.main, blocked);
+  setDisabled(sb.more, blocked);
   return sb.root;
 }

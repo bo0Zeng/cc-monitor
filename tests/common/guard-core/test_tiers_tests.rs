@@ -100,7 +100,16 @@ const SUPPORT: &[&str] = &[
     "tests/backend/files/write_support.rs", // 写面判据够到的那几样内部项（上层挂的写面判据经 `test-support` 读）
     "tests/backend/alloc_probe.rs",         // 线程级内存量具（只在测试档编，挂在后端库根）
     "tests/backend/agents/fake/mod.rs",     // 最小假 agent：每一种能力都与真 agent 不同形
+    "tests/backend/agents/fake/record.rs",  // 假 agent 的记录面
+    "tests/backend/agents/fake/local.rs",   // 假 agent 的本机布局与判活
+    "tests/backend/agents/fake/accounts.rs", // 假 agent 的账号面
+    "tests/backend/agents/fake/ask.rs",     // 假 agent 的答题口
+    "tests/backend/agents/fake/launch.rs",  // 假 agent 的起会话面
+    "tests/backend/agents/fake/assets.rs",  // 假 agent 的资产与 MCP 面
+    "tests/backend/agents/fake/footprint.rs", // 两家替身的足迹面（足迹认多家 · 按号申报）
     "tests/backend/agents/fake/runs.rs",    // 假 agent 的子运行形状
+    "tests/backend/agents/fake/history.rs", // 替身家的合成历史面与子运行住址（挂在 runs 底下）
+    "tests/backend/agents/fake/upstream.rs", // 假 agent 的上游面（报用量往 stdin 喂两行）
     "tests/backend/plan/fixture.rs",        // 计划读面的夹具：合成 dump · 假 pb 插件
     "tests/backend/control/identity_tag_door.rs", // `identity_tag` 起 tmux 那个口的测试构建那一份（假 tmux 注入，§48.3）
     "tests/backend/platform/child_tmux_fence.rs", // 子进程起前那一道的测试构建那一份（裸名 tmux 落到本进程的空 socket 目录）
@@ -223,6 +232,11 @@ enum Trigger {
 /// 真机层：逐条登记（`(文件, 测试名 / TS 那一处的条件, 触发者)`）。
 /// 人群 = 两棵 Rust 测试树里每一条 `#[ignore]` ＋ TS 测试里每一处 `skipIf` / `runIf` / `.skip(`。
 const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
+    (
+        "tests/common/platform-core/tz_tests.rs",
+        "a_pacific_windows_names_its_zone_and_offset",
+        Trigger::Filter { by: ".github/workflows/ci.yml", needle: "tz_tests::a_pacific_windows_names_its_zone_and_offset" },
+    ),
     (
         "tests/backend/platform/child_tests.rs",
         "default_path_helper_inner",
@@ -460,6 +474,11 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         "tests/shots/proc-start.vitest.ts",
         "process.platform===\"\"",
         Trigger::Manual("Windows 上让开：判的是沙箱开场 sh 里读 `/proc` 的那一句；Linux 上门禁与 quick-check 的整套 vitest 跑它"),
+    ),
+    (
+        "tests/shots/prime-hold.vitest.ts",
+        "process.platform===\"\"",
+        Trigger::Manual("Windows 上让开：判的是沙箱开场 sh 里那一段 grep · sed 管道；Linux 上门禁与 quick-check 的整套 vitest 跑它"),
     ),
     (
         "tests/shots/tmux-stand-in.vitest.ts",
@@ -934,6 +953,7 @@ fn module_path(
     const ROOTS: &[&str] = &[
         "src/frontend/shell/src/",
         "src/frontend/filewin/src/",
+        "src/common/platform-core/src/",
         "src/comms/ssh-dial/",
         "src/comms/egress/",
         "src/backend/platform/",

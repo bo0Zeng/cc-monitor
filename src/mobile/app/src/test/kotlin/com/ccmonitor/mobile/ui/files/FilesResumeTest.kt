@@ -116,13 +116,6 @@ class FilesResumeTest {
             retry: Boolean,
         ) = Unit
 
-        override fun stage(
-            handle: Long,
-            fd: Int,
-            name: String,
-            withinMs: Long,
-        ) = 0L
-
         override fun read(
             handle: Long,
             path: String,
@@ -143,8 +136,6 @@ class FilesResumeTest {
             handle: Long,
             rows: String,
         ) = """{"bar":[],"more":[]}"""
-
-        override fun searchMerge(data: String) = ""
 
         override fun deploy(
             handle: Long,

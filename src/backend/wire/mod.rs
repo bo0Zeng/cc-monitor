@@ -68,9 +68,18 @@ pub use cmd_wire::frame::{
 };
 pub use cmd_wire::frame::{CanView, TermOpen};
 pub use cmd_wire::frame::{Cancelled, Changed, Overflow, Reply, SessionLeft};
-pub use cmd_wire::frame::{FilesBatch, Probe, SessionsReplayed, Transfer};
-pub use cmd_wire::frame::{FollowEnd, RereadWhy, SessionContainer, TerminalHost, TransferEnd};
-pub use cmd_wire::frame::{Frame, Hello, Line, SessionAdded, SessionPrimed, SessionStatus};
+pub use cmd_wire::frame::{FilesBatch, Probe, SessionsReplayed};
+pub use cmd_wire::frame::{FollowEnd, RereadWhy, SessionContainer, TerminalHost};
+pub use cmd_wire::frame::{Hello, SessionAdded, SessionPrimed, SessionStatus};
+
+/// 后端里传的帧：记录那一格是后端的行（[`BackRecord`]，带只给后端看的那几格）。从造帧那一处一路传到流的写者，
+/// 写者那一下（[`FrameExit::stamp`]）才交出线上那一形 [`WireFrame`]、再序列化。
+pub type Frame = cmd_wire::frame::Frame<BackRecord>;
+/// 后端里传的 `line` 帧（同 [`Frame`]）。
+pub type Line = cmd_wire::frame::Line<BackRecord>;
+/// 线上那一形的帧（[`to_line`] 只收它）：后端里传的帧经 [`FrameExit::stamp`] 交出。
+pub type WireFrame = cmd_wire::frame::Frame;
+use crate::agents::record::BackRecord;
 pub use cmd_wire::frame::{NameFace, SessionActivity};
 pub use cmd_wire::frame::{RunDid, RunEnded, RunInfo, RunState, RunWhy};
 pub use cmd_wire::frame::{SessionFileGone, SessionFileReread};
@@ -111,13 +120,10 @@ impl Life {
         Life::Reading { host: housed(c) }
     }
 
-    /// 清单行 · 搜索命中那一段：那台判的一生（清单不看容器）。
-    pub fn of_wire(life: &WireLife) -> Self {
+    /// 清单那条路（[`SessionFaceExt::listed`]）：那台判的一生 ＋ 它住的那一处（活着才看；判不了 ⇒ 不知道在不在 tmux 里）。
+    fn of_wire(life: &WireLife, c: Option<&SessionContainer>) -> Self {
         match life {
-            WireLife::Live { activity } => Life::Live {
-                activity: *activity,
-                host: None,
-            },
+            WireLife::Live { activity } => Life::live(*activity, c),
             WireLife::Reconnectable => Life::Reconnectable,
             WireLife::Ended { .. } => Life::Ended,
             WireLife::Gone => Life::Gone,
@@ -147,15 +153,28 @@ fn housed(c: Option<&SessionContainer>) -> Option<Housed> {
 /// （`face_core::book::unseen`，桌面与手机核心同一处）。
 pub trait SessionFaceExt: Sized {
     fn of(life: Life) -> Self;
+    /// **清单那条路造脸的唯一口**（历史清单 · 搜索 · 分组 · 历史脸 · 一批会话）：那台判的一生 ＋ 它住的那一处（`host::Housing::of`，
+    /// 判不出 ⇒ `None`）⇒ 与标签页那张脸同一个判法的整份脸，句柄跟着「看它的终端」走。
+    fn listed(life: &WireLife, c: Option<&SessionContainer>) -> Self;
     /// 带上这条会话跑在哪个号下（`account`，宣告时判的那一个）。
     fn under(self, account: Option<String>) -> Self;
     /// 带上 pidfile 说的接进去有没有意义（`attachable`，宣告时读的那一格）：`Some(false)` ⇒ 在终端里打开 · 接进去看它的终端都不能；
     /// 拉它的外部窗口照旧；没说 ⇒ 照原样。
     fn attachable(self, attachable: Option<bool>) -> Self;
-    /// 带上它住的那个终端的句柄（容器那一格，宣告时判的）：「看它的终端」接的就是它；判不出 ⇒ 缺，交了由那台认。
+    /// 带上它住的那个终端的句柄（容器那一格，宣告时判的）：「看它的终端」接的就是它；容器不带句柄 ⇒ 缺。
     fn housed_in(self, c: Option<&SessionContainer>) -> Self;
     /// 带上那台照记录写好的状态一句（填 `line` · `clock` · `peek` 三格，只经这一口）；`None` ⇒ 照原样（那一态的那一句）。
+    /// 那一句说在等的界面答得了（`asks`）⇒ 照 [`SessionFaceExt::asking`] 换点。
     fn saying(self, said: Option<StateLine>) -> Self;
+    /// **换上待答请求那一颗点的唯一一口**：在等人、`answerable`（那一份界面答得了，判好的结果：配好的 `needs.ask` 在，
+    /// 或 [`answerable`]）⇒ 点 [`SessionDot::Asks`]、名字「待答请求」，拿名字当字的那几格（悬停 · 那一句 · 停一轮的理由）跟着换；否则照原样。
+    /// 不经状态一句造脸的那几处（历史行 · 终端板）也只经这里。
+    fn asking(self, answerable: bool) -> Self;
+}
+
+/// 挂着的那一条（这条会话最早挂上的）界面答不答得了：只读 [`crate::agents::asks::Asked::manual`] 那一判的结果，不另判。没挂 ⇒ 否。
+pub fn answerable(hung: Option<&crate::agents::asks::Asked>) -> bool {
+    hung.is_some_and(|a| a.manual().is_none())
 }
 
 /// 一条活会话此刻的状态一句（那台照记录写好的、经 [`SessionFaceExt::saying`] 填进脸上 `line` · `clock` · `peek` 那三格）：
@@ -165,6 +184,8 @@ pub struct StateLine {
     pub text: Words,
     pub clock: Option<cmd_wire::frame::Clock>,
     pub peek: Option<Words>,
+    /// 在等的那一份界面答得了（配好的 `needs.ask` 在，[`crate::observe::recognize::facts::line_of`] 一处定）⇒ 脸上的点是待答请求；否则不动点。
+    pub asks: bool,
 }
 
 fn no(why: Words) -> Allow {
@@ -192,6 +213,14 @@ fn no_host() -> Words {
     Words(copy_core::copy_text("beTerminal.why.noHost", &[]))
 }
 
+/// 接不进去的那一句（[`terminal_of`] 说不能的那两形）：不在任何宿主里 ⇒ 没有终端；住哪说不清 ⇒ 照实说说不清，不说「不在」。
+fn no_terminal(host: Option<Housed>) -> Words {
+    match host {
+        None => Words(copy_core::copy_text("beTerminal.why.unclear", &[])),
+        Some(_) => no_host(),
+    }
+}
+
 /// 看不了它的终端：那一句。
 fn view_no(why: &Words) -> CanView {
     CanView::No { why: why.clone() }
@@ -208,6 +237,29 @@ impl SessionFaceExt for SessionFace {
             self.line = s.text;
             self.clock = s.clock;
             self.peek = s.peek;
+            return self.asking(s.asks);
+        }
+        self
+    }
+
+    fn asking(mut self, answerable: bool) -> Self {
+        // 在等人、这一份界面答得了 ⇒ 待答请求：点与名字换掉，拿名字当理由的那几格跟着换（色 · 序 · 能不能换模型同需手动）。
+        if answerable && self.dot == SessionDot::NeedsYou {
+            let was = std::mem::replace(
+                &mut self.name,
+                Words(copy_core::copy_text("needs.asks.title", &[])),
+            );
+            self.dot = SessionDot::Asks;
+            if self.tip == was {
+                self.tip = self.name.clone();
+            }
+            // 那一句本来就是名字（历史行 · 终端板不经状态一句）⇒ 跟着换；经状态一句的（「等批准 · 4 分钟」）照旧。
+            if self.line == was {
+                self.line = self.name.clone();
+            }
+            if self.can.stop == (Allow::No { why: was }) {
+                self.can.stop = no(self.name.clone());
+            }
         }
         self
     }
@@ -254,161 +306,167 @@ impl SessionFaceExt for SessionFace {
     }
 
     fn of(life: Life) -> Self {
-        let running = || Words(copy_core::copy_text("backend.status.connected", &[]));
-        let ended_why = |name: &Words| {
-            Words(copy_core::copy_text(
-                "tabBatch.why.ended",
-                &[("ended", &name.0)],
-            ))
-        };
-        match life {
-            Life::Live { activity, host } => live_face(activity, host, false, TMUX_HERE),
-            Life::Reading { host } => live_face(None, host, true, TMUX_HERE),
-            Life::Reconnectable => {
-                let tip = Words(copy_core::copy_text(
-                    "sessionState.reconnectable.tooltip",
-                    &[],
-                ));
-                SessionFace {
-                    dot: SessionDot::Exited,
-                    life: WireLife::Reconnectable,
-                    settled: false,
-                    name: Words(copy_core::copy_text("sessionState.reconnectable.name", &[])),
-                    line: tip.clone(),
-                    tip: tip.clone(),
-                    tone: Tone::Plain,
-                    order: 4,
-                    account: None,
-                    clock: None,
-                    peek: None,
-                    can: SessionCan {
-                        close: CanClose::No { why: running() },
-                        resume: no(running()),
-                        // tmux 会话还在：拉得了连着它的那个窗口、接得进去、看得了。
-                        front: Allow::Yes,
-                        attach: Allow::Yes,
-                        view: view_attach(),
-                        reattach: Allow::Yes,
-                        // 离开「活」两样都能换：记在注解上、下次恢复用上（没有终端也收）。
-                        model: Allow::Yes,
-                        permission: Allow::Yes,
-                        stop: no(tip.clone()),
-                        // 程序退了、tmux 会话还在：结束的是那个 tmux 会话。
-                        end: Allow::Yes,
-                        // 程序退了：先接回（tmux 会话还在），再说。
-                        say: CanSay::No { why: tip.clone() },
-                    },
-                }
+        of(life)
+    }
+
+    /// 照一生 ＋ 名单里它住的那一处造，与标签页那张脸同一个判法（[`Life::of_wire`] ⇒ [`of`] ⇒ 带上句柄）。
+    fn listed(life: &WireLife, c: Option<&SessionContainer>) -> Self {
+        of(Life::of_wire(life, c)).housed_in(c)
+    }
+}
+
+/// [`SessionFaceExt::of`] 的本体。
+fn of(life: Life) -> SessionFace {
+    let running = || Words(copy_core::copy_text("backend.status.connected", &[]));
+    let ended_why = |name: &Words| {
+        Words(copy_core::copy_text(
+            "tabBatch.why.ended",
+            &[("ended", &name.0)],
+        ))
+    };
+    match life {
+        Life::Live { activity, host } => live_face(activity, host, false),
+        Life::Reading { host } => live_face(None, host, true),
+        Life::Reconnectable => {
+            let tip = Words(copy_core::copy_text(
+                "sessionState.reconnectable.tooltip",
+                &[],
+            ));
+            SessionFace {
+                dot: SessionDot::Exited,
+                life: WireLife::Reconnectable,
+                settled: false,
+                name: Words(copy_core::copy_text("sessionState.reconnectable.name", &[])),
+                line: tip.clone(),
+                tip: tip.clone(),
+                tone: Tone::Plain,
+                order: 4,
+                account: None,
+                clock: None,
+                peek: None,
+                can: SessionCan {
+                    close: CanClose::No { why: running() },
+                    resume: no(running()),
+                    // tmux 会话还在：拉得了连着它的那个窗口、接得进去、看得了。
+                    front: Allow::Yes,
+                    attach: Allow::Yes,
+                    view: view_attach(),
+                    reattach: Allow::Yes,
+                    // 离开「活」两样都能换：记在注解上、下次恢复用上（没有终端也收）。
+                    model: Allow::Yes,
+                    permission: Allow::Yes,
+                    stop: no(tip.clone()),
+                    // 程序退了、tmux 会话还在：结束的是那个 tmux 会话。
+                    end: Allow::Yes,
+                    // 程序退了：先接回（tmux 会话还在），再说。
+                    say: CanSay::No { why: tip.clone() },
+                },
             }
-            Life::Ended | Life::Gone => {
-                let gone = life == Life::Gone;
-                let (dot, name, tip) = if gone {
-                    (
-                        SessionDot::Gone,
-                        Words(copy_core::copy_text("sessionState.gone.name", &[])),
-                        Words(copy_core::copy_text("sessionState.gone.tooltip", &[])),
-                    )
+        }
+        Life::Ended | Life::Gone => {
+            let gone = life == Life::Gone;
+            let (dot, name, tip) = if gone {
+                (
+                    SessionDot::Gone,
+                    Words(copy_core::copy_text("sessionState.gone.name", &[])),
+                    Words(copy_core::copy_text("sessionState.gone.tooltip", &[])),
+                )
+            } else {
+                (
+                    SessionDot::Ended,
+                    Words(copy_core::copy_text("sessionState.ended.name", &[])),
+                    Words(copy_core::copy_text("sessionState.ended.tooltip", &[])),
+                )
+            };
+            let why = ended_why(&name);
+            SessionFace {
+                dot,
+                life: if gone {
+                    WireLife::Gone
                 } else {
-                    (
-                        SessionDot::Ended,
-                        Words(copy_core::copy_text("sessionState.ended.name", &[])),
-                        Words(copy_core::copy_text("sessionState.ended.tooltip", &[])),
-                    )
-                };
-                let why = ended_why(&name);
-                SessionFace {
-                    dot,
-                    life: if gone {
-                        WireLife::Gone
+                    WireLife::Ended { by: None }
+                },
+                settled: true,
+                line: tip.clone(),
+                account: None,
+                clock: None,
+                peek: None,
+                can: SessionCan {
+                    close: CanClose::Quiet,
+                    resume: if gone { no(tip.clone()) } else { Allow::Yes },
+                    // 已结束：没有窗口可拉、没有终端可接；看它的终端 ⇒ 先恢复再在这一端开；记录已不在 ⇒ 恢复不了（同恢复那一句）。
+                    front: no(why.clone()),
+                    attach: no(why.clone()),
+                    view: if gone { view_no(&tip) } else { view_resume() },
+                    reattach: no(why.clone()),
+                    stop: no(why.clone()),
+                    end: no(why),
+                    // 已结束：记在注解上、下次恢复用上；记录已不在 ⇒ 恢复不了，换了也用不上（同恢复那一句）。
+                    model: if gone { no(tip.clone()) } else { Allow::Yes },
+                    permission: if gone { no(tip.clone()) } else { Allow::Yes },
+                    // 已结束：发一句 ＝ 先恢复再把这句交进它的队；记录已不在 ⇒ 恢复不了。
+                    say: if gone {
+                        CanSay::No { why: tip.clone() }
                     } else {
-                        WireLife::Ended { by: None }
+                        say_yes(copy_core::copy_text("composer.input.ended", &[]))
                     },
-                    settled: true,
-                    line: tip.clone(),
-                    account: None,
-                    clock: None,
-                    peek: None,
-                    can: SessionCan {
-                        close: CanClose::Quiet,
-                        resume: if gone { no(tip.clone()) } else { Allow::Yes },
-                        // 已结束：没有窗口可拉、没有终端可接；看它的终端 ⇒ 先恢复再在这一端开；记录已不在 ⇒ 恢复不了（同恢复那一句）。
-                        front: no(why.clone()),
-                        attach: no(why.clone()),
-                        view: if gone { view_no(&tip) } else { view_resume() },
-                        reattach: no(why.clone()),
-                        stop: no(why.clone()),
-                        end: no(why),
-                        // 已结束：记在注解上、下次恢复用上；记录已不在 ⇒ 恢复不了，换了也用不上（同恢复那一句）。
-                        model: if gone { no(tip.clone()) } else { Allow::Yes },
-                        permission: if gone { no(tip.clone()) } else { Allow::Yes },
-                        // 已结束：发一句 ＝ 先恢复再把这句交进它的队；记录已不在 ⇒ 恢复不了。
-                        say: if gone {
-                            CanSay::No { why: tip.clone() }
-                        } else {
-                            say_yes(copy_core::copy_text("composer.input.ended", &[]))
-                        },
-                    },
-                    name,
-                    tip,
-                    tone: Tone::Plain,
-                    order: 5,
-                }
+                },
+                name,
+                tip,
+                tone: Tone::Plain,
+                order: 5,
             }
-            Life::Unclear => {
-                let name = Words(copy_core::copy_text("runs.state.unknown", &[]));
-                SessionFace {
-                    dot: SessionDot::Unknown,
-                    life: WireLife::Unclear,
-                    settled: false,
-                    tip: name.clone(),
-                    line: name.clone(),
-                    tone: Tone::Plain,
-                    order: 3,
-                    account: None,
-                    clock: None,
-                    peek: None,
-                    can: SessionCan {
-                        close: CanClose::No { why: name.clone() },
-                        resume: no(Words(copy_core::copy_text(
-                            "sessionState.unseen.noResume",
-                            &[],
-                        ))),
-                        front: no(name.clone()),
-                        attach: no(name.clone()),
-                        view: view_no(&name),
-                        reattach: no(name.clone()),
-                        model: no(name.clone()),
-                        permission: no(name.clone()),
-                        stop: no(name.clone()),
-                        end: no(name.clone()),
-                        say: CanSay::No { why: name.clone() },
-                    },
-                    name,
-                }
+        }
+        Life::Unclear => {
+            let name = Words(copy_core::copy_text("runs.state.unknown", &[]));
+            SessionFace {
+                dot: SessionDot::Unknown,
+                life: WireLife::Unclear,
+                settled: false,
+                tip: name.clone(),
+                line: name.clone(),
+                tone: Tone::Plain,
+                order: 3,
+                account: None,
+                clock: None,
+                peek: None,
+                can: SessionCan {
+                    close: CanClose::No { why: name.clone() },
+                    resume: no(Words(copy_core::copy_text(
+                        "sessionState.unseen.noResume",
+                        &[],
+                    ))),
+                    front: no(name.clone()),
+                    attach: no(name.clone()),
+                    view: view_no(&name),
+                    reattach: no(name.clone()),
+                    model: no(name.clone()),
+                    permission: no(name.clone()),
+                    stop: no(name.clone()),
+                    end: no(name.clone()),
+                    say: CanSay::No { why: name.clone() },
+                },
+                name,
             }
         }
     }
 }
 
-/// 这台有没有 tmux 可住（Windows 上没有：读不到进程环境，打标那一探永远「判不出」）。
-const TMUX_HERE: bool = cfg!(unix);
-
-/// 有没有终端可接进去（在终端里打开 · 看它的终端）：住在 tmux · 托管终端里 ⇒ 有；不在任何宿主里 ⇒ 没有；
-/// 住哪判不出 ⇒ 这台有 tmux 就交了由那台认，没有 tmux（托管终端是认得出的，没认出就是不在里面）⇒ 没有。
-fn has_terminal(host: Option<Housed>, tmux_here: bool) -> bool {
-    match host {
-        Some(Housed::In(_)) => true,
-        Some(Housed::Bare) => false,
-        None => tmux_here,
-    }
+/// 有没有终端可接进去（在终端里打开 · 看它的终端）：住在 tmux · 托管终端里 ⇒ 有；别的都没有。
+///
+/// 住处只认挂着这个 sid 的那个标：清单那一路问名单（`host::housed`，问的那一刻现读）；标签页那一路是宣告那一刻打标的结局
+/// （打上了才有容器，写上的就是名单读的那个标）。接回（`session-open look`）认的也是名单里挂着它的那一行（`session_batch::carriers`）。
+/// 住哪说不清（没打上标：没控制终端 · 不是窗格前台的那一个 · 环境读不到 · tmux 不认那个窗格 · tmux 报错 · 托管终端写不上）⇒ 不给接。
+/// 标签页那张脸的容器宣告后不再改：宣告之后标被同一终端里后起的会话顶掉，这一格照旧说接得进（接回那一下照实回不在）。
+fn terminal_of(host: Option<Housed>) -> bool {
+    matches!(host, Some(Housed::In(_)))
 }
 
-/// 进程在的那几段（`reading` ＝ 记录还没读完、此刻在干什么只有记录说）。`tmux_here`：这台有没有 tmux（[`TMUX_HERE`]）。
+/// 进程在的那几段（`reading` ＝ 记录还没读完、此刻在干什么只有记录说）。
 fn live_face(
     activity: Option<SessionActivity>,
     host: Option<Housed>,
     reading: bool,
-    tmux_here: bool,
 ) -> SessionFace {
     let running = || Words(copy_core::copy_text("backend.status.connected", &[]));
     let (dot, key, tone, order) = match activity {
@@ -508,16 +566,16 @@ fn live_face(
             resume: no(running()),
             // 拉前：哪种宿主都有一个显示它的终端窗口可找（tmux 的客户端 · 附着上托管终端的那一扇 · 它自己挂着的那个终端）。
             front: Allow::Yes,
-            // 在终端里打开 · 看它的终端：有终端可接（[`has_terminal`]）⇒ 接得进去；没有 ⇒ 照实说为什么。
-            attach: if has_terminal(host, tmux_here) {
+            // 在终端里打开 · 看它的终端：有终端可接（[`terminal_of`]）⇒ 接得进去；没有 ⇒ 照实说为什么。
+            attach: if terminal_of(host) {
                 Allow::Yes
             } else {
-                no(no_host())
+                no(no_terminal(host))
             },
-            view: if has_terminal(host, tmux_here) {
+            view: if terminal_of(host) {
                 view_attach()
             } else {
-                view_no(&no_host())
+                view_no(&no_terminal(host))
             },
             reattach: no(running()),
             model,
@@ -597,51 +655,34 @@ pub enum TapEnd {
     Broken,
 }
 
-/// 传输收场那一形（跑起来之后才停下的那一形写复制详情）。
-pub trait TransferEndExt {
-    fn failed(why: String, code: Option<String>, cmd: &str, raw: Option<&str>) -> TransferEnd;
-}
-
-impl TransferEndExt for TransferEnd {
-    /// 跑起来之后才停下的那一形：那一句 ＋ 复制详情（命令 `cmd` · 下层原话，后端这一端写好）。
-    fn failed(why: String, code: Option<String>, cmd: &str, raw: Option<&str>) -> TransferEnd {
-        TransferEnd::Failed(crate::wire::detail::Failed {
-            code: crate::wire::detail::Failed::code_or_fallback(code),
-            said: why,
-            detail: crate::wire::detail::of_run(cmd, raw),
-            data: None,
-        })
-    }
-}
-
 /// 造帧的那几处（写字的那几种帧只经这里造）。
 pub trait FrameMake {
     /// 成功、不带数据的那一种应答。
-    fn ok(id: &str) -> Frame;
+    fn ok(id: &str) -> Self;
 
     /// `changed` 帧（只此一处装进帧）：发端造好那个主题那一臂；体序列化后超了主题表那一格的上限 ⇒ 不带（客户端重问）。
-    fn changed(c: Changed) -> Frame;
+    fn changed(c: Changed) -> Self;
 
     /// 离开「活」的那一帧（[`Life::Reconnectable`] · [`Life::Ended`] · [`Life::Gone`]；只此一处造这一帧）：
     /// `by` ＝ 顶替它的那条会话（只在已结束时作数）；`account` 是宣告时判的那个号（脸上带着）。
-    fn session_left(sid: String, life: Life, by: Option<String>, account: Option<String>) -> Frame;
+    fn session_left(sid: String, life: Life, by: Option<String>, account: Option<String>) -> Self;
 
     /// `overflow` 帧：这条连接拥塞丢了约 `lines` 行 · 会话状态要不要（已）重新对齐，写成那一句。
-    fn overflow(lines: u64, realigned: bool) -> Frame;
+    fn overflow(lines: u64, realigned: bool) -> Self;
 
     /// 失败应答：那一份失败（[`crate::wire::detail::Failed`]，CLI 面的信封出自同一份）装进 `reply`。
-    fn failed(id: String, f: crate::wire::detail::Failed) -> Frame;
+    fn failed(id: String, f: crate::wire::detail::Failed) -> Self;
 
-    /// 硬臂那几条命令（`Run::Builtin`：链路 · 传输 · 终端订阅）就地被拒：详情里带命令名（同处理器回的失败）。
-    fn refused(id: &str, cmd: &str, code: &str, said: &str) -> Frame;
+    /// 硬臂那几条命令（帧面硬臂 `How::Frame`：终端订阅）就地被拒：详情里带命令名（同处理器回的失败）。
+    fn refused(id: &str, cmd: &str, code: &str, said: &str) -> Self;
 
     /// 协议级失败（还没落到哪条命令上：认不出 · 读不懂 · 收场中）：详情里没有命令那一项。
-    fn err(id: &str, code: &str, said: &str) -> Frame;
+    fn err(id: &str, code: &str, said: &str) -> Self;
 }
 
-impl FrameMake for Frame {
-    fn ok(id: &str) -> Frame {
-        Frame::Reply(Reply {
+impl<R> FrameMake for cmd_wire::frame::Frame<R> {
+    fn ok(id: &str) -> Self {
+        Self::Reply(Reply {
             id: id.to_string(),
             ok: true,
             code: None,
@@ -651,46 +692,119 @@ impl FrameMake for Frame {
         })
     }
 
-    fn changed(mut c: Changed) -> Frame {
-        c.cap_body(c.topic().spec().body_cap);
+    fn changed(mut c: Changed) -> Self {
+        use cmd_wire::frame::Frame;
+        let cap = c.topic().spec().body_cap;
+        cap_body(&mut c, cap);
         Frame::Changed(c)
     }
 
-    fn overflow(lines: u64, realigned: bool) -> Frame {
+    fn overflow(lines: u64, realigned: bool) -> Self {
         let n = lines.to_string();
         let said = match (realigned, lines) {
             (false, _) => copy_core::copy_text("beStream.overflow.lines", &[("n", &n)]),
             (true, 0) => copy_core::copy_text("beStream.overflow.realigned", &[]),
             (true, _) => copy_core::copy_text("beStream.overflow.realignedLines", &[("n", &n)]),
         };
-        Frame::Overflow(Overflow { said: Words(said) })
+        Self::Overflow(Overflow { said: Words(said) })
     }
 
-    fn session_left(sid: String, life: Life, by: Option<String>, account: Option<String>) -> Frame {
+    fn session_left(sid: String, life: Life, by: Option<String>, account: Option<String>) -> Self {
         let mut face = SessionFace::of(life).under(account);
         if let WireLife::Ended { by: b } = &mut face.life {
             *b = by;
         }
-        Frame::SessionLeft(SessionLeft { sid, face })
+        Self::SessionLeft(SessionLeft { sid, face })
     }
 
-    fn failed(id: String, f: crate::wire::detail::Failed) -> Frame {
-        Frame::Reply(Reply::refused(id, f))
+    fn failed(id: String, f: crate::wire::detail::Failed) -> Self {
+        Self::Reply(Reply::refused(id, f))
     }
 
-    fn refused(id: &str, cmd: &str, code: &str, said: &str) -> Frame {
+    fn refused(id: &str, cmd: &str, code: &str, said: &str) -> Self {
         let f = crate::wire::detail::failed(Some(cmd), code, said.to_string(), None, None);
-        Frame::failed(id.to_string(), f)
+        Self::failed(id.to_string(), f)
     }
 
-    fn err(id: &str, code: &str, said: &str) -> Frame {
+    fn err(id: &str, code: &str, said: &str) -> Self {
         let f = crate::wire::detail::failed(None, code, said.to_string(), None, None);
-        Frame::failed(id.to_string(), f)
+        Self::failed(id.to_string(), f)
     }
 }
 
-/// 帧上的规矩：丢了能不能恢复 · 是不是某个会话的整行内容 · 主线外清单分页 · 推出去那一下写钟面。
-pub trait FrameRules {
+/// 同一个主题 · 同一个 `key`、不带 `rev` 与体的那一臂（断线之后补报「这一样变过」、发端只知道变了的那几帧：客户端重问）。
+/// 主题带 `key` 而没给 ⇒ `None`。
+pub fn bare_changed(topic: Topic, key: Option<String>) -> Option<Changed> {
+    Some(match topic {
+        Topic::Accounts => Changed::Accounts {},
+        Topic::Profiles => Changed::Profiles {},
+        Topic::Quota => Changed::Quota { body: None },
+        Topic::Rotation => Changed::Rotation { key: key? },
+        Topic::RotationStrategies => Changed::RotationStrategies { body: None },
+        Topic::Plan => Changed::Plan {
+            key: key?,
+            rev: None,
+            body: None,
+        },
+        Topic::Tasks => Changed::Tasks {
+            key: key?,
+            body: None,
+        },
+        Topic::Needs => Changed::Needs { key },
+        Topic::Login => Changed::Login {
+            key: key?,
+            body: None,
+        },
+        Topic::Machines => Changed::Machines {},
+        Topic::Machine => Changed::Machine {
+            key: key?,
+            body: None,
+        },
+        Topic::Empty => Changed::Empty { body: None },
+        Topic::SessionHidden => Changed::SessionHidden {
+            key: key?,
+            body: None,
+        },
+        Topic::FilesDir => Changed::FilesDir { key: key? },
+        Topic::HistoryList => Changed::HistoryList {},
+        Topic::Groups => Changed::Groups {},
+        Topic::SessionQueue => Changed::SessionQueue {
+            key: key?,
+            body: None,
+        },
+        Topic::Attach => Changed::Attach {
+            key: key?,
+            body: None,
+        },
+    })
+}
+
+/// 体序列化后超了 `cap` 字节 ⇒ 去掉体（客户端重问）。推出去那一下（[`FrameMake::changed`]）照主题表的上限调它。
+fn cap_body(c: &mut Changed, cap: usize) {
+    fn cap_one<B: serde::Serialize>(b: &mut Option<B>, cap: usize) {
+        if b.as_ref()
+            .is_some_and(|v| serde_json::to_vec(v).map_or(true, |t| t.len() > cap))
+        {
+            *b = None;
+        }
+    }
+    match c {
+        Changed::Quota { body } => cap_one(body, cap),
+        Changed::RotationStrategies { body } => cap_one(body, cap),
+        Changed::Plan { body, .. } => cap_one(body, cap),
+        Changed::Tasks { body, .. } => cap_one(body, cap),
+        Changed::Login { body, .. } => cap_one(body, cap),
+        Changed::Machine { body, .. } => cap_one(body, cap),
+        Changed::Empty { body } => cap_one(body, cap),
+        Changed::SessionHidden { body, .. } => cap_one(body, cap),
+        Changed::SessionQueue { body, .. } => cap_one(body, cap),
+        Changed::Attach { body, .. } => cap_one(body, cap),
+        _ => {}
+    }
+}
+
+/// 帧上的规矩：丢了能不能恢复 · 是不是某个会话的整行内容 · 主线外清单分页（推出去那一下写钟面在 [`FrameExit`]）。
+pub trait FrameRules: Sized {
     /// **丢了还能不能恢复**：出方向那条大通道按帧种分「丢了别处还在」与「丢了就没了」（应答走独立通道、阻塞背压，不在此列）。
     /// 拿不准的一律按不可恢复算（错判成可恢复 ＝ 静默丢数据；错判成不可恢复 ＝ 多一次就地重报）。
     /// ⚠ **穷尽 `match`，不许 `_ =>`** —— 新增帧种时编译期就被逼着表态。
@@ -712,15 +826,21 @@ pub trait FrameRules {
         off: &[String],
         runs: &[Range<usize>],
         at: usize,
-    ) -> Vec<Frame>;
-
-    /// **推出去那一下**按这条流看的那一台的时区写钟面（`stream/writer.rs::writer_task` 对出方向每一帧调它；应答在答的那一下已按请求的 `tz` 写好）：
-    /// `line.record.timeText` · `session_runs.runs[].startedText`。产这些帧的那几层不写钟面（同一份状态可能推给几个时区不同的看的人）。
-    fn stamp(&mut self, tz: &crate::common::time::Tz);
+    ) -> Vec<Self>;
 }
 
-impl FrameRules for Frame {
+/// 帧的出口：后端里传的帧 ⇒ 线上那一形（只此一处交出 [`WireFrame`]）。
+pub trait FrameExit {
+    /// **推出去那一下**按这条流看的那一台的时区写钟面，交出线上那一形（`stream/writer.rs::writer_task` 对每一帧调它；
+    /// 应答在答的那一下已按请求的 `tz` 写好，它里面没有带钟面的那几种帧）：
+    /// `line.record` 照 [`crate::stamp::RecordExt::stamp`] 写（钟面 · 重试那一行），只给后端看的那几格就此丢掉；
+    /// `session_runs.runs[].startedText`；别的帧原样搬过去。产这些帧的那几层不写钟面（同一份状态可能推给几个时区不同的看的人）。
+    fn stamp(self, tz: &crate::common::time::Tz) -> WireFrame;
+}
+
+impl<R: serde::Serialize> FrameRules for cmd_wire::frame::Frame<R> {
     fn loss_is_recoverable(&self) -> bool {
+        use cmd_wire::frame::Frame;
         match self {
             // 内容帧：行确实还在远端 jsonl 里，重开会话/重读就补上。
             Frame::Line(_) => true,
@@ -753,9 +873,7 @@ impl FrameRules for Frame {
             // 一次性的出声，没有「下一次必然重发」⇒ 丢了那个 tab 就不说那句话（内容本身照旧对：游标已按它处置）。
             Frame::SessionFileGone(_) => false,
             Frame::SessionFileReread(_) => false,
-            // 传输的进度 / 终局：丢了终局那一帧，看的人永远等下去；走应答通道（阻塞发送，不走会丢帧的那条）。
-            Frame::Transfer(_) => false,
-            // 测试连接的进度 / 结局：同上（走应答通道）。
+            // 测试连接的进度 / 结局：丢了结局那一帧，看的人永远等下去；走应答通道（阻塞发送，不走会丢帧的那条）。
             Frame::Probe(_) => false,
             // 一组的进度：只是快照（结局在应答里），但走应答通道、不丢。
             Frame::FilesBatch(_) => false,
@@ -771,33 +889,41 @@ impl FrameRules for Frame {
             Frame::TerminalFollowEnd(_) => false,
             // 别台那条流上的事：丢一行那台那条连接就对不上了 —— 发帧那一层记下（`FrameSink`），下一帧之前补那台一格 `gap`。
             Frame::Relayed(_) => false,
+            // 本机那一台的会话成品：丢了那条连接手上那一份就对不上 —— 发帧那一层记下（`FrameSink`），下一帧之前补一份整本。
+            Frame::SessionSeats(_) => false,
+            // 活卡成品：同 `live_card`，不走出方向那条通道（tap 那一路现折现交），列在这里只为穷尽。
+            Frame::LiveNow(_) => true,
+            // 这条连接的未读：别处没有 ⇒ 丢了照「要重新对齐」，重报那一份里带此刻的（`report_to`）。
+            Frame::SessionUnread(_) => false,
         }
     }
 
     fn content_of(&self) -> Option<&str> {
         match self {
-            Frame::Line(Line { session_id, .. }) => Some(session_id),
-            Frame::SessionRuns(SessionRuns { sid, .. }) => Some(sid),
-            Frame::SessionBranch(SessionBranch { sid, .. }) => Some(sid),
-            Frame::LiveCard(l) => Some(&l.sid),
-            Frame::Hello(_)
-            | Frame::SessionAdded(_)
-            | Frame::SessionPrimed(_)
-            | Frame::SessionStatus(_)
-            | Frame::SessionLeft(_)
-            | Frame::Overflow(_)
-            | Frame::Reply(_)
-            | Frame::Cancelled(_)
-            | Frame::Changed(_)
-            | Frame::SessionsReplayed(_)
-            | Frame::SessionFileGone(_)
-            | Frame::SessionFileReread(_)
-            | Frame::Transfer(_)
-            | Frame::Probe(_)
-            | Frame::FilesBatch(_)
-            | Frame::TerminalScreen(_)
-            | Frame::TerminalFollowEnd(_)
-            | Frame::Relayed(_) => None,
+            Self::Line(cmd_wire::frame::Line { session_id, .. }) => Some(session_id),
+            Self::SessionRuns(SessionRuns { sid, .. }) => Some(sid),
+            Self::SessionBranch(SessionBranch { sid, .. }) => Some(sid),
+            Self::LiveCard(l) => Some(&l.sid),
+            Self::Hello(_)
+            | Self::SessionAdded(_)
+            | Self::SessionPrimed(_)
+            | Self::SessionStatus(_)
+            | Self::SessionLeft(_)
+            | Self::Overflow(_)
+            | Self::Reply(_)
+            | Self::Cancelled(_)
+            | Self::Changed(_)
+            | Self::SessionsReplayed(_)
+            | Self::SessionFileGone(_)
+            | Self::SessionFileReread(_)
+            | Self::Probe(_)
+            | Self::FilesBatch(_)
+            | Self::TerminalScreen(_)
+            | Self::TerminalFollowEnd(_)
+            | Self::Relayed(_)
+            | Self::SessionSeats(_)
+            | Self::LiveNow(_)
+            | Self::SessionUnread(_) => None,
         }
     }
 
@@ -807,13 +933,13 @@ impl FrameRules for Frame {
         off: &[String],
         runs: &[Range<usize>],
         at: usize,
-    ) -> Vec<Frame> {
+    ) -> Vec<Self> {
         let at = at.min(off.len());
         // 摘要沿清单一趟滚过去：第 k 帧的 `sum` ＝ 到它末尾为止那一截的摘要。
         let mut sum = BranchSum::default();
         off[..at].iter().for_each(|id| sum.push(id));
         let page = |at: usize, end: usize, sum: String| {
-            Frame::SessionBranch(SessionBranch {
+            Self::SessionBranch(SessionBranch {
                 sid: sid.to_string(),
                 path: path.to_string(),
                 at: at as u64,
@@ -850,22 +976,54 @@ impl FrameRules for Frame {
             start = end;
         }
     }
+}
 
-    fn stamp(&mut self, tz: &crate::common::time::Tz) {
+impl FrameExit for Frame {
+    fn stamp(self, tz: &crate::common::time::Tz) -> WireFrame {
+        use cmd_wire::frame::Frame as F;
+        // 穷尽 `match`：新增帧种时编译期就得表态（带不带钟面 · 记录那一格怎么换）。
         match self {
-            Frame::Line(Line {
-                record: Some(r), ..
-            }) => r.stamp(tz),
-            Frame::SessionRuns(SessionRuns { runs, .. }) => {
-                for r in runs {
+            F::Line(l) => F::Line(cmd_wire::frame::Line {
+                session_id: l.session_id,
+                path: l.path,
+                seq: l.seq,
+                record: l.record.map(|r| r.stamp(tz)),
+                cwd: l.cwd,
+                byte_offset: l.byte_offset,
+                rid: l.rid,
+            }),
+            F::SessionRuns(mut s) => {
+                for r in &mut s.runs {
                     r.started_text = r.started_ms.map(|ms| {
                         let hm =
                             crate::common::time::ms_hm(i64::try_from(ms).unwrap_or(i64::MAX), tz);
                         copy_core::copy_text("agentWindow.facts.started", &[("time", &hm)])
                     });
                 }
+                F::SessionRuns(s)
             }
-            _ => {}
+            F::Hello(x) => F::Hello(x),
+            F::SessionAdded(x) => F::SessionAdded(x),
+            F::SessionPrimed(x) => F::SessionPrimed(x),
+            F::SessionStatus(x) => F::SessionStatus(x),
+            F::SessionLeft(x) => F::SessionLeft(x),
+            F::Overflow(x) => F::Overflow(x),
+            F::Reply(x) => F::Reply(x),
+            F::Cancelled(x) => F::Cancelled(x),
+            F::Changed(x) => F::Changed(x),
+            F::SessionsReplayed(x) => F::SessionsReplayed(x),
+            F::SessionFileGone(x) => F::SessionFileGone(x),
+            F::SessionFileReread(x) => F::SessionFileReread(x),
+            F::FilesBatch(x) => F::FilesBatch(x),
+            F::Probe(x) => F::Probe(x),
+            F::LiveCard(x) => F::LiveCard(x),
+            F::SessionBranch(x) => F::SessionBranch(x),
+            F::TerminalScreen(x) => F::TerminalScreen(x),
+            F::TerminalFollowEnd(x) => F::TerminalFollowEnd(x),
+            F::Relayed(x) => F::Relayed(x),
+            F::SessionSeats(x) => F::SessionSeats(x),
+            F::LiveNow(x) => F::LiveNow(x),
+            F::SessionUnread(x) => F::SessionUnread(x),
         }
     }
 }
@@ -1014,7 +1172,7 @@ pub fn within_ms_of(v: &serde_json::Value) -> Option<u64> {
 ///
 /// The returned string is exactly one JSON object followed by a single `\n`;
 /// any newline inside string fields is escaped by `serde_json` as `\n`.
-pub fn to_line(frame: &Frame) -> serde_json::Result<String> {
+pub fn to_line(frame: &WireFrame) -> serde_json::Result<String> {
     let mut s = serde_json::to_string(frame)?;
     s.push('\n');
     Ok(s)
@@ -1053,11 +1211,12 @@ pub async fn write_and_flush_hello<W: tokio::io::AsyncWrite + Unpin>(
     hello: &Frame,
 ) -> std::io::Result<HelloFlushed> {
     use tokio::io::AsyncWriteExt as _;
-    debug_assert!(
-        matches!(hello, Frame::Hello(_)),
-        "write_and_flush_hello 只该用来发 Hello"
-    );
-    let line = to_line(hello).map_err(std::io::Error::other)?;
+    let Frame::Hello(h) = hello else {
+        return Err(std::io::Error::other(
+            "write_and_flush_hello: not a hello frame",
+        ));
+    };
+    let line = to_line(&WireFrame::Hello(h.clone())).map_err(std::io::Error::other)?;
     out.write_all(line.as_bytes()).await?;
     out.flush().await?;
     Ok(HelloFlushed(()))

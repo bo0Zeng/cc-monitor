@@ -11,7 +11,7 @@
 
 use super::*;
 use crate::agents::footprint_decl::HostScope;
-use crate::footprint::registry::{environment, EnvBacking};
+use crate::footprint::registry::{environment_among, EnvBacking};
 use crate::footprint::rows::{SurfaceRow, SurfaceState};
 use serde_json::json;
 
@@ -24,7 +24,14 @@ fn answer_with(
 ) -> Result<ConfigSurfaceReport, crate::common::said::Said> {
     let req: FootprintReq = crate::wire::typed::take(args).map_err(|f| f.coded("bad_args"))?;
     // 用户级 `PATH` 那一格只有 Windows 那一台问得出；这里的判据不问它 ⇒ 问不出。
-    super::answer_with(get, session_path, agent_home, &|| None, &req)
+    super::answer_with(
+        crate::agents::REGISTRY,
+        get,
+        session_path,
+        agent_home,
+        &|| None,
+        &req,
+    )
 }
 
 fn env_of(pairs: Vec<(&'static str, String)>) -> impl Fn(&str) -> Option<String> {
@@ -53,7 +60,7 @@ fn kind_of(rows: &[SurfaceRow], tool: &str, declared: &str) -> &'static str {
     kind(
         &rows
             .iter()
-            .find(|r| r.tool_id == tool && r.path_declared == declared)
+            .find(|r| r.tool_id == tool && r.path_declared.as_ref() == declared)
             .unwrap_or_else(|| panic!("找不到 {tool} 那一行 {declared}"))
             .state,
     )
@@ -61,7 +68,7 @@ fn kind_of(rows: &[SurfaceRow], tool: &str, declared: &str) -> &'static str {
 
 /// 申报表里住 monitor 那台（`HostScope::Client`）的那几行，按 (工具, 申报路径)。
 fn client_keys() -> Vec<(String, String)> {
-    environment()
+    environment_among(crate::agents::REGISTRY, cfg!(windows))
         .iter()
         .flat_map(|e| match e.backing {
             EnvBacking::Managed(t) => t
@@ -87,13 +94,15 @@ fn monitor_vantage_population(home: &Path, with_client: bool) -> Vec<(String, St
     let agent = home.join(".claude");
     let env = SurfaceEnv {
         home,
-        agent_home: &agent,
+        agent_homes: &crate::agents::IntoHomes::into_homes(&agent),
         fs: &empty,
         path_env: None,
         session_path: None,
         system_root: None,
         windows: false,
         vantage: Vantage::Monitor,
+        registry: crate::agents::REGISTRY,
+        accounts: &[],
     };
     let client = client_keys();
     build_rows(&env, with_client.then_some(&env))
@@ -300,4 +309,163 @@ fn the_agent_cli_is_judged_in_the_session_shell_not_the_backend_process() {
         "起会话的 shell 里也确实没有 ⇒ 该说缺"
     );
     let _ = std::fs::remove_dir_all(&h);
+}
+
+/// 整份足迹照注入的注册表收（两栏都是）：两家替身的足迹面跟生产那家不同 ⇒ 行照替身出，生产那家的行一行都不出。
+#[test]
+fn both_columns_follow_the_injected_registry() {
+    let h = test_home::scratch("injected-registry");
+    let get = env_of(vec![("HOME", h.display().to_string())]);
+    let fakes = crate::agents::fake::footprint::two_footprint_families();
+    let client = h.join("client-home");
+    for req in [
+        FootprintReq::default(),
+        FootprintReq {
+            client: Some(FootprintClient {
+                home: client.display().to_string(),
+                path: None,
+                webview: None,
+            }),
+        },
+    ] {
+        let rows = super::answer_with(fakes, &get, &no_session, &h, &|| None, &req)
+            .unwrap()
+            .rows;
+        let ids: std::collections::BTreeSet<&str> = rows.iter().map(|r| r.tool_id).collect();
+        for id in ["fake-a-records", "fake-b-records"] {
+            assert!(ids.contains(id), "少了替身那一行 {id}：{ids:?}（{req:?}）");
+        }
+        assert!(
+            !ids.contains("claude-cli"),
+            "照生产注册表收了：{ids:?}（{req:?}）"
+        );
+    }
+}
+
+/// monitor 那一栏也照注入的那一份：替身家只认 `~/.fake-a/…` 为自己家底下、那一条只住 monitor 那台；
+/// 照替身答 ⇒ 落到替身的家（在）；照生产注册表答 ⇒ 认不出这一家、落回 monitor 交来的家目录（不在）。
+#[test]
+fn the_client_column_follows_the_injected_registry_too() {
+    use crate::agents::footprint_decl::{
+        Carrier, ToolDestination, ToolSource, ToolSpec, TouchEffect, TouchedFile,
+    };
+    const CLIENT_TOOLS: &[ToolSpec] = &[ToolSpec {
+        id: "fake-client-records",
+        display_name: crate::agents::footprint_decl::Text(|| {
+            "替身 monitor 那台的记录树".to_string()
+        }),
+        installable: false,
+        uninstallable: false,
+        carriers: &[Carrier {
+            source: ToolSource::NotOurs,
+            destination: ToolDestination::NotInstalledByUs,
+            touches: &[TouchedFile {
+                path: "~/.fake-a/convos/",
+                host: HostScope::Client,
+                effect: TouchEffect::ReadOnly,
+            }],
+        }],
+    }];
+    fn under(rest: &str) -> Option<&str> {
+        rest.strip_prefix(".fake-a/")
+    }
+    let row = crate::agents::fake::family_row("fake", "CCM_FAKE_A", "fakea", true, || None);
+    let registry = [crate::agents::Adapter {
+        footprint: Some(crate::agents::FootprintFace {
+            tools: CLIENT_TOOLS,
+            env: &[],
+            under_agent_home: under,
+            ..crate::agents::fake::footprint::FACE_A
+        }),
+        ..row
+    }];
+    let h = test_home::scratch("injected-client");
+    let fake_home = h.join(".fa");
+    std::fs::create_dir_all(fake_home.join("convos")).unwrap();
+    let client = h.join("client-home");
+    std::fs::create_dir_all(&client).unwrap();
+    let homes = [crate::agents::AgentHome {
+        kind: "fake",
+        home: fake_home,
+    }];
+    let get = env_of(vec![("HOME", h.display().to_string())]);
+    let req = FootprintReq {
+        client: Some(FootprintClient {
+            home: client.display().to_string(),
+            path: None,
+            webview: None,
+        }),
+    };
+    let rows = super::answer_with(&registry, &get, &no_session, &homes, &|| None, &req)
+        .unwrap()
+        .rows;
+    let r = rows
+        .iter()
+        .find(|r| r.tool_id == "fake-client-records")
+        .expect("替身那一行");
+    assert_eq!(
+        r.state,
+        SurfaceState::Present,
+        "monitor 那一栏没照注入的那一家答家底下那一段"
+    );
+}
+
+/// 家交成一个目录（判据那一形）时，那个目录当注入的那几家的家：替身家只认 `~/.fake-a/…` 为自己家底下 ⇒ 落到交来的那个目录（在）；
+/// 照生产注册表展开 ⇒ 列的是生产那几家、认不出替身 ⇒ 落回家目录（不在）。
+#[test]
+fn the_homes_are_spread_over_the_injected_registry() {
+    use crate::agents::footprint_decl::{
+        Carrier, ToolDestination, ToolSource, ToolSpec, TouchEffect, TouchedFile,
+    };
+    const TOOLS: &[ToolSpec] = &[ToolSpec {
+        id: "fake-either-records",
+        display_name: crate::agents::footprint_decl::Text(|| "替身两边都有的记录树".to_string()),
+        installable: false,
+        uninstallable: false,
+        carriers: &[Carrier {
+            source: ToolSource::NotOurs,
+            destination: ToolDestination::NotInstalledByUs,
+            touches: &[TouchedFile {
+                path: "~/.fake-a/logs/",
+                host: HostScope::Either,
+                effect: TouchEffect::ReadOnly,
+            }],
+        }],
+    }];
+    fn under(rest: &str) -> Option<&str> {
+        rest.strip_prefix(".fake-a/")
+    }
+    let row = crate::agents::fake::family_row("fake", "CCM_FAKE_A", "fakea", true, || None);
+    let registry = [crate::agents::Adapter {
+        footprint: Some(crate::agents::FootprintFace {
+            tools: TOOLS,
+            env: &[],
+            under_agent_home: under,
+            ..crate::agents::fake::footprint::FACE_A
+        }),
+        ..row
+    }];
+    let h = test_home::scratch("injected-homes");
+    let fake_home = h.join(".fa");
+    std::fs::create_dir_all(fake_home.join("logs")).unwrap();
+    let get = env_of(vec![("HOME", h.display().to_string())]);
+    let rows = super::answer_with(
+        &registry,
+        &get,
+        &no_session,
+        fake_home.as_path(),
+        &|| None,
+        &FootprintReq::default(),
+    )
+    .unwrap()
+    .rows;
+    let r = rows
+        .iter()
+        .find(|r| r.tool_id == "fake-either-records")
+        .expect("替身那一行");
+    assert_eq!(
+        r.state,
+        SurfaceState::Present,
+        "交来的家没照注入的注册表展开"
+    );
 }

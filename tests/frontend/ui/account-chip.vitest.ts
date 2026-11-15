@@ -82,7 +82,7 @@ function reply(p: Partial<SessionAccountReply>): SessionAccountReply {
     fromLine: null,
     usage: null,
     stale: false,
-    hover: [["Bob"]],
+    hover: [[{ text: "Bob", tone: "plain" }]],
     sampled: null,
     differs: false,
     badge: null,

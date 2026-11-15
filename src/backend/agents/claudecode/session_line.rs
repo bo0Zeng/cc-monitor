@@ -82,10 +82,11 @@ pub(crate) fn shape_of(v: &Value) -> Option<BodyShape<'_>> {
 
 /// 一行里要的那几格；其余字段跳过（不分配）。同名键 ⇒ 解不出（退回 `Value` 那一条，那边取最后一个）。
 #[derive(serde::Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 struct Head<'a> {
     #[serde(rename = "type", borrow, default)]
     kind: LooseStr<'a>,
-    #[serde(rename = "sessionKind", borrow, default)]
+    #[serde(borrow, default)]
     session_kind: LooseStr<'a>,
     #[serde(borrow, default)]
     timestamp: LooseStr<'a>,
@@ -93,11 +94,11 @@ struct Head<'a> {
     uuid: LooseStr<'a>,
     #[serde(borrow, default)]
     cwd: LooseStr<'a>,
-    #[serde(rename = "aiTitle", borrow, default)]
+    #[serde(borrow, default)]
     ai_title: LooseStr<'a>,
-    #[serde(rename = "customTitle", borrow, default)]
+    #[serde(borrow, default)]
     custom_title: LooseStr<'a>,
-    #[serde(rename = "forkedFrom", default)]
+    #[serde(default)]
     forked_from: Option<Value>,
 }
 

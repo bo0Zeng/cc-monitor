@@ -16,7 +16,7 @@
 //!   后端问后端的那一跳（`dial/remote_ask.rs::ask_resident`）经 ssh exec 跑它。
 //! - `--resident-stop [--grace <秒>]`：**同机监督者**那一形（k8s `terminationGracePeriodSeconds` · systemd `TimeoutStopSec`）：
 //!   连这台的套接字问在听的是谁（对端 pid 由内核报，不靠盘上的记录）→ SIGTERM（它排空后自己退）→ 在宽限期内等内核通知 →
-//!   到点 SIGKILL → 回 `{"stopped":"graceful"|"killed"|"not_running","pid":n|null}`。
+//!   到点 SIGKILL → 回 `{"stopped":"graceful"|"killed"|"not_running","pid":n|null,"said":"…"}`（said 是写好的那一句，壳与界面照抄）。
 //!   等待住这个一次性进程里，常驻后端的事件循环不加定时器（`clippy.toml` 的 `disallowed-methods`，调用处就地放行）。
 //!
 //! 门牌按这台的家算（`~/.cc-monitor`，隔离跑时 `CCM_DATA_DIR`）⇒ 一台机器一个家一个常驻后端，与 Claude 目录、与哪一家 agent 都无关。
@@ -45,8 +45,8 @@ pub(crate) const KILL_WAIT_MS: u32 = 5_000;
 /// `--grace` 的上限（秒）：再大就没有意义（monitor 那头一次性那一趟的期限先到）。
 const GRACE_MAX_SECS: u32 = 3_600;
 
-// 远端常驻后端自己的 stderr 诊断文件（家目录相对）：常量住诊断文件那一层（`stderr_log`），这里往下引。
-use crate::stderr_log::STDERR_LOG_REL;
+// 远端常驻后端自己的 stderr 诊断文件（家目录相对）：常量住布局表。
+use relay_route_core::BACKEND_STDERR_LOG_REL;
 
 fn home() -> Option<PathBuf> {
     crate::platform::paths::home_dir()
@@ -125,7 +125,11 @@ pub(crate) fn run_ensure(args: &[String], hosted: &[(&str, String)], own: &Own) 
             ),
         )
     };
-    match spawn_detached(&exe, &child_env(&home, hosted)) {
+    let env = match child_env(&home, hosted) {
+        Ok(env) => env,
+        Err(why) => return fail(ENSURE, "no_home", why),
+    };
+    match spawn_detached(&exe, &env) {
         Ok(Started::Ready { pid }) => {
             println!("{}", serde_json::json!({ "pid": pid, "replaced": replace }));
             0
@@ -203,7 +207,7 @@ pub async fn call(args: &[String], tz: &crate::common::time::Tz) -> i32 {
     let (within_ms, total) = match deadline_of(args) {
         Ok(x) => x,
         Err(s) => {
-            let code = s.code_or_fallback().to_string();
+            let code = cmd_wire::failed::Failed::code_or_fallback(s.code.clone());
             return refuse(&code, s.said);
         }
     };
@@ -214,7 +218,7 @@ pub async fn call(args: &[String], tz: &crate::common::time::Tz) -> i32 {
     ) {
         Ok(l) => l,
         Err(s) => {
-            let code = s.code_or_fallback().to_string();
+            let code = cmd_wire::failed::Failed::code_or_fallback(s.code.clone());
             return refuse(&code, s.said);
         }
     };
@@ -363,6 +367,30 @@ pub(crate) async fn call_at(
     }
 }
 
+/// 转给这台的常驻：`groups-read {}`（它照自己的机器表问到各台；等 20 秒：它问到各台 ＋ 回程）。
+/// `session-self` 那一问与 cc-bus 的范围判定（`cc_bus/scope.rs`）同调这一处。
+pub async fn groups_via_resident(
+    tz: &crate::common::time::Tz,
+) -> Result<cmd_wire::groups::GroupsRead, String> {
+    let home = crate::platform::paths::data_home().ok_or_else(|| "no data home".to_string())?;
+    let asked = crate::wire::listen::ResidentCall {
+        cmd: <crate::history::groups::GroupsReadCmd as crate::wire::typed::Command>::NAME
+            .to_string(),
+        args: serde_json::json!({}),
+    };
+    let ms = 20_000;
+    let v = call_at(
+        &home,
+        &asked,
+        Some(ms),
+        tz,
+        crate::platform::child::Deadline::millis(ms),
+    )
+    .await
+    .map_err(|f| f.said)?;
+    serde_json::from_value(v).map_err(|e| e.to_string())
+}
+
 /// 这台常驻的一条只问不看的连接：hello 之后交 attach 行（在看名单交空的），回话「接上了」才算接上。
 /// `--resident-call` 与会话级答题 hook（`control/asks/hook.rs`）同用这一处。
 pub(crate) struct Here {
@@ -476,7 +504,7 @@ pub fn ensure(args: &[String], own: &Own) -> i32 {
         ),
         (
             crate::platform::child_env::STDERR_LOG,
-            format!("~/{STDERR_LOG_REL}"),
+            format!("~/{BACKEND_STDERR_LOG_REL}"),
         ),
     ];
     // 诊断文件那层目录先建好（`stderr_log` 只 `O_EXCL` 建文件、不建目录）；建不了 ⇒ 子进程装不上、stderr 照旧 null，不拖垮起。
@@ -500,14 +528,16 @@ pub fn run_stop(args: &[String], own: &Own) -> i32 {
     };
     match stop_owner(own, grace_ms) {
         Ok(end) => {
-            println!(
-                "{}",
-                serde_json::json!({ "stopped": end.word(), "pid": end.pid() })
-            );
+            println!("{}", stop_line(end));
             0
         }
         Err(e) => fail(STOP, "stop_failed", e),
     }
+}
+
+/// `--resident-stop` 成了那一行：`{stopped, pid, said}`（壳照它读，`said` 原样照抄）。
+pub(crate) fn stop_line(end: Stopped) -> String {
+    serde_json::json!({ "stopped": end.word(), "pid": end.pid(), "said": end.said() }).to_string()
 }
 
 /// `--grace <秒>` ⇒ 毫秒；不给 ⇒ [`STOP_GRACE_MS`]。不大于排空上限的拒：那样后端还没说完就被强杀（纯函数）。
@@ -561,11 +591,19 @@ impl Stopped {
             Self::NotRunning => None,
         }
     }
+    /// 「停」的结局那一句（唯一一处；壳与机器页照抄）：三个词各一句，pid 照填（没在跑 ⇒ 不带 pid 那一句）。
+    pub(crate) fn said(self) -> String {
+        match self {
+            Self::Graceful(p) => copy_text("backend.stopSaid.graceful", &[("pid", &p.to_string())]),
+            Self::Killed(p) => copy_text("backend.stopSaid.killed", &[("pid", &p.to_string())]),
+            Self::NotRunning => copy_text("backend.stopSaid.notRunning", &[]),
+        }
+    }
 }
 
 /// `~/.cc-monitor` → `logs` → `backend` 逐层建（每层 0700，已在的不动；经写句柄的家目录那一根）。
 fn log_dir_chain(own: &Own) -> Result<(), crate::common::said::Said> {
-    let Some(dir) = Path::new(STDERR_LOG_REL).parent() else {
+    let Some(dir) = Path::new(BACKEND_STDERR_LOG_REL).parent() else {
         return Ok(());
     };
     let mut chain: Vec<&Path> = dir
@@ -608,13 +646,14 @@ fn run_dir(own: &Own) -> Result<(OwnPath, OwnPath), crate::common::said::Said> {
 }
 
 /// 子进程的环境：常驻开关 · 宿主层交的那几格（中转口 · stderr 诊断文件，值里的 `~` 换成家目录）。纯函数，判据钉它。
-pub fn child_env(home: &Path, hosted: &[(&str, String)]) -> Vec<(String, String)> {
+/// 值要写成字：家名不是 UTF-8 ⇒ 照实拒（那一句只在 `platform::paths::expand_tilde_text` 说），不有损拼。
+pub fn child_env(home: &Path, hosted: &[(&str, String)]) -> Result<Vec<(String, String)>, String> {
     let mut env = vec![(crate::platform::child_env::RESIDENT.into(), "1".into())];
-    env.extend(hosted.iter().map(|(k, v)| {
-        let v = crate::platform::paths::expand_tilde_from(v, Some(home));
-        (k.to_string(), v)
-    }));
-    env
+    for (k, v) in hosted {
+        let v = crate::platform::paths::expand_tilde_text(v, Some(home))?;
+        env.push((k.to_string(), v));
+    }
+    Ok(env)
 }
 
 /// 等新起的常驻载体说「起好了」的期限（口绑好、锁抢到它就说）。

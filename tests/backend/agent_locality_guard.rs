@@ -49,7 +49,8 @@
 //! `S5` 往 `agents/mod.rs` 放了适配层注册表（`REGISTRY`：这个后端认得哪几个 agent）。
 //! 它也是「直呼适配层」，但**方向反了**：④ 要零处，而注册表那几行是「加一个 agent **本来就该**动的一行」，
 //! 随 agent 数增长。⇒ 拆成 [`tests::AGENT_REGISTRY_SITES`]，④ 的人群里扣掉它。
-//! **扣除的对价**是判据⑦：注册表文件的处数被钉死成 `REGISTRY.len()`（一家一行），藏不进第二样东西。
+//! **扣除的对价**是判据⑦：注册表文件的处数被钉死成 `REGISTRY.len()`（一家一行），藏不进第二样东西；
+//! 那一行只写 `<名>::ADAPTER`（一家恰一处），各家的格住各家自己的 `mod.rs`。
 //! ④ 的针有全路径 `agents::<名>::` 与相对路径 `<名>::` 两种写法（`agents/mod.rs` 里写的是后一种）。
 //!
 //! # ⚠ 诚实边界（四条，都写在这里而不是只写在计划里）
@@ -112,6 +113,10 @@ mod tests {
             (format!("settings{}\"", ".json"), "设置文件名"),
             (format!("join(\"ta{}\")", "sks"), "任务列表目录"),
             (format!("ANTHROPIC_BASE{}", "_URL"), "上游地址环境变量"),
+            (
+                format!("\"claude-c{}\"", "li"),
+                "那一家命令行在环境清单里的那一条（必装 · 怎么装跟着申报那一条走）",
+            ),
             (
                 format!("\"cc{}\"", "t"),
                 "别名名字（由那一家的 wrapper 名派生）",
@@ -207,8 +212,8 @@ mod tests {
     const AGENT_REGISTRY_SITES: &[(&str, &str)] = &[(
         "agents/mod.rs",
         "适配层自己的索引：不写 `pub(crate) mod <名>;` 新适配层根本编不进来 ⇒ \
-         它**本来就**在「加一个 agent 必改」的清单里。`S5` 把注册表（每家的 `agent_kind` 值 + \
-         home 解析入口）放在这里，是为了不让必改的文件从 1 个变成 2 个。**一家一行**。",
+         它**本来就**在「加一个 agent 必改」的清单里。注册表 `REGISTRY` 放在这里，是为了不让必改的文件 \
+         从 1 个变成 2 个；它只列各家的 `<名>::ADAPTER`（那一行的本体住 `agents/<名>/mod.rs`）。**一家一行**。",
     )];
 
     /// 假 agent 的每一种能力住注册表哪一格（`能力`, `那一格`）—— 通用层只问那一格，不直呼某一家（判据④零命中）。
@@ -400,7 +405,7 @@ mod tests {
             );
         }
         for good in [
-            "let m = under_home(&home, \".cc-monitor/accounts/accounts.json\");",
+            "let m = crate::platform::paths::under_home(Some(&home), relay_route_core::ACCOUNTS_DIR_REL);",
             "if face.is_some_and(|f| f.is_default) {}",
         ] {
             assert!(
@@ -547,12 +552,33 @@ mod tests {
         );
     }
 
+    /// ⑦注册表文件里直呼适配层的行数恰 `REGISTRY.len()`，且**一家恰一处 `<名>::ADAPTER`**：
+    /// 那一行的本体住那一家自己的 `agents/<名>/mod.rs`，注册表只列各家的 `ADAPTER`、自己不写任何一家的格。
     #[test]
     fn the_adapter_registry_is_one_line_per_agent() {
         let measured = adapter_call_sites_measured();
+        let files = sources();
         let agents = crate::agents::REGISTRY.len();
         assert!(agents > 0, "注册表空了");
         for (file, why) in AGENT_REGISTRY_SITES {
+            let prod = files
+                .iter()
+                .find(|(rel, _)| rel == file)
+                .map_or("", |(_, p)| p.as_str());
+            for h in HOMES {
+                let seg = h
+                    .trim_end_matches('/')
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or_default();
+                let needle = format!("{seg}::ADAPTER");
+                let k = prod.matches(needle.as_str()).count();
+                assert_eq!(
+                    k, 1,
+                    "\n`{file}` 里 `{needle}` 出现 {k} 处 —— 每家恰一处：那一行的本体住 `{h}mod.rs` 的 \
+                     `pub const ADAPTER`，注册表只列它、自己不写那一家的格。"
+                );
+            }
             assert!(
                 !why.trim().is_empty(),
                 "{file} 没写「它为什么不该被压到零」"
@@ -566,8 +592,8 @@ mod tests {
                 n, agents,
                 "\n`{file}` 里直呼适配层的行数是 {n}，而注册表有 {agents} 家 —— 应当**一家一行**。\n\
                  ⚠ 多出来 = 有人把别的直呼藏进了注册表文件（判据④已经把这个文件扣出人群，\n\
-                 藏进来就等于从 `S6` 的靶子上抹掉一处），或者注册表被排版成了每字段一行；\n\
-                 ⚠ 少了（尤其是 0）= 注册表没了 / 抽取坏了 ⇒ 本条与判据④的扣除都在空转。"
+                 藏进来就等于从 `S6` 的靶子上抹掉一处），或者有一家的格又写回了这里；\n\
+                 ⚠ 少了（尤其是 0）= 注册表没了 / 几家挤进了一行 / 抽取坏了 ⇒ 本条与判据④的扣除都在空转。"
             );
         }
     }
@@ -689,7 +715,7 @@ mod tests {
             "④ 打中了合法的值判别 —— `D3` 逐字：agent 维度**只许出现在值里**"
         );
     }
-    /// ⑨ 通用层零处「按注册序取第一家」：`agents/mod.rs` 生产段里每一次在注册表上 `find` / `find_map`，
+    /// ⑨ 通用层零处「按注册序取第一家」：`agents/mod.rs` 与各面那几份（[`AGENT_FACE_FILES`]）生产段里每一次在注册表上 `find` / `find_map`，
     /// 闭包都得按键比（`kind` · 路由名 · 名字 · 权限档的原值）；不按键比的只许是下面登记的那几形（各带理由与处数，处数对不上就红 ——
     /// 收掉一处要同轮改这张表，多出一处要先说清楚为什么不是「取第一家」）。
     const FIRST_PICK_ALLOWED: &[(&str, usize, &str)] = &[
@@ -699,14 +725,14 @@ mod tests {
             "声明的缺省那一家（`LaunchFace::is_default`，`agents_tests` 钉着恰一家）",
         ),
         (
-            "is_some_and(under)",
-            1,
-            "按路径：记录落在那一家合成历史的根下（各家的根不相交）",
+            "under(root.clone())",
+            2,
+            "按路径：记录落在根表上那一家（合成历史的某一根 · 某个号的记录树）下（各根不相交）",
         ),
     ];
 
     /// 按键比的那几形：闭包里有其一 ⇒ 是「问那一家」，不是「取第一家」。
-    /// `== mode` · `== model`：`PermissionFace::text_of` · `LaunchFace::model_choice` 在那一家自己的档表 · 模型清单里按入参找那一项（不在注册表上取）。
+    /// `== mode` · `== model`：`PermissionFace::text_of` · `LaunchFace::model_word` 在那一家自己的档表 · 模型清单里按入参找那一项（不在注册表上取）。
     const KEYED: &[&str] = &[
         "== kind",
         ".kind ==",
@@ -769,16 +795,61 @@ mod tests {
         (bad, seen)
     }
 
+    /// 在注册表上按家问的那几份：`agents/mod.rs`（注册表）＋ 各面各自一份（`agents/<面>.rs`）。
+    /// 按家问的入口（`*_of` · `*_among`）住各面那一份 ⇒ ⑨ 的人群是这一整张，少一份就有一面不在扫。
+    const AGENT_FACE_FILES: &[&str] = &[
+        "agents/mod.rs",
+        "agents/record_face.rs",
+        "agents/text_face.rs",
+        "agents/launch_face.rs",
+        "agents/ask_face.rs",
+        "agents/local_face.rs",
+        "agents/accounts_face.rs",
+        "agents/upstream_face.rs",
+        "agents/quota_face.rs",
+        "agents/mcp_face.rs",
+        "agents/history_face.rs",
+        "agents/asset_face.rs",
+        "agents/attach_face.rs",
+        "agents/footprint_face.rs",
+    ];
+
     #[test]
     fn the_general_layer_never_takes_the_first_family_by_registry_order() {
-        let (_, src) = sources()
-            .into_iter()
-            .find(|(rel, _)| rel == "agents/mod.rs")
-            .expect("agents/mod.rs 不在扫描的人群里");
-        let (bad, seen) = first_picks(&src);
+        let files = sources();
+        // 名单与文件树对账：`agents/` 顶层每一份 `*_face.rs` 都得在名单里，新长出一面不登记就红。
+        let unlisted: Vec<&String> = files
+            .iter()
+            .map(|(rel, _)| rel)
+            .filter(|rel| {
+                let p = std::path::Path::new(rel.as_str());
+                p.parent() == Some(std::path::Path::new("agents"))
+                    && p.file_name()
+                        .and_then(|n| n.to_str())
+                        .is_some_and(|n| n.rsplit('_').next() == Some("face.rs"))
+            })
+            .filter(|rel| !AGENT_FACE_FILES.contains(&rel.as_str()))
+            .collect();
+        assert!(
+            unlisted.is_empty(),
+            "`agents/` 下这几面没登记进 `AGENT_FACE_FILES`，⑨ 扫不到它们：{unlisted:?}"
+        );
+        let mut bad = Vec::new();
+        let mut seen = vec![0; FIRST_PICK_ALLOWED.len()];
+        for want in AGENT_FACE_FILES {
+            let (_, src) = files
+                .iter()
+                .find(|(rel, _)| rel == want)
+                .unwrap_or_else(|| panic!("{want} 不在扫描的人群里"));
+            let (b, s) = first_picks(src);
+            bad.extend(b.into_iter().map(|c| format!("{want}: {c}")));
+            for (acc, n) in seen.iter_mut().zip(s) {
+                *acc += n;
+            }
+        }
         assert!(
             bad.is_empty(),
-            "`agents/mod.rs` 里按注册序取了第一家（闭包不按 kind 比）：{bad:#?}\n\
+            "`agents/` 的注册表与各面里按注册序取了第一家（闭包不按 kind 比）：{bad:#?}\n\
              ⇒ 改成按 kind 取（入参带 kind，调用方说是哪一家），或逐家问。"
         );
         for ((marker, want, why), got) in FIRST_PICK_ALLOWED.iter().zip(&seen) {
@@ -801,32 +872,207 @@ mod tests {
         assert!(bad.is_empty(), "把按 kind 取判成了取第一家：{bad:?}");
     }
 
-    /// 会话文件 ⇒ sid 是那一家的文件命名（`RecordFace.sid`）：搜索 · 清单 · 历史读那几份通用层零处拿文件名主干推，一律经 `agents::sid_of`。
-    const SID_READERS: &[&str] = &[
-        "observe/search_query.rs",
-        "history/listing_scan.rs",
-        "history/listing.rs",
-        "faces/history_face.rs",
+    /// ⑩ 通用层问「哪一家」不靠全局单例：有记录在手照 `record_kind_of` 认，整台的事对有那一面的每一家各做一遍。
+    /// 「只认唯一那一家」的入口与它的包装逐个登记处数（生产段，含各家的家），只许往下减；收掉一处同轮改这张表。
+    /// 针运行时拼（`concat!`），本文件自己不算一处。
+    const SINGLETON_SITES: &[(&str, usize, &str)] = &[
+        (
+            concat!("sole_", "kind"),
+            0,
+            "注册表里恰一家满足某一格 ⇒ 它（多一家就说不出、换一家就认错）",
+        ),
+        (
+            concat!("asset_", "kind_"),
+            0,
+            "没说家时缺省的那一家资产面（`asset_kinds_among` 逐家列，不在此列）",
+        ),
+        (
+            concat!("home_", "at("),
+            0,
+            "后端盯着的那一家的家目录（`LocalFace` 那一格照家问，写作 `(f.home_at)(…)`，不在此列）",
+        ),
+        (concat!("tree_", "local_face"), 0, "记录树那一家的本机布局"),
+        (
+            concat!("LIBRARY_", "AGENT"),
+            0,
+            "账号库那一家（包了一层凭据文件那一家）",
+        ),
+        (
+            concat!("agent_", "home()"),
+            0,
+            "包着「后端盯着的那一家的家目录」的那几层（`history::listing` · 流入口）",
+        ),
+        // 没说家时照名字问「默认那一家 / 账号库那一家」：读者说得出家就带上家；请求里没写家的那一下只经请求的规整（`skill_install::family_among` · `pick_route`）。
+        (
+            concat!("asset_", "default("),
+            0,
+            "资产面缺省那一家（不带注册表、不带请求的那一问；线上「默认那一家不写家」只在 `agents::unless_default` 里判）",
+        ),
+        (
+            concat!("library_", "kind"),
+            0,
+            "账号库那一家（号名那一格照号那一家问：`account_text_of`）",
+        ),
+        (
+            concat!("credentials_", "file_agent"),
+            0,
+            "凭据文件那一家（同 `library_kind` 那一判的另一份；上游选择照 `Upstreams::file_agent` 问）",
+        ),
+        (
+            concat!("CREDENTIALS_", "FILE_AGENT"),
+            0,
+            "凭据文件那一家的常量（key 表那几行带着它们那一家走；没写家的那一问照请求的规整 `pick_route`）",
+        ),
+        (
+            concat!("account_", "text("),
+            0,
+            "号名不带家（号名照号那一家问：`account_text_of`）",
+        ),
+        (
+            concat!("IntoHomes ", "for &Path"),
+            0,
+            "一个目录当每一家的家（生产里逐家给家；这一形只留测试档夹具）",
+        ),
+        (
+            concat!("store_", "family_face"),
+            2,
+            "共享库那一家的账号面（定义 ＋ `accounts::manage::layout::face` 一处读者）：账号库是几家共用的一份清单，\
+             共享库与它的布局（身份项 · 共享项 · 链）只一份、归清单里不写家的号那一家；别的家的号只列在清单里、不照它布局",
+        ),
     ];
 
     #[test]
-    fn the_general_layer_takes_sids_only_from_the_adapter() {
+    fn the_general_layer_asks_which_family_without_a_singleton() {
         let files = sources();
-        let mut bad = Vec::new();
-        for want in SID_READERS {
-            let (_, src) = files
-                .iter()
-                .find(|(rel, _)| rel == want)
-                .unwrap_or_else(|| panic!("{want} 不在扫描的人群里"));
-            for (i, l) in src.lines().enumerate() {
-                if l.contains("file_stem()") {
-                    bad.push(format!("{want}:{}  {}", i + 1, l.trim()));
+        let mut lines: Vec<Vec<String>> = vec![Vec::new(); SINGLETON_SITES.len()];
+        for (rel, prod) in &files {
+            for (i, row) in prod.lines().enumerate() {
+                for ((needle, _, _), hit) in SINGLETON_SITES.iter().zip(lines.iter_mut()) {
+                    let n = row.matches(needle).count();
+                    for _ in 0..n {
+                        hit.push(format!("{rel}:{}  {}", i + 1, row.trim()));
+                    }
                 }
             }
         }
+        let off: Vec<String> = SINGLETON_SITES
+            .iter()
+            .zip(&lines)
+            .filter(|((_, want, _), got)| got.len() != *want)
+            .map(|((needle, want, why), got)| {
+                format!(
+                    "「{needle}」（{why}）数到 {} 处、登记 {want} 处：{got:#?}",
+                    got.len()
+                )
+            })
+            .collect();
         assert!(
-            bad.is_empty(),
-            "通用层拿文件名主干推 sid（那是那一家的文件命名）：{bad:#?}\n⇒ 改调 `agents::sid_of`。"
+            off.is_empty(),
+            "通用层问「哪一家」走了全局单例（处数只许减，收掉了就同轮改登记表）：\n{}\n\
+             ⇒ 有记录在手照 `record_kind_of` 认；整台的事对有那一面的每一家各做一遍；调用方说得出家就带上家。",
+            off.join("\n")
         );
+    }
+
+    /// ⑩ 的正控：针真数得到单例入口，也不误伤照家问那一格的写法。
+    #[test]
+    fn the_singleton_counter_sees_a_synthetic_site() {
+        let count = |src: &str| -> usize {
+            SINGLETON_SITES
+                .iter()
+                .map(|(n, _, _)| src.matches(n).count())
+                .sum()
+        };
+        let bad = format!(
+            "let k = {}(REGISTRY, |a| a.assets.is_some());\nlet h = agents::{}None, true);\nlet d = agents::{});\nimpl {} {{}}",
+            concat!("sole_", "kind_among"),
+            concat!("home_", "at("),
+            concat!("asset_", "default("),
+            concat!("IntoHomes ", "for &Path"),
+        );
+        assert_eq!(count(&bad), 4, "认不出单例入口");
+        let keyed = "let h = (f.home_at)(None, true);\nlet ks = asset_kinds_among(REGISTRY);\nfn run(agent_home: &Path) {}\nlet d = asset_default_among(registry);\nlet a = upstreams.file_agent();\nimpl IntoHomes for &AgentHome {}";
+        assert_eq!(count(keyed), 0, "把照家问的那一格判成了单例");
+    }
+
+    /// 通用层里拿文件名主干的那几处：都不是会话文件 ⇒ sid（各是自家文件命名里的一个数 / 名），逐份登记处数。
+    const STEMS_NOT_SIDS: &[(&str, usize, &str)] = &[
+        (
+            "history/live_table.rs",
+            1,
+            "`sessions/<PID>.json` 那一形的 pid",
+        ),
+        ("observe/tasks_query.rs", 1, "任务清单文件名里的任务号"),
+        (
+            "accounts/quota/setup/shelf.rs",
+            1,
+            "额度安装那一格自家文件名里的 id",
+        ),
+        ("control/launch_account.rs", 1, "起会话记号那一份的 pid"),
+    ];
+
+    /// 会话文件 ⇒ sid 是那一家的文件命名（`RecordFace.sid`）：通用层（`agents/<家>/` 以外的整棵后端源码）零处拿文件名主干推，
+    /// 一律经 `agents::sid_of`。拿主干的别的事（pid · 任务号 …）在 [`STEMS_NOT_SIDS`] 逐份登记处数（两向：多了 · 少了都红）。
+    #[test]
+    fn the_general_layer_takes_sids_only_from_the_adapter() {
+        let mut got: Vec<(String, usize)> = Vec::new();
+        for (rel, src) in sources() {
+            // 各家目录（`agents/<家>/…`）是那一家自己的文件命名，不在人群里。
+            let parts: Vec<&str> = rel.split('/').collect();
+            if parts.len() >= 3 && parts[0] == "agents" {
+                continue;
+            }
+            let n = src.matches("file_stem()").count();
+            if n > 0 {
+                got.push((rel, n));
+            }
+        }
+        got.sort();
+        let mut want: Vec<(String, usize)> = STEMS_NOT_SIDS
+            .iter()
+            .map(|(f, n, _)| (f.to_string(), *n))
+            .collect();
+        want.sort();
+        assert_eq!(
+            got, want,
+            "通用层拿文件名主干的处数对不上登记：多出来的若是推 sid（那是那一家的文件命名）⇒ 改调 `agents::sid_of`；\
+             别的事 ⇒ 登进 STEMS_NOT_SIDS 写清是什么；收掉了 ⇒ 删那一行"
+        );
+    }
+
+    /// 「家目录 ⇒ 账号 0 的配置目录」是一件事：适配面里只许一格声明它（`AccountsFace.shared_root`），
+    /// 各家只填一遍，读者（账号库布局 · 续期选号）都读那一格。量法：账号面那一份（`agents/accounts_face.rs`，
+    /// 连登录面 `LoginFace`）里类型是「一个路径 ⇒ 一个路径」的格。
+    fn base_dir_cells(src: &str) -> Vec<String> {
+        src.lines()
+            .map(|l| l.trim().replace("std::path::", ""))
+            .filter(|l| l.starts_with("pub ") && l.ends_with(": fn(&Path) -> PathBuf,"))
+            .collect()
+    }
+
+    #[test]
+    fn the_account_zero_dir_is_declared_once() {
+        let mut cells = Vec::new();
+        for (rel, prod) in sources() {
+            if rel == "agents/accounts_face.rs" {
+                cells.extend(
+                    base_dir_cells(&prod)
+                        .into_iter()
+                        .map(|c| format!("{rel}  {c}")),
+                );
+            }
+        }
+        assert_eq!(
+            cells,
+            vec!["agents/accounts_face.rs  pub shared_root: fn(&Path) -> PathBuf,".to_string()],
+            "「账号 0 的配置目录」在适配面里只许一格（读者都读 `AccountsFace.shared_root`）"
+        );
+    }
+
+    /// 上一条的正控：两格同形（连写全路径的那一形）⇒ 数得出两格；别的路径函数不算。
+    #[test]
+    fn the_account_zero_dir_counter_sees_a_second_cell() {
+        let two = "pub struct A {\n    pub shared_root: fn(&Path) -> PathBuf,\n}\npub struct B {\n    pub base_dir: fn(&Path) -> std::path::PathBuf,\n    pub identity_file: fn(&Path, Option<&Path>) -> PathBuf,\n}";
+        assert_eq!(base_dir_cells(two).len(), 2);
     }
 }

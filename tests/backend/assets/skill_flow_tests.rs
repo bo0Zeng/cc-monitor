@@ -19,7 +19,15 @@ fn answer_install(
     record: Record,
     args: &Value,
 ) -> Result<Value, crate::common::said::Said> {
-    via(args, |r| super::answer_install(d, facts, root, record, r))
+    via(args, |r| {
+        super::answer_install(
+            d,
+            facts,
+            crate::assets::skill_install::Roots::here_with(root),
+            record,
+            r,
+        )
+    })
 }
 
 fn plan_with(
@@ -28,7 +36,14 @@ fn plan_with(
     args: &Value,
 ) -> Result<Value, crate::common::said::Said> {
     via(args, |r| {
-        crate::assets::skill_install::answer_plan_with(facts, root, r)
+        crate::assets::skill_install::answer_plan_with(
+            facts,
+            crate::assets::skill_install::Roots {
+                registry: crate::agents::REGISTRY,
+                user: root,
+            },
+            r,
+        )
     })
 }
 
@@ -77,7 +92,11 @@ fn the_skill_flow_matches_the_cross_language_golden() {
     std::fs::create_dir_all(root.join("demo/lib")).unwrap();
     std::fs::write(root.join("demo/lib/a.txt"), "old a\n").unwrap();
     let record = |a: &crate::assets::skill_ledger::RecordReq| {
-        crate::assets::skill_ledger::record_at(&own_at(&ledger), Some(&root), a)
+        crate::assets::skill_ledger::record_at(
+            &own_at(&ledger),
+            crate::assets::skill_install::Roots::here_with(Some(&root)),
+            a,
+        )
     };
     let plan = plan_with(
         &NoFacts,
@@ -126,7 +145,11 @@ fn a_file_changed_after_the_preview_stops_the_install_there() {
     std::fs::create_dir_all(root.join("demo/lib")).unwrap();
     std::fs::write(root.join("demo/lib/a.txt"), "changed since\n").unwrap();
     let record = |a: &crate::assets::skill_ledger::RecordReq| {
-        crate::assets::skill_ledger::record_at(&own_at(&ledger), Some(&root), a)
+        crate::assets::skill_ledger::record_at(
+            &own_at(&ledger),
+            crate::assets::skill_install::Roots::here_with(Some(&root)),
+            a,
+        )
     };
     let failed = answer_install(
         &FilesHere,
@@ -160,7 +183,11 @@ fn a_file_already_equal_to_the_source_is_recorded_with_the_source_digest() {
     let root = base.join("skills");
     let ledger = base.join(relay_route_core::SKILL_LEDGER_REL);
     let record = |a: &crate::assets::skill_ledger::RecordReq| {
-        crate::assets::skill_ledger::record_at(&own_at(&ledger), Some(&root), a)
+        crate::assets::skill_ledger::record_at(
+            &own_at(&ledger),
+            crate::assets::skill_install::Roots::here_with(Some(&root)),
+            a,
+        )
     };
     std::fs::create_dir_all(root.join("demo")).unwrap();
     record(
@@ -204,5 +231,86 @@ fn a_file_already_equal_to_the_source_is_recorded_with_the_source_digest() {
     };
     assert_eq!(state("SKILL.md"), Some(json!("intact")), "{seen}");
     assert_eq!(state("new.md"), Some(json!("intact")), "{seen}");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// ★ 装照请求里的家：指名第二家装到一个项目 ⇒ 写进第二家那一份、装记录记下的目录与 plan 答的 `dir` 同一个（第二家的）；
+/// 不指名 ⇒ 默认那一家；记录的入参不指名那一形不写 `agent`。
+#[test]
+fn an_install_naming_the_second_family_lands_and_is_recorded_there() {
+    let reg = crate::agents::fake::two_families();
+    let roots = crate::assets::skill_install::Roots {
+        registry: reg,
+        user: None,
+    };
+    let base = fixture("two-families");
+    let proj = base.join("proj");
+    std::fs::create_dir_all(&proj).unwrap();
+    let ledger = base.join(relay_route_core::SKILL_LEDGER_REL);
+    let record = |a: &crate::assets::skill_ledger::RecordReq| {
+        crate::assets::skill_ledger::record_at(&own_at(&ledger), roots, a)
+    };
+    let p = proj.display().to_string();
+    let source = json!([{ "path": "SKILL.md", "text": "hi\n" }]);
+    let install = |agent: Option<&str>| {
+        let mut a = json!({ "name": "demo", "source": source, "project": p });
+        if let Some(k) = agent {
+            a["agent"] = json!(k);
+        }
+        let plan = via(&a, |r| {
+            crate::assets::skill_install::answer_plan_with(&NoFacts, roots, r)
+        })
+        .unwrap();
+        a["target"] = plan["target"].clone();
+        a["take"] = json!(["SKILL.md"]);
+        let done = via(&a, |r| {
+            super::answer_install(&FilesHere, &NoFacts, roots, &record, r)
+        })
+        .expect("装不上");
+        (plan["dir"].clone(), done)
+    };
+    let second = crate::agents::fake::second_project_skills_root(&proj).join("demo");
+    let first = crate::agents::fake::project_skills_root(&proj).join("demo");
+    let (dir, done) = install(Some("fake2"));
+    assert_eq!(
+        (dir, done["dir"].clone(), done["recordFailed"].clone()),
+        (
+            json!(second.display().to_string()),
+            json!(second.display().to_string()),
+            Value::Null
+        ),
+        "指名第二家没装到第二家那一份"
+    );
+    assert!(
+        second.join("SKILL.md").exists() && !first.exists(),
+        "装到了默认那一家"
+    );
+    let recorded: Vec<String> = crate::assets::skill_ledger::load_at(&ledger)
+        .unwrap()
+        .installs
+        .into_keys()
+        .collect();
+    assert_eq!(
+        recorded,
+        vec![second.display().to_string()],
+        "装记录记下的不是第二家那一份"
+    );
+    let (dir, _) = install(None);
+    assert_eq!(
+        dir,
+        json!(first.display().to_string()),
+        "不指名不是默认那一家"
+    );
+    assert!(first.join("SKILL.md").exists());
+    let plain = crate::assets::skill_ledger::RecordReq::Add {
+        name: "demo".into(),
+        files: Default::default(),
+        project: None,
+        agent: None,
+    };
+    assert!(
+        serde_json::to_value(&plain).unwrap().get("agent").is_none(),
+        "不指名也写出了 agent"
+    );
     let _ = std::fs::remove_dir_all(&base);
 }

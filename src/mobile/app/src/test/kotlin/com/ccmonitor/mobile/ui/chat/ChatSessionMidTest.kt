@@ -79,6 +79,30 @@ class ChatSessionMidTest {
         }
 
     @Test
+    fun `换模型带推理档：选了档 ⇒ session-model 带 effort；没档的模型 ⇒ 不带`() =
+        runTest {
+            val link = FakeCoreLink()
+            val facts = Facts()
+            val s =
+                existing(link) { cmd, _ ->
+                    when (cmd) {
+                        "session-model" -> Reply.Ok(mapOf("result" to "done", "model" to "Opus", "said" to null)).also { facts.model = "opus" to "Opus" }
+                        "history-facts" -> facts.reply()
+                        else -> null
+                    }
+                }
+            runCurrent()
+            s.switchModel(AgentPick("opus", "Opus", efforts = listOf(AgentPick("low", "低"), AgentPick("high", "高")), defaultEffort = "high"), "low")
+            runCurrent()
+            s.switchModel(AgentPick("sonnet", "Sonnet"), null)
+            runCurrent()
+            assertEquals(
+                listOf(mapOf("sid" to "s1", "model" to "opus", "client" to "mobile", "effort" to "low"), mapOf("sid" to "s1", "model" to "sonnet", "client" to "mobile")),
+                link.calls("session-model"),
+            )
+        }
+
+    @Test
     fun `换模型没读回（unsure · 超时）⇒ 字不动 ＋ 一句；那台带了那一句就照它`() =
         runTest {
             val link = FakeCoreLink()

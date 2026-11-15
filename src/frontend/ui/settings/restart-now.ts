@@ -4,20 +4,20 @@
  */
 import { commands } from "../ipc/commands";
 import { copyText } from "../copy-table";
-import { confirmDialog, type ConfirmFn } from "../kit/dialog";
+import { confirmDialog, type ConfirmFn, type DialogRow } from "../kit/dialog";
 import { toast, failToast } from "../kit/toast";
 import { button } from "../kit/button";
-import { askAppExitInterrupts, interruptRows, type Interrupts } from "./interrupts";
+import { askAppExitInterruptRows } from "./interrupts";
 
 export interface RestartDeps {
-  ask?: () => Promise<Interrupts>;
+  ask?: () => Promise<DialogRow[]>;
   confirm?: ConfirmFn;
   restart?: () => Promise<void>;
 }
 
 /** 点了［现在重启］。回 `false` ＝ 用户在框里取消了。 */
 export async function restartNow(deps: RestartDeps = {}): Promise<boolean> {
-  const rows = interruptRows(await (deps.ask ?? askAppExitInterrupts)(),copyText("restartNow.dialog.everywhere"), "restart");
+  const rows = await (deps.ask ?? askAppExitInterruptRows)();
   if (rows.length > 0) {
     const ok = await (deps.confirm ?? confirmDialog)({
       title: copyText("restartNow.dialog.title"),

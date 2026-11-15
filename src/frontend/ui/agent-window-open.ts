@@ -13,15 +13,13 @@ export interface OpenAgentWindow {
   run: RunInfo;
   /** 会话叫什么（系统标题那一段）。 */
   session: string;
-  /** 远端的机器名；本机 ⇒ `null`。 */
-  machine: string | null;
 }
 
 export async function openAgentWindow(o: OpenAgentWindow): Promise<void> {
   await commands.open_session_in_new_window({
     sessionId: o.sid,
     origin: o.origin,
-    title: agentWindowTitle(o.run, o.session, o.machine),
+    title: agentWindowTitle(o.run, o.session, o.origin),
     run: o.run.run,
   });
 }

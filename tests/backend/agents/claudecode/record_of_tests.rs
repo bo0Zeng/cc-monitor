@@ -3,19 +3,24 @@
 //! 骨架行那一条经观测面 ⇒ 整份挂在 `observe` 底下（适配层是独立的包、够不到观测面）。
 use crate::agents::claudecode::record_of::*;
 use crate::agents::record::BodyExt as _;
-use crate::agents::record::{Block, Body, Record};
+use crate::agents::record::{BackRecord, Block, Body, Record};
 use crate::wire::stamp::RecordExt as _;
 
 fn one(raw: &str) -> Option<Record> {
+    row(raw).map(|(r, _)| r.rec)
+}
+
+/// 同 [`one`]，连只给后端看的那几格一起。
+fn row(raw: &str) -> Option<(BackRecord, crate::agents::Unsent)> {
     let rec = crate::agents::claudecode::parse::parse_line(&crate::agents::Line::new(raw, 0))
         .unwrap()
         .unwrap();
-    record_of(rec, 4096).map(|mut r| {
+    row_of(rec, 4096).map(|(mut r, unsent)| {
         // 钟面随这台的时区变；金样里写成固定的样子（形状是「HH:MM」）。
-        if r.time_text.is_some() {
-            r.time_text = Some("09:30".into());
+        if r.rec.time_text.is_some() {
+            r.rec.time_text = Some("09:30".into());
         }
-        r
+        (r, unsent)
     })
 }
 
@@ -181,6 +186,11 @@ const CASES: &[(&str, &str)] = &[
         "said-agent-launched",
         r#"{"type":"user","uuid":"u-agent-launched","timestamp":"2026-10-09T01:30:02.800Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"call-agent","content":[{"type":"text","text":"Async agent launched successfully."}],"is_error":false}]},"toolUseResult":{"status":"async_launched","agentId":"w1"}}"#,
     ),
+    // 前台派出的子 agent 交回来的结果（不是回执）：派出卡那一句「交回结果 · N 字」由核心写（`resultText`）。
+    (
+        "said-agent-handback",
+        r#"{"type":"user","uuid":"u-agent-handback","timestamp":"2026-10-09T01:30:02.900Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"call-2","content":[{"type":"text","text":"found two"}],"is_error":false}]},"toolUseResult":{"status":"completed","agentId":"w2"}}"#,
+    ),
     (
         "said-plan-approved",
         r#"{"type":"user","uuid":"u-plan-approved","timestamp":"2026-10-09T01:30:02.700Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"call-plan","content":"User has approved your plan. You can now start coding.","is_error":false}]},"toolUseResult":{"plan":"1. p"}}"#,
@@ -203,19 +213,36 @@ fn coarse_edit() -> String {
     .to_string()
 }
 
+/// 行数超过收着上限的一次改动结果（一段加 401 行）：结果那一份的行差带展开那一颗（`showAllText`）。原文在这里现拼。
+fn long_patch() -> String {
+    let lines: Vec<String> = (0..401).map(|i| format!("+l{i}")).collect();
+    serde_json::json!({
+        "type": "user", "uuid": "u-long-patch", "timestamp": "2026-10-09T01:30:03.500Z",
+        "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "call-long", "content": "ok", "is_error": false}]},
+        "toolUseResult": {"filePath": "/w/long.txt",
+                          "structuredPatch": [{"oldStart": 1, "oldLines": 0, "newStart": 1, "newLines": 401, "lines": lines}]}
+    })
+    .to_string()
+}
+
 #[test]
 fn every_kind_matches_the_golden_full_and_minimal() {
     let coarse = coarse_edit();
+    let long = long_patch();
     let got: String = CASES
         .iter()
         .copied()
-        .chain([("reply-coarse-diff", coarse.as_str())])
+        .chain([
+            ("reply-coarse-diff", coarse.as_str()),
+            ("said-long-patch", long.as_str()),
+        ])
         .map(|(name, raw)| {
             // 金样是线上那一形：结果那一句由核心配表一处写（各条单过、配不上 ⇒ 不带用时），
             // 出口那一下按看的那一台的时区写好钟面（这里按 UTC）。
-            let mut r = one(raw).unwrap_or_else(|| panic!("{name} 没出记录"));
-            crate::observe::recognize::step_clock::StepClock::default().time(&mut r);
-            r.stamp(&crate::common::time::Tz::default());
+            let (mut r, unsent) = row(raw).unwrap_or_else(|| panic!("{name} 没出记录"));
+            crate::observe::recognize::step_clock::StepClock::default()
+                .time(&mut r.rec, &unsent.reads);
+            let r = r.stamp(&crate::common::time::Tz::default());
             format!(
                 "{}\n",
                 serde_json::to_string(&serde_json::json!({ "case": name, "record": r })).unwrap()
@@ -268,7 +295,8 @@ fn the_skeleton_row_is_what_the_record_says() {
     for raw in &lines {
         let rec = crate::agents::claudecode::parse::parse_line(&crate::agents::Line::new(raw, 0))
             .unwrap()
-            .and_then(|r| record_of(r, 0));
+            .and_then(|r| row_of(r, 0))
+            .map(|(r, _)| r.rec);
         let want = rec
             .as_ref()
             .map_or((None, crate::agents::record::Draw::None, false), |r| {
@@ -401,7 +429,7 @@ fn records_without_a_reader_do_not_come_out() {
         let rec = crate::agents::claudecode::parse::parse_line(&crate::agents::Line::new(raw, 0))
             .unwrap()
             .unwrap();
-        assert!(record_of(rec, 0).is_none(), "{raw}");
+        assert!(row_of(rec, 0).is_none(), "{raw}");
     }
 }
 
@@ -443,11 +471,11 @@ fn claude_status_lines_are_known_and_stay_off_screen() {
         assert!(
             !matches!(
                 rec,
-                crate::agents::claudecode::schema::JsonlRecord::Unrecognized { .. }
+                crate::agents::claudecode::schema::JsonlRecord::CcMonitorUnrecognized { .. }
             ),
             "{t} 还落在认不出那一支"
         );
-        assert!(record_of(rec, 0).is_none(), "{t}");
+        assert!(row_of(rec, 0).is_none(), "{t}");
     }
 }
 
@@ -531,7 +559,7 @@ fn a_bookkeeping_line_without_identity_is_no_card() {
             .expect("合法 JSON 的一行都有一份翻译");
         assert_eq!(
             matches!(
-                t.record.as_ref().map(|r| &r.body),
+                t.record.as_ref().map(|r| &r.rec.body),
                 Some(Body::Unread { .. })
             ),
             card,
@@ -555,9 +583,9 @@ fn a_bookkeeping_line_without_identity_is_no_card() {
             .unwrap();
         let unrecognized = matches!(
             rec,
-            crate::agents::claudecode::schema::JsonlRecord::Unrecognized { .. }
+            crate::agents::claudecode::schema::JsonlRecord::CcMonitorUnrecognized { .. }
         );
-        let carded = record_of(rec, 0).is_some();
+        let carded = row_of(rec, 0).is_some();
         let quiet = quiet_unread_of(&v);
         assert_eq!(quiet.is_some(), unrecognized && !carded, "{raw}");
         if let Some(t) = quiet {
@@ -610,7 +638,7 @@ fn scale_records(inflated: bool) -> String {
         else {
             continue;
         };
-        if let Some(mut r) = record_of(rec, start) {
+        if let Some((BackRecord { rec: mut r, .. }, _)) = row_of(rec, start) {
             r.time_text = None;
             got.push_str(&serde_json::to_string(&r).unwrap());
             got.push('\n');
@@ -733,7 +761,7 @@ fn ordinary_mentions_and_bracket_words_stay_in_the_text() {
     assert!(attachments.is_empty());
 }
 
-/// ★ 图那一块翻成引用：类型 · 原图字节数 · 那一行的起点 · 这一行里第几张（深度优先，工具结果里的也数）；字节留在块里、不上线。
+/// ★ 图那一块翻成引用：类型 · 原图字节数 · 那一行的起点 · 这一行里第几张（深度优先，工具结果里的也数）；字节按张交只给后端看的那一份、不上线。
 /// 来源不是内联 base64 图的那一块不出块（出口不再判画不画得出）。
 #[test]
 fn an_image_becomes_a_reference_to_its_line_and_place() {
@@ -749,7 +777,10 @@ fn an_image_becomes_a_reference_to_its_line_and_place() {
         ]}
     })
     .to_string();
-    let Some(rec) = one(&raw) else {
+    let rec = crate::agents::claudecode::parse::parse_line(&crate::agents::Line::new(&raw, 0))
+        .unwrap()
+        .unwrap();
+    let Some((BackRecord { rec, .. }, unsent)) = row_of(rec, 4096) else {
         panic!("该出一条")
     };
     let Body::Said { ref blocks, .. } = rec.body else {
@@ -766,7 +797,6 @@ fn an_image_becomes_a_reference_to_its_line_and_place() {
             bytes: 4,
             at: 4096,
             n: 0,
-            data: "AAAAAA==".into()
         }
     );
     assert_eq!(blocks.len(), 2, "url 那一形不出块：{blocks:?}");
@@ -777,11 +807,29 @@ fn an_image_becomes_a_reference_to_its_line_and_place() {
             bytes: 3,
             at: 4096,
             n: 1,
-            data: "AAAA".into()
         }
     );
+    assert_eq!(unsent.images, ["AAAAAA==", "AAAA"], "字节按 `n` 排");
     let wire = serde_json::to_string(&rec).unwrap();
     assert!(!wire.contains("AAAA"), "图的字节不上线：{wire}");
+}
+
+/// ★ 读文件那一类结果（`toolUseResult.file.numLines`）只交只给后端看的那一份（`reads`），不上线；别的结果不进。
+#[test]
+fn a_file_read_result_is_marked_for_the_backend_only() {
+    let parse = |raw: &str| {
+        let rec = crate::agents::claudecode::parse::parse_line(&crate::agents::Line::new(raw, 0))
+            .unwrap()
+            .unwrap();
+        row_of(rec, 0).map(|(r, u)| (r.rec, u)).unwrap()
+    };
+    let read = r#"{"type":"user","uuid":"u-r","timestamp":"2026-10-09T01:30:00.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"c1","content":"x"}]},"toolUseResult":{"file":{"filePath":"/w/a","numLines":3}}}"#;
+    let (rec, unsent) = parse(read);
+    assert_eq!(unsent.reads, ["c1".to_string()].into());
+    let wire = serde_json::to_string(&rec).unwrap();
+    assert!(!wire.contains("\"read\""), "读文件那一格不上线：{wire}");
+    let run = r#"{"type":"user","uuid":"u-o","timestamp":"2026-10-09T01:30:00.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"c2","content":"x"}]},"toolUseResult":{"stdout":"1\n2","stderr":"","interrupted":false}}"#;
+    assert!(parse(run).1.reads.is_empty(), "命令输出不是读文件那一类");
 }
 
 /// ★ 正文块照原文 UTF-8 字节写好「展开 {大小}」那一格（两端照放，不插值）· 工具结果块带着多少字节（内容各块之和）：不拿字符数当字节。
@@ -828,9 +876,10 @@ fn the_retry_line_the_error_head_and_the_peer_head_are_written_here() {
     use crate::agents::ApiReason;
     let case = |name: &str| {
         let raw = CASES.iter().find(|(n, _)| *n == name).unwrap().1;
-        let mut r = one(raw).unwrap();
-        r.stamp(&crate::common::time::Tz::default());
-        r
+        row(raw)
+            .unwrap()
+            .0
+            .stamp(&crate::common::time::Tz::default())
     };
     let t = |k: &str, a: &[(&str, &str)]| copy_core::copy_text(k, a);
 

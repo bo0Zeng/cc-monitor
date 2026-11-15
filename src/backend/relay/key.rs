@@ -88,8 +88,8 @@ const PASS_LABEL: &[u8] = b"ccm-relay/t";
 pub(crate) fn pass_of(full: &SecretKey) -> SecretKey {
     let k = ring::hmac::Key::new(ring::hmac::HMAC_SHA256, plain(full).as_bytes());
     let tag = ring::hmac::sign(&k, PASS_LABEL);
-    let hex: String = tag.as_ref().iter().map(|b| format!("{b:02x}")).collect();
-    key_from_text(&hex).expect("HMAC-SHA256 的 32 字节写成 64 位小写十六进制，形状恒对")
+    key_from_text(&crate::common::digest::to_hex(tag.as_ref()))
+        .expect("HMAC-SHA256 的 32 字节写成 64 位小写十六进制，形状恒对")
 }
 
 /// 根钥匙 ⇒ 那个范围的那一把。
@@ -106,9 +106,14 @@ pub fn key_path(home: &Path) -> PathBuf {
     crate::platform::paths::home_join(home, relay_route_core::KEY_FILE_REL)
 }
 
+/// 读钥匙那两处用的落点：家说不出（空家）⇒ `None`，不读根上的那一份（判只在 `platform::paths::under_home`）。
+fn key_file(home: &Path) -> Option<PathBuf> {
+    crate::platform::paths::under_home(Some(home), relay_route_core::KEY_FILE_REL).ok()
+}
+
 /// 这台盘上根钥匙派生出来的只许直通那一把（[`pass_of`]）的串；读不到 ⇒ `None`（**只读**）。
 pub fn pass_key_on_disk(home: &Path) -> Option<String> {
-    read_key(&key_path(home)).map(|full| plain(&pass_of(&full)).to_string())
+    read_key(&key_file(home)?).map(|full| plain(&pass_of(&full)).to_string())
 }
 
 /// 读回盘上那一把。不在 / 读不动 / 形状不对 ⇒ `None`（**只读**：探针与门都走这里）。
@@ -129,7 +134,7 @@ const DOC: crate::common::own_state::Doc<String> =
 /// 钥匙文件不在 / 形状不对 / 地址不是构造口产物 ⇒ `None`。
 pub fn keyed_with_key_on_disk(home: &Path, url: &str) -> Option<String> {
     let kind = KeyKind::for_url(url)?;
-    let key = scoped(read_key(&key_path(home))?, kind);
+    let key = scoped(read_key(&key_file(home)?)?, kind);
     relay_route_core::keyed_base_url(url, plain(&key))
 }
 
@@ -186,11 +191,8 @@ fn mint() -> Result<SecretKey, String> {
         .secure_random
         .fill(&mut buf)
         .map_err(|_| copy_text("beDoor.key.noRandom", &[]))?;
-    let mut s = String::with_capacity(2 * KEY_BYTES);
-    for b in buf {
-        s.push_str(&format!("{b:02x}"));
-    }
-    key_from_text(&s).ok_or_else(|| copy_text("beDoor.key.noRandom", &[]))
+    key_from_text(&crate::common::digest::to_hex(&buf))
+        .ok_or_else(|| copy_text("beDoor.key.noRandom", &[]))
 }
 
 // 判据共用的夹具（`TEST_KEY` · `test_key` · `seed_test_home`）住 `test_support`（本包与上层的判据共用）。

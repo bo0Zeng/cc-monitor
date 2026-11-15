@@ -255,6 +255,34 @@ fn a_clash_on_the_target_leaves_every_byte_alone() {
     assert_eq!(fs::read(b.join("f.txt")).unwrap(), b"old");
 }
 
+/// 落点目录不是绝对路径 ⇒ 整组 `bad_args`、一份都不搬（相对的会照后端进程的工作目录解，落到谁也没选的地方）。
+#[test]
+fn a_relative_target_dir_is_refused_whole() {
+    let (a, _b) = rig("relative");
+    let ends = local();
+    for dir in [&b"rel"[..], b"./rel", b"C:rel"] {
+        let q = copy_req(
+            cmd_wire::Machine::named("a"),
+            cmd_wire::Machine::named("b"),
+            vec![bytes_of(&a.join("f.txt"))],
+            dir.to_vec(),
+            OnExists::Ask,
+            None,
+        );
+        let got = on_rt(|rt| copy_with(&ends, rt, q));
+        assert!(
+            matches!(got, Err(CopyErr::BadArgs(_))),
+            "{:?} 没被拒：{got:?}",
+            String::from_utf8_lossy(dir)
+        );
+    }
+    assert_eq!(
+        ends.files.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "被拒的那一组搬了文件"
+    );
+}
+
 #[test]
 fn a_directory_clash_keeps_both_and_never_merges() {
     let (a, b) = rig("dirboth");
@@ -556,7 +584,11 @@ impl Far for Back {
         );
         self.asked.lock().unwrap().push(match &out {
             Ok(_) => cmd.to_string(),
-            Err(s) => format!("{cmd} ✗ {}: {}", s.code_or_fallback(), s.said),
+            Err(s) => format!(
+                "{cmd} ✗ {}: {}",
+                cmd_wire::failed::Failed::code_or_fallback(s.code.clone()),
+                s.said
+            ),
         });
         let back = self.rig.is_some();
         Box::pin(async move {
@@ -896,4 +928,31 @@ fn every_segment_landing_here_takes_the_name_this_machine_accepts() {
     );
     assert!(staging_left_empty(&home));
     fs::remove_dir_all(&base).ok();
+}
+
+/// ★ 那一边是别台（经常驻流转回来的失败）：那台写好的复制详情进这一项的详情，不丢（它不在原话里，在 `written`）。
+#[test]
+fn a_far_sides_written_detail_reaches_the_items_detail() {
+    const THEIRS: &str =
+        "时刻：{at}\n机器：Linux x86_64 · 后端 their\n命令：files-mkdir\n码：exists";
+    let s = Said::new("io_failed", "那台说：建不成".into()).with_written(THEIRS.into());
+    let o = missed("0", s);
+    let detail = o.detail.unwrap_or_default();
+    assert!(detail.contains(THEIRS), "那台写的那一份丢了：{detail}");
+    assert!(detail.starts_with("那台说：建不成"), "{detail}");
+}
+
+/// 🔴 SFTP 起始目录与那台后端的家照字节比：家不是 UTF-8 ⇒ SFTP 那一串（有损解出的 U+FFFD）比不上，不用 SFTP 腿。
+#[test]
+fn the_sftp_leg_is_kept_only_when_its_start_dir_is_home_byte_for_byte() {
+    assert!(start_dir_is_home("/home/rig", b"/home/rig"));
+    assert!(
+        start_dir_is_home("/home/rig/", b"/home/rig"),
+        "尾巴上的 / 不算"
+    );
+    assert!(!start_dir_is_home("/home/rig", b"/srv/elsewhere"));
+    assert!(
+        !start_dir_is_home("/home/rig\u{FFFD}", b"/home/rig\xff"),
+        "字节不一样就不是同一个目录"
+    );
 }

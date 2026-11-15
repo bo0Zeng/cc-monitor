@@ -12,7 +12,6 @@ fn mode(p: &std::path::Path) -> u32 {
 #[cfg(unix)]
 #[test]
 fn private_dir_builds_one_level_owner_only_and_leaves_an_existing_one_alone() {
-    use std::os::unix::fs::PermissionsExt as _;
     let base = test_home::scratch("one");
     let fresh = base.join("fresh");
     private_dir(&fresh).expect("建");
@@ -20,7 +19,7 @@ fn private_dir_builds_one_level_owner_only_and_leaves_an_existing_one_alone() {
     private_dir(&fresh).expect("再建一次（已在）不算错");
     let old = base.join("old");
     std::fs::create_dir(&old).expect("预置");
-    std::fs::set_permissions(&old, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    test_home::set_dir_mode(&old, 0o755);
     private_dir(&old).expect("已在");
     assert_eq!(mode(&old), 0o755, "已在的那一层被改了权限");
     assert!(
@@ -71,13 +70,16 @@ fn the_dir_lock_on_a_missing_dir_fails_at_open() {
 
 #[test]
 fn stat_line_splits_around_the_last_paren() {
-    // 名字里带空格与括号；右括号之后：state(3) ppid(4) pgrp(5) session(6) tty_nr(7) … starttime(22)。
+    // 名字里带空格与括号；右括号之后：state(3) ppid(4) pgrp(5) session(6) tty_nr(7) tpgid(8) … starttime(22)。
     let line =
-        "4242 (my (odd) proc) S 17 4242 4242 34816 4242 4194560 1 0 0 0 0 0 0 0 20 0 1 0 98765 1 1";
+        "4242 (my (odd) proc) S 17 4240 4239 34816 4241 4194560 1 0 0 0 0 0 0 0 20 0 1 0 98765 1 1";
     let s = parse_stat(line).expect("切得开");
     assert_eq!(s.ppid, 17);
     assert_eq!(s.name, "my (odd) proc");
+    assert_eq!(s.pgrp, 4240);
+    assert_eq!(s.session, 4239);
     assert_eq!(s.tty_nr, 34816);
+    assert_eq!(s.tpgid, 4241);
     assert_eq!(s.start, 98765);
 }
 

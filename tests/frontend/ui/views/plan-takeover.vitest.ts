@@ -13,7 +13,7 @@ import type { PlanBlock, PlanCell, PlanSlice, PlanWho } from "../../../../src/fr
 
 const HANDOFF = "你负责 ledger 的 A2 导入 csv：先 pb claim A2 <认领码>，再 pb where。认领码找上一级要";
 
-const who = (sid: string | null): PlanWho => ({ id: "a1b2c3d4e5f6", kind: sid ? "session" : "unknown", sid, needs: null, face: null as unknown as PlanWho["face"], label: null });
+const who = (sid: string | null): PlanWho => ({ id: "a1b2c3d4e5f6", kind: sid ? "session" : "unknown", sid, needs: null, face: null as unknown as PlanWho["face"], label: "甲会话" });
 
 const block = (extra: Partial<PlanBlock> = {}): PlanBlock => ({
   id: "A2",
@@ -100,6 +100,7 @@ describe("节点详情的交接说明照 takeover 出", () => {
       whyShort: null,
       sets: [],
       block: "A2",
+      rootOf: "A2",
       owner: null,
       signer: null,
       covers: [],

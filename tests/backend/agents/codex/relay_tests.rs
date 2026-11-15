@@ -86,3 +86,59 @@ fn merging_the_base_url_line_keeps_everything_else_and_reads_back() {
     }
     assert_eq!(config_merge("openai_base_url = 3\n", url), None);
 }
+
+/// 换号写两个头：`Authorization: Bearer <访问令牌>` 与 `ChatGPT-Account-ID: <account_id>`；Codex 不能预定会话号 ⇒ 照来处绑号。
+#[test]
+fn switching_accounts_writes_the_bearer_and_the_account_id_and_binds_by_origin() {
+    use crate::agents::{Bind, CredCell, SwapHead};
+    assert_eq!(
+        UPSTREAM.swap_heads,
+        &[
+            SwapHead {
+                name: "Authorization",
+                prefix: "Bearer ",
+                cell: CredCell::Access,
+            },
+            SwapHead {
+                name: "ChatGPT-Account-ID",
+                prefix: "",
+                cell: CredCell::Field("account_id"),
+            },
+        ]
+    );
+    assert_eq!(UPSTREAM.bind, Bind::Origin);
+    // 换号时读哪份登录：就是账号面那一份（同一个凭据文件 · 同一段 · 账号 0 不续不写）。
+    let login = UPSTREAM.login.expect("默认上游接上账号面那份登录");
+    let face = super::super::accounts::LOGIN;
+    assert_eq!(
+        (login.creds_file, login.section, login.access),
+        (face.creds_file, face.section, face.access)
+    );
+    assert_eq!(login.base_login, crate::agents::BaseLogin::Untouched);
+}
+
+/// 用满回包：照 Codex 认的那一形（codex-rs `rust-v0.167.0` `codex-api/src/api_bridge.rs`：429 且体 `error.type` 是
+/// `usage_limit_reached` ⇒ `UsageLimitReached`，读 `error.resets_at`（unix 秒）与 `error.limit_window_minutes`）。
+/// 体里不放 `code`（带 `code` 会先被别的分支截走）；卡着的窗口说得出 ⇒ 照它的分钟数，说不出 ⇒ 按离重置远近标 5 小时 / 一周那一窗。
+#[test]
+fn the_limit_reply_is_the_429_codex_reads_as_usage_limit_reached() {
+    let reply = UPSTREAM.limit_reply.expect("Codex 声明了用满回包");
+    let now = 1_800_000_000;
+    let body = |key: Option<&str>, at: u64| {
+        let r = reply(at, now, key);
+        assert_eq!(r.status, "429 Too Many Requests");
+        assert!(r
+            .headers
+            .iter()
+            .any(|(k, v)| k == "content-type" && v == "application/json"));
+        let v: serde_json::Value = serde_json::from_slice(&r.body).expect("体是 JSON");
+        assert_eq!(v["error"]["type"], "usage_limit_reached");
+        assert!(v["error"].get("code").is_none(), "不带 code");
+        assert_eq!(v["error"]["resets_at"], at);
+        v["error"]["limit_window_minutes"].as_u64()
+    };
+    assert_eq!(body(Some("5h"), now + 600), Some(300));
+    assert_eq!(body(Some("7d"), now + 600), Some(10080));
+    assert_eq!(body(None, now + 600), Some(300), "说不出 ⇒ 近的标 5 小时");
+    assert_eq!(body(None, now + 2 * 86_400), Some(10080), "远的标一周");
+}

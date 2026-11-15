@@ -6,7 +6,7 @@
 //!   `quota.json` · 账号库 / 登录文件）与策略目录 ⇒ 全部；这个会话自己的读数 ⇒ 只在越过它记着的 `wake.when` 某一条时。
 //! - 结论跟盘上那一条不同才写（先在内存里试，没变不进锁）。
 
-use super::rotate::{Go, Hop, Turn};
+use super::rotate::{Go, Hop, Turn, Unready};
 use crate::accounts::quota::nodes::{Node, Nodes, Source};
 use crate::accounts::quota::rotation;
 use crate::accounts::quota::rules::book::{self, Session};
@@ -107,11 +107,11 @@ impl Cache {
     }
 }
 
-/// 交给判的号：先照设置里的号列表（`{start: true}` ＝ 开会话用的号），再接其余的号（照账号库的先后）。兜底取的就是这个先后。
-pub(crate) fn listed(settings: &Value, start: &str, mut all: Vec<Acct>) -> Vec<Acct> {
+/// 交给判的号：先照设置里的号列表（`{start: true}` ＝ 开会话用的号；号名认的是 `agent` 那一家的号），再接其余的号（照账号库的先后）。兜底取的就是这个先后。
+pub(crate) fn listed(settings: &Value, agent: &str, start: &str, mut all: Vec<Acct>) -> Vec<Acct> {
     let mut out: Vec<Acct> = Vec::new();
     for id in listed_ids(settings, start) {
-        if let Some(i) = all.iter().position(|a| a.id == id) {
+        if let Some(i) = decide::fact_at(&all, agent, id) {
             out.push(all.remove(i));
         }
     }
@@ -130,6 +130,7 @@ fn w_of(w: usize) -> &'static str {
 /// 会话那一条 ⇒ 判的会话状态。
 pub(crate) fn sigma_of(s: &Session) -> Sigma {
     Sigma {
+        agent: s.agent.clone(),
         start: s.start.clone(),
         current: s.current.clone(),
         temp: s.temp.clone(),
@@ -175,12 +176,14 @@ pub fn saw_of(sigma: &Sigma, facts: &[Acct], now: u64) -> book::Saw {
 }
 
 /// 一判的结论落进会话那一条（换了号记一条；停发记一条，同一个 `until` 不重记；拖出来的顺序 · memo · 叫醒照新的）。
+/// `resumes_within` ＝ 那一家的客户端自己等到重置再续的最远时长（[`crate::agents::DefaultUpstream::resumes_within`]，调用方照它认的那一家取）。
 pub(crate) fn apply(
     s: &mut Session,
     d: &Decision,
     facts: &[Acct],
     now: u64,
     cause: Option<book::Cause>,
+    resumes_within: Option<u64>,
 ) {
     match &d.pick {
         Pick::Use(a) if *a != s.current => {
@@ -189,9 +192,7 @@ pub(crate) fn apply(
                     book::Cause::Error
                 } else if d.from_temp {
                     book::Cause::Temp
-                } else if facts
-                    .iter()
-                    .find(|x| x.id == s.current)
+                } else if decide::fact(facts, &s.agent, &s.current)
                     .is_none_or(|x| !standing::sendable(x, now))
                 {
                     book::Cause::Unusable
@@ -224,10 +225,7 @@ pub(crate) fn apply(
                     cause: book::Cause::Hold { until: *until },
                     // 那一家的客户端只在重置落在它等得到的时长内才自己续（适配层登记）：停得更久 ⇒ 照实说它不会自己续。
                     why: until
-                        .zip(
-                            crate::agents::route_named(&s.agent)
-                                .and_then(crate::agents::resumes_within_of),
-                        )
+                        .zip(resumes_within)
                         .filter(|(u, within)| u.saturating_sub(now) > *within)
                         .map(|(_, within)| {
                             let dur = copy_core::format_duration(within.saturating_mul(1000));
@@ -265,6 +263,27 @@ struct InTurn {
     facts: Vec<Acct>,
 }
 
+/// 换号这一发的结局：照哪儿发 ＋ 这一路换不过去的号各为什么（照试的先后；换成了 · 没试别的号 ⇒ 空）。
+pub(crate) struct Swap {
+    pub(crate) go: Go,
+    pub(crate) missed: Vec<(String, Unready)>,
+}
+
+/// 换到 `account` 没换成：记进结局（照实说归读结局的那一处：[`super::Accounts`] 进日志）。
+fn missed_one(missed: &mut Vec<(String, Unready)>, account: &str, why: Unready) {
+    missed.push((account.to_string(), why));
+}
+
+impl Swap {
+    /// 交给中转的那一个去处；这一路换不过去的号各一行进日志（只有号名与原因码，不带令牌）。
+    pub(crate) fn go(self) -> Go {
+        for (account, why) in &self.missed {
+            tracing::info!("[rotate] 换到 {account} 没换成：{why:?}");
+        }
+        self.go
+    }
+}
+
 /// 备料最多试几个号（每试不成一个就记进 `tried` 再判一次）。
 const PREPARE_TRIES: usize = 8;
 
@@ -285,18 +304,24 @@ impl Hop {
         let mut all: Vec<Acct> = self
             .facts(&s.agent, row, now, &tz)
             .iter()
-            .map(Acct::of_fact)
+            .map(|f| Acct::of_fact(&s.agent, f))
             .collect();
         if !all.iter().any(|a| a.id == s.start) {
             all.push(Acct::of_fact(
+                &s.agent,
                 &self.fact_one(&s.agent, &lib, &s.start, row, now, &tz),
             ));
         }
-        // 开会话用的号发的是那个会话自己带的登录（同备料那一处：起会话的号恒接得上），不看账号库里那一份登录在不在。
+        // 开会话用的号发的是那个会话自己带的登录（同备料那一处：起会话的号恒接得上），不看账号库里那一份登录在不在、
+        // 也不看那一家自己续的账号 0 此刻过没过期。
         if let Some(x) = all.iter_mut().find(|a| a.id == s.start) {
-            if x.barred
-                .is_some_and(|b| b.why == crate::accounts::quota::facts::FactWhy::Login)
-            {
+            if x.barred.is_some_and(|b| {
+                matches!(
+                    b.why,
+                    crate::accounts::quota::facts::FactWhy::Login
+                        | crate::accounts::quota::facts::FactWhy::BaseUntouched
+                )
+            }) {
                 x.barred = None;
             }
         }
@@ -304,7 +329,9 @@ impl Hop {
             x.others = self.others_on(&s.agent, sid, book, x, now);
         }
         self.with_past(&s.agent, &mut all, now);
-        listed(settings, &s.start, all)
+        // 别家的号接在后面（判只在本家的号里排；策略选了别家的号 ⇒ 判认得出、当策略出错）。
+        all.extend(self.elsewhere(&s.agent, now));
+        listed(settings, &s.agent, &s.start, all)
     }
 
     /// ★ 别的会话压在 `x` 5 小时窗上的用速（点 / 分）＝ 号的总用速里不是这台的那一份 ＋ 这台别的会话此刻在它上面的用速。
@@ -319,14 +346,9 @@ impl Hop {
         now: u64,
     ) -> Option<f64> {
         let tpp = x.per_pct[0].filter(|t| *t > 0)? as f64;
-        let o = self.quota.entry(agent, &x.id)?;
-        let w = crate::accounts::quota::facts::pick(
-            &o.reading,
-            SLOT_5H,
-            now,
-            &super::rotate::slot_fn(agent),
-        )
-        .filter(|w| crate::accounts::quota::facts::open(w, now))?;
+        let o = crate::accounts::quota::facts::current(&self.quota.entry(agent, &x.id)?, now);
+        let w = crate::accounts::quota::facts::pick(&o.reading, SLOT_5H, now, &self.slot(agent))
+            .filter(|w| crate::accounts::quota::facts::open(w, now))?;
         let total = o.load(&w.name, now)?;
         let spend = self.quota.spend();
         let away = (total - spend.here(agent, &x.id, now) / tpp).max(0.0);
@@ -417,11 +439,12 @@ impl Hop {
         now: u64,
     ) -> Session {
         let mut n = s.clone();
-        apply(&mut n, d, facts, now, None);
+        let within = self.upstream(&s.agent).and_then(|u| u.resumes_within);
+        apply(&mut n, d, facts, now, None, within);
         if n != *s {
             if let Err(e) = rotation::relay_change(&self.store, own, |b| {
                 if let Some(x) = b.sessions.get_mut(sid) {
-                    apply(x, d, facts, now, None);
+                    apply(x, d, facts, now, None, within);
                 }
             }) {
                 tracing::warn!("[rotate] {}", e.logged());
@@ -515,14 +538,17 @@ impl Hop {
             drop(c);
             let lib = self.book();
             let fact = |acct: &str| {
-                Acct::of_fact(&self.fact_one(
+                Acct::of_fact(
                     a.agent,
-                    &lib,
-                    acct,
-                    a.row,
-                    a.now,
-                    &crate::common::time::Tz::default(),
-                ))
+                    &self.fact_one(
+                        a.agent,
+                        &lib,
+                        acct,
+                        a.row,
+                        a.now,
+                        &crate::common::time::Tz::default(),
+                    ),
+                )
             };
             // 自己的读数只在越过约的读数时作废；读数让在用的号事实上发不出去了（超额在兜 · 被拒）也作废 —— 那是事实变了。
             let crossed = when
@@ -557,6 +583,7 @@ impl Hop {
         mut pick: Pick,
         mut judged: Option<(Decision, Vec<Acct>)>,
         mut tried: Vec<String>,
+        missed: &mut Vec<(String, Unready)>,
     ) -> Go {
         let commit = |judged: &Option<(Decision, Vec<Acct>)>, tried: &[String]| {
             if let Some((d, facts)) = judged {
@@ -570,20 +597,18 @@ impl Hop {
                     account,
                 } => {
                     commit(&judged, &tried);
-                    let Some(reply) =
-                        crate::agents::route_named(a.agent).and_then(crate::agents::limit_reply_of)
-                    else {
+                    let Some(reply) = self.upstream(a.agent).and_then(|u| u.limit_reply) else {
                         return Go::Start;
                     };
                     // 回包里卡着的那个窗口：在这一刻重置的那一窗（先看到时最早恢复的那个号）。
                     let facts =
                         self.accts(a.sid, s, &self.store.now(), &plan.settings, a.row, a.now);
                     let win = |f: &Acct| (0..2).find(|w| f.resets[*w] == Some(at));
-                    let w = facts
-                        .iter()
-                        .find(|f| account.as_deref() == Some(f.id.as_str()))
+                    let w = account
+                        .as_deref()
+                        .and_then(|a| decide::fact(&facts, &s.agent, a))
                         .and_then(win)
-                        .or_else(|| facts.iter().find_map(win));
+                        .or_else(|| decide::mine(&facts, &s.agent).find_map(win));
                     return Go::Hold {
                         reply: reply(at, a.now, w.map(w_of)),
                     };
@@ -597,7 +622,8 @@ impl Hop {
                         commit(&judged, &tried);
                         return go;
                     }
-                    Err(_) => {
+                    Err(why) => {
+                        missed_one(missed, &x, why);
                         tried.push(x);
                         let facts = match judged.take() {
                             Some((_, f)) => f,
@@ -621,12 +647,15 @@ impl Hop {
     }
 
     /// ★ 发之前：缓存的结论还作数就照它（不叫策略）；不作数 ⇒ 判一次。换到别的号 ⇒ 备那个号的料；停发 ⇒ 回「用满」。
-    pub(crate) fn steer(&self, a: &Turn<'_>, own: &Own) -> Go {
-        if a.sid.is_empty()
-            || crate::agents::route_named(a.agent)
-                .and_then(crate::agents::login_of)
-                .is_none()
-        {
+    /// 结局里带着这一路换不过去的号各为什么（[`Swap::missed`]）。
+    pub(crate) fn steer(&self, a: &Turn<'_>, own: &Own) -> Swap {
+        let mut missed = Vec::new();
+        let go = self.steer_go(a, own, &mut missed);
+        Swap { go, missed }
+    }
+
+    fn steer_go(&self, a: &Turn<'_>, own: &Own, missed: &mut Vec<(String, Unready)>) -> Go {
+        if a.sid.is_empty() || self.login_face(a.agent).is_none() {
             return Go::Start;
         }
         let Some(lib) = self.book_here() else {
@@ -638,19 +667,34 @@ impl Hop {
         let plan = Adopted::of(s.uses.as_deref());
         // 这个会话不轮换（没选策略）⇒ 不叫策略、不自动换：照会话那一条的在用号走（手动换过 ⇒ 那个号；接不上 ⇒ 开会话的号）。
         if plan.id.is_empty() {
-            return self.prepare(own, a, &lib, &s.current).unwrap_or(Go::Start);
+            return self
+                .prepare(own, a, &lib, &s.current)
+                .unwrap_or_else(|why| {
+                    missed_one(missed, &s.current, why);
+                    Go::Start
+                });
         }
         if let Some(p) = self.cached(a, &s, &plan) {
-            return self.go_for(own, a, &lib, &s, &plan, p, None, Vec::new());
+            return self.go_for(own, a, &lib, &s, &plan, p, None, Vec::new(), missed);
         }
         if let Some(j) = self.judge_in_turn(own, a, &[], None) {
-            return self.follow(own, a, &lib, j, Vec::new());
+            return self.follow(own, a, &lib, j, Vec::new(), missed);
         }
         // 账本写不成：照锁外那一份判，成了再落账（写不进去就只这一发照它走）。
         let facts = self.accts(a.sid, &s, &self.store.now(), &plan.settings, a.row, a.now);
         let d = self.judge(own, a, &s, &plan, &facts, &[]);
         let pick = d.pick.clone();
-        self.go_for(own, a, &lib, &s, &plan, pick, Some((d, facts)), Vec::new())
+        self.go_for(
+            own,
+            a,
+            &lib,
+            &s,
+            &plan,
+            pick,
+            Some((d, facts)),
+            Vec::new(),
+            missed,
+        )
     }
 
     /// ★ 各会话的判依次来：在账本那把跨进程的锁里读会话那一条与别的会话此刻在哪个号上 → 判 → 落账，
@@ -671,13 +715,20 @@ impl Hop {
             }
             let mut facts = self.accts(a.sid, &before, b, &plan.settings, a.row, a.now);
             if let Some((id, until)) = refused {
-                if let Some(x) = facts.iter_mut().find(|x| x.id == id) {
+                if let Some(x) = decide::fact_mut(&mut facts, &before.agent, id) {
                     x.refused_until = Some(until);
                 }
             }
             let d = self.judge(own, a, &before, &plan, &facts, tried);
             let n = b.sessions.get_mut(a.sid)?;
-            apply(n, &d, &facts, a.now, None);
+            apply(
+                n,
+                &d,
+                &facts,
+                a.now,
+                None,
+                self.upstream(a.agent).and_then(|u| u.resumes_within),
+            );
             Some(InTurn {
                 after: n.clone(),
                 before,
@@ -701,6 +752,7 @@ impl Hop {
         lib: &AccountBook,
         j: InTurn,
         tried: Vec<String>,
+        missed: &mut Vec<(String, Unready)>,
     ) -> Go {
         let InTurn {
             before,
@@ -713,19 +765,32 @@ impl Hop {
             Pick::Use(x) if *x != before.current => x.clone(),
             _ => {
                 self.remember(a, &after, &plan, &d, &tried);
-                return self.go_for(own, a, lib, &after, &plan, d.pick, None, tried);
+                return self.go_for(own, a, lib, &after, &plan, d.pick, None, tried, missed);
             }
         };
-        if let Ok(go) = self.prepare(own, a, lib, &to) {
-            self.remember(a, &after, &plan, &d, &tried);
-            return go;
+        match self.prepare(own, a, lib, &to) {
+            Ok(go) => {
+                self.remember(a, &after, &plan, &d, &tried);
+                return go;
+            }
+            Err(why) => missed_one(missed, &to, why),
         }
         self.undo(own, a.sid, &after, &before);
         let mut tried = tried;
         tried.push(to);
         let d = self.judge(own, a, &before, &plan, &facts, &tried);
         let pick = d.pick.clone();
-        self.go_for(own, a, lib, &before, &plan, pick, Some((d, facts)), tried)
+        self.go_for(
+            own,
+            a,
+            lib,
+            &before,
+            &plan,
+            pick,
+            Some((d, facts)),
+            tried,
+            missed,
+        )
     }
 
     /// 撤回锁里落的那一笔：会话那一条还是落账后的样子 ⇒ 换回落账前的（别人又改过 ⇒ 不动）。
@@ -748,13 +813,23 @@ impl Hop {
         heard: &QuotaReading,
         tried: &[String],
         own: &Own,
+    ) -> Option<Swap> {
+        let mut missed = Vec::new();
+        let go = self.on_refused_go(a, heard_from, heard, tried, own, &mut missed)?;
+        Some(Swap { go, missed })
+    }
+
+    fn on_refused_go(
+        &self,
+        a: &Turn<'_>,
+        heard_from: &str,
+        heard: &QuotaReading,
+        tried: &[String],
+        own: &Own,
+        missed: &mut Vec<(String, Unready)>,
     ) -> Option<Go> {
         self.quota.notify(Source::Refused, Some(a.sid));
-        if a.sid.is_empty()
-            || crate::agents::route_named(a.agent)
-                .and_then(crate::agents::login_of)
-                .is_none()
-        {
+        if a.sid.is_empty() || self.login_face(a.agent).is_none() {
             return None;
         }
         let lib = self.book_here()?;
@@ -764,8 +839,9 @@ impl Hop {
             return None;
         }
         if s.current != heard_from && !tried.contains(&s.current) {
-            if let Ok(go) = self.prepare(own, a, &lib, &s.current) {
-                return Some(go);
+            match self.prepare(own, a, &lib, &s.current) {
+                Ok(go) => return Some(go),
+                Err(why) => missed_one(missed, &s.current, why),
             }
         }
         // 刚回来的那一发被拒：额度账未必已经记下，照它把那个号记成被拒。
@@ -779,8 +855,7 @@ impl Hop {
         let all_shut = |s: &Session, plan: &Adopted, facts: &[Acct], d: &Decision| {
             let ids = listed_ids(&plan.settings, &s.start);
             matches!(d.pick, Pick::Hold { .. })
-                && facts
-                    .iter()
+                && decide::mine(facts, &s.agent)
                     .filter(|x| ids.is_empty() || ids.contains(&x.id.as_str()))
                     .all(|x| tried.contains(&x.id) || !standing::sendable(x, a.now))
         };
@@ -790,11 +865,11 @@ impl Hop {
                 self.remember(a, &j.after, &j.plan, &j.d, &tried);
                 return None;
             }
-            return Some(self.follow(own, a, &lib, j, tried.clone()));
+            return Some(self.follow(own, a, &lib, j, tried.clone(), missed));
         }
         // 账本写不成：照锁外那一份判，成了再落账。
         let mut facts = self.accts(a.sid, &s, &self.store.now(), &plan.settings, a.row, a.now);
-        if let Some(x) = facts.iter_mut().find(|x| x.id == heard_from) {
+        if let Some(x) = decide::fact_mut(&mut facts, &s.agent, heard_from) {
             x.refused_until = Some(until);
         }
         let d = self.judge(own, a, &s, &plan, &facts, &tried);
@@ -803,7 +878,17 @@ impl Hop {
             return None;
         }
         let pick = d.pick.clone();
-        Some(self.go_for(own, a, &lib, &s, &plan, pick, Some((d, facts)), tried))
+        Some(self.go_for(
+            own,
+            a,
+            &lib,
+            &s,
+            &plan,
+            pick,
+            Some((d, facts)),
+            tried,
+            missed,
+        ))
     }
 }
 

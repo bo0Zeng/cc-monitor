@@ -94,6 +94,7 @@ fn a_reading_lands_under_its_account_on_disk_and_on_the_wire_field_for_field() {
         .into(),
         per_pct: Default::default(),
         history: Default::default(),
+        reread_failed: Default::default(),
     };
     assert_eq!(on_disk(&path).accounts, vec![want.clone()]);
     assert_eq!(l.entry("claude-code", "q"), Some(want.clone()));
@@ -828,4 +829,199 @@ fn the_grid_says_down_only_after_three_close_opens_and_up_on_one_early_one() {
         Some(at(13)),
         "留的是最近的"
     );
+}
+
+// ── 别的一家（Codex）：它自报的两窗进同一本账，事实照它那一家的槽位拼 ─────────────────────
+
+/// 合成的 Codex rollout：几条 `token_count`（旧形 · 没带两窗 · 新形），不放真正文。
+const CODEX_ROLLOUT: &str = include_str!("../../../__fixtures__/codex-rollout.rate-limits.jsonl");
+
+/// 夹具里最后一条带两窗的读数此刻（两窗都还没重置）。
+const CODEX_NOW: u64 = 1_794_139_300;
+
+/// 照注册表 Codex 那一家的槽位拼一个号的事实（量出来的那两样不问）。
+fn codex_fact(o: &Observed, now: u64) -> crate::accounts::quota::facts::Fact {
+    let route = crate::agents::route_named("codex").expect("注册表里有 codex 那一家");
+    let slot = crate::agents::window_slot_of(route).expect("codex 那一家说得出窗口的语义位");
+    let none_f = |_: &str| None;
+    let none_u = |_: &str| None;
+    crate::accounts::quota::facts::fact_of(
+        &o.account,
+        Some(&o.reading),
+        crate::accounts::quota::facts::Kind::Sub,
+        crate::accounts::quota::show::LoginState::Ok,
+        None,
+        now,
+        &slot,
+        &crate::accounts::quota::facts::Measured {
+            rate: &none_f,
+            per_pct: &none_u,
+        },
+        &|t| t.to_string(),
+    )
+}
+
+fn close(a: f64, b: f64) -> bool {
+    (a - b).abs() < 1e-9
+}
+
+/// ★ Codex rollout 里最后一条带两窗的 `token_count` ⇒ 记进额度账（家 `codex`）⇒ 照注册表那一家的槽位拼事实：
+/// 5 小时 · 周两窗开着，用量 ＝ 它报的百分点、重置 ＝ 它报的时刻；同一个号在 Claude 那一家的账不动。
+#[test]
+fn codex_reported_windows_land_in_the_same_book_under_codex_and_read_as_two_window_facts() {
+    let d = test_home::scratch("codex-windows");
+    let own = crate::platform::fs::Own::issue_data_at(&d);
+    let (l, _rx) = ringing(Some(d.join(FILE_NAME)));
+    record_seen(
+        &l,
+        &own,
+        None,
+        "claude-code",
+        "q",
+        reading(0.42, false),
+        100,
+    );
+    let windows = CODEX_ROLLOUT
+        .lines()
+        .filter_map(|t| serde_json::from_str::<serde_json::Value>(t).ok())
+        .filter_map(|v| crate::agents::codex::record::quota_said(&v))
+        .last()
+        .expect("夹具里有带两窗的那一条");
+    let got = record_probe(&l, &own, "codex", "q", windows, CODEX_NOW).expect("落盘");
+    assert_eq!(got.agent, "codex");
+    assert_eq!(names(&got), ["300m", "10080m"]);
+    assert_eq!(got.window_seen("300m").from, Source::Usage);
+    let f = codex_fact(&got, CODEX_NOW);
+    assert!(f.w5h.open && f.w7d.open, "{f:?}");
+    assert!(close(f.w5h.used, 42.0) && close(f.w7d.used, 13.5), "{f:?}");
+    assert_eq!(
+        (f.w5h.resets, f.w7d.resets),
+        (Some(1_794_150_000), Some(1_794_600_000))
+    );
+    assert!(f.weekly && f.blocked.is_none(), "{f:?}");
+    let claude = l.entry("claude-code", "q").expect("Claude 那一家的账还在");
+    assert_eq!(names(&claude), ["five_hour"]);
+    assert_eq!(claude.reading.windows[0].used, Some(0.42), "别家的账不动");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// ★ 中转那一路：Codex 回包带 `x-codex-primary-*` · `x-codex-secondary-*` ⇒ 照注册表 Codex 那一格的读法读 ⇒
+/// `record_seen`（中转 `observe` 交的那一口）⇒ 账上家 `codex` 那一条两窗开着、来源回包头。
+#[test]
+fn codex_reply_headers_land_under_codex_through_the_relay_write_path() {
+    let d = test_home::scratch("codex-headers");
+    let own = crate::platform::fs::Own::issue_data_at(&d);
+    let (l, _rx) = ringing(Some(d.join(FILE_NAME)));
+    let route = crate::agents::route_named("codex").expect("注册表里有 codex 那一家");
+    let read = crate::agents::quota_read_of(route).expect("codex 那一家读得出回包头里的额度");
+    let h = |k: &str, v: &str| (k.to_string(), v.to_string());
+    let headers = [
+        h("x-codex-primary-used-percent", "42.0"),
+        h("x-codex-primary-window-minutes", "300"),
+        h("x-codex-primary-reset-at", "1794150000"),
+        h("x-codex-secondary-used-percent", "13.5"),
+        h("x-codex-secondary-window-minutes", "10080"),
+        h("x-codex-secondary-reset-at", "1794600000"),
+    ];
+    let reading = read(200, &headers, CODEX_NOW).expect("这一族头在 ⇒ 读得出");
+    record_seen(&l, &own, Some("s"), "codex", "q", reading, CODEX_NOW);
+    let got = l.entry("codex", "q").expect("记在 codex 那一家");
+    assert_eq!(names(&got), ["300m", "10080m"]);
+    assert_eq!(got.window_seen("10080m").from, Source::Headers);
+    let f = codex_fact(&got, CODEX_NOW);
+    assert!(f.w5h.open && f.w7d.open, "{f:?}");
+    assert!(close(f.w5h.used, 42.0) && close(f.w7d.used, 13.5), "{f:?}");
+    assert!(l.entry("claude-code", "q").is_none(), "没有记到别家名下");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// ★ 一格窗口过了它自己的重置时刻、新读数里没有 ⇒ 合并后不再留（误记进来的一格不变成永久状态）；
+/// 没过重置时刻的那一格照留（报用量那一档、这一发没带的窗口都还在）。
+#[test]
+fn a_window_past_its_own_reset_and_absent_from_the_new_reading_is_not_kept() {
+    let d = test_home::scratch("expired-window");
+    let own = crate::platform::fs::Own::issue_data_at(&d);
+    let path = d.join(FILE_NAME);
+    let (l, _rx) = ringing(Some(path.clone()));
+    record_seen(
+        &l,
+        &own,
+        None,
+        "claude-code",
+        "q",
+        wins(vec![
+            win("five_hour", 0.1, Some(1_000)),
+            win("seven_day", 0.27, Some(500)),
+            win("seven_day_fable", 0.05, Some(2_000)),
+        ]),
+        100,
+    );
+    record_seen(
+        &l,
+        &own,
+        None,
+        "claude-code",
+        "q",
+        wins(vec![win("five_hour", 0.2, Some(1_000))]),
+        600,
+    );
+    let got = l.entry("claude-code", "q").expect("账上有 q");
+    assert_eq!(names(&got), ["five_hour", "seven_day_fable"]);
+    assert!(!got.trend.contains_key("seven_day"), "{:?}", got.trend);
+    assert_eq!(
+        names(&on_disk(&path).accounts[0]),
+        ["five_hour", "seven_day_fable"]
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// ★ 显示（`quota-read` 的底）与轮换事实取的是同一份窗口（[`crate::accounts::quota::facts::current`]）：
+/// 同一来源先报 5 小时 ＋ 周窗、再报只带 5 小时 ⇒ 周窗留到它自己的重置时刻、过了就不出；两边逐格一样。
+#[test]
+fn quota_read_takes_the_same_windows_as_the_facts() {
+    let d = test_home::scratch("same-windows");
+    let own = crate::platform::fs::Own::issue_data_at(&d);
+    let path = d.join(FILE_NAME);
+    let (l, _rx) = ringing(Some(path.clone()));
+    record_seen(
+        &l,
+        &own,
+        None,
+        "claude-code",
+        "q",
+        wins(vec![
+            win("five_hour", 0.1, Some(10_000)),
+            win("seven_day", 0.27, Some(5_000)),
+        ]),
+        100,
+    );
+    record_seen(
+        &l,
+        &own,
+        None,
+        "claude-code",
+        "q",
+        wins(vec![win("five_hour", 0.2, Some(10_000))]),
+        600,
+    );
+    for (now, want) in [
+        (1_000, vec!["five_hour", "seven_day"]),
+        (6_000, vec!["five_hour"]),
+    ] {
+        let read = answer_of(Some(&path), now);
+        let fact = crate::accounts::quota::facts::current(
+            &l.entry("claude-code", "q").expect("账上有 q"),
+            now,
+        );
+        assert_eq!(names(&read.accounts[0]), want, "此刻 {now}");
+        assert_eq!(
+            read.accounts[0].reading.windows, fact.reading.windows,
+            "此刻 {now}"
+        );
+        assert_eq!(
+            read.accounts[0].windows_seen, fact.windows_seen,
+            "此刻 {now}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&d);
 }

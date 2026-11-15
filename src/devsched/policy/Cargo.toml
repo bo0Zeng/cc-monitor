@@ -1,0 +1,8 @@
+[package]
+name = "devsched-policy"
+description = "开发调度的排除清单 · 送出清单 · 信任级别"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]

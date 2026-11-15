@@ -20,11 +20,7 @@ pct?: number,
 /**
  * 几点重置；有 ＝ 这个窗口在计时。
  */
-resetsAt?: number, 
-/**
- * `resets_at` 距今（同上，只在还没到时有）。
- */
-resetsAtRelText?: string, from: QuotaSource, 
+resetsAt?: number, from: QuotaSource, 
 /**
  * 这个号这个窗口「1% ≈ 多少用量」（折合输入 token：各类 token 按那一家的价比折）：中转数到的每发用量 ÷ 读数涨的点数；
  * 量不到（读数没动 · 样本太少 · 只有一次读数 · 量出来超过 7 天）⇒ 缺。
@@ -37,4 +33,8 @@ perPctText?: string,
 /**
  * 这一窗口的语气（`rows` 里更细窗口那一行的值照它上色）：用满 ⇒ `fail`；快满 ⇒ `warn`；否则 `plain`。
  */
-tone: "plain" | "fail" | "warn", };
+tone: "plain" | "fail" | "warn", 
+/**
+ * 这一窗在这个号的 `rows` 里是第几行（手机计量条照那一行画）；没成行（没有窗口键 · 没有数）⇒ 缺。
+ */
+row?: number, };

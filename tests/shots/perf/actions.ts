@@ -259,7 +259,7 @@ async function jump(): Promise<Record<string, unknown>> {
       if (t) await step(steps, `tick${f}`, () => clickEl(t));
       await sleep(300);
     }
-    await step(steps, "end", () => key("End", { code: "End" }));
+    await step(steps, "end", () => key("End", { code: "End", ctrl: true }));
     await sleep(500);
   });
 }
@@ -300,6 +300,113 @@ async function stream(where: "active" | "background" = "active"): Promise<Record
       await sleep(500);
     }
   });
+}
+
+/**
+ * 视口里有没有真卡（占位不算）：活的那条流（重来时换了一条新的也照找）里与视口相交的 `.card` 张数；没有活的流 ⇒ 0。
+ */
+function realCardsInView(): number {
+  const s = $(".stream.active");
+  if (!s) return 0;
+  const v = s.getBoundingClientRect();
+  if (v.height <= 0) return 0;
+  let n = 0;
+  for (const el of s.querySelectorAll<HTMLElement>(":scope > .stream-content > .card")) {
+    const r = el.getBoundingClientRect();
+    if (r.height > 0 && r.bottom > v.top && r.top < v.bottom) n++;
+  }
+  return n;
+}
+
+/** 一段里逐帧记：这一帧距上一帧多少毫秒 · 这一帧视口里有没有真卡。`stop` 交回读数（无卡帧数 · 毫秒 · 最长那一段连着无卡 · 头一张卡出在第几毫秒）。 */
+function blankWatch(): () => Record<string, number | null> {
+  const t0 = performance.now();
+  let last = t0;
+  let on = true;
+  let frames = 0;
+  let blankN = 0;
+  let blankMs = 0;
+  let run = 0;
+  let runMax = 0;
+  let firstCard: number | null = null;
+  const tick = (now: number): void => {
+    if (!on) return;
+    const d = now - last;
+    last = now;
+    frames++;
+    if (realCardsInView() === 0) {
+      blankN++;
+      blankMs += d;
+      run += d;
+      runMax = Math.max(runMax, run);
+    } else {
+      run = 0;
+      if (firstCard === null) firstCard = now - t0;
+    }
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+  return () => {
+    on = false;
+    return { frames, blankN, blankMs: Math.round(blankMs), blankRunMax: Math.round(runMax), firstCardMs: firstCard === null ? null : Math.round(firstCard) };
+  };
+}
+
+/**
+ * 30 万行那条（`perf-huge` 页地址 `big=<MB>`）：在底部看着 → 切到别的 tab → 它在后台涨 700 行（不在看，行不上流）→ 切回 →
+ * 往上快滚（80 下、每下 1 200 px、每 30 ms）→ 停手等视口出真卡。量「视口无卡」：切回那一段与快滚那一段各自的无卡帧数与毫秒
+ * （帧照 rAF 记，视口里一张真卡都没有算无卡；占位 · 没有活的流都算）· 停手之后多久出卡（`fillAfterStop`），
+ * 另交整段的帧间隔与长任务（`measure`）。
+ */
+async function hugeGrowScroll(): Promise<Record<string, unknown>> {
+  await toLongest();
+  const be = window.__perfBackend;
+  if (!be) throw new Error("没有假后端句柄");
+  const big = be.world.sessions[0];
+  const c = big.convo;
+  if (!c) throw new Error("最长那条没有接着写的那一截（tails）");
+  const s = scroller();
+  s.scrollTop = s.scrollHeight;
+  await sleep(500);
+  const tabs = [...document.querySelectorAll<HTMLElement>("#tab-bar .tab")];
+  const bigTab = tabs.find((t) => t.classList.contains("active"));
+  const other = tabs.find((t) => !t.classList.contains("active"));
+  if (!bigTab || !other) throw new Error("找不到要切的两个 tab");
+  clickEl(other);
+  await sleep(800);
+  await window.__perf.quiet(500, 15_000);
+  // 后台涨 700 行：照性能世界那一种轮（不派子 agent 的那几轮：子记录不另写文件）一口气接着写。
+  const from = c.lines.length;
+  for (let i = 1; c.lines.length - from < 700; i++) if (i % 5 !== 0) turn(c, big.cwd, 30_000 + i, false);
+  const grew = c.lines.length - from;
+  await be.appendLines(big.origin, c, from);
+  await sleep(1500);
+  await window.__perf.quiet(500, 15_000);
+  let back: Record<string, number | null> = {};
+  let up: Record<string, number | null> = {};
+  let fillAfterStop = 0;
+  const r = await measure("huge-grow-scroll", async (steps) => {
+    const w1 = blankWatch();
+    await step(steps, "back", () => clickEl(bigTab));
+    // 切回之后等视口里出真卡、再安静 500 ms（最多 60 s）
+    const until = performance.now() + 60_000;
+    while (realCardsInView() === 0 && performance.now() < until) await sleep(16);
+    await window.__perf.quiet(500, 30_000);
+    back = w1();
+    const w2 = blankWatch();
+    for (let k = 0; k < 80; k++) {
+      const t = performance.now();
+      await step(steps, `up${k}`, () => scroller().scrollBy(0, -1200));
+      await sleep(Math.max(0, 30 - (performance.now() - t)));
+    }
+    // 停手之后视口里多久出真卡（最多 30 s），再看 500 ms
+    const stop = performance.now();
+    while (realCardsInView() === 0 && performance.now() - stop < 30_000) await sleep(16);
+    fillAfterStop = Math.round(performance.now() - stop);
+    await sleep(500);
+    up = w2();
+  });
+  return { ...r, grew, back, up, fillAfterStop, cardsInView: realCardsInView() };
 }
 
 /** 展开过程：最长那条里点开 8 轮的过程 · Ctrl+O 全部展开 / 收起。 */
@@ -717,6 +824,7 @@ const ACTIONS: Record<string, () => Promise<Record<string, unknown>>> = {
     }
     return { name: "stuck-jump", pages: pagesAsked() - pages0, firstCardAt, cardsInView: realInView(), drift: Math.round(s.scrollTop - top0), settledMs: Math.round(performance.now() - t0) };
   },
+  "huge-grow-scroll": hugeGrowScroll,
   "slow-dom": slowDom,
   idle: () => idle(),
   "scroll-up": () => scroll("up"),

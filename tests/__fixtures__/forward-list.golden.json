@@ -7,7 +7,7 @@
       "remoteHost": "localhost",
       "remotePort": 5432,
       "state": "running",
-      "connCount": 2
+      "said": "dev · 127.0.0.1:15432 → localhost:5432 · 连接 2"
     }
   ]
 }

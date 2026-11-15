@@ -10,6 +10,7 @@ import { readRemoteNames } from "../machine-feed";
 // 查在线 · 读面都经通道直接问那台机器的后端；形状由 `cc-bus-control.ts` 的解码器严格收。
 import { agentOnline, readInbox, readRoster, type BusList } from "../cc-bus-control";
 // 本机 ＝ `LOCAL`（只住 `cmd-wire`，界面从生成物出）。
+import { machineName } from "../ipc/chan-caller";
 import { LOCAL } from "../ipc/origin";
 
 import { copyText } from "../copy-table";
@@ -81,14 +82,14 @@ export class CcBusSection {
     for (const o of origins) {
       const opt = document.createElement("option");
       opt.value = o;
-      opt.textContent = o;
+      opt.textContent = machineName(o);
       this.originSel.appendChild(opt);
     }
     // 本机追加在末尾：`select` 默认第一项，配了远端的人打开面板照旧先看远端。
     {
       const opt = document.createElement("option");
       opt.value = LOCAL;
-      opt.textContent = copyText("detail.label.local");
+      opt.textContent = machineName(LOCAL);
       this.originSel.appendChild(opt);
     }
     if (origins.length === 0) {
@@ -126,10 +127,7 @@ export class CcBusSection {
   private render(): void {
     const st = this.state;
     if (!st) return;
-    this.statusEl.textContent = [
-      copyText("ccBus.summary.registered", { n: st.agents.length }),
-      copyText("ccBus.summary.notOnline"),
-    ].join(copyText("kit.text.sep"));
+    this.statusEl.textContent = st.summary;
     if (st.agents.length === 0) {
       const empty = document.createElement("div");
       empty.className = "settings-hint";
@@ -221,9 +219,7 @@ export class CcBusSection {
       for (const m of msgs.slice(-20)) {
         const line = document.createElement("div");
         line.className = "cc-bus-msg-line";
-        const none = copyText("acct.val.none");
-        const [ts, from] = [m.ts || none, m.from || none];
-        line.textContent = copyText("ccBus.inbox.line", { ts, from, act: m.act_said, title: m.title, text: m.text });
+        line.textContent = m.line;
         box.appendChild(line);
       }
     } catch (e) {

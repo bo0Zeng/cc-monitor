@@ -3,23 +3,24 @@ package com.ccmonitor.mobile.ui.chats
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ccmonitor.mobile.core.claude.link.ColumnFace
+import com.ccmonitor.mobile.core.claude.link.DEFAULT_CALL_MS
 import com.ccmonitor.mobile.core.claude.link.Groups
 import com.ccmonitor.mobile.core.claude.link.GroupsFace
-import com.ccmonitor.mobile.core.claude.link.HistorySearch
 import com.ccmonitor.mobile.core.claude.link.ListAsk
 import com.ccmonitor.mobile.core.claude.link.ListSort
+import com.ccmonitor.mobile.core.claude.link.NeedsFace
 import com.ccmonitor.mobile.core.claude.link.SearchMerge
-import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.wire.gen.ChatsColumnAsk
 import com.ccmonitor.mobile.core.wire.gen.ColumnFork
 import com.ccmonitor.mobile.core.wire.gen.ColumnHost
 import com.ccmonitor.mobile.core.wire.gen.ColumnLine
 import com.ccmonitor.mobile.core.wire.gen.ColumnRow
+import com.ccmonitor.mobile.core.wire.gen.Commands
 import com.ccmonitor.mobile.core.wire.gen.FleetLines
 import com.ccmonitor.mobile.core.wire.gen.GroupMember
 import com.ccmonitor.mobile.core.wire.gen.HistoryGroup
-import com.ccmonitor.mobile.core.wire.gen.Merged
 import com.ccmonitor.mobile.core.wire.gen.MergedRow
+import com.ccmonitor.mobile.link.CoreResident
 import com.ccmonitor.mobile.link.Problem
 import com.ccmonitor.mobile.link.unreadableReply
 import com.ccmonitor.mobile.ui.common.HostLink
@@ -27,8 +28,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -117,12 +116,13 @@ data class ContentRow(
 
 /**
  * 搜内容「{q}」的结果：[searching] 还在问；[summary] 合好的那一句（没合成 ⇒ `null`）；[lines] 没答的台 · 读不动几份 · 只按标题的那几家；
- * [problem] 合并那一问没成。
+ * [empty] 一行都没有时空态那一句（核心写的：没答上一台 ⇒ 搜不了；答了没中 ⇒ 没有匹配；有行 ⇒ `null`）；[problem] 合并那一问没成。
  */
 data class ContentUi(
     val query: String,
     val searching: Boolean = true,
     val summary: String? = null,
+    val empty: String? = null,
     val rows: List<ContentRow> = emptyList(),
     val lines: List<String> = emptyList(),
     val problem: Problem? = null,
@@ -173,8 +173,8 @@ class ChatsBoard(
     private val current: String,
     hosts: Flow<List<HostName>>,
     private val make: (HostName, CoroutineScope) -> HostChats,
-    /** 几台搜内容的结果合成一份（嵌的 Rust 核心那一步，[SearchMerge]）。 */
-    private val merge: (String) -> String,
+    /** 几台搜内容问一圈、合成一份（嵌的 Rust 核心那一步，[SearchMerge]；生产上 `CoreResident.searchAll`）。 */
+    private val searchAll: suspend (String) -> String,
     scope: CoroutineScope? = null,
     /** 首屏那一句（`HostBackends.empty`）；还没交 ⇒ `null`。 */
     private val empty: Flow<FleetLines?> = flowOf(null),
@@ -254,8 +254,8 @@ class ChatsBoard(
     }
 
     /**
-     * 搜内容：勾上的每台各问 `history-search`，答了的那几台回包原样交核心合（[SearchMerge]，本机后端扇出完调的同一份），照合好的排；
-     * 不交哪一台当信差。
+     * 搜内容：勾上的那几台交核心问一圈 `history-search`、合成一份（[SearchMerge]，本机后端扇出完调的同一份合法），照合好的排；
+     * 这里只问核心一次，不交哪一台当信差。
      */
     fun searchContent() {
         val q = query.value ?: return
@@ -264,8 +264,9 @@ class ChatsBoard(
         content.value = ContentUi(q)
         contentJob =
             scope.launch {
-                val per = hosts.map { h -> async { h to h.searchContent(q) } }.awaitAll()
-                content.value = contentOf(q, per, current, merge)
+                val asked = hosts.map { h -> NeedsFace.Host(h.handle(), h.hostId) }
+                val input = SearchMerge.input(q, asked, DEFAULT_CALL_MS)
+                content.value = contentOf(q, hosts, current, input, searchAll(input))
             }
     }
 
@@ -293,48 +294,33 @@ class ChatsBoard(
     }
 }
 
-/** 没答上的那几台各一句 · 合好的那一份写好的那几句（读不动几份 · 只按标题的那几家，核心写、这里照摆）。 */
-private fun contentLines(
-    per: List<Pair<HostChats, Searched>>,
-    r: Merged?,
-): List<String> =
-    buildList {
-        per.forEach { (h, s) ->
-            when (s) {
-                Searched.Down -> add(copyText("history.search.machineDown", "machine" to h.machine))
-                is Searched.Failed -> add(s.problem.text)
-                is Searched.Got -> Unit
-            }
-        }
-        r?.notes?.let { addAll(it) }
-    }
-
-/** 各台答回来的 ⇒ 核心合一份。 */
+/**
+ * 核心问一圈合好的那一份（[SearchMerge]）⇒ 屏上那一份：答了没答上 · 没答上那几台那一句（叫出那台）· 读不动几份 · 只按标题的那几家都由核心写，这里照摆。
+ * 出不出结果头那一句只照核心那一格（一台都没答上 ⇒ 核心不写）。
+ */
 private fun contentOf(
     q: String,
-    per: List<Pair<HostChats, Searched>>,
+    hosts: List<HostChats>,
     current: String,
-    merge: (String) -> String,
+    input: String,
+    merged: String,
 ): ContentUi {
-    val answered = per.mapNotNull { (h, s) -> (s as? Searched.Got)?.let { h.hostId to it.raw } }
-    if (answered.isEmpty()) return ContentUi(q, searching = false, lines = contentLines(per, null))
-    val byId = per.associate { it.first.hostId to it.first.machine }
-    val input = SearchMerge.input(q, answered)
+    val byId = hosts.associate { it.hostId to it.machine }
     val r =
-        SearchMerge.of(merge(input))
-            ?: return ContentUi(q, searching = false, lines = contentLines(per, null), problem = unreadableReply(byId[current] ?: current, HistorySearch.COMMAND, input))
-    val tagged = per.size > 1
+        SearchMerge.of(merged)
+            ?: return ContentUi(q, searching = false, problem = unreadableReply(byId[current] ?: current, Commands.HistorySearch.NAME, input))
+    val tagged = hosts.size > 1
     return ContentUi(
         query = q,
         searching = false,
         summary = r.summary,
+        empty = r.empty,
         rows =
             r.sessions.map { row ->
                 val id = row.origin
                 ContentRow(id, byId[id].takeIf { tagged && id != current }, row)
             },
-        // 核心解不开哪台那一份 ⇒ 那台一句（同「答了读不出」那一说法）。
-        lines = contentLines(per, r) + r.down.map { unreadableReply(byId[it.origin] ?: it.origin, HistorySearch.COMMAND, it.said).text },
+        lines = r.down.map { it.said } + r.notes,
     )
 }
 
@@ -361,12 +347,23 @@ internal fun chatsView(
     // 并 · 切段 · 分叉挂父 · 组的先后都在核心；交回第几台第几项与它在分叉树里的样子，这里照它摆那台那一行。
     val ask =
         ChatsColumnAsk(
-            parts.map { p -> ColumnHost(p.rows.map { ColumnRow(it.at, it.section, (it.hostId to it.sessionId) in placed, it.sessionId, it.parent) }, p.groups.map { it.order }) },
+            parts.map { p -> ColumnHost(p.machine, p.rows.map { ColumnRow(it.at, it.section, (it.hostId to it.sessionId) in placed, it.sessionId, it.parent, it.canDelete) }, p.groups.map { it.order }) },
             parts.flatMapIndexed { i, p -> open.filter { it.first == p.hostId }.map { ColumnFork(i, it.second) } },
         )
-    val column = ColumnFace.of(ask)
+    val column = ColumnFace.of(ask, CoreResident::chatsColumn)
+    // 删除确认那一句也是核心写好的（一行一句；组里有、清单里没有的那一条另一句），这里照会话对回那一行。
+    val asks =
+        parts.zip(column.asks).associate { (p, a) ->
+            val byRow =
+                p.rows
+                    .map { it.sessionId }
+                    .zip(a.rows)
+                    .toMap()
+            p.hostId to (byRow to a.unlisted)
+        }
+    val asked = { r: ChatRow -> asks[r.hostId]?.let { (rows, unlisted) -> r.copy(deleteAsk = rows[r.sessionId] ?: unlisted) } ?: r }
     val row = { l: ColumnLine ->
-        parts[l.host].let { p -> p.rows[l.at].copy(machineTag = tag(p), nest = Nest(l.child, l.forks, l.forksOpen, l.orphan)) }
+        parts[l.host].let { p -> asked(p.rows[l.at]).copy(machineTag = tag(p), nest = Nest(l.child, l.forks, l.forksOpen, l.orphan, l.forksText)) }
     }
     val sections = column.sections.map { s -> ChatSection(s.title, s.rows.map(row)) }
     val groups = column.groups.map { a -> parts[a.host].let { p -> ChatGroup(p.hostId, p.groups[a.at], tag(p)) } }
@@ -380,8 +377,8 @@ internal fun chatsView(
         choices = table.map { HostChoice(it.id, it.label, it.id !in filters.unchecked, words[it.id]) },
         sections = sections,
         groups = groups,
-        pinned = pinned,
-        bands = bands,
+        pinned = pinned.map(asked),
+        bands = bands.map { b -> b.copy(rows = b.rows.map(asked)) },
         bars = parts.mapNotNull { it.bar },
         deploying = parts.filter { it.bar == null && it.deploying != null },
         notices = (parts.flatMap { listOfNotNull(it.notice) + it.groupLines } + groupLines).distinct(),
@@ -426,7 +423,7 @@ private fun bandsOf(
 ): Banded {
     val answered = parts.mapNotNull { p -> p.slice?.let { p.hostId to it.raw } }
     if (answered.isEmpty()) return Banded(emptyList(), emptyList(), emptyList())
-    val merged = GroupsFace.of(answered)
+    val merged = GroupsFace.of(answered, CoreResident::groupsMerge)
     val lines = Groups.unread(merged)
     if (!banded) return Banded(emptyList(), emptyList(), lines)
     val byId = parts.associateBy { it.hostId }

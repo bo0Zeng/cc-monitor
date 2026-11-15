@@ -9,7 +9,6 @@ fn added(sid: &str, cwd: Option<&str>) -> Frame {
         sid: sid.into(),
         agent_kind: "claude".to_string(),
         background: false,
-        attachable: None,
         cwd: cwd.map(str::to_string),
         project_dir: None,
         name: None,

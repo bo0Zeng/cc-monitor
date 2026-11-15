@@ -40,4 +40,8 @@ listed: boolean,
  * 那台此刻看不见（[`SessionBook::unseen_now`] 记的那一张，[`unseen`]）：簿里没有、又不是「看不见时照旧作数」的会话一律照它画；
  * 接上之后那台报完活会话清单（`sessions_replayed`）摘掉。看得见 ⇒ 不在。
  */
-unseen?: SessionFace, };
+unseen?: SessionFace, 
+/**
+ * 这条连接上各条会话的未读（那台写好的字，`session_unread`；没有的不在）。连接断了那一刻整份作废（[`SessionBook::unseen_now`]）。
+ */
+unread?: { [key in string]: string }, };

@@ -223,8 +223,7 @@ fn the_preferred_winner_goes_first_while_it_is_still_one_of_the_addresses() {
         extra.clone(),
     )
     .unwrap();
-    let order: Vec<(String, u16)> = r
-        .race_order()
+    let order: Vec<(String, u16)> = crate::race_order(&r)
         .into_iter()
         .map(|e| (e.host, e.port))
         .collect();
@@ -250,8 +249,8 @@ fn the_preferred_winner_goes_first_while_it_is_still_one_of_the_addresses() {
         "capture",
         extra,
     )
+    .map(|r| crate::race_order(&r))
     .unwrap()
-    .race_order()
     .into_iter()
     .map(|e| e.host)
     .collect();

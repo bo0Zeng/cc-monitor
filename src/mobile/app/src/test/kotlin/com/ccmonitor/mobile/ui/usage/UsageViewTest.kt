@@ -17,7 +17,7 @@ class UsageViewTest {
         reply: QuotaReadReply,
         accounts: List<AccountRow> = emptyList(),
         defaultAccount: String? = null,
-    ): UsageUi = usageView(reply, accounts, defaultAccount) ?: error("金样被判成契约对不上")
+    ): UsageUi = usageView(reply, accounts, defaultAccount)
 
     private fun row(
         name: String,
@@ -69,33 +69,44 @@ class UsageViewTest {
         assertEquals(listOf("5h", "7d"), full.bars.map { it.label })
         val stale = view(read(QuotaGolden.reply("订阅 · 上一窗已过"))).cards.single()
         assertTrue(stale.bars.all { it.stale })
-        assertEquals(listOf("采样", "09:02 · 旧"), stale.seen?.map { it.text })
         val api = view(read(QuotaGolden.reply("按量"))).cards.first()
         assertTrue(api.bars.isEmpty())
         assertEquals("按量", api.usage?.text)
     }
 
-    /** 金样「订阅 · 正常」那一号的 5h 那一格摘掉 pct（那台说不出百分比）。 */
+    @Test
+    fun `几点采的不成条、不成行，进点开后的详情`() {
+        @Suppress("UNCHECKED_CAST")
+        val sampled = (QuotaGolden.reply("订阅 · 正常")["accounts"] as List<Map<String, Any?>>).single()["sampled"] as String
+        val c = view(read(QuotaGolden.reply("订阅 · 正常"))).cards.single()
+        assertEquals(sampled, c.sampled)
+        assertTrue(c.bars.none { b -> b.cells.any { it.text == sampled } })
+        assertTrue(c.detail.none { r -> r.any { it.text == sampled } })
+    }
+
+    /** 金样「订阅 · 正常」那一号的 five_hour 那一窗摘掉 pct（那台说不出百分比）。 */
     @Suppress("UNCHECKED_CAST")
     private fun noPct(): Map<String, Any?> {
         val r = QuotaGolden.reply("订阅 · 正常")
         val one = (r["accounts"] as List<Map<String, Any?>>).single()
-        val slots = (one["slots"] as List<Map<String, Any?>>).map { if (it["slot"] == "5h") it - "pct" else it }
-        return r + ("accounts" to listOf(one + ("slots" to slots)))
+        val windows = (one["windows"] as List<Map<String, Any?>>).map { if (it["name"] == "five_hour") it - "pct" else it }
+        return r + ("accounts" to listOf(one + ("windows" to windows)))
     }
 
     @Test
-    fun `条：pct 缺 ⇒ 不出条长（不当 0），右边那一格照回包`() {
+    fun `条：pct 缺 ⇒ 不出条长（不当 0），右边那一格照那一行`() {
         val c = view(read(noPct())).cards.single()
         assertEquals(listOf(null, 0.41f), c.bars.map { it.fill })
-        assertEquals(listOf("63%", "41%"), c.bars.map { it.slot.text })
+        assertEquals(listOf("63%", "41%"), c.bars.map { it.cells[1].text })
     }
 
     @Test
-    fun `位名：回包的 names 里没有那个语义位 ⇒ 契约对不上，不拿码当名字`() {
-        @Suppress("UNCHECKED_CAST")
-        val r = QuotaGolden.reply("订阅 · 正常").let { it + ("names" to ((it["names"] as Map<String, Any?>) + ("slots" to mapOf("7d" to "7d")))) }
-        assertNull(usageView(read(r), emptyList(), null))
+    fun `条照那台的行画：过了重置的那一窗照行说（读取中 · 已重置），不画条长`() {
+        val c = view(read(QuotaGolden.reply("订阅 · 上一窗已过"))).cards.single()
+        val five = c.bars.first()
+        assertEquals("5h", five.label)
+        assertNull(five.fill)
+        assertTrue(five.cells[1].text, five.cells[1].text in setOf("读取中", "已重置"))
     }
 
     @Test
@@ -110,15 +121,13 @@ class UsageViewTest {
     }
 
     @Test
-    fun `点开那一块是第一行之后的全部行（含更细的窗口）`() {
+    fun `收到几窗画几条（含更细的窗口，不固定 5h · 7d 两格）；点开只列条外的行，不重画`() {
         val c = view(read(QuotaGolden.reply("订阅 · 更细的窗口"))).cards.single()
-        assertEquals(listOf("5h", "7d", "7d opus", "超额", "采样"), c.detail.map { it.first().text })
-        assertEquals(
-            "1% ≈ 2.1M",
-            c.bars
-                .first()
-                .slot.perPctText,
-        )
+        assertEquals(listOf("5h", "7d", "7d opus"), c.bars.map { it.label })
+        assertTrue(c.detail.isEmpty())
+        val over = view(read(QuotaGolden.reply("订阅 · 超额在兜"))).cards.single()
+        assertEquals(listOf("超额"), over.detail.map { it.first().text })
+        assertEquals("1% ≈ 2.1M", c.bars.first().perPct)
     }
 
     @Test

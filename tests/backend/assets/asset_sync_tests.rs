@@ -52,6 +52,7 @@ fn skills(names: &[&str]) -> cat::Scanned {
         assets: names
             .iter()
             .map(|n| Asset {
+                agent: None,
                 kind: ExtKind::Skill,
                 name: (*n).into(),
                 project: None,

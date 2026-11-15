@@ -72,6 +72,7 @@ fn by_left() -> &'static Sample {
 
 fn acct(id: &str, used5h: f64) -> Acct {
     Acct {
+        agent: String::new(),
         id: id.into(),
         api: false,
         used: [used5h, 0.0],
@@ -141,7 +142,7 @@ impl Strategy for Fixed {
     fn decide(&self, _: &Ctx<'_>) -> Result<Verdict, Fail> {
         if self.broken {
             return Err(Fail {
-                kind: FailKind::Broke,
+                kind: FailKind::Failed,
                 line: Some(3),
                 col: None,
                 msg: "boom".into(),
@@ -1051,6 +1052,7 @@ fn group(seed: u64) -> (Value, Vec<Acct>, Sigma) {
     let f: Vec<Acct> = ids
         .iter()
         .map(|a| Acct {
+            agent: String::new(),
             id: a.clone(),
             api: false,
             used: [g.upto(90) as f64, g.upto(60) as f64],
@@ -1414,9 +1416,278 @@ fn the_session_lineup_puts_the_unusable_last() {
         acct("d", 10.0),
     ];
     let off = vec!["d".to_string()];
-    assert_eq!(plain_lineup("c", &off, &facts, T), ["c", "a", "b", "d"]);
-    assert!(usable(&off, &facts, "a", T));
-    assert!(!usable(&off, &facts, "b", T), "被拒着");
-    assert!(!usable(&off, &facts, "d", T), "这个会话先不用");
-    assert!(!usable(&off, &facts, "x", T), "号列表里没有");
+    assert_eq!(plain_lineup("", "c", &off, &facts, T), ["c", "a", "b", "d"]);
+    assert!(usable("", &off, &facts, "a", T));
+    assert!(!usable("", &off, &facts, "b", T), "被拒着");
+    assert!(!usable("", &off, &facts, "d", T), "这个会话先不用");
+    assert!(!usable("", &off, &facts, "x", T), "号列表里没有");
+}
+
+// ── 策略按家：一个会话只在本家号里排 ─────────────────────────────────────────
+
+/// 判据里的两家（替身家 · 另一家）；名字只是路由名的样子。
+const STAND_IN: &str = "stand-in";
+const OTHER: &str = "other-agent";
+
+fn of(agent: &str, a: Acct) -> Acct {
+    Acct {
+        agent: agent.into(),
+        ..a
+    }
+}
+
+/// 替身家的会话。
+fn stand_in_sig(current: &str) -> Sigma {
+    Sigma {
+        agent: STAND_IN.into(),
+        start: current.into(),
+        current: current.into(),
+        ..Sigma::default()
+    }
+}
+
+/// 两家各两个号：另一家 A · B，替身家 X · Y（另一家排在前）。
+fn two_families() -> Vec<Acct> {
+    vec![
+        of(OTHER, acct("A", 10.0)),
+        of(OTHER, acct("B", 10.0)),
+        of(STAND_IN, acct("X", 10.0)),
+        of(STAND_IN, acct("Y", 10.0)),
+    ]
+}
+
+/// 记下交给策略的 ctx 里每号的（家, 号名），交固定的先后。
+struct Peek {
+    order: Vec<&'static str>,
+    seen: std::cell::RefCell<Vec<(String, String)>>,
+}
+
+impl Strategy for Peek {
+    fn decide(&self, ctx: &Ctx<'_>) -> Result<Verdict, Fail> {
+        *self.seen.borrow_mut() = ctx
+            .accounts
+            .iter()
+            .map(|a| (a.agent.clone(), a.id.clone()))
+            .collect();
+        Ok(Verdict {
+            order: self.order.iter().map(|s| s.to_string()).collect(),
+            ..Verdict::default()
+        })
+    }
+}
+
+/// ★ 两家各两个号、会话是替身家的 ⇒ ctx 里只交替身家那两个、每号带家；会话的顺序只排替身家那两个。
+#[test]
+fn a_session_only_lines_up_its_own_agents_accounts() {
+    let f = two_families();
+    let p = Peek {
+        order: vec!["Y", "X"],
+        seen: Default::default(),
+    };
+    let d = turn(&stand_in_sig("X"), &f, &base(), &p, clock(T), T, &[]);
+    assert_eq!(
+        *p.seen.borrow(),
+        [
+            (STAND_IN.to_string(), "X".to_string()),
+            (STAND_IN.to_string(), "Y".to_string())
+        ],
+        "ctx 只交本家的号、每号带家"
+    );
+    assert_eq!(used(&d), "Y");
+    assert!(d.strategy_error.is_none());
+    assert_eq!(lineup_of("Y", &[], &d, &f, T), ["Y", "X"]);
+    assert_eq!(plain_lineup(STAND_IN, "X", &[], &f, T), ["X", "Y"]);
+    assert!(usable(STAND_IN, &[], &f, "Y", T));
+    assert!(!usable(STAND_IN, &[], &f, "A", T), "别家的号");
+}
+
+/// ★ 策略硬选别家的号 ⇒ 当策略出错：带出错原因、照兜底那份挑本家的号。
+#[test]
+fn picking_another_agents_account_is_a_strategy_error() {
+    let mut f = two_families();
+    f[2].used[0] = 100.0; // 替身家 X 用满了：兜底照号的先后挑本家的 Y
+    let p = Fixed {
+        order: vec!["A"],
+        ..Fixed::default()
+    };
+    let d = turn(&stand_in_sig("X"), &f, &base(), &p, clock(T), T, &[]);
+    assert!(d.strategy_error.is_some(), "选了别家的号算策略出错：{d:?}");
+    assert_eq!(used(&d), "Y");
+    // 兜底那份也只排本家的号。
+    assert!(
+        d.order.iter().all(|a| a == "X" || a == "Y"),
+        "{:?}",
+        d.order
+    );
+}
+
+/// ★ 换了号再问策略那一下交了别家的号 ⇒ 同第一问：当策略出错、照兜底（此刻的号发得出去就照用），不留着换过去的那一个。
+#[test]
+fn picking_another_agents_account_on_the_second_ask_is_a_strategy_error_too() {
+    let f = two_families();
+    let p = ByCurrent {
+        by_current: vec![("X", vec!["Y"]), ("Y", vec!["A"])],
+        rest: vec![],
+        calls: Default::default(),
+    };
+    let d = turn(&stand_in_sig("X"), &f, &base(), &p, clock(T), T, &[]);
+    assert_eq!(p.calls.get(), 2, "换到 Y 以后再问了一次");
+    assert!(d.strategy_error.is_some(), "再问那一下选了别家的号：{d:?}");
+    assert_eq!(used(&d), "X", "兜底：此刻的号发得出去就照用");
+}
+
+/// ★ 两家各有一个同名的号、一家的用满了 ⇒ 另一家那个同名号照样用得上；用满的那一家不会去用它。
+#[test]
+fn same_named_accounts_of_two_agents_stay_apart() {
+    let f = vec![
+        of(OTHER, acct("S", 100.0)),
+        of(OTHER, acct("B", 10.0)),
+        of(STAND_IN, acct("S", 10.0)),
+        of(STAND_IN, acct("Y", 10.0)),
+    ];
+    let p = Fixed {
+        order: vec!["S", "Y"],
+        ..Fixed::default()
+    };
+    let d = turn(&stand_in_sig("Y"), &f, &base(), &p, clock(T), T, &[]);
+    assert!(d.strategy_error.is_none());
+    assert_eq!(used(&d), "S", "替身家的 S 没用满");
+    assert!(usable(STAND_IN, &[], &f, "S", T));
+    assert!(!usable(OTHER, &[], &f, "S", T), "另一家的 S 用满了");
+    let other = Sigma {
+        agent: OTHER.into(),
+        ..sig("B", &[])
+    };
+    let p = Fixed {
+        order: vec!["S", "B"],
+        ..Fixed::default()
+    };
+    let d = turn(&other, &f, &base(), &p, clock(T), T, &[]);
+    assert!(d.strategy_error.is_none());
+    assert_eq!(used(&d), "B", "另一家的 S 用满了，不拿替身家那个同名号顶");
+}
+
+/// ★ 推演同一条规则：替身家的会话推一段，只用本家的号。
+#[test]
+fn the_rollout_stays_in_the_sessions_agent() {
+    let f = two_families();
+    // 只交别家的号：推演同真用，当策略出错、照兜底留在本家的 X（不是候选空了去停发）。
+    let p = Fixed {
+        order: vec!["A"],
+        ..Fixed::default()
+    };
+    let tl = simulate(&stand_in_sig("X"), &f, &base(), &p, &clock, T, T + 3600);
+    assert!(!tl.uses.is_empty());
+    for u in &tl.uses {
+        assert_eq!(
+            u.pick,
+            Pick::Use("X".into()),
+            "推演该照兜底用本家的 X：{u:?}"
+        );
+    }
+}
+
+// ── 派活选家选号 ─────────────────────────────────────────────────────────────
+
+/// 两家都能派活。
+fn both_can(_: &str) -> bool {
+    true
+}
+
+fn picked(agent: &str, account: &str) -> Result<TaskPick, TaskRefuse> {
+    Ok(TaskPick {
+        agent: agent.into(),
+        account: account.into(),
+    })
+}
+
+/// ★ 没指名 ⇒ 本家：照本家的顺序（在用的号在第一格）挑第一个用得上的。
+#[test]
+fn a_task_without_a_named_agent_goes_to_the_sessions_own() {
+    let f = two_families();
+    assert_eq!(
+        task_pick(&stand_in_sig("Y"), None, &both_can, &f, T),
+        picked(STAND_IN, "Y"),
+        "在用的号用得上 ⇒ 就它"
+    );
+    let mut f = two_families();
+    f[3].used[0] = 100.0; // 替身家 Y 用满了
+    assert_eq!(
+        task_pick(&stand_in_sig("Y"), None, &both_can, &f, T),
+        picked(STAND_IN, "X"),
+        "在用的号用不了 ⇒ 本家顺序里下一个"
+    );
+    // 会话先去掉的号不派；本家一个都用不了也不借别家的。
+    let mut s = stand_in_sig("Y");
+    s.off = vec!["X".into()];
+    assert_eq!(
+        task_pick(&s, None, &both_can, &f, T),
+        Err(TaskRefuse::NoAccount {
+            agent: STAND_IN.into(),
+            until: None
+        })
+    );
+    // 在用的号用不了、有拖出来的顺序 ⇒ 照会话的顺序：拖出来的里头第一个用得上的在号的先后前面。
+    let f = vec![
+        of(STAND_IN, acct("X", 10.0)),
+        of(STAND_IN, acct("Y", 100.0)),
+        of(STAND_IN, acct("Z", 10.0)),
+    ];
+    let mut s = stand_in_sig("Y");
+    s.temp = vec!["Z".into()];
+    assert_eq!(task_pick(&s, None, &both_can, &f, T), picked(STAND_IN, "Z"));
+    assert_eq!(plain_lineup(STAND_IN, "Y", &[], &f, T)[1], "X");
+    let mut f = two_families();
+    f[3].used[0] = 100.0;
+    // 指名的就是本家 ＝ 没指名。
+    assert_eq!(
+        task_pick(&stand_in_sig("Y"), Some(STAND_IN), &both_can, &f, T),
+        picked(STAND_IN, "X")
+    );
+}
+
+/// ★ 指名另一家 ⇒ 那一家的号：照那一家号的先后挑第一个用得上的；本家会话先去掉的号管不到别家。
+#[test]
+fn a_task_for_a_named_agent_takes_that_agents_account() {
+    let mut f = two_families();
+    f[0].used[0] = 100.0; // 另一家 A 用满了
+    let mut s = stand_in_sig("X");
+    s.off = vec!["B".into()];
+    assert_eq!(
+        task_pick(&s, Some(OTHER), &both_can, &f, T),
+        picked(OTHER, "B")
+    );
+    // 那一家一个都用不了 ⇒ 拒，带最早几点恢复。
+    f[1] = refused(f[1].clone(), T + 30 * MIN);
+    assert_eq!(
+        task_pick(&s, Some(OTHER), &both_can, &f, T),
+        Err(TaskRefuse::NoAccount {
+            agent: OTHER.into(),
+            until: Some(T + 30 * MIN)
+        })
+    );
+}
+
+/// ★ 指名的那一家不能派活（没有一次性跑一件活那一形）⇒ 照实拒，不改派本家；本家不能派活也一样拒。
+#[test]
+fn a_task_for_an_agent_that_cannot_take_one_is_refused() {
+    let f = two_families();
+    let only_stand_in = |a: &str| a == STAND_IN;
+    assert_eq!(
+        task_pick(&stand_in_sig("X"), Some(OTHER), &only_stand_in, &f, T),
+        Err(TaskRefuse::NoTask {
+            agent: OTHER.into()
+        })
+    );
+    assert_eq!(
+        task_pick(&stand_in_sig("X"), Some(STAND_IN), &only_stand_in, &f, T),
+        picked(STAND_IN, "X"),
+        "本家能派活"
+    );
+    assert_eq!(
+        task_pick(&stand_in_sig("X"), None, &|_: &str| false, &f, T),
+        Err(TaskRefuse::NoTask {
+            agent: STAND_IN.into()
+        })
+    );
 }

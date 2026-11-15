@@ -17,6 +17,33 @@ fn answer_block_render(d: &dyn Door, args: &Value) -> Result<Value, crate::commo
 
 const P: Shell = Shell::Posix;
 
+/// 合清单的内置那几段照注入的注册表：替身家是默认起的那一家 ⇒ 内置入口都以它的 wrapper 起名，生产那几家的一段不出。
+#[test]
+fn the_builtin_entries_follow_the_registry_handed_in() {
+    let h = test_home::scratch("alias-reg");
+    let reg = [crate::agents::fake::family_row(
+        "fake",
+        "CCM_FAKE_A",
+        "fakewrap",
+        true,
+        || None,
+    )];
+    let store = load_among(&reg, &HomeDoor(h.clone())).expect("读得出");
+    let names: Vec<&str> = store
+        .book
+        .profiles
+        .iter()
+        .filter(|p| p.builtin)
+        .map(|p| p.name.as_str())
+        .collect();
+    assert!(!names.is_empty(), "内置那几段一段都没有");
+    assert!(
+        names.iter().all(|n| n.starts_with("fakewrap")),
+        "没照注入的那一份注册表起内置入口：{names:?}"
+    );
+    let _ = std::fs::remove_dir_all(&h);
+}
+
 /// 读回口的薄包装：落在临时 home 上的门。
 fn read_in(home: &Path, shell: Shell, extra: Option<&str>) -> Result<AliasListing, String> {
     read_via(&HomeDoor(home.to_path_buf()), shell, extra)
@@ -37,7 +64,7 @@ fn rc_candidates_in(home: &Path, shell: Shell, extra: Option<&Path>) -> Vec<Star
 
 /// 别名文件在临时 home 下的路径（`alias_file_in` 收 / 回字符串：那台机器的写法）。
 fn profiles_path(home: &Path) -> PathBuf {
-    PathBuf::from(profile::path_in(&home.display().to_string()))
+    profile::path_in(home).expect("家说得出")
 }
 
 fn alias_path(home: &Path, shell: Shell) -> PathBuf {
@@ -237,7 +264,7 @@ fn an_rc_that_sources_it_via_home_var_is_recognized() {
 
 /// ★★**两种方言对称：别名块里恰好一行接上别名文件**（「source 那一行只许一处装」）。
 ///
-/// 人群：POSIX 别名块 = `block::CCM_WRAPPER_SNIPPET`（就是 `src/shared/ccm-aliases.sh`）；PowerShell 别名块 =
+/// 人群：POSIX 别名块 = `block::CCM_WRAPPER_SNIPPET`（模板 `src/shared/ccm-aliases.sh` 编译期由 Rust 填好）；PowerShell 别名块 =
 /// `block::render_block`。每一份里「那种方言认得出的接上行」恰好一行（零 = 不接，二 = 两处）。
 /// 另一半：本模块生产段里写用户文件的口恰好一处（`door::edit(` —— 写别名文件那一处；代装 rc 那一处退役）。
 #[test]
@@ -530,14 +557,7 @@ fn every_alias_flag_is_a_real_ccm_flag() {
             "`{flag}` 不是后端 ccm 用法里的一个旗标 —— 生成出来就是一条当场报错的别名"
         );
     }
-    for third in [
-        "--resume",
-        "--ccm-sid",
-        "--print",
-        "--ccm-probe",
-        "--version",
-        "--help",
-    ] {
+    for third in ["--resume", "--print", "--ccm-probe", "--version", "--help"] {
         assert!(
             !profile::PROFILE_FLAGS.contains(&third),
             "`{third}` 每次取值都不同，做成固定别名没意义（第三档）"
@@ -1048,7 +1068,7 @@ fn each_profile_candidate_carries_the_policy_of_the_powershell_that_loads_it() {
         ExecPolicy {
             host,
             effective: Some(format!("{host:?}")),
-            loads: Some(host == PsHost::Core),
+            loads: Some(host == PsHost::Pwsh),
             group_policy: false,
             error: None,
         }
@@ -1069,8 +1089,8 @@ fn each_profile_candidate_carries_the_policy_of_the_powershell_that_loads_it() {
         (rel, c.policy.map(|p| p.host))
     })
     .collect();
-    let d = Some(PsHost::Desktop);
-    let c = Some(PsHost::Core);
+    let d = Some(PsHost::Powershell);
+    let c = Some(PsHost::Pwsh);
     assert_eq!(
         got,
         vec![
@@ -1089,7 +1109,7 @@ fn each_profile_candidate_carries_the_policy_of_the_powershell_that_loads_it() {
     );
     assert_eq!(
         *asked.borrow(),
-        vec![PsHost::Desktop, PsHost::Core],
+        vec![PsHost::Powershell, PsHost::Pwsh],
         "同一代该只问一次"
     );
     std::fs::write(h.0.join(".bashrc"), "# mine\n").unwrap();
@@ -1137,4 +1157,23 @@ fn the_cwd_form_follows_the_shared_rule_of_each_shell() {
     }
     assert!(!cwd_form_ok(r"C:\x", Shell::Posix));
     assert!(cwd_form_ok("/home/u", Shell::Posix));
+}
+
+/// 家名里有非 UTF-8 的字节（替身家）⇒ 内置的账号那几段照那个家原样读账号表（不经字符串转一道、读成另一个目录读丢）。
+#[cfg(unix)]
+#[test]
+fn the_builtin_account_entries_are_read_from_a_non_utf8_home_as_it_is() {
+    use std::os::unix::ffi::OsStrExt as _;
+    let h =
+        TmpHome(test_home::scratch("aliasbytes").join(std::ffi::OsStr::from_bytes(b"h\xffome")));
+    with_accounts(&h, &["lab"]);
+    let book = profile::read_at(&h.0).expect("读得出");
+    assert!(
+        book.find("labcc").is_some(),
+        "非 UTF-8 的家读丢了内置的账号那几段"
+    );
+    assert!(
+        book_in(&h.0, None).find("labcc").is_some(),
+        "合清单那一处读丢了"
+    );
 }

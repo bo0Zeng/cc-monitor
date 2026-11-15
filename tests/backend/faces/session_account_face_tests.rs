@@ -9,6 +9,13 @@ use crate::agents::{QuotaReading, QuotaStatus, QuotaWindow};
 use std::sync::Arc;
 
 const NOW: u64 = 4_000_000_000;
+/// 判据里那条会话那一家（替身家；号名照它问）。
+const AGENT: &str = crate::agents::fake::AGENT_KIND;
+
+/// 号名表里 `AGENT` 那一家的叫法（同 `product` 那一处）。
+fn label(account: &str) -> String {
+    crate::accounts::quota::name_words::account_text_of(AGENT, account)
+}
 
 fn home(tag: &str) -> std::path::PathBuf {
     let root = std::env::temp_dir().join(format!("ccm-sessacct-{tag}-{}", std::process::id()));
@@ -101,6 +108,7 @@ fn texts(rows: &cmd_wire::quota::Rows) -> Vec<Vec<String>> {
 fn relayed_swapped_session_answers_current_account_with_usage_and_badge() {
     let q = quota("swapped");
     let f = Facts {
+        agent: AGENT.into(),
         rot: Some(("personal".into(), "work".into())),
         alive: true,
         live: s("personal"),
@@ -126,12 +134,18 @@ fn relayed_swapped_session_answers_current_account_with_usage_and_badge() {
         "rot.hover.from",
         &[("account", &label("personal"))],
     )]);
-    assert_eq!(got.hover, want);
+    assert_eq!(texts(&got.hover), want);
+    assert_eq!(
+        got.hover[..led.rows.len()],
+        led.rows[..],
+        "额度账那一段的格连语气原样带过去（悬停卡照语气上色）"
+    );
     assert_eq!(
         got.sampled,
-        Some(led.rows.len() - 1),
-        "额度账那一段的末行接采样那一台（换来那一行在它后面）"
+        Some(led.sampled.0.clone()),
+        "几点采的照额度账那一条写好的那一句（不成行）"
     );
+    assert!(got.sampled.is_some());
     assert!(got.differs);
     assert_eq!(
         got.badge,
@@ -158,6 +172,7 @@ fn relayed_swapped_session_answers_current_account_with_usage_and_badge() {
 fn relayed_unseen_account_has_no_usage_and_matches_default() {
     let q = quota("unseen");
     let f = Facts {
+        agent: AGENT.into(),
         rot: Some(("personal".into(), "personal".into())),
         alive: true,
         default: s("personal"),
@@ -174,7 +189,7 @@ fn relayed_unseen_account_has_no_usage_and_matches_default() {
         .iter()
         .find(|u| u.head.account == "personal")
         .expect("personal 没出过数");
-    assert_eq!(got.hover, texts(&un.rows));
+    assert_eq!(texts(&got.hover), texts(&un.rows));
     assert_eq!(got.sampled, None);
     assert!(!got.differs);
     assert_eq!(got.badge, None);
@@ -185,6 +200,7 @@ fn relayed_unseen_account_has_no_usage_and_matches_default() {
 fn unrelayed_live_session_uses_process_account_without_usage() {
     let q = quota("live");
     let f = Facts {
+        agent: AGENT.into(),
         alive: true,
         live: s("work"),
         last: s("personal"),
@@ -204,7 +220,7 @@ fn unrelayed_live_session_uses_process_account_without_usage() {
     let mut head = vec![label("work")];
     head.extend(led.rows[0].get(1).map(|c| c.text.0.clone()));
     assert_eq!(
-        got.hover,
+        texts(&got.hover),
         vec![
             head,
             vec![
@@ -227,6 +243,7 @@ fn unrelayed_live_session_uses_process_account_without_usage() {
 fn ended_session_falls_back_to_last_account_as_ghost() {
     let q = quota("last");
     let f = Facts {
+        agent: AGENT.into(),
         last: s("personal"),
         default: s("work"),
         queryable: true,
@@ -244,6 +261,7 @@ fn ended_session_falls_back_to_last_account_as_ghost() {
 fn nothing_known_says_so_and_never_differs() {
     let q = quota("none");
     let f = Facts {
+        agent: AGENT.into(),
         default: s("work"),
         queryable: true,
         ..Facts::default()
@@ -254,7 +272,7 @@ fn nothing_known_says_so_and_never_differs() {
     assert_eq!(got.when, SessionAccountWhen::Unknown);
     assert_eq!(got.name, copy_text("acct.hover.noRelay", &[]));
     assert_eq!(
-        got.hover,
+        texts(&got.hover),
         vec![
             vec![copy_text("acct.hover.noRelay", &[])],
             vec![
@@ -272,6 +290,7 @@ fn nothing_known_says_so_and_never_differs() {
 fn unknown_default_or_unqueryable_host_draws_no_badge() {
     let q = quota("gate");
     let no_default = Facts {
+        agent: AGENT.into(),
         alive: true,
         live: s("work"),
         queryable: true,
@@ -281,6 +300,7 @@ fn unknown_default_or_unqueryable_host_draws_no_badge() {
     assert!(!got.differs);
     assert_eq!(got.badge, None);
     let closed = Facts {
+        agent: AGENT.into(),
         alive: true,
         live: s("work"),
         default: s("personal"),
@@ -298,6 +318,7 @@ fn unknown_default_or_unqueryable_host_draws_no_badge() {
 fn own_upstream_session_says_quota_unseen_and_switching_not_applicable() {
     let q = quota("own");
     let f = Facts {
+        agent: AGENT.into(),
         alive: true,
         live: s("work"),
         default: s("personal"),
@@ -310,7 +331,7 @@ fn own_upstream_session_says_quota_unseen_and_switching_not_applicable() {
     assert_eq!(got.own_upstream.as_deref(), Some(line.as_str()));
     assert_eq!(got.usage, None, "画了那个号的用量");
     assert_eq!(
-        got.hover,
+        texts(&got.hover),
         vec![
             vec![label("work")],
             vec![
@@ -338,6 +359,30 @@ fn own_upstream_session_says_quota_unseen_and_switching_not_applicable() {
     assert_eq!(plain.own_upstream, None);
 }
 
+/// 拿来比的默认号只认这条会话那一家的：默认号是另一家的号 ⇒ 当没有（不拿别家的号比、不画徽章）；同家、选得了照取；
+/// 同家却选不了 ⇒ 没有。两家都是替身家（alpha · beta）。
+#[test]
+fn the_default_compared_is_only_one_of_the_sessions_own_family() {
+    use crate::accounts::manage::library::test_support::{list, row_with};
+    let of = |name: &str, kind: &str, default: bool| {
+        row_with(name, |a| {
+            a.agent = Some(cmd_wire::AgentKind::new(kind));
+            a.is_default = default;
+        })
+    };
+    let alpha = cmd_wire::AgentKind::new("alpha");
+    let beta = cmd_wire::AgentKind::new("beta");
+    let mixed = list(vec![of("a1", "alpha", false), of("work", "beta", true)]);
+    assert_eq!(default_of(&mixed, &alpha), None, "别家的默认号不取");
+    assert_eq!(default_of(&mixed, &beta), s("work"), "同家照取");
+    let unusable = list(vec![row_with("work", |a| {
+        a.agent = Some(beta.clone());
+        a.is_default = true;
+        a.exists = false;
+    })]);
+    assert_eq!(default_of(&unusable, &beta), None, "选不了的不算");
+}
+
 /// 入参多一格 ⇒ 收不下（`deny_unknown_fields`）。
 #[test]
 fn unknown_request_field_is_refused() {
@@ -346,4 +391,77 @@ fn unknown_request_field_is_refused() {
     let ok = serde_json::from_value::<SessionAccountReq>(serde_json::json!({"sid": "s1"}))
         .expect("收得下");
     assert_eq!(ok.sid, "s1");
+}
+
+/// 号名照这条会话那一家问：账号 0 叫那一家默认家目录的短形：默认那一家有本机布局、写得出短形，替身家不在注册表里、说不出 ⇒ 空串；两家叫法不同，传错家就对不上。
+#[test]
+fn the_account_name_follows_the_sessions_family() {
+    let q = quota("name-by-family");
+    let name_of = |agent: &str| {
+        product(
+            &Facts {
+                agent: agent.into(),
+                last: s("0"),
+                ..Facts::default()
+            },
+            &q,
+        )
+        .name
+    };
+    let default = crate::agents::default_kind();
+    use crate::accounts::quota::name_words::account_text_of;
+    assert_ne!(
+        account_text_of(default, "0"),
+        account_text_of(AGENT, "0"),
+        "两家账号 0 的叫法一样 ⇒ 下面两条分不出是不是照家问的"
+    );
+    assert_eq!(name_of(default), account_text_of(default, "0"));
+    assert_eq!(name_of(AGENT), account_text_of(AGENT, "0"));
+}
+
+/// ★ 会话归哪一家照按 sid 找到它的那一家认：会话落在 `other` 的记录根下、照路径认不出 ⇒ 仍是 `other`（号清单 · 号名照它问），
+/// 不退到默认那一家；这台找不到它的记录（别家刚起、还没写）⇒ 照活会话表里写它那份 pidfile 的那一家；活会话表也认不出 ⇒
+/// 不知道是哪一家，不落到默认那一家。
+#[test]
+fn the_account_family_follows_the_family_the_session_was_found_in() {
+    let (reg, at) = crate::agents::fake::found_in_the_other("account", |f| f);
+    assert_eq!(agent_among(&reg, Some(&at), None), (Some("other"), "other"));
+    assert_eq!(
+        agent_among(&reg, None, Some("other")),
+        (Some("other"), "other"),
+        "没写记录 ⇒ 照活会话表那一家"
+    );
+    assert_eq!(
+        agent_among(&reg, None, None),
+        (None, ""),
+        "认不出 ⇒ 不退到默认那一家"
+    );
+}
+
+/// 活没活照脸上那一判：启动时刻写成另一种记法（Windows 上 pidfile 的记法与这台读的恒不等 ⇒ 身份核不上）、进程像那一家
+/// ⇒ 活会话表说活着 ⇒ 归号说「现在」那一侧；身份没核上 ⇒ 不读它的环境、号说不出。
+#[cfg(target_os = "linux")]
+#[test]
+fn a_session_whose_start_time_cannot_be_checked_is_still_live_with_no_process_account() {
+    use std::os::unix::process::CommandExt;
+    let home = test_home::scratch("sessacct-live");
+    let sessions = crate::agents::IntoHomes::into_homes(&home)[0]
+        .pidfile_dir()
+        .unwrap();
+    std::fs::create_dir_all(&sessions).unwrap();
+    let mut kid = crate::platform::proc::test_support::spawn_settled_sleep(|c| {
+        c.arg0("claude");
+    });
+    std::fs::write(
+        sessions.join(format!("{}.json", kid.id())),
+        r#"{"sessionId":"s-live","cwd":"/w","procStart":"638000000000000000"}"#,
+    )
+    .unwrap();
+    let got = standing_at(&home, "s-live");
+    let other = standing_at(&home, "s-other");
+    let _ = kid.kill();
+    let _ = kid.wait();
+    let _ = std::fs::remove_dir_all(&home);
+    assert_eq!(got, (true, None), "脸上活着、身份没核上 ⇒ 活着、号说不出");
+    assert_eq!(other, (false, None));
 }

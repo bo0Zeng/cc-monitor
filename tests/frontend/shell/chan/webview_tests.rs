@@ -376,8 +376,8 @@ fn a_body_that_is_not_utf8_becomes_broken_not_lossy() {
     }
 }
 
-/// ★★**F14 那条「能不能回落」的规则两份实现对拍**：Rust `backend_route::route_call_error`
-/// 那一收拢 == TS `ipc/chan-caller.ts::provablyNotSent`，跨语言金样 `tests/__fixtures__/reach-collapse.golden.json`。
+/// ★★**F14 那条「能不能证明没发出去」的规则两份实现对拍**：Rust `backend_route::provably_not_sent`
+/// == TS `ipc/chan-caller.ts::provablyNotSent`，跨语言金样 `tests/__fixtures__/reach-collapse.golden.json`。
 ///
 /// 守的要求：（面 A「断开时怎么办」）与 `backend_route` 头注那条分界线逐字
 /// 「**能不能证明这条命令根本没发出去**」——
@@ -385,11 +385,11 @@ fn a_body_that_is_not_utf8_becomes_broken_not_lossy() {
 /// 两份一漂，后果就是 F14 记的那一形：一次「后端已键入但应答超时」被判成可回落 ⇒ 载荷第二次键入正在跑的 claude。
 ///
 /// 异源：本侧把 inbound 的**每一种**失败（外加「没有控制通道」）经生产的 `layer_call_error` / `layer_no_channel`
-/// 分层、经生产的 [`fail`] 序列化成 webview 那一跳的线上形状，「可回落」取自生产的 `route_call_error`
-/// （`NoChannel` 那一档）—— 产出 == 金样；TS 那侧用生产的 `decodeFail` 解同一份、`provablyNotSent` 判。
+/// 分层、经生产的 [`fail`] 序列化成 webview 那一跳的线上形状，「没发出去」取自生产的 `provably_not_sent`
+/// —— 产出 == 金样；TS 那侧用生产的 `decodeFail` 解同一份、`provablyNotSent` 判。
 #[test]
 fn the_fallback_rule_equals_the_golden_file_the_ts_side_judges() {
-    use crate::backend_route::{layer_call_error, layer_no_channel, route_call_error, Routed};
+    use crate::backend_route::{layer_call_error, layer_no_channel, provably_not_sent};
     use crate::inbound_client::CallError as Inbound;
     let cases: Vec<(&str, Inbound)> = vec![
         (
@@ -422,18 +422,16 @@ fn the_fallback_rule_equals_the_golden_file_the_ts_side_judges() {
     let mut rows = vec![serde_json::json!({
         "case": "no_channel",
         "fail": wire_of(fail(&Origin::named("devbox"), "op", layer_no_channel(1))),
-        // `client_for` 回 None ⇒ `backend_route::no_channel` ⇒ `Routed::NoChannel`（一个字节都没发）。
+        // `client_for` 回 None ⇒ `backend_route::no_channel`（一个字节都没发）。
         "provablyNotSent": true,
     })];
     for (name, e) in cases {
-        let may_fall_back = matches!(
-            route_call_error(&e, "devbox", |_, _| String::new()),
-            Routed::NoChannel(_)
-        );
+        let error = layer_call_error(&e, 1).error;
+        let not_sent = provably_not_sent(&error);
         rows.push(serde_json::json!({
             "case": name,
-            "fail": wire_of(fail(&Origin::named("devbox"), "op", layer_call_error(&e, 1).error)),
-            "provablyNotSent": may_fall_back,
+            "fail": wire_of(fail(&Origin::named("devbox"), "op", error)),
+            "provablyNotSent": not_sent,
         }));
     }
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");

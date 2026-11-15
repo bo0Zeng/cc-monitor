@@ -42,7 +42,7 @@ function busyWorld(): World {
 async function openPanel(want: string[]): Promise<void> {
   await mainReady(ALL_TABS);
   await sleep(400);
-  await click(".tab-needs");
+  await click(`.tab-needs[data-col="manual"]`);
   await waitFor('[role="dialog"] [role="listbox"]');
   const rows = (): string[] => [...document.querySelectorAll('[role="dialog"] [data-row="manual"]')].map((r) => r.textContent ?? "");
   await until(() => {
@@ -173,6 +173,16 @@ export const LOGIN_SCENES: Scene[] = [
     await waitFor('aside[data-login-kind] [data-part="paste"]');
     await sleep(500);
   }, loginWorld(STARTED)),
+  scene("login-account-show-code", "登录抽屉 · 账号 · 显示码", "那一家印了链接与一段码（paste: showCode）：链接下面是那段码 ·［复制码］，不出粘贴那一格；在哪台的浏览器里填码都登得完 ⇒ 「登录页完成后自动结束」", async () => {
+    await loginFromPanel(0);
+    await waitFor('aside[data-login-kind] [data-part="code"]');
+    await sleep(500);
+  }, loginWorld({ ...STARTED, url: "https://login.example/device", paste: "showCode", code: "WXYZ-4821", auto: true })),
+  scene("login-account-no-paste-elsewhere", "登录抽屉 · 账号 · 不粘回、需在那一台完成", "那一家等浏览器回跳到它那一台（paste: noPaste）、发起它的浏览器不在那一台（auto 假）：不出粘贴那一格，一行后端写的「需在那一台完成」那一句（elsewhere）", async () => {
+    await loginFromPanel(0);
+    await waitFor('aside[data-login-kind] [data-part="elsewhere"]');
+    await sleep(500);
+  }, loginWorld({ ...STARTED, paste: "noPaste", auto: false, elsewhere: copyText("beLogin.start.elsewhere") })),
   scene("login-mcp-paste", "登录抽屉 · MCP · 粘了回跳地址", "linear 那一行：标题「登录 MCP 服务器」· 目标行服务器名 · 号 · 机器；auto 为假不画自动结束；回跳地址那一格（悬停 ⓘ 是定义）粘好了", async () => {
     await loginFromPanel(1);
     await waitFor('aside[data-login-kind] [data-part="paste"]');

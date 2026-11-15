@@ -440,6 +440,12 @@ pub struct FakeBackend {
     hold_rebuild: Option<std::sync::Arc<tokio::sync::Notify>>,
     /// `files-grep` 回的那一份成品（`None` ⇒ 按「这台后端拒」那一档：`unreadable`）。
     pub grep_reply: Option<serde_json::Value>,
+    /// 给了 ⇒ `files-menu` 照这一句拒（演「本机后端没答成」）。
+    pub menu_refused: Option<String>,
+    /// 给了 ⇒ 答 `files-menu` 之前先改一改那一份成品（演「后端说这一件灰着、为什么是 X」）。
+    pub menu_tweak: Option<fn(&mut cmd_wire::files::DeskMenu)>,
+    /// 给了 ⇒ `files-menu` 的应答扣住，等用例放行（每放一次走一条）。
+    pub menu_hold: Option<std::sync::Arc<tokio::sync::Semaphore>>,
     /// 给了 ⇒ `files-grep` 的应答扣住，等用例放行才回（「停」那条判据要在它还在飞那一刻撤）。
     hold_grep: Option<std::sync::Arc<tokio::sync::Notify>>,
     /// 给了 ⇒ 读这一个路径的 `files-read-text` 应答扣住，等用例放行才回（「它还在飞时连挪几下」要它真的还在飞）。
@@ -473,6 +479,9 @@ impl FakeBackend {
             disk: Default::default(),
             hold_rebuild: None,
             grep_reply: None,
+            menu_refused: None,
+            menu_tweak: None,
+            menu_hold: None,
             hold_grep: None,
             hold_read_text: None,
             alias: None,
@@ -952,6 +961,14 @@ impl FakeBackend {
                                         truncated: false,
                                         total,
                                         unreadable: 0,
+                                        at_home: false,
+                                        // 合成后端照真后端那一法答箭头那一列（请求的那一列）与朝向（时间 · 大小第一下从大到小，`reverse` 反过来）。
+                                        by: sort.by,
+                                        descending: matches!(
+                                            sort.by,
+                                            cmd_wire::files::LsSortBy::Size
+                                                | cmd_wire::files::LsSortBy::Mtime
+                                        ) != sort.reverse,
                                     },
                                 ))
                                 .unwrap(),
@@ -968,7 +985,10 @@ impl FakeBackend {
                         };
                         let said = copy_core::copy_text(
                             "beFilesRead.ls.unreadable",
-                            &[("kind", &copy_core::io_reason(kind))],
+                            &[
+                                ("name", crate::source::remote_basename(dir)),
+                                ("kind", &copy_core::io_reason(kind)),
+                            ],
                         );
                         (false, Some(code.into()), Some(said), None)
                     }
@@ -992,6 +1012,7 @@ impl FakeBackend {
                         up: None,
                         kind: cmd_wire::files::FileKind::File,
                         size: 0,
+                        size_text: copy_core::size_text(0),
                         readonly: false,
                         mode,
                         mtime_secs: None,
@@ -1100,7 +1121,7 @@ impl FakeBackend {
                     None,
                     None,
                     Some(serde_json::json!({
-                        "path": path, "files": 4, "dirs": 2, "links": 1, "bytes": 3072,
+                        "path": path, "files": 4, "dirs": 2, "links": 1, "bytes": 3072, "size_text": copy_core::size_text(3072),
                     })),
                 )
             }
@@ -1120,7 +1141,7 @@ impl FakeBackend {
                     None,
                     None,
                     Some(serde_json::json!({
-                        "path": path, "bytes": 2048, "files": 3, "dirs": 2, "links": 1,
+                        "path": path, "bytes": 2048, "size_text": copy_core::size_text(2048), "files": 3, "dirs": 2, "links": 1,
                         "other": 0, "skipped_mounts": 0, "unreadable_dirs": 0,
                     })),
                 )
@@ -1417,6 +1438,8 @@ fn to_json(bytes: &[u8]) -> serde_json::Value {
 pub struct Wired {
     pub origin: String,
     pub log: WireLog,
+    /// 问菜单成品（`files-menu`，寻址本机）的那几条入参，按顺序；不进 [`Self::log`]（那一摞判的是对那台说了什么）。
+    pub menus: WireLog,
     /// 窗口手里那条线 —— 生产那个 `chan::client::Client`，拨的是真回环口。
     pub line: crate::source::Line,
 }
@@ -1425,6 +1448,7 @@ pub struct Wired {
 struct Hosted {
     be: std::sync::Mutex<FakeBackend>,
     log: WireLog,
+    menus: WireLog,
 }
 
 impl comms_inward::chan::router::Backends for Hosted {
@@ -1453,6 +1477,43 @@ impl comms_inward::chan::router::Backends for Hosted {
             )
             .unwrap_or(serde_json::Value::Null)
         };
+        // 菜单成品：本机后端那一份（照桌面那张表的真函数答，表只住后端一处），每台都认；记进自己那一摞。
+        if op.0 == <cmd_wire::files::FilesMenuReq as cmd_wire::Call>::NAME {
+            self.menus.lock().unwrap().push(args.clone());
+            let reply = match &be.menu_refused {
+                Some(why) => Err(why.clone()),
+                None => serde_json::from_value::<cmd_wire::files::FilesMenuReq>(args)
+                    .map(|req| backend_files::menu::desk_menu(&req))
+                    .map(|mut m| {
+                        if let Some(t) = be.menu_tweak {
+                            t(&mut m);
+                        }
+                        m
+                    })
+                    .map_err(|e| e.to_string()),
+            };
+            let hold = be.menu_hold.clone();
+            return Box::pin(async move {
+                if let Some(h) = hold {
+                    if let Ok(p) = h.acquire().await {
+                        p.forget();
+                    }
+                }
+                match reply {
+                    Ok(m) => Ok(Body(serde_json::to_vec(&m).unwrap_or_default())),
+                    Err(e) => Err(CallError::Peer {
+                        why: PeerFault::Refused {
+                            body: Body(
+                                serde_json::to_vec(
+                                    &serde_json::json!({ "code": "bad_args", "said": e }),
+                                )
+                                .unwrap_or_default(),
+                            ),
+                        },
+                    }),
+                }
+            });
+        }
         let alias = be.alias.clone();
         let args = match &alias {
             Some((shown, real)) => swap(&args, shown, real),
@@ -1555,14 +1616,17 @@ impl comms_inward::chan::router::Backends for Hosted {
 /// 把一台合成后端挂到一个真通道口上，拨通，交回窗口要的那条线。**要在 tokio 运行时里调。**
 pub async fn wire_up(origin: &str, be: FakeBackend) -> Wired {
     let log = be.log.clone();
+    let menus: WireLog = Default::default();
     let hosted = std::sync::Arc::new(Hosted {
         be: std::sync::Mutex::new(be),
         log: log.clone(),
+        menus: menus.clone(),
     });
     let line = crate::find::testing::wire(hosted, 1 << 22);
     Wired {
         origin: origin.to_string(),
         log,
+        menus,
         line,
     }
 }
@@ -1592,6 +1656,120 @@ impl Wired {
 // ═══════════════════════════════════════════════════════════════════
 // 驱动窗口：打字 → 等答案 → 跑一帧 → 把文字读回来
 // ═══════════════════════════════════════════════════════════════════
+
+/// 此刻这份选中的那一份成品落定了没有（回来了 · 没问成 · 断开都算）。
+fn product_settled(w: &mut crate::shell::FileWindow) -> bool {
+    w.ask_menu(None);
+    w.act_why(crate::select::Action::Open).is_ok()
+}
+
+/// 等此刻这份选中的菜单成品落定（键盘 · 菜单 · 命令栏照它判）。**同步用例里调**。
+pub fn await_product(w: &mut crate::shell::FileWindow) {
+    for _ in guard_core::wall::rounds() {
+        if product_settled(w) {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+}
+
+/// 同 [`await_product`]，运行时里的用例调。
+pub async fn await_product_async(w: &mut crate::shell::FileWindow) {
+    for _ in guard_core::wall::rounds() {
+        if product_settled(w) {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+    }
+}
+
+/// 这几行（窗口交出去的原行，[`crate::source::Listed::ls_row`]）连着、能做 ⇒ 本机后端那一份真函数答的菜单成品；`plan` ＝ 归的那一格的标题。
+pub fn menu_for(
+    picked: &[&crate::source::Listed],
+    plan: Option<&str>,
+) -> cmd_wire::files::DeskMenu {
+    backend_files::menu::desk_menu(&cmd_wire::files::FilesMenuReq {
+        picked: picked.iter().map(|r| r.ls_row()).collect(),
+        here: Default::default(),
+        plan: plan.map(str::to_string),
+    })
+}
+
+/// 右键菜单那几组里的项（只看是哪一项）。
+pub fn menu_items(m: &cmd_wire::files::DeskMenu) -> Vec<Vec<crate::select::Item>> {
+    m.groups
+        .iter()
+        .map(|g| g.iter().map(|e| e.item).collect())
+        .collect()
+}
+
+/// 右键菜单上不灰的那几件，照菜单上的先后（对这几行能做什么）。
+pub fn can_do(picked: &[&crate::source::Listed]) -> Vec<crate::select::Action> {
+    menu_for(picked, None)
+        .groups
+        .into_iter()
+        .flatten()
+        .filter_map(|e| match e.item {
+            crate::select::Item::Act(a) if e.why.is_none() => Some(a),
+            _ => None,
+        })
+        .collect()
+}
+
+/// 没接通道的窗口（判据里直接建的那几百扇）照此刻的选中当场拿一份成品：本机后端那一份真函数答。
+pub fn seed_menu(w: &mut crate::shell::FileWindow) {
+    w.seed_menu(backend_files::menu::desk_menu);
+}
+
+/// 等成品落定再对选中那几项做那一件（判据要 `perform` 当场的回值）；没接通道 ⇒ 当场拿一份（[`seed_menu`]）。同步用例里调。
+pub fn perform_now(w: &mut crate::shell::FileWindow, a: crate::select::Action) -> bool {
+    if w.line.is_none() {
+        seed_menu(w);
+    } else {
+        await_product(w);
+    }
+    w.perform(a, None)
+}
+
+/// 同 [`perform_now`]，运行时里的用例调。
+pub async fn perform_now_async(w: &mut crate::shell::FileWindow, a: crate::select::Action) -> bool {
+    if w.line.is_none() {
+        seed_menu(w);
+    } else {
+        await_product_async(w).await;
+    }
+    w.perform(a, None)
+}
+
+/// 同步用例里一扇窗一个运行时（用例本身不进运行时）：窗口问本机后端要菜单成品、读写那几趟跑在它上面。
+/// 一扇一个、不共用：别的用例那扇窗起的活（扣着不放的那几趟）占不到这一扇的线程。跟进程一起走（判据进程跑完就散）。
+pub fn menu_rt() -> &'static tokio::runtime::Runtime {
+    Box::leak(Box::new(
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_all()
+            .build()
+            .expect("判据的运行时"),
+    ))
+}
+
+/// 给一扇没接通道的窗口接上一台只答本机后端那一问（菜单成品，照桌面那张表的真函数）的合成后端。**同步用例里调**
+/// （运行时里调会在 `block_on` 上卡死）；没运行时的窗口借 [`menu_rt`] 新起的那一个。`label` 每条用例各一个。
+pub fn wire_menu(w: &mut crate::shell::FileWindow, label: &str) -> Wired {
+    wire_menu_with(w, label, FakeBackend::new(&[], Declared::default()))
+}
+
+/// 同 [`wire_menu`]，合成后端由用例给（拒菜单 · 改成品 · 扣住应答那几格）。
+pub fn wire_menu_with(w: &mut crate::shell::FileWindow, label: &str, be: FakeBackend) -> Wired {
+    let rt = menu_rt();
+    let wired = rt.block_on(wire_up(label, be));
+    // 合成后端不交能力事实（它答 `None`）⇒ 接线那一下不问（没运行时时接上 ⇒ 不起那一趟）：
+    // 用例随后自己写那一格时，没有一份晚到的空答会把它盖掉。
+    let rt = w.rt.take().unwrap_or_else(|| rt.handle().clone());
+    w.attach_line(wired.line.clone());
+    w.rt = Some(rt);
+    wired
+}
 
 /// 一台不联网的窗口（远端那一侧，但**永不 `reload`**）。
 ///
@@ -1735,6 +1913,42 @@ impl Drop for SideRt {
             rt.shutdown_background();
         }
     }
+}
+
+/// 收下每一问、一句都不答的那台（「回包未到」那一刻：请求在路上、窗口等着）。
+struct Silent;
+
+impl comms_inward::chan::router::Backends for Silent {
+    fn call(
+        &self,
+        _origin: comms_inward::chan::wire::Origin,
+        _op: comms_inward::chan::wire::Op,
+        _payload: comms_inward::chan::wire::Body,
+        _view: Option<serde_json::Value>,
+        _left: std::time::Duration,
+        _cancel: comms_inward::chan::wire::CancelToken,
+    ) -> futures::future::BoxFuture<
+        'static,
+        Result<comms_inward::chan::wire::Body, comms_inward::chan::wire::CallError>,
+    > {
+        Box::pin(futures::future::pending())
+    }
+
+    fn subscribe(
+        &self,
+        _origin: comms_inward::chan::wire::Origin,
+        _kind: comms_inward::chan::wire::Kind,
+        _from: Option<comms_inward::chan::wire::Cursor>,
+    ) -> futures::stream::BoxStream<'static, comms_inward::chan::wire::Item> {
+        Box::pin(futures::stream::pending())
+    }
+}
+
+/// 给窗口接上一条通着、但那台一问都不答的线（窗口跑在 `side` 那台运行时上）：点了表头 · 重问都停在「回包未到」。
+pub fn hold_silent(w: &mut crate::shell::FileWindow, side: &SideRt) {
+    let _in = side.handle().enter();
+    w.rt = Some(side.handle());
+    w.attach_line(wire(std::sync::Arc::new(Silent), 1 << 22));
 }
 
 /// 判据用的一条通道：一对内存管子，一头交给路由器（挂合成句柄），另一头起窗口手里那个客户端。
@@ -1884,6 +2098,29 @@ pub fn gated(mut l: crate::source::Listed) -> crate::source::Listed {
     l
 }
 
+/// 同 [`gated`]，有损名的行再照真行那样带着名字的原始字节（`files-ls` 回包里的行恒带；显示串里每个 U+FFFD 原是一个 0xFF）。
+pub fn gated_raw(l: crate::source::Listed) -> crate::source::Listed {
+    let mut l = gated(l);
+    if l.row.lossy_name && l.raw_name.is_none() {
+        l.raw_name = Some(lossy_bytes(&l.row.name));
+    }
+    l
+}
+
+/// 有损显示串 → 一份会显示成它的原始字节（每个 U+FFFD 换成一个 0xFF，别的字照 UTF-8）。
+pub fn lossy_bytes(shown: &str) -> Vec<u8> {
+    let mut b = Vec::with_capacity(shown.len());
+    for c in shown.chars() {
+        if c == '\u{FFFD}' {
+            b.push(0xFF);
+        } else {
+            let mut buf = [0u8; 4];
+            b.extend_from_slice(c.encode_utf8(&mut buf).as_bytes());
+        }
+    }
+    b
+}
+
 /// 不带记号那一问的回包（整份）：键 ＝ 末段名的 [`cmd_wire::files::WirePath::key`]，先后照给的（合成后端不记备忘：恒答整份）。
 pub fn ls_whole(
     entries: Vec<cmd_wire::files::LsEntry>,
@@ -1943,6 +2180,9 @@ pub fn plain_head(n: usize) -> cmd_wire::files::LsHead {
         truncated: false,
         total: n as u64,
         unreadable: 0,
+        at_home: false,
+        by: cmd_wire::files::LsSortBy::Name,
+        descending: false,
     }
 }
 

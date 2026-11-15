@@ -31,6 +31,7 @@ fn synced() -> Store {
         base: [(dir("z"), one.clone()), (dir("b"), one)].into(),
         paused: false,
         logins: Default::default(),
+        others: Default::default(),
     }
 }
 
@@ -155,12 +156,12 @@ fn changed_on_both_sides_is_not_picked_automatically() {
     assert_eq!(
         c.choices,
         vec![
-            Choice {
+            McpChoice {
                 from: None,
                 holders: vec![],
                 gone: false
             },
-            Choice {
+            McpChoice {
                 from: Some("b".into()),
                 holders: vec!["b".into()],
                 gone: false
@@ -249,10 +250,163 @@ fn the_store_round_trips_and_a_bad_one_is_refused() {
         "{\"version\":2}",
         "{\"version\":1,\"mcpServers\":[]}",
         "{\"version\":1,\"base\":{\"d\":1}}",
+        "{\"version\":1,\"agents\":{\"fake\":[]}}",
         "{",
     ] {
         assert!(Store::parse(bad, KEY).is_err(), "{bad:?} 该拒");
     }
 }
 
+/// 别的家那一份住在 `agents.<家>` 底下，与缺省那一家的同名条目各管各的；放回一家不碰别家；停不停只有顶层一格。
+#[test]
+fn each_family_keeps_its_own_set_in_the_one_store() {
+    let mut st = synced();
+    let mut other = Store {
+        servers: servers(json!({ "cclsp": { "command": "other" } })),
+        ..Store::default()
+    };
+    other.base.insert(dir("f"), other.servers.clone());
+    st.put_slot(Some("fake"), other.clone());
+    let back = Store::parse(&st.render(KEY), KEY).expect("解得开");
+    assert_eq!(back, st);
+    assert_eq!(back.slot(Some("fake")).servers, other.servers);
+    assert_eq!(back.slot(None).servers, synced().servers, "同名不相撞");
+    assert!(back.slot(None).others.is_empty());
+    let mut paused = back.slot(None);
+    paused.paused = true;
+    st.put_slot(None, paused);
+    assert!(st.slot(Some("fake")).paused, "停是一个开关，各家一起停");
+    assert_eq!(
+        st.slot(Some("fake")).servers,
+        other.servers,
+        "放回缺省那一家不碰别家"
+    );
+}
+
 const KEY: &str = "mcpServers";
+
+/// 监听认的文件名取自那一家，认的家与那几趟同步各自挑的家同一个判法：
+/// - 各号的 MCP 配置：声明了 MCP 那一格的家（替身家是 `fake-mcp.conf`）；
+/// - 各号的 MCP 登录文件：有账号面、MCP 登录可同步的每一家（替身家另起一份 `fake-mcp-logins.conf`），声明没声明 MCP 那一格都认；
+/// - 订阅号凭据那一份三趟同步都不读 ⇒ 不认（Claude 的 MCP 登录住在凭据文件里，照 MCP 登录那一格认）。
+///
+/// 期望的文件名写字面（替身家声明的那几个，见 `tests/backend/agents/fake/accounts.rs`），不从被测代码读面的同一处取。
+#[test]
+fn the_watch_names_come_from_each_family() {
+    use super::super::mcp_share_watch::relevant_among;
+    let row = || crate::agents::fake::family_row("fake", "CCM_FAKE_A", "fakea", true, || None);
+    let strip = |mcp: bool, logins: bool| {
+        let a = row();
+        [crate::agents::Adapter {
+            accounts: a.accounts.map(|f| crate::agents::AccountsFace {
+                mcp: if mcp { f.mcp } else { None },
+                mcp_logins: if logins { f.mcp_logins } else { None },
+                ..f
+            }),
+            ..a
+        }]
+    };
+    let full = [row()];
+    assert!(relevant_among(&full, "fake-mcp.conf"), "MCP 配置该触发");
+    assert!(
+        relevant_among(&full, "fake-mcp-logins.conf"),
+        "另起一份的 MCP 登录文件该触发"
+    );
+    assert!(
+        !relevant_among(&full, "fake-login.ndjson"),
+        "订阅号凭据三趟同步都不读"
+    );
+    let no_mcp = strip(false, true);
+    assert!(
+        relevant_among(&no_mcp, "fake-mcp-logins.conf"),
+        "没声明 MCP 那一格、登录可同步 ⇒ 登录文件照样触发"
+    );
+    assert!(
+        !relevant_among(&no_mcp, "fake-mcp.conf"),
+        "没声明 MCP 那一格 ⇒ 配置不认"
+    );
+    assert!(!relevant_among(
+        &strip(false, false),
+        "fake-mcp-logins.conf"
+    ));
+    assert!(!relevant_among(&strip(true, false), "fake-mcp-logins.conf"));
+    for n in ["fake-mcp.conf", "fake-mcp-logins.conf"] {
+        assert!(
+            !relevant_among(crate::agents::REGISTRY, n),
+            "生产里没人用 {n}"
+        );
+    }
+    assert!(relevant_among(crate::agents::REGISTRY, ".credentials.json"));
+    assert!(relevant_among(crate::agents::REGISTRY, ".claude.json"));
+    assert!(!relevant_among(&full, "unrelated.json"));
+}
+
+/// 信任那一趟照家：两个替身家，别家账号 0 的配置改了 ⇒ 触发——它的文件名被认（每一家声明了信任格的配置文件名），
+/// 它住的目录在盯的名单里（每一家账号 0 那份配置的父目录）。那一家没声明信任格 ⇒ 文件名不认、目录不盯。
+///
+/// 别家的配置文件名与账号 0 的配置根写字面（`stand-b.conf` · `<家>/.stand-b`），不从被测代码读面的同一处取。
+#[test]
+fn another_family_s_account_zero_config_triggers_the_watch() {
+    use super::super::mcp_share_watch::{relevant_among, wanted_among};
+    use crate::accounts::manage::model::{Account, Entry, Manifest};
+    let a = || crate::agents::fake::family_row("stand-a", "CCM_STAND_A", "sa", true, || None);
+    let b_with = |trust: bool| {
+        let b = crate::agents::fake::family_row("stand-b", "CCM_STAND_B", "sb", false, || None);
+        crate::agents::Adapter {
+            accounts: b.accounts.map(|f| crate::agents::AccountsFace {
+                config_file: "stand-b.conf",
+                shared_root: |h| h.join(".stand-b"),
+                trust: if trust { f.trust } else { None },
+                ..f
+            }),
+            ..b
+        }
+    };
+    let home = test_home::scratch("trust-watch-families")
+        .canonicalize()
+        .unwrap();
+    let h = home.to_string_lossy().to_string();
+    let acct = |name: &str, agent: &str| {
+        let dir = home.join(".cc-monitor/accounts").join(name);
+        std::fs::create_dir_all(&dir).unwrap();
+        Entry::Managed(Account {
+            name: name.to_string(),
+            email: String::new(),
+            config_dir: dir.to_string_lossy().to_string(),
+            is_default: false,
+            auth_kind: None,
+            color: None,
+            agent: Some(agent.to_string()),
+            extra: Default::default(),
+        })
+    };
+    let m = Manifest {
+        entries: vec![acct("x", "stand-a"), acct("y", "stand-b")],
+        ..Manifest::default()
+    };
+    std::fs::create_dir_all(home.join(".stand-b")).unwrap();
+    std::fs::create_dir_all(home.join("shared")).unwrap();
+
+    let reg = [a(), b_with(true)];
+    assert!(relevant_among(&reg, "stand-b.conf"), "别家的配置文件名该认");
+    let w = wanted_among(&reg, &h, Some(&m));
+    assert!(
+        w.contains(&home.join(".stand-b")),
+        "别家账号 0 的配置目录该盯：{w:?}"
+    );
+    assert!(
+        w.contains(&home.join("shared")),
+        "缺省那一家账号 0 的配置目录该盯：{w:?}"
+    );
+
+    let no_trust = [a(), b_with(false)];
+    assert!(
+        !relevant_among(&no_trust, "stand-b.conf"),
+        "没声明信任格 ⇒ 不认"
+    );
+    assert!(
+        !wanted_among(&no_trust, &h, Some(&m)).contains(&home.join(".stand-b")),
+        "没声明信任格 ⇒ 不盯它账号 0 的目录"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}

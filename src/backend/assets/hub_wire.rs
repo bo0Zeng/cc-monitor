@@ -1,4 +1,4 @@
-//! 枢纽问各台的那 8 条内层命令（来源那台读 · 被写那台判 / 写）的线上形：每条一个标记类型，名字 · 入参 · 回包连在它的 `Command` 上。
+//! 枢纽问各台的那 9 条内层命令（来源那台读 · 被写那台判 / 写）的线上形：每条一个标记类型，名字 · 入参 · 回包连在它的 `Command` 上。
 //!
 //! 这是**两台后端之间**的线上形：远端那台可能更旧或更新。于是入参拒多出来的键（这台收到的是同版本枢纽发的），
 //! 回包不拒（对面可能更新、多带一格）；回包解不出 ⇒ 枢纽说「那台后端版本不同」（`hub::ask_one`）。
@@ -28,6 +28,23 @@ pub struct McpApplyCmd;
 pub struct CcBusStateCmd;
 /// 把这台二进制带着的 cc-bus 装到这台（`cc-bus-install`）。
 pub struct CcBusInstallCmd;
+/// 被写那台照那一家的插件那一格装一个插件（`plugin-install`）。
+pub struct PluginInstallCmd;
+
+// ───────────────────────── 插件 ─────────────────────────
+
+/// `plugin-install`：装哪一个（照那一家自己的写法，原样交给它的命令）· 哪一家的。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(deny_unknown_fields)]
+pub struct PluginInstallReq {
+    pub name: String,
+    /// 哪一家的（线上的 kind）；缺 ⇒ 默认那一家（不指名那一形不写它）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub agent: Option<cmd_wire::AgentKind>,
+}
 
 /// 不收入参的那两条：缺 · `null` · `{}` 都认，多一个键 ⇒ `bad_args`。发出去是 `{}`。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -48,6 +65,10 @@ pub struct SkillReadReq {
     pub name: String,
     #[serde(default)]
     pub project: Option<String>,
+    /// 问哪一家的（线上的 kind）；缺 ⇒ 默认那一家（旧对端照收；不指名那一形不写它，对面拒多出来的键）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub agent: Option<cmd_wire::AgentKind>,
 }
 
 /// 来源那台读到的一个文件。
@@ -116,6 +137,10 @@ pub struct SkillPlanReq {
     pub take: Option<Vec<String>>,
     #[serde(default)]
     pub overwrite: Option<Vec<String>>,
+    /// 问哪一家的（线上的 kind）；缺 ⇒ 默认那一家（旧对端照收；不指名那一形不写它，对面拒多出来的键）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub agent: Option<cmd_wire::AgentKind>,
 }
 
 /// skill 一个文件里的一条可疑项。`kind` 闭集 `abs-path` · `binary` · `command-missing` · `executable`；
@@ -184,6 +209,10 @@ pub struct SkillApplyReq {
     pub take: Option<Vec<String>>,
     #[serde(default)]
     pub overwrite: Option<Vec<String>>,
+    /// 问哪一家的（线上的 kind）；缺 ⇒ 默认那一家（旧对端照收；不指名那一形不写它，对面拒多出来的键）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub agent: Option<cmd_wire::AgentKind>,
 }
 
 /// `skill-install-apply` 的回包。
@@ -211,6 +240,10 @@ pub struct SkillApplied {
 pub struct McpSourceReq {
     pub name: String,
     pub at: ExtLoc,
+    /// 问哪一家的（线上的 kind）；缺 ⇒ 默认那一家（旧对端照收；不指名那一形不写它，对面拒多出来的键）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub agent: Option<cmd_wire::AgentKind>,
 }
 
 /// 来源那台换成空位的一格。
@@ -248,6 +281,10 @@ pub struct McpPreviewReq {
     pub at: ExtLoc,
     #[cfg_attr(any(test, feature = "ts"), ts(type = "unknown"))]
     pub def: Value,
+    /// 问哪一家的（同 [`McpSourceReq::agent`]）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub agent: Option<cmd_wire::AgentKind>,
 }
 
 /// MCP 那一条里的一条可疑项：`kind` 闭集 `abs-path` · `command-missing` · `command-relative`。
@@ -292,6 +329,10 @@ pub struct McpApplyReq {
     pub fill: Option<BTreeMap<String, BTreeMap<String, String>>>,
     #[serde(default)]
     pub target: Option<String>,
+    /// 问哪一家的（同 [`McpSourceReq::agent`]）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub agent: Option<cmd_wire::AgentKind>,
 }
 
 /// `mcp-sync-apply` 的回包。
@@ -353,6 +394,14 @@ pub struct HubReq {
     pub to: Vec<Option<String>>,
     #[serde(default)]
     pub place: Option<ExtLoc>,
+    /// 问哪一家的（线上的 kind）；缺 ⇒ 默认那一家（旧对端照收；不指名那一形不写它，对面拒多出来的键）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub agent: Option<cmd_wire::AgentKind>,
+    /// 那一行的来源键（`ExtRow::source` 的 `key`）：同名几个来源照它认表那一行；行上没有 ⇒ 缺。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub source: Option<String>,
 }
 
 /// `ext-hub-apply`：同 [`HubReq`]，再带每台那张卡上的记号（键 = 机器键，本机 = 空串）与填的值。
@@ -370,6 +419,14 @@ pub struct HubApplyReq {
     pub tokens: BTreeMap<String, super::ext::ExtTokens>,
     #[serde(default)]
     pub fill: Fill,
+    /// 问哪一家的（线上的 kind）；缺 ⇒ 默认那一家（旧对端照收；不指名那一形不写它，对面拒多出来的键）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub agent: Option<cmd_wire::AgentKind>,
+    /// 同 [`HubReq::source`]。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub source: Option<String>,
 }
 
 /// 几张卡的要填格并成一份：每格一次，`kept` = 那一格已经有值的几台（名字）。

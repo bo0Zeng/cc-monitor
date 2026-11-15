@@ -39,6 +39,15 @@ pub fn assemble(
     truncated: bool,
     notice: Option<Words>,
 ) -> LineDiff {
+    let show_all_text = (rows.len() > DIFF_SHOWN).then(|| {
+        Words(copy_core::copy_text(
+            "diff.buildDiffBody.showAll",
+            &[
+                ("addCount", &added.to_string()),
+                ("delCount", &removed.to_string()),
+            ],
+        ))
+    });
     LineDiff {
         shown: u32::try_from(rows.len().min(DIFF_SHOWN)).unwrap_or(u32::MAX),
         rows,
@@ -47,6 +56,7 @@ pub fn assemble(
         removed,
         stat: Words(stat(added, removed)),
         notice,
+        show_all_text,
     }
 }
 

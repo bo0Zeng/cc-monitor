@@ -150,3 +150,65 @@ fn a_group_only_members_point_at_is_listed_nameless_and_last() {
     );
     assert_eq!(g9.members.len(), 1, "组员不漏");
 }
+
+/// 5. 组头在等人的分两颗：待答请求那几条 ⇒「待答请求 n」（点 `asks`），答不了的 ⇒「需手动 n」（点 `needs-you`），各数各的；
+///    先后：待答请求 · 需手动 · 在跑 · 后台。只有一种 ⇒ 只出那一颗，不拿另一种冒充。
+#[test]
+fn the_waiting_chips_are_two_asks_before_needs() {
+    let waiting = |sid: &str, dot: SessionDot, name: String| {
+        let mut x = member(sid, &["g1"], false);
+        x.face.dot = dot;
+        x.face.name = Words(name);
+        x
+    };
+    let asks = || copy_text("needs.asks.title", &[]);
+    let manual = || copy_text("beSession.needs.unknown", &[]);
+    let chip = |members: Vec<HereMember>| {
+        let got = merge(
+            &[(
+                m("C"),
+                Half::Now(slice(vec![rec("g1", "甲", 1, 1)], members)),
+            )],
+            Vec::new(),
+        );
+        got.groups[0]
+            .counts
+            .iter()
+            .map(|c| (c.dot, c.n, c.word.0.clone(), c.text.0.clone()))
+            .collect::<Vec<_>>()
+    };
+    let asks_n = |n: &str| copy_text("beGroups.count.asks", &[("n", n)]);
+    let needs_n = |n: &str| copy_text("beGroups.count.needs", &[("n", n)]);
+    let mut running = member("r", &["g1"], false);
+    running.face.dot = SessionDot::Running;
+    running.face.name = Words("核心·在跑".into());
+    assert_eq!(
+        chip(vec![
+            running.clone(),
+            waiting("b", SessionDot::NeedsYou, manual()),
+            waiting("a", SessionDot::Asks, asks()),
+            waiting("c", SessionDot::Asks, asks()),
+        ]),
+        vec![
+            (SessionDot::Asks, 2, asks(), asks_n("2")),
+            (SessionDot::NeedsYou, 1, manual(), needs_n("1")),
+            (
+                SessionDot::Running,
+                1,
+                "核心·在跑".to_string(),
+                copy_text("beGroups.count.running", &[("n", "1")])
+            ),
+        ],
+        "两条答得了 · 一条答不了 · 一条在跑 ⇒ 待答请求 2 · 需手动 1 · 在跑 1"
+    );
+    assert_eq!(
+        chip(vec![waiting("a", SessionDot::Asks, asks())]),
+        vec![(SessionDot::Asks, 1, asks(), asks_n("1"))],
+        "只有答得了的那一条 ⇒ 只出待答请求那一颗"
+    );
+    assert_eq!(
+        chip(vec![waiting("b", SessionDot::NeedsYou, manual())]),
+        vec![(SessionDot::NeedsYou, 1, manual(), needs_n("1"))],
+        "只有答不了的那一条 ⇒ 只出需手动那一颗"
+    );
+}

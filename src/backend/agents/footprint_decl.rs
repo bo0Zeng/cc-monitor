@@ -371,6 +371,12 @@ impl Provisioning {
 pub struct UnmanagedEnv {
     pub id: &'static str,
     pub display_name: Text,
+    /// 缺了起不了会话（其余缺了只少一个功能）：「待办」里那一条标成必装。
+    pub required: bool,
+    /// 怎么装：那样东西自己的安装说明（外链）；没有通用的 ⇒ `None`。
+    pub how: Option<&'static str>,
+    /// 查了、确认没有 ⇒ 进「待办 · 要装」。`false` ＝ 缺了也不劝装（那样东西有自己那一格说在不在，缺了只少它那几项）。
+    pub asks_install: bool,
     /// 🔴 **「谁该装」**。档不手填：由足迹那边的 `EnvTier::of` 从这一格 ＋「有没有 `ToolSpec`」
     /// 派生出来，「谁该装」与「今天装得了吗」各在各的格里。
     pub who: Provisioning,

@@ -573,7 +573,6 @@ fn no_rotation_presets_the_session_id_it_hands_the_agent() {
 #[cfg(unix)]
 #[test]
 fn quota_warm_takes_its_accounts_from_quota_read_and_names_them_to_ccm() {
-    use std::os::unix::fs::PermissionsExt;
     let home = std::env::temp_dir().join(format!("quota-warm-{}", std::process::id()));
     std::fs::remove_dir_all(&home).ok();
     let bin = home.join(".cc-monitor/bin");
@@ -598,9 +597,10 @@ fn quota_warm_takes_its_accounts_from_quota_read_and_names_them_to_ccm() {
     });
     std::fs::write(home.join("read.json"), read.to_string()).expect("写回包");
     let ccm = bin.join("ccm");
-    std::fs::write(
+    // 马上被起 ⇒ 经 `write_exe` 写（本进程写的写端会漏进别的判据线程 fork 出来的子进程 ⇒ ETXTBSY）。
+    test_home::write_exe(
         &ccm,
-        format!(
+        &format!(
             "#!/bin/sh\ncase \" $* \" in *' --resident-call '*) ;; *) exit 9;; esac\n\
              read -r line\n\
              case \"$line\" in *'\"quota-read\"'*) cat '{r}'; exit 0;;\n\
@@ -609,9 +609,7 @@ fn quota_warm_takes_its_accounts_from_quota_read_and_names_them_to_ccm() {
             r = home.join("read.json").display(),
             s = sent.display()
         ),
-    )
-    .expect("写假 ccm");
-    std::fs::set_permissions(&ccm, std::fs::Permissions::from_mode(0o755)).expect("可执行");
+    );
     let script = guard_core::addr::repo_root().join("src/shared/quota-warm/scripts/quota-warm");
     let out = std::process::Command::new("python3")
         .arg(&script)
@@ -662,15 +660,14 @@ fn quota_warm_with_fake_ccm(
     body: &str,
     args: &[&str],
 ) -> (std::path::PathBuf, std::process::Child) {
-    use std::os::unix::fs::PermissionsExt;
     let home = std::env::temp_dir().join(format!("quota-warm-{tag}-{}", std::process::id()));
     std::fs::remove_dir_all(&home).ok();
     let bin = home.join(".cc-monitor/bin");
     std::fs::create_dir_all(&bin).expect("造 bin");
     std::fs::create_dir_all(home.join("run")).expect("造 run");
     let ccm = bin.join("ccm");
-    std::fs::write(&ccm, format!("#!/bin/sh\n{body}\n")).expect("写假 ccm");
-    std::fs::set_permissions(&ccm, std::fs::Permissions::from_mode(0o755)).expect("可执行");
+    // 马上被起 ⇒ 经 `write_exe` 写（理由同上）。
+    test_home::write_exe(&ccm, &format!("#!/bin/sh\n{body}\n"));
     let script = guard_core::addr::repo_root().join("src/shared/quota-warm/scripts/quota-warm");
     let child = std::process::Command::new("python3")
         .arg(&script)

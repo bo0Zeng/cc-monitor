@@ -15,7 +15,7 @@ class SessionFindTest {
 
     @Test
     fun `history-find 回包：命中带行号 · 落在哪次工具调用里；缺必填格 ⇒ 解不出`() {
-        val hit = mapOf("uuid" to "u1", "line" to 42L, "kind" to "assistant", "before" to "a ", "matched" to "q", "after" to " b", "turn" to 3L, "tsMs" to 0L, "tsText" to "10:00", "tool" to "c1")
+        val hit = mapOf("uuid" to "u1", "line" to 42L, "before" to "a ", "matched" to "q", "after" to " b", "turn" to 3L, "tool" to "c1", "meta" to "Claude · 轮 3 · 10:00")
         val got = InSessionFind.of(mapOf("total" to 7L, "hits" to listOf(hit), "head" to "前 1 · 共 7", "widen" to false))!!
         assertEquals("前 1 · 共 7", got.head)
         assertEquals(42L, got.hits.single().line)

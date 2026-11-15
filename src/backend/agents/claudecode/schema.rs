@@ -9,13 +9,13 @@
 //!
 //! **看不懂的记录不静默丢**（INVARIANT § 18.1）：未知 `type` 落到
 //! `#[serde(other)] Unknown`（仅 serde 内部落点），但 **`Unknown` 绝不出 `parse::parse_line`**
-//! ——它连同「已知 type 解析失败但仍是合法 JSON」的行一起被抢救成 `Unrecognized`
-//! （留原文 + uuid/parentUuid/timestamp），进链防孤儿化误折叠。详见 `Unrecognized` 变体注释。
+//! ——它连同「已知 type 解析失败但仍是合法 JSON」的行一起被抢救成 `CcMonitorUnrecognized`
+//! （留原文 + uuid/parentUuid/timestamp），进链防孤儿化误折叠。详见 `CcMonitorUnrecognized` 变体注释。
 
 use serde::{Deserialize, Serialize};
 
 use crate::agents::{ApiReason, ChildRunTag, StepResult, ToolCard, ToolStep, UserText};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 impl JsonlRecord {
     /// assistant 记录填上 `toolCards`（`content` 里每个 `tool_use` 按本家工具词表判一次）与 `childRuns`（派出子运行的那几次）；别的类型原样。
@@ -92,6 +92,7 @@ impl JsonlRecord {
                 message,
                 tool_use_result,
                 tool_results,
+                tool_reads,
                 ..
             } => {
                 *tool_results = message
@@ -110,6 +111,9 @@ impl JsonlRecord {
                         ))
                     })
                     .collect();
+                if steps::reads_file(tool_use_result.as_ref()) {
+                    *tool_reads = tool_results.keys().cloned().collect();
+                }
                 // 原样那一格只喂判定，判完就放（读文件的结果里有整份内容）。
                 *tool_use_result = None;
             }
@@ -146,7 +150,8 @@ impl JsonlRecord {
                     is_compact_summary: *is_compact_summary,
                     has_parent: parent_uuid.as_deref().is_some_and(|p| !p.is_empty()),
                     origin: origin.as_ref().filter(|o| o.is_object()),
-                });
+                })
+                .said();
             }
             Self::Attachment {
                 parent_uuid,
@@ -174,13 +179,14 @@ impl JsonlRecord {
 
 /// `attachment` 记录里那一格（只收判「是不是一轮中途插进来的那一句」要的几样；别的种类只留 `type`）。
 #[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct AttachmentHead {
     #[serde(rename = "type", default)]
     pub kind: Option<String>,
     /// 插进来的那一句的原话（字符串，或带图时的块数组）；别的种类没有 ⇒ `null`。
     #[serde(default)]
     pub prompt: serde_json::Value,
-    #[serde(rename = "isMeta", default)]
+    #[serde(default)]
     pub is_meta: bool,
     /// 谁说的（`kind` ∈ human · peer · task-notification …）；旧版没有。
     #[serde(default)]
@@ -196,73 +202,77 @@ pub struct AttachmentHead {
 /// = 自身 uuid（**不是**"整段共享同一个 messageUuid"）。
 /// `analyze_jsonl` 取首条 forkedFrom 的 sessionId 认 parent，故只需前缀共享 sessionId 即可。
 #[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct ForkedFrom {
-    #[serde(rename = "sessionId")]
     pub session_id: String,
-    #[serde(rename = "messageUuid")]
     pub message_uuid: String,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
-#[serde(tag = "type")]
+#[serde(
+    tag = "type",
+    rename_all = "kebab-case",
+    rename_all_fields = "camelCase"
+)]
 pub enum JsonlRecord {
-    #[serde(rename = "user")]
     User {
         uuid: String,
         timestamp: String,
         message: ApiMessage,
         #[serde(default)]
         cwd: Option<String>,
-        #[serde(rename = "sessionId", default)]
+        #[serde(default)]
         session_id: Option<String>,
         // 子运行归属由适配层的 `run_of` 判、经运行表与 `history-run` 给界面；记录成品不带这一格（界面不认它）。
-        #[serde(rename = "isSidechain", default, skip_serializing)]
+        #[serde(default, skip_serializing)]
         is_sidechain: bool,
         // 下面三格只喂「谁说的」那一判（`text.rs::user_text`），不上线：界面只读成品 `userText`。
-        #[serde(rename = "isMeta", default, skip_serializing)]
+        #[serde(default, skip_serializing)]
         is_meta: bool,
-        #[serde(rename = "isCompactSummary", default, skip_serializing)]
+        #[serde(default, skip_serializing)]
         is_compact_summary: bool,
         #[serde(default, skip_serializing)]
         origin: Option<serde_json::Value>,
-        #[serde(rename = "parentUuid", default)]
+        #[serde(default)]
         parent_uuid: Option<String>,
         // issue #12: fork session 的所有记录都带这个字段；非 fork session 缺失
-        #[serde(rename = "forkedFrom", default)]
+        #[serde(default)]
         forked_from: Option<ForkedFrom>,
         /// 这条是谁说的、要显示的正文 —— 判定只在 `agents/claudecode/text.rs::user_text`（Codex 在 `agents/codex/record.rs`），
         /// 界面渲染 / 分叉折叠只读这个成品（不自己再判）。原文里没有这一格：解析完由 [`JsonlRecord::with_user_text`] 填。
-        #[serde(rename = "userText", skip_deserializing, default)]
+        #[serde(skip_deserializing, default)]
         user_text: UserText,
         // 只喂结果一句那一判（`steps.rs::result_of`），不上线。
-        #[serde(rename = "toolUseResult", default, skip_serializing)]
+        #[serde(default, skip_serializing)]
         tool_use_result: Option<serde_json::Value>,
         /// 〔判定只在后端〕这条里每个 `tool_result` 的结果一句：`tool_use_id` → [`StepResult`]（读了几行 · `+N −M` · 被拒 · 提问 / 计划答了什么）。
         /// 原文里没有这一格：解析完由 [`JsonlRecord::with_steps`] 填；界面只按它拼字，不认 `toolUseResult` 的形状。
         #[serde(
-            rename = "toolResults",
             skip_deserializing,
             default,
             skip_serializing_if = "BTreeMap::is_empty"
         )]
         tool_results: BTreeMap<String, StepResult>,
+        /// 〔判定只在后端〕这条里读文件那一类结果的 `tool_use_id`（[`super::steps::reads_file`]）：只喂右侧那一句，不上线。
+        /// 原文里没有这一格：解析完由 [`JsonlRecord::with_steps`] 填。
+        #[serde(skip)]
+        tool_reads: BTreeSet<String>,
     },
-    #[serde(rename = "assistant")]
     Assistant {
         uuid: String,
         timestamp: String,
         message: ApiMessage,
-        #[serde(rename = "sessionId", default)]
+        #[serde(default)]
         session_id: Option<String>,
         // 子运行归属由适配层的 `run_of` 判、经运行表与 `history-run` 给界面；记录成品不带这一格（界面不认它）。
-        #[serde(rename = "isSidechain", default, skip_serializing)]
+        #[serde(default, skip_serializing)]
         is_sidechain: bool,
-        #[serde(rename = "requestId", default)]
+        #[serde(default)]
         request_id: Option<String>,
-        #[serde(rename = "parentUuid", default)]
+        #[serde(default)]
         parent_uuid: Option<String>,
         // issue #12: 同 User 的 forked_from
-        #[serde(rename = "forkedFrom", default)]
+        #[serde(default)]
         forked_from: Option<ForkedFrom>,
         // issue #21: API 最终失败时 CLI 写的合成 assistant 消息（重试耗尽 / 不可重试）。
         // isApiErrorMessage:true 是判定主键；error 是机器可读分类（"authentication_failed"
@@ -273,17 +283,16 @@ pub enum JsonlRecord {
         // error 用 Value 而非 String：实测 47 条全是 string，但 system 侧同名字段就是
         // 对象——若某版 CLI 把它写成对象而这里钉死 String，serde 整行失败 → 这条报错
         // 消息本身被吞（报错可见化 feature 被报错字段漂移杀掉）。§18 宽容 schema。
-        #[serde(rename = "isApiErrorMessage", default)]
+        #[serde(default)]
         is_api_error_message: bool,
         #[serde(default)]
         // 形状随 CLI 版本漂，用 Value 收（§18「宽容 schema」），读的一方先判形状。
         error: Option<serde_json::Value>,
-        #[serde(rename = "apiErrorStatus", default)]
+        #[serde(default)]
         api_error_status: Option<u32>,
         /// 〔判定只在后端〕这条消息里每个 `tool_use` 的卡型：`tool_use.id` → [`ToolCard`]（普通工具卡不列）。
         /// 原文里没有这一格：解析完由 [`JsonlRecord::with_tool_cards`] 按本家工具词表（`cards::tool_card`）填；界面只按它画、不认工具名。
         #[serde(
-            rename = "toolCards",
             skip_deserializing,
             default,
             skip_serializing_if = "std::collections::BTreeMap::is_empty"
@@ -292,7 +301,6 @@ pub enum JsonlRecord {
         /// 这条消息里派出子运行的那几次工具调用：`tool_use.id` ⇒ 标签与类别（通用形，界面按它给卡起名，不读工具入参）。
         /// 原文里没有这一格：解析完由 [`JsonlRecord::with_tool_cards`] 按本家的派出链接（`runs::links_in_content`）填。
         #[serde(
-            rename = "childRuns",
             skip_deserializing,
             default,
             skip_serializing_if = "std::collections::BTreeMap::is_empty"
@@ -301,74 +309,56 @@ pub enum JsonlRecord {
         /// 〔判定只在后端〕这条消息里每个 `tool_use` 的一行人话：`tool_use.id` → [`ToolStep`]（工具名 · 主参数 · 说明 · 认不认得）。
         /// 原文里没有这一格：解析完由 [`JsonlRecord::with_steps`] 填；界面不认入参结构。
         #[serde(
-            rename = "toolSteps",
             skip_deserializing,
             default,
             skip_serializing_if = "BTreeMap::is_empty"
         )]
         tool_steps: BTreeMap<String, ToolStep>,
         /// 〔判定只在后端〕`isApiErrorMessage` 的那条：原因种类（[`ApiReason`]）。别的记录缺。
-        #[serde(
-            rename = "apiReason",
-            skip_deserializing,
-            default,
-            skip_serializing_if = "Option::is_none"
-        )]
+        #[serde(skip_deserializing, default, skip_serializing_if = "Option::is_none")]
         api_reason: Option<ApiReason>,
     },
 
-    #[serde(rename = "ai-title")]
     AiTitle {
-        #[serde(rename = "aiTitle")]
         ai_title: String,
-        #[serde(rename = "sessionId")]
         session_id: String,
     },
     // ai-title 是 agent 自己起的标题；custom-title / customTitle 是人在 Claude 里 /rename 写的。
     // 两个都翻成通用记录的 `title`（`by` 分谁起的）；cc-monitor 定名只认 agent 起的那一种。
-    #[serde(rename = "custom-title")]
     CustomTitle {
-        #[serde(rename = "customTitle")]
         custom_title: String,
-        #[serde(rename = "sessionId")]
         session_id: String,
     },
-    #[serde(rename = "system")]
     System {
         #[serde(default)]
         subtype: Option<String>,
-        #[serde(rename = "durationMs", default)]
+        #[serde(default)]
         duration_ms: Option<u64>,
-        #[serde(rename = "messageCount", default)]
+        #[serde(default)]
         message_count: Option<u32>,
         timestamp: String,
-        #[serde(rename = "sessionId", default)]
+        #[serde(default)]
         session_id: Option<String>,
         // issue #8: system 记录大多有 uuid+parentUuid 并参与 jsonl 链 ——
         // 主线外清单（`chain.rs`）要拿到它才能完整算 ESC 回退主线。Option 兜没有这些字段的少数情况。
         #[serde(default)]
         uuid: Option<String>,
-        #[serde(rename = "parentUuid", default)]
+        #[serde(default)]
         parent_uuid: Option<String>,
         // issue #21: subtype="api_error"（每次 API 调用失败将重试时写一条）。level
-        // 实测只有 "error"；retryAttempt/maxRetries 翻成通用记录 `retry` 的 attempt / max（界面「重试中 N/M」）；error
+        // 实测只有 "error"；retryAttempt/maxRetries 进后端的行（`RetryFacts` 的 attempt / max，出口照它写「重试中 N/M」那一行）；error
         // 对象有两种 shape（随 CLI 版本变化，新版有现成的 .formatted 一行文案）——用 Value 收，原因种类由 `steps::api_reason` 判。
         #[serde(default)]
         level: Option<String>,
-        #[serde(rename = "retryAttempt", default)]
+        #[serde(default)]
         retry_attempt: Option<u32>,
-        #[serde(rename = "maxRetries", default)]
+        #[serde(default)]
         max_retries: Option<u32>,
         #[serde(default)]
         // 形状随 CLI 版本漂，用 Value 收（§18「宽容 schema」），读的一方先判形状。
         error: Option<serde_json::Value>,
         /// 〔判定只在后端〕`subtype == "api_error"`（要重试的那一次）的原因种类。别的记录缺。
-        #[serde(
-            rename = "apiReason",
-            skip_deserializing,
-            default,
-            skip_serializing_if = "Option::is_none"
-        )]
+        #[serde(skip_deserializing, default, skip_serializing_if = "Option::is_none")]
         api_reason: Option<ApiReason>,
     },
 
@@ -377,14 +367,13 @@ pub enum JsonlRecord {
     // parent 链就断在 attachment 处 → 主线检测全部失败 → 整段消息被错误折叠到"已被 ESC 回退"。
     // 所以本变体含完整字段、出链事实（`chain.rs`）。
     // 例外一种：一轮中途插进来的那一句（`attachment.type == queued_command`，人说的）出通用记录 `said`（`record_of`）。
-    #[serde(rename = "attachment")]
     Attachment {
         uuid: String,
         timestamp: String,
-        #[serde(rename = "parentUuid", default)]
+        #[serde(default)]
         parent_uuid: Option<String>,
         // 这三格只喂翻译（谁说的 · 记录的 `cwd` · 正文），不上线（同 user 记录：界面只读成品 `userText`）。
-        #[serde(rename = "isSidechain", default, skip_serializing)]
+        #[serde(default, skip_serializing)]
         is_sidechain: bool,
         #[serde(default, skip_serializing)]
         cwd: Option<String>,
@@ -392,19 +381,13 @@ pub enum JsonlRecord {
         #[serde(default, skip_serializing)]
         attachment: Option<AttachmentHead>,
         /// 插进来的那一句是谁说的（[`super::text::mid_turn_text`]）；不是那一形 / 不是说了话的那几种 ⇒ 缺。
-        #[serde(
-            rename = "userText",
-            skip_deserializing,
-            default,
-            skip_serializing_if = "Option::is_none"
-        )]
+        #[serde(skip_deserializing, default, skip_serializing_if = "Option::is_none")]
         user_text: Option<UserText>,
     },
     /// CC 2.1.x 队列操作记录。enqueue 带 content —— 主线判定
     /// 用它豁免"被消费的队列消息"（永久裸 user 叶，CC 的回复链挂在 interrupt 叶
     /// 下而非队列消息下）不被 ESC 回退折叠。无 uuid/parentUuid；不出通用记录
     /// （一轮中途插进去的那一句由紧跟着的 `attachment queued_command` 那一行出，见 `record_of`）。
-    #[serde(rename = "queue-operation")]
     QueueOperation {
         #[serde(default)]
         operation: Option<String>,
@@ -413,44 +396,28 @@ pub enum JsonlRecord {
         #[serde(default)]
         timestamp: Option<String>,
     },
-    #[serde(rename = "permission-mode")]
     PermissionMode {},
-    #[serde(rename = "last-prompt")]
     LastPrompt {},
-    #[serde(rename = "file-history-snapshot")]
     FileHistorySnapshot {},
     // Claude 自己的状态行（07-16 语料：mode 6472 / agent-name 2020 / file-history-delta 181 / pr-link 58 / relocated 19 /
-    // worktree-state 19 / frame-link 2，都没有链身份）：认识、不上屏、不进链。落在 `Unrecognized` 里的话，
+    // worktree-state 19 / frame-link 2，都没有链身份）：认识、不上屏、不进链。落在 `CcMonitorUnrecognized` 里的话，
     // 记录出的 `unread` 会被它们刷满 ⇒ 登成认识的类型（同 `permission-mode`）。
-    #[serde(rename = "mode")]
     Mode {},
-    #[serde(rename = "agent-name")]
     AgentName {},
-    #[serde(rename = "file-history-delta")]
     FileHistoryDelta {},
-    #[serde(rename = "pr-link")]
     PrLink {},
-    #[serde(rename = "relocated")]
     Relocated {},
-    #[serde(rename = "worktree-state")]
     WorktreeState {},
-    #[serde(rename = "frame-link")]
     FrameLink {},
     // Claude Code 2.1.29x 新写的簿记行（10-14 语料，114 份会话：atis-latch 11378 行 / 98 份 · history-suppression 1805 ·
     // bridge-session 1790 · cost-state 328 / 113 份 · artifact-comment-monitor 4 · artifact-autoreact-ledger 4，都没有链身份）：
     // 认识、不上屏、不进链（同上面那一批）；`cost-state` 记的花费谁都不读（不显示跟钱有关的东西）。
     // 往后再冒出来的没身份新类型不必等登记：适配层不给它们出卡、只在会话事实里记数（`record_of::quiet_unread_of`）。
-    #[serde(rename = "atis-latch")]
     AtisLatch {},
-    #[serde(rename = "history-suppression")]
     HistorySuppression {},
-    #[serde(rename = "bridge-session")]
     BridgeSession {},
-    #[serde(rename = "cost-state")]
     CostState {},
-    #[serde(rename = "artifact-comment-monitor")]
     ArtifactCommentMonitor {},
-    #[serde(rename = "artifact-autoreact-ledger")]
     ArtifactAutoreactLedger {},
 
     /// **看不懂的记录 —— 留原文 + 留链上的身份**。
@@ -481,16 +448,15 @@ pub enum JsonlRecord {
     /// 对话内容每行都带身份，没身份的只可能是那一家的簿记行（10-14 起，`record_of::quiet_unread_of` 一处判）。
     /// 「不静默」那一半：会话事实 `quietUnread` 记几行、哪几种；机器级的 `drift_ledger`（`UnknownRecordType` 面，解析时记）照旧。
     /// 已知类型解析失败（形状变了）不论有无身份都出卡。
-    #[serde(rename = "cc-monitor-unrecognized")]
-    Unrecognized {
+    CcMonitorUnrecognized {
         #[serde(default)]
         uuid: Option<String>,
-        #[serde(rename = "parentUuid", default)]
+        #[serde(default)]
         parent_uuid: Option<String>,
         #[serde(default)]
         timestamp: Option<String>,
         /// 原文里的 `type`（若有）——诊断 / 记账按它分类
-        #[serde(rename = "originalType", default)]
+        #[serde(default)]
         original_type: Option<String>,
         /// 抢救时的原文行（已剥 UTF-8 BOM + `.trim()`，JSON 载荷完整）。
         /// 诊断 / 未来从这里抽 `pr-link`.prUrl、`agent-name`.agentName 等字段用。
@@ -500,7 +466,7 @@ pub enum JsonlRecord {
     },
 
     /// serde 对未知 `type` 的落点。**不出 `parse_line`** —— 它会被抢救成
-    /// `Unrecognized`（带原文与身份）。
+    /// `CcMonitorUnrecognized`（带原文与身份）。
     ///
     /// 保留它是**设计选择**而非硬性必需：去掉 `#[serde(other)]`，未知 `type` 会走
     /// `parse_line` 的 `Err → salvage` 路径同样被抢救，只是 `reason` 变成
@@ -530,10 +496,10 @@ pub struct ApiMessage {
 pub struct Usage {
     #[serde(default)]
     pub input_tokens: u32,
-    #[serde(rename = "cache_creation_input_tokens", default)]
-    pub cache_creation: u32,
-    #[serde(rename = "cache_read_input_tokens", default)]
-    pub cache_read: u32,
+    #[serde(default)]
+    pub cache_creation_input_tokens: u32,
+    #[serde(default)]
+    pub cache_read_input_tokens: u32,
     #[serde(default)]
     pub output_tokens: u32,
 }

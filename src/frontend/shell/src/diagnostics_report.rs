@@ -33,7 +33,7 @@ pub(crate) fn req_of(
 pub async fn diagnostics_report(
     app: tauri::AppHandle,
 ) -> Result<DiagnosticsReport, cmd_wire::failed::Failed> {
-    use crate::backend_route::{route_call_error, Routed};
+    use crate::backend_route::route_call_error;
     const NAME: &str = DiagnosticsReportReq::NAME;
     // 状态经 `AppHandle` 取、不收 `tauri::State<'_, …>` 参数：理由见 `lib.rs::bring_terminal_to_front` 那一句。
     let state = tauri::Manager::state::<std::sync::Arc<crate::logging::LoggingState>>(&app)
@@ -54,11 +54,9 @@ pub async fn diagnostics_report(
         .map_err(|said| own(Said::from(said)))?;
     let deadline = tokio::time::Instant::now() + BUDGET;
     let got = client.ask(None, &req, None, deadline).await.map_err(|e| {
-        let said = match route_call_error(&e, &copy_core::local_machine(), |_code, message| {
+        let said = route_call_error(&e, &copy_core::local_machine(), |_code, message| {
             message.to_string()
-        }) {
-            Routed::NoChannel(s) | Routed::Refused(s) => s,
-        };
+        });
         crate::detail::of_call(said, NAME, &e)
     })?;
     got.map_err(|_| {

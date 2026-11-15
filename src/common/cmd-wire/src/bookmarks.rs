@@ -4,37 +4,10 @@
 //! 「此刻这几个目录在不在书签里、各是第几条」由后端答：两条入参都可带窗口各栏此刻的目录（`at`，几栏几个），
 //! 回包的 `here` 按问的那一串各答一个下标（不在的不列）。
 //!
-//! 目录的归一（[`normalize_dir`]）只此一份：后端存之前归一、比较按归一之后的形；文件窗口地址栏手输那一串、
-//! 左栏「家」与「根」判此刻也用它（浏览回包还不带归一后的目录）。
+//! 目录怎么归一、按什么比，只在后端 `control/bookmarks.rs` 里判；窗口与手机照回包画。
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-
-/// 目录路径归一：连续的 `/` 折成一个；只剩 `/` 就是根；否则去掉尾巴上那一个 `/`。
-///
-/// ⚠ 空串照旧是空串、相对路径照旧是相对的（不补前导 `/`）；空串由写的那一方挡掉，不在这里编一个路径出来。
-pub fn normalize_dir(path: &str) -> String {
-    let mut out = String::with_capacity(path.len());
-    let mut prev_slash = false;
-    for c in path.chars() {
-        if c == '/' {
-            if !prev_slash {
-                out.push(c);
-            }
-            prev_slash = true;
-        } else {
-            out.push(c);
-            prev_slash = false;
-        }
-    }
-    if out == "/" {
-        return out;
-    }
-    if out.ends_with('/') {
-        out.pop();
-    }
-    out
-}
 
 /// `bookmarks-read` 的入参（缺 · `null` · `{}` 都认，多一个键拒）。
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]

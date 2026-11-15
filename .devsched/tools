@@ -1,0 +1,13 @@
+# cc-monitor 要编译机上有的工具：`devsched --prepare <台>` 照这份装进那台的 `<根>/toolchains/<工具名>/`
+#（本机下载、核 sha256、解包、换前缀，那台只收 rsync 送的文件；不要 root、不碰系统与那台的家目录；撤 ＝ 删那个目录）。
+# 一行一份档：<工具名> <url> <sha256> [strip=N]；同名的几行装进同一个目录。格式见 src/devsched/sched/CONFIG.md「工具清单」。
+# Rust 工具链不在这里（根下 toolchains/cargo，照仓里的 rust-toolchain）；gui（webkit2gtk-4.1）无 root 装不了，不列。
+
+# tmux ≥ 3.2（节点报 tmuxnew；cargo test 与快检要它）：conda-forge 的 tmux 3.5a 及它运行要的两份库
+# sha256 取自 api.anaconda.org/package/conda-forge/<包>/files
+tmux https://conda.anaconda.org/conda-forge/linux-64/tmux-3.5a-hb764a82_3.conda da53da9cb71866b8ff4a5ba6f062f2ef9f6b5a8c5dcc8ae6acb634d54c4d61d7
+tmux https://conda.anaconda.org/conda-forge/linux-64/libevent-2.1.12-h5348a74_2.conda f874779772878f3b509c607de9089c282f71232fde4cac876fc660d29670f28d
+tmux https://conda.anaconda.org/conda-forge/linux-64/ncurses-6.5-h2d0b736_3.conda 3fde293232fa3fca98635e1167de6b7c7fda83caf24b9d6c91ec9eefb4f4d586
+
+# node 22（package.json 要 ≥ 22.18；节点报 node，快检的 vitest 要它）：nodejs.org 官方档，sha256 取自同目录的 SHASUMS256.txt
+node https://nodejs.org/dist/v22.22.1/node-v22.22.1-linux-x64.tar.xz 9a6bc82f9b491279147219f6a18add1e18424dce90d41d2a5fcd69d4924ba3aa strip=1

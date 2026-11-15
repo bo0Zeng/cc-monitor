@@ -1,5 +1,5 @@
 //! 手机送进终端的字节：键条上的几下 · 软键盘带修饰的那一下，都调 `cmd_wire::keys` 那一张表（后端同一张）。
-//! Kotlin 只剩 `TermKeys.bytes` 那一个 JNI 口；一下在两侧之间是记号（`cmd_wire::keys::Press::token`）。
+//! Kotlin 那一侧的口是 `Core.keyBytes`（`TermKeys.bytes` 转调它）；一下在两侧之间是记号（`cmd_wire::keys::Press::token`）。
 
 use cmd_wire::keys::{presses_bytes, Press};
 use jni::objects::{JClass, JObjectArray};
@@ -18,9 +18,9 @@ fn bytes_of(tokens: &[String]) -> Option<Vec<u8>> {
     Some(presses_bytes(&presses))
 }
 
-/// `TermKeys.bytes(tokens)`：有一个记号读不出 ⇒ `null`。
+/// `Core.keyBytes(tokens)`：有一个记号读不出 ⇒ `null`。
 #[no_mangle]
-pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_TermKeys_bytes<'l>(
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_keyBytes<'l>(
     mut env: JNIEnv<'l>,
     _class: JClass<'l>,
     tokens: JObjectArray<'l>,

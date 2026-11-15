@@ -17,7 +17,7 @@ window?: string,
  */
 value: string, 
 /**
- * 被拒时几点重置（`↻19:00`，出口那一下按钟写，`QuotaShow::stamp`）；没有 ⇒ 缺。
+ * 被拒时几点重置（`↻19:00`，后端写好显示态那一下按钟写）；没有 ⇒ 缺。
  */
 reset?: string, 
 /**

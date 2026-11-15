@@ -6,19 +6,18 @@ use super::*;
 /// 别名事件只跟着账号表之差：消失的按删号、新出现的按建号；没变 ⇒ 空。
 #[test]
 fn alias_events_follow_the_difference_of_the_two_tables() {
-    let v = |s: &[&str]| s.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+    use super::super::aliases::AliasOwner;
+    let o = |n: &str| AliasOwner {
+        name: n.to_string(),
+        agent: None,
+    };
+    let v = |s: &[&str]| s.iter().map(|x| o(x)).collect::<Vec<_>>();
     assert_eq!(
         alias_events(&v(&["a", "b"]), &v(&["b", "c"])),
-        [
-            AliasEvent::Removed("a".into()),
-            AliasEvent::Added("c".into())
-        ]
+        [AliasEvent::Removed(o("a")), AliasEvent::Added(o("c"))]
     );
     assert!(alias_events(&v(&["a"]), &v(&["a"])).is_empty());
-    assert_eq!(
-        alias_events(&[], &v(&["x"])),
-        [AliasEvent::Added("x".into())]
-    );
+    assert_eq!(alias_events(&[], &v(&["x"])), [AliasEvent::Added(o("x"))]);
 }
 
 /// 导入凭据的路径：`~/` 按家展开、尾部 `/` 去掉；家目录外 · 家目录本身 · 相对 · `..` 段 · 控制符一律 `refused`。

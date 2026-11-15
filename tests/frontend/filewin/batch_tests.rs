@@ -435,57 +435,39 @@ async fn pressing_stop_on_a_tree_delete_reaches_the_backend_with_its_ticket_and_
     assert_eq!(v.title, r.said, "那一行没照后端那一行画");
 }
 
-/// 下载 · 上传开单那两组不带票（开了单的每一项各是传输台里的一单，后端不按票记）：发出去的那一份照它的线上类型解得开
-/// （多一个键就拒的那一种 —— 带了票，monitor 那一跳当场回「请求格式不对」）。
+/// 窗口发的上传 · 下载两组（一组 `transfer-copy`）带看板那张票、照 `TransferCopyReq` 解得开（多一个键就拒的那一种）；
+/// `batch_core` 此刻把这两种的回包当「开了哪几单」交出来（删 `Verb::opens` 那天收），`go` 照一组的结局落。看板上记的那一份不带票（「重试失败的」另铸一张）。
 #[tokio::test]
-async fn the_download_and_upload_openers_carry_no_ticket_and_decode_as_their_wire_type() {
-    let ask = cmd_wire::transfer::TransferDownloadAsk {
-        items: vec![cmd_wire::transfer::DownloadItem {
-            remote_path: "/r/a".into(),
-            name: None,
-        }],
-        local_dir: cmd_wire::files::WirePath::from("/tmp"),
-        on_exists: None,
-        decide: None,
-    };
-    let up = crate::transfer::group_ask(
-        &[crate::transfer::Pending::into_remote_dir("/tmp/a.bin", "/srv").unwrap()],
-        None,
-        None,
-    );
-    for (verb, args) in [
-        (Verb::Download, serde_json::to_value(&ask).unwrap()),
-        (Verb::Upload, serde_json::to_value(&up).unwrap()),
+async fn the_upload_and_download_groups_carry_the_ticket_and_decode_as_transfer_copy() {
+    let here = crate::source::Origin::named("devbox");
+    for plan in [
+        crate::transfer::upload_plan(&here, "devbox".into(), &["/tmp/a.bin".into()], "/srv", None)
+            .unwrap(),
+        crate::download::many_plan(&here, vec![("/r/a".into(), "a".into())], "/tmp"),
     ] {
-        let board = BatchBoard::new(Plan {
-            verb,
-            cmd: "x",
-            args,
-            names: vec!["a".into()],
-            into: None,
-            machine: "devbox".into(),
-        });
+        let verb = plan.verb;
+        let board = BatchBoard::new(plan);
         let sent: Arc<Mutex<Vec<serde_json::Value>>> = Arc::default();
         let s2 = sent.clone();
         run(
             &board,
             |a| {
                 s2.lock().unwrap().push(a);
-                async { Ok(serde_json::json!({"items": []})) }
+                async { Ok(serde_json::json!({"outcomes": [], "said": "x"})) }
             },
             || async {},
         )
         .await;
         let got = sent.lock().unwrap()[0].clone();
-        assert!(got.get("ticket").is_none(), "{verb:?} 那一组带了票：{got}");
-        match verb {
-            Verb::Download => {
-                serde_json::from_value::<cmd_wire::transfer::TransferDownloadAsk>(got).unwrap();
-            }
-            _ => {
-                serde_json::from_value::<cmd_wire::transfer::TransferUploadAsk>(got).unwrap();
-            }
-        }
-        assert_eq!(board.phase(), Phase::Opened);
+        assert_eq!(
+            got["ticket"],
+            serde_json::json!(board.ticket()),
+            "{verb:?} 那一组没带票：{got}"
+        );
+        serde_json::from_value::<cmd_wire::transfer::TransferCopyReq>(got).unwrap();
+        assert!(
+            board.plan().args.get("ticket").is_none(),
+            "看板上记的那一份带了票"
+        );
     }
 }

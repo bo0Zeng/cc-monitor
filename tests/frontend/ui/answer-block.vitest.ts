@@ -2,10 +2,10 @@
  * 答题块（`src/frontend/ui/answer-block.ts`）：会话在等批准 / 回答 / 批计划时，消息流末尾展开的那一块。
  *
  * - 只排版：选项的字、样子（`look`）、段（`row`）、带不带每题的答（`picks`）、要不要附话、题目，全照核心那一份 `needs.ask`（跨语言金样 `needs-ask.golden.json`，Rust 造）；
- * - 分段照 `row`：批准是允许一族 · 拒绝一族 · 改到终端里答三行，批计划 · 有题的提问一行；红字照 `look: danger`（今天只有「拒绝并停下」）· 改到终端里答幽灵样式；
+ * - 分段照 `row`：批准是允许一族 · 拒绝一族两行，批计划 · 有题的提问一行；红字照 `look: danger`（今天只有「拒绝并停下」）· 幽灵样式照 `look: ghost`；
  * - 交互：点一项即答；要附话的原地换输入框（Enter 交 · Esc 回）；数字键只在焦点在块里时生效；出现不抢焦点；
  * - 别处先答了（回包 `result: "gone"`）⇒ 块淡出、留核心那一句、重读；
- * - 只能在终端里答（`ask: null`）⇒ 核心那一句 ＋［看终端］。
+ * - 界面答不了（`ask: null`：只能在终端里答 · 挡着终端的那一条，后台子 agent 的或 Codex 的，写「在终端里答」）⇒ 只写核心那一句，不给答的按钮。
  * - 收起：头一行常驻 ＋［收起］；收着只记在这个块里（每个会话收着的是哪一条请求），换上来新的一条 ⇒ 展开；
  * - 多题：只展开正在答的那一题，别的收成一行；题目长了折三行 ＋［展开全文］。
  *
@@ -176,11 +176,11 @@ describe("甲2 拒绝并说明（note: required）", () => {
 });
 
 describe("甲3 回答提问", () => {
-  const q = () => rig(tab(needs(ASKS.question, { kind: "answer", head: "核心·等回答" })));
+  const q = () => rig(tab(needs(ASKS.question, { kind: "answer", head: "核心·等回答", askHead: "核心·等回答 · 两题" })));
 
   it("★ 每题照原样排：题头（多选的标多选）· 题目 · 选项与说明 · 末尾一格「其他…」；头一行带几题", () => {
     const { b } = q();
-    expect(b.el.querySelector("[data-part=head]")!.textContent).toContain(copyText("askBlock.head.questions", { head: "核心·等回答", n: 2 }));
+    expect(b.el.querySelector("[data-part=head]")!.textContent, "照抄核心写好的抬头").toContain("核心·等回答 · 两题");
     const qs = [...b.el.querySelectorAll<HTMLElement>("[data-question]")];
     expect(qs.map((x) => x.querySelector("[data-part=qhead]")?.textContent)).toEqual(ASKS.question.questions.map((x) => x.head));
     expect(qs.map((x) => x.querySelector("[data-part=qtext]")?.textContent)).toEqual(ASKS.question.questions.map((x) => x.text));
@@ -247,17 +247,39 @@ describe("甲4 批计划 · 甲5 子 agent", () => {
     expect(answers).toEqual([{ ask: ASKS.plan.id, choice: "plan-keep" }]);
   });
 
-  it("★ 子 agent：头上标照抄核心写好的谁要批；「改到终端里答」排末尾、幽灵样式", () => {
-    const { b } = rig(tab(needs(ASKS.subAgent)));
+  it("★ 子 agent：头上标照抄核心写好的谁要批", () => {
+    const { b } = rig(tab(needs({ ...ASKS.subAgent, choices: ASKS.approve.choices })));
     expect(b.el.querySelector("[data-part=tag]")!.textContent).toBe(ASKS.subAgent.run!.text);
-    const last = [...b.el.querySelectorAll<HTMLButtonElement>("button[data-choice]")].at(-1)!;
-    expect([last.dataset.choice, last.dataset.kind, label(last)]).toEqual(["release", "ghost", ASKS.subAgent.choices.at(-1)!.text]);
-    expect(b.el.querySelector("[data-row=release]")).not.toBeNull();
   });
 
   it("标上的字一个不拼：换一句就照摆那一句", () => {
     const { b } = rig(tab(needs({ ...ASKS.subAgent, run: { id: "a1", text: "核心·谁要批" } })));
     expect(b.el.querySelector("[data-part=tag]")!.textContent).toBe("核心·谁要批");
+  });
+});
+
+describe("又在等、手上的事实还是上一轮的", () => {
+  /** 脸：在等、这一轮从 `from` 起等（会走的那一句的起点）。 */
+  const waitingFrom = (from: number) => ({ ...liveFace("needs_you"), clock: { text: "核心·等批准 · {dur}", from } });
+  it("★ 事实那份开始等的时刻对不上脸这一轮 ⇒ 不画上一轮那份（不给答的按钮），只写「读取中」；这一轮的事实到了 ⇒ 照它画", () => {
+    const T1 = 1_780_000_000_000;
+    const T2 = T1 + 60_000;
+    const old = { ...tab(needs(ASKS.approve, { sinceMs: T1 })), face: waitingFrom(T2) } as unknown as Tab;
+    const r = rig(old);
+    expect(r.b.el.querySelectorAll("button").length, "上一轮那条请求已经过去了").toBe(0);
+    expect([r.b.el.hidden, r.b.el.querySelector("[data-part=reading]")?.textContent]).toEqual([false, copyText("kit.state.reading")]);
+    r.set({ ...tab(needs(ASKS.plan, { kind: "plan", sinceMs: T2 })), face: waitingFrom(T2) } as unknown as Tab);
+    r.b.render(NOW);
+    expect(r.b.el.querySelector("[data-part=reading]")).toBeNull();
+    expect(r.b.el.querySelectorAll("button[data-choice]").length).toBe(ASKS.plan.choices.length);
+  });
+
+  it("★ 两边有一边说不出几时起等 ⇒ 判不了是不是同一轮，照事实画、不猜", () => {
+    const r = rig({ ...tab(needs(ASKS.approve)), face: waitingFrom(1) } as unknown as Tab);
+    expect(r.b.el.querySelectorAll("button[data-choice]").length).toBe(ASKS.approve.choices.length);
+    r.set(tab(needs(ASKS.approve, { sinceMs: 5 })));
+    r.b.render(NOW);
+    expect(r.b.el.querySelectorAll("button[data-choice]").length, "脸没带起点").toBe(ASKS.approve.choices.length);
   });
 });
 
@@ -301,6 +323,31 @@ describe("甲6 只能在终端里答 · 甲7 别处先答了", () => {
     r.set(tab(null, "s2"));
     r.b.render(NOW);
     expect([r.b.el.hidden, r.b.el.childElementCount], "切到别的会话 ⇒ 不留").toEqual([true, 0]);
+  });
+
+  it("★ 脸先说不在等、会话事实还挂着那一条（状态流与事实各走各的，先后不定）⇒ 不算收场；事实带着收场那一句到了 ⇒ 留那一行", () => {
+    // 上一条请求早收过场：旧事实里那一格是上一条的那一句。
+    const prev = { said: "核心·上一条那一句", stays: false };
+    const r = rig({ ...tab(needs(ASKS.approve)), askEnd: prev } as Tab);
+    // 终端那边答了、那一家马上转忙：脸那一帧先到；需手动那一份只跟事实走，重读的事实还在路上（手上仍是挂着这一条、askEnd 是上一条的那一份）。
+    r.set({ ...tab(needs(ASKS.approve)), askEnd: prev, face: liveFace("working") } as unknown as Tab);
+    r.b.render(NOW);
+    expect(r.b.el.hidden, "脸说不在等 ⇒ 块照脸收起").toBe(true);
+    r.set(ended(tab(null), "核心·已有人答过", false));
+    r.b.render(NOW);
+    expect(r.b.el.querySelector("[data-part=gone]")?.textContent, "事实先后不定也照这一条收场的那一句留下，不拿上一条的").toBe("核心·已有人答过");
+  });
+
+  it("★ 等收场那份事实的当口下一条请求先来了 ⇒ 照常换上来；它再被别处答掉 ⇒ 留它的那一句", () => {
+    const r = rig(tab(needs(ASKS.approve)));
+    r.set(tab(null));
+    r.b.render(NOW);
+    r.set(tab(needs(ASKS.plan, { kind: "plan" })));
+    r.b.render(NOW);
+    expect(r.b.el.querySelectorAll("button[data-choice]").length).toBe(ASKS.plan.choices.length);
+    r.set(ended(tab(null), "核心·计划那一条已有人答过", false));
+    r.b.render(NOW);
+    expect(r.b.el.querySelector("[data-part=gone]")?.textContent).toBe("核心·计划那一条已有人答过");
   });
 
   it("★ 没人答、那台替人答了 ⇒ 留的那一行是核心那一句（不是「已在别处答过」）；切走再回来还在；下一条请求来了才换掉", () => {
@@ -488,7 +535,7 @@ describe("甲8 收起：头一行常驻", () => {
 });
 
 describe("甲9 多题：只展开正在答的那一题", () => {
-  const q = () => rig(tab(needs(ASKS.question, { kind: "answer", head: "核心·等回答" })));
+  const q = () => rig(tab(needs(ASKS.question, { kind: "answer", head: "核心·等回答", askHead: "核心·等回答 · 两题" })));
   const boxes = (b: AnswerBlock) => [...b.el.querySelectorAll<HTMLElement>("[data-question]")];
   const open = (b: AnswerBlock) => boxes(b).map((x) => x.dataset.answering === "true");
   const line = (x: HTMLElement) => x.querySelector<HTMLElement>("[data-part=qline]")!;

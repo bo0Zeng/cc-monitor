@@ -19,16 +19,14 @@ const CWD: &str = "/w/proj";
 /// 一个假启动器：第一个词是它被当作什么叫的，后面是收到的参数，最后是账号变量在不在。
 fn fake_launcher(bin: &Path, name: &str) {
     let p = bin.join(name);
-    std::fs::write(
+    // 马上被起 ⇒ 经 `write_exe` 写（本进程写的写端会漏进别的判据线程 fork 出来的子进程 ⇒ ETXTBSY）。
+    test_home::write_exe(
         &p,
-        format!(
+        &format!(
             "#!/bin/sh\n{{ printf '%s' {name}; for a in \"$@\"; do printf ' %s' \"$a\"; done; \
              printf ' | CLAUDE_CONFIG_DIR=%s\\n' \"${{CLAUDE_CONFIG_DIR-<unset>}}\"; }} > \"$HRE_OUT\"\n"
         ),
-    )
-    .expect("写假启动器");
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    );
 }
 
 /// 隔离的家目录：Claude 记录树里一份、Codex 日期树里一份（结构照各自的格式，文字是编的）。

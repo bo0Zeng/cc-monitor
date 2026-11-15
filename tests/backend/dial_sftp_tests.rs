@@ -82,13 +82,6 @@ fn the_lexical_fence_admits_exactly_the_staging_root_and_nothing_else() {
     .is_err());
 }
 
-/// 🔴 写根**恰好暂存区一处**（异源：期望手写，不取自本文件的常量）。
-#[test]
-fn the_declared_write_root_is_exactly_staging() {
-    assert_eq!(STAGING_ROOT, ".cc-monitor/staging");
-    // 暂存区那一根与提交那一侧（后端 `files::commit`）是同一个串：那一条住后端（`dial_tests`），这里够不到后端。
-}
-
 // ═══ 解链接那一道 ══════════════════════════════════════════════════════════════════════
 
 /// 根底下一条**目录链接**指到根外（`staging/evil -> ~/.ssh`）：词法那一道放行，解链接那一道必须拒，服务端零改动。
@@ -359,8 +352,8 @@ fn the_leftover_shape_is_exactly_what_put_atomic_names() {
 #[test]
 fn the_sftp_dependency_is_really_on_russh_sftp_three() {
     const CRATE: &str = "russh-sftp";
-    // ── 声明面：`src/backend/Cargo.toml` 里那一行 ──────────────────────
-    let manifest = include_str!("../../src/backend/Cargo.toml");
+    // ── 声明面：拨号核心自己那份清单 `src/comms/ssh-dial/Cargo.toml` 里那一行 ──────────────────────
+    let manifest = include_str!("../../src/comms/ssh-dial/Cargo.toml");
     let declared: Vec<&str> = manifest
         .lines()
         .filter_map(|l| l.strip_prefix(&format!("{CRATE} = ")))
@@ -368,7 +361,7 @@ fn the_sftp_dependency_is_really_on_russh_sftp_three() {
     assert_eq!(
         declared.len(),
         1,
-        "在 `src/backend/Cargo.toml` 里抠到 {} 行 `{CRATE} = …`（要恰好 1 行）—— \
+        "在 `src/comms/ssh-dial/Cargo.toml` 里抠到 {} 行 `{CRATE} = …`（要恰好 1 行）—— \
          抽取器坏了或者那条依赖没了，本条会零命中地绿",
         declared.len()
     );

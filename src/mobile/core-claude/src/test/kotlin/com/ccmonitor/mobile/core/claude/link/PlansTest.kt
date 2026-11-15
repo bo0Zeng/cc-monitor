@@ -1,5 +1,11 @@
 package com.ccmonitor.mobile.core.claude.link
 
+import com.ccmonitor.mobile.core.wire.gen.Commands
+import com.ccmonitor.mobile.core.wire.gen.PlanCellViewReq
+import com.ccmonitor.mobile.core.wire.gen.PlanListReq
+import com.ccmonitor.mobile.core.wire.gen.PlanLook
+import com.ccmonitor.mobile.core.wire.gen.PlanPbState
+import com.ccmonitor.mobile.core.wire.gen.PlanReadReq
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -7,73 +13,93 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+/**
+ * 计划三屏读的成品：`plan-list` · `plan-read` 的回包照生成类型解（字都是后端写好的），这里只钉解得开、按编号找得到。
+ * 夹具是契约的形状、值是中性的字（`后端·…` ⇒ 看它原样到手）。
+ */
 class PlansTest {
-    /** 回包照帧客户端读进来的样子（数是 `Double`，契约要的每一格都在）：一片两格，一条没认可的需手动。 */
-    private val read: Any? =
-        RawJson.read(
-            """
-            {"pb":null,"workspace":"/w","repo":null,"auto":false,"domains":[],"rev":"r0","readAt":0,"readAtText":"02:11",
-             "stale":null,"needCount":1,"bySession":{},
-             "slices":[{"name":"ledger","domain":"x","path":null,"current":true,"docsOnly":false,"error":null,"stale":null,
-               "bare":false,"kinds":[],"phases":[],"doneValue":"done","openCells":1,
-               "progress":{"done":1,"of":2},"top":["A1","A2"],"labels":{"A1":"A1 t1","A2":"A2 t2"},
-               "cells":[
-                 {"id":"A1","title":"t1","kind":"k","body":"b","parent":null,"children":[],
-                  "edges":{"to":[],"with":[],"after":[],"replaces":[]},"pointedBy":{"to":[],"with":[],"after":[],"replaces":[]},
-                  "files":[],"state":[{"value":"done","count":1}],"stateLine":"s","evidencedBy":[],"statusCode":"done",
-                  "undecided":false,"look":"done","end":"s","whyShort":null,"whyCode":null,"sets":[],"block":null,
-                  "owner":null,"signer":null,"covers":[],"coveredBy":[],"refs":{"title":[],"body":[]},
-                  "said":{"trail":null,"blockRoot":null}},
-                 {"id":"A2","title":"t2","kind":"k","body":"","parent":null,"children":[],
-                  "edges":{"to":[],"with":[],"after":[],"replaces":[]},"pointedBy":{"to":[],"with":[],"after":[],"replaces":[]},
-                  "files":[],"state":[],"stateLine":null,"evidencedBy":[],"statusCode":"open",
-                  "undecided":true,"look":"undecided","end":null,"whyShort":null,"whyCode":null,"sets":[],"block":null,
-                  "owner":null,"signer":null,"covers":[],"coveredBy":[],"refs":{"title":[],"body":[]},
-                  "said":{"trail":null,"blockRoot":null}}],
-               "blocks":[{"id":"project","cells":[],"inside":null,"dir":null,"owner":null,"phase":"p","at":null,"listed":true,
-                 "handoff":null,"handoffError":null,"takeover":"open","groups":{"groups":[],"text":"","unread":null},
-                 "said":{"name":"project","inside":null}}],
-               "said":{"strip":null,"bare":null,"readAt":"02:11","top":"1/2","root":"1/2"},
-               "unbuiltBlocks":[],"unowned":{"paths":null,"why":null},"pendingSets":[],
-               "check":{"unreadable":[],"unparsed":[],"red":[],"undecidable":[]},"archived":[],
-               "audits":[{"file":"r.md","by":"person","who":null,"startedAt":"t","tree":null,"due":1,
-                 "nodes":["A1"],"status":"done","check":0,
-                 "said":{"what":"w","by":"p","result":"r","at":"a"}}],"needCount":1,
-               "needs":[{"key":"k","kind":"top","block":"project","cell":null,"sid":null,"acked":false,
-                 "title":"top","lines":["l"],"pos":"1/1"}]}]}
-            """.trimIndent(),
-        )
+    private fun read() = Commands.PlanRead.reply(Json.value(READ))
 
+    /** 需手动那条的负责人那一行 · 块根那一整句 · 根格是哪一块：都照后端写好的那一格解出来。 */
     @Test
-    fun argsUseTheWireFieldNames() {
-        assertEquals(mapOf("workspace" to "/w"), PlanRead.args("/w"))
-        assertEquals(mapOf("workspace" to "/w", "slice" to "ledger", "id" to "A1"), PlanCellView.args("/w", "ledger", "A1"))
-        assertEquals("plan-list", PlanList.COMMAND)
-        assertEquals("pb 印的", PlanCellView.of(mapOf("view" to "pb 印的")))
+    fun aPlanReadReplyCarriesTheOwnerLineTheBlockRootAndTheRootBlock() {
+        val read = read()
+        assertNotNull("夹具照契约的形状，解不开就是两端对不上", read)
+        val sl = read!!.slice("ledger")!!
+        assertEquals(listOf(null, "后端·负责人"), sl.needs.map { it.who })
+        val root = sl.cell("A2")!!
+        assertEquals("后端·块根 · 后端·负责人 · 审计", root.said.blockRoot)
+        assertEquals("B1", root.rootOf)
+        assertNull(sl.cell("A1")!!.rootOf)
+        assertNull(sl.cell("A1")!!.said.blockRoot)
     }
 
     @Test
-    fun outlineComesBackFromTheCoreWithNeedsFirst() {
-        val o = Plans.outline(read, "ledger", null)
-        assertNotNull(o)
-        o!!
-        assertEquals("ledger", o.title)
-        assertEquals(listOf("top"), o.needs.map { it.kind })
-        assertTrue(o.needs[0].title.isNotEmpty() && o.needs[0].pos.isNotEmpty())
-        assertEquals(listOf("A1 t1", "A2 t2"), o.rows.map { it.label })
-        assertEquals(listOf(PlanLook.DONE, PlanLook.UNDECIDED), o.rows.map { it.look })
-        assertNull(o.mine)
-        assertFalse(o.meta.isEmpty())
+    fun cellsAreFoundByIdAndLabelledAsTheBackendWrote() {
+        val sl = read()!!.slice("ledger")!!
+        assertEquals("A1.1 标题A1.1", sl.label("A1.1"))
+        assertEquals("没这格", sl.label("没这格"))
+        assertEquals(listOf("A1", "A2"), sl.cellsOf(sl.top + "没这格").map { it.id })
+        assertTrue(sl.hasKids(sl.cell("A1")!!))
+        assertFalse(sl.hasKids(sl.cell("A2")!!))
+        assertEquals(listOf(PlanLook.DONE, PlanLook.OPEN), sl.cellsOf(sl.top).map { it.look })
+        assertNull(read()!!.slice("没这片"))
+        assertNull(sl.cell("没这格"))
     }
 
     @Test
-    fun cellAndMissingOnes() {
-        val c = Plans.cell(read, "ledger", "A1")!!
-        assertEquals("A1 t1", c.label)
-        assertEquals("b", c.design?.body)
-        assertNull(c.inside)
-        assertNull(Plans.cell(read, "ledger", "nope"))
-        assertNull(Plans.outline(read, "nope", null))
-        assertNull(Plans.outline(null, "ledger", null))
+    fun aListReplyAndTheAsks() {
+        val list = Commands.PlanList.reply(Json.value(LIST))!!
+        assertEquals(PlanPbState.OK, list.pb.state)
+        val slice = list.workspaces[0].slices[0]
+        assertEquals("后端·1/4", slice.said.root)
+        assertNull(Commands.PlanRead.reply(mapOf("workspace" to "/w")))
+        assertEquals(emptyMap<String, Any?>(), Commands.PlanList.args(PlanListReq()))
+        assertEquals(mapOf("workspace" to "/w"), Commands.PlanRead.args(PlanReadReq("/w")))
+        assertEquals(mapOf("workspace" to "/w", "slice" to "ledger", "id" to "A1"), Commands.PlanCellView.args(PlanCellViewReq("/w", "ledger", "A1")))
+        assertEquals("pb 印的", Commands.PlanCellView.reply(mapOf("view" to "pb 印的"))?.view)
+    }
+
+    private companion object {
+        const val EDGES = """{"to":[],"with":[],"after":[],"replaces":[]}"""
+
+        fun cell(
+            id: String,
+            more: String,
+        ): String =
+            """{"id":"$id","title":"标题$id","kind":"模块","body":"做成这样","edges":$EDGES,"pointedBy":$EDGES,"state":[],"stateLine":null,
+            |"evidencedBy":[],"undecided":false,"quiet":null,"whyCode":null,"whyShort":null,"sets":[],"block":null,"owner":null,"signer":null,
+            |"covers":[],"coveredBy":[],"refs":{"title":[],"body":[]},"returned":null,$more}
+            """.trimMargin()
+
+        fun block(
+            id: String,
+            more: String,
+        ): String =
+            """{"id":"$id","inside":null,"dir":null,"owner":null,"at":null,"listed":true,"handoff":null,"handoffError":null,
+            |"takeover":"open","groups":{"groups":[],"text":"","unread":null},$more}
+            """.trimMargin()
+
+        val READ =
+            """{"pb":null,"workspace":"/w","repo":null,"auto":false,"domains":[],"rev":"r0","readAt":0,"readAtText":"02:11","seen":null,
+            |"stale":null,"needCount":1,"bySession":{},"slices":[{"name":"ledger","domain":"软件","path":null,"current":true,"docsOnly":false,
+            |"error":null,"stale":null,"bare":false,"kinds":[],"phases":[],"doneValue":"已签收","top":["A1","A2"],"progress":{"done":1,"of":2},
+            |"openCells":1,"blocks":[${block("project", """"cells":[],"phase":"开发","said":{"name":"后端·顶层","inside":null}""")},
+            |${block("B1", """"cells":["A2"],"phase":"审计","said":{"name":"后端·块名","inside":"后端·里面"}""")}],
+            |"unbuiltBlocks":[],"unowned":{"paths":null,"why":null},"pendingSets":[],"check":{"unreadable":[],"unparsed":[],"undecidable":[],"red":[]},
+            |"labels":{"A1":"A1 标题A1","A1.1":"A1.1 标题A1.1","A2":"A2 标题A2"},
+            |"cells":[${cell("A1", """"parent":null,"children":["A1.1"],"files":[],"statusCode":"done","look":"done","end":"已签收","rootOf":null,"said":{"trail":null,"blockRoot":null}""")},
+            |${cell("A1.1", """"parent":"A1","children":[],"files":[],"statusCode":"done","look":"done","end":"已签收","rootOf":null,"said":{"trail":"后端·上面几层","blockRoot":null}""")},
+            |${cell("A2", """"parent":null,"children":[],"files":[],"statusCode":"open","look":"open","end":"1/3","rootOf":"B1","said":{"trail":null,"blockRoot":"后端·块根 · 后端·负责人 · 审计"}""")}],
+            |"archived":[],"audits":[],"needCount":2,"returned":null,
+            |"needs":[{"key":"k1","kind":"red","block":"B1","cell":"A2","sid":null,"red":0,"acked":false,"title":"后端·不通过","lines":["缺文件"],"pos":"后端·1/2","who":null},
+            |{"key":"k2","kind":"ended","block":"B1","cell":"A2","sid":"s1","acked":false,"title":"后端·停了","lines":["后端·底下 1/3"],"pos":"后端·2/2","who":"后端·负责人"}],
+            |"said":{"strip":null,"bare":null,"readAt":"后端·读到","top":"后端·顶层","root":"后端·1/2"}}]}
+            """.trimMargin()
+
+        const val LIST =
+            """{"pb":{"state":"ok","said":null},"workspaces":[{"workspace":"/w","repo":null,"auto":false,"rev":"r0","stale":null,"needCount":1,
+            "bySession":{},"slices":[{"name":"ledger","domain":"软件","current":false,"progress":{"done":1,"of":4},"needCount":1,"error":null,
+            "stale":null,"said":{"strip":null,"bare":null,"readAt":null,"top":null,"root":"后端·1/4"}}]}]}"""
     }
 }

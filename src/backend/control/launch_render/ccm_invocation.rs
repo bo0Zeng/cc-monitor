@@ -1,6 +1,6 @@
 //! **起会话那一行 `ccm …` 的渲染器** —— 全仓唯一一份，也是 monitor 每一条起会话路径交给终端的唯一形状。
 //!
-//! 环境、中转地址、身份标记都由那台机器上的 `ccm` 自己做；这里只把「起什么」说成 `ccm` 的参数
+//! 环境、中转地址都由那台机器上的 `ccm` 自己做；这里只把「起什么」说成 `ccm` 的参数
 //! （`ccm [交给 agent 的…] -- [ccm 自己的…]`）。键进已有 tmux 会话的也只是这一行（那台后端自己键）。
 //!
 //! 渲不出来带理由（[`Refusal`]）：某个维度说不成 ccm 参数 ⇒ 整条放弃，不渲一条丢了修饰的命令。
@@ -46,9 +46,7 @@ pub(crate) enum Refusal {
 pub(crate) enum IdentifierSlot {
     /// `--resume <sid>`（`shell_quote_core::session_id_ok`）。
     Sid,
-    /// `--ccm-sid=`（身份标记；同一条 sid 规则）。
-    CcmSid,
-    /// `--model <名>`（`shell_quote_core::model_name_ok`）。
+    /// 模型名：照那一家 `model_args` 出参数之前先过 `shell_quote_core::model_name_ok`。
     Model,
     /// `--account <名>`（`shell_quote_core::account_name_ok`）。
     Account,
@@ -103,9 +101,6 @@ impl Refusal {
                 IdentifierSlot::Sid => {
                     copy_text("rsCcmInvocation.refusal.idSid", &[("value", value)])
                 }
-                IdentifierSlot::CcmSid => {
-                    copy_text("rsCcmInvocation.refusal.idSid", &[("value", value)])
-                }
                 IdentifierSlot::Model => {
                     copy_text("rsCcmInvocation.refusal.idModel", &[("value", value)])
                 }
@@ -130,7 +125,7 @@ impl Refusal {
 
 /// CLI 语法覆盖面 —— **每次调用都无条件要求**的能力（`tests/e2e/ccm-contract-parity.sh` 从本文件抽它去比真
 /// `ccm --ccm-probe` 的 `capabilities=`）。只放与容器、平台无关的那几条；`tmux` / `attach` 只在用到时才要，
-/// 维度触发了才要的由各自维度声明（`account` · `model` · `ccm-sid`）。
+/// 维度触发了才要的由各自维度声明（`agent` · `account` · `model`）。
 pub(crate) const CLI_REQUIRED_CAPS: &[&str] = &["new", "resume", "cwd", "launcher"];
 
 /// 动作。
@@ -163,7 +158,6 @@ pub(crate) struct CliSpec<'a> {
     /// 判好的号（`launch_account::Settled`，与起会话那一步同一个类型）：账号库里的一个号 ⇒ `--account <名>` · 账号 0 ⇒ `--base` ·
     /// 没表态（继承）⇒ 一个旗标都不吐（省略在 ccm 上有确定语义：`plan.rs::account_for`；只有本机那条路交它，远端那台的继承态不是 monitor 的环境）。
     pub(crate) account: &'a Settled,
-    pub ccm_sid: Option<&'a str>,
     pub model: Option<&'a str>,
     /// 等于默认启动器时**不吐** `--launcher`。
     pub launcher: &'a str,
@@ -178,26 +172,14 @@ pub(crate) struct CliSpec<'a> {
     pub windows: bool,
 }
 
-/// argv token 的 quote：只在含 ccm 允许字符集之外的东西时才包单引号。
-pub fn argv(token: &str) -> String {
-    let safe = !token.is_empty()
-        && token.chars().all(|c| {
-            c.is_ascii_alphanumeric()
-                || matches!(c, '_' | '@' | '%' | '+' | '=' | ':' | ',' | '.' | '/' | '-')
-        });
-    if safe {
-        token.to_string()
-    } else {
-        shell_quote_core::posix_quote(token)
-    }
-}
-
 /// 一个维度在 CLI 语境下要说的话。`None` = **说不出** ⇒ 整条放弃。
 type Flags = Option<Vec<String>>;
 
 /// 维度表的 `applies` + `cli_flags` + `caps`，**顺序即契约**（与命令里各旗标的先后同序）。
+/// `face` 是 [`launch_face`] 已经认出的那一家（不另认一次）。
 fn dimension_flags(
     spec: &CliSpec,
+    face: &crate::agents::LaunchFace,
     caps: &BTreeSet<String>,
 ) -> Result<Vec<(&'static str, Vec<String>)>, Refusal> {
     let mut out = Vec::new();
@@ -214,7 +196,7 @@ fn dimension_flags(
                 });
             }
         }
-        match (dim.cli_flags)(spec) {
+        match (dim.cli_flags)(spec, face) {
             None => return Err(Refusal::DimensionCannotSpeak(dim.id.to_string())),
             Some(f) => out.push((dim.id, f)),
         }
@@ -226,41 +208,25 @@ fn dimension_flags(
 struct Dim {
     id: &'static str,
     applies: fn(&CliSpec) -> bool,
-    cli_flags: fn(&CliSpec) -> Flags,
+    cli_flags: fn(&CliSpec, &crate::agents::LaunchFace) -> Flags,
     caps: &'static [&'static str],
 }
 
-/// 模型偏好在命令行上的说法：交给 agent 的那一侧 `--model <名>`（不是 ccm 的选项，ccm 原样透传）。
-/// 别名表单的「模型」那一格（`assets/aliases/form.rs`）用同一个。
-pub(crate) const MODEL_FLAG: &str = "--model";
-
-/// **顺序即契约**：`identity` < `agent` < `account` < `model`。
+/// **顺序即契约**：`agent` < `account` < `model`。
 /// 由 `a_fully_loaded_invocation_emits_every_part_in_registry_order`（全触发、逐字节比整条命令）钉住。
 const DIMENSION_ORDER: &[Dim] = &[
-    Dim {
-        id: "identity",
-        applies: |s| s.ccm_sid.is_some(),
-        cli_flags: |s| {
-            Some(vec![format!(
-                "{}={}",
-                flag::CCM_SID,
-                s.ccm_sid.unwrap_or_default()
-            )])
-        },
-        caps: &["ccm-sid"],
-    },
     Dim {
         id: "agent",
         // **恒真** —— 同账号维度：不说是哪一家 ＝ ccm 落默认那一家，起错家也不报错。
         applies: |_| true,
-        cli_flags: |s| Some(vec![flag::AGENT.into(), s.agent.to_string()]),
+        cli_flags: |s, _| Some(vec![flag::AGENT.into(), s.agent.to_string()]),
         caps: &["agent"],
     },
     Dim {
         id: "account",
         // **恒真** —— 账号维度必须永远显式表态（沉默 = 意外身份切换）；继承是「表了态的省略」。
         applies: |_| true,
-        cli_flags: |s| match s.account {
+        cli_flags: |s, _| match s.account {
             Settled::Base => Some(vec![flag::BASE.into()]),
             Settled::Account(a) => Some(vec![flag::ACCOUNT.into(), a.name.to_string()]),
             Settled::Unsaid => Some(vec![]),
@@ -270,13 +236,9 @@ const DIMENSION_ORDER: &[Dim] = &[
     Dim {
         id: "model",
         // 条件式：没配偏好时 agent 用它自己的默认模型 —— 那正是用户的期望。
+        // 说法照那一家的 `model_args`（交给 agent 的那一侧，ccm 原样透传）；那一家起会话选不了模型 ⇒ 说不出。
         applies: |s| s.model.is_some(),
-        cli_flags: |s| {
-            Some(vec![
-                MODEL_FLAG.into(),
-                s.model.unwrap_or_default().to_string(),
-            ])
-        },
+        cli_flags: |s, face| Some((face.model_args?)(s.model.unwrap_or_default(), None)),
         caps: &["model"],
     },
 ];
@@ -288,7 +250,7 @@ pub(crate) fn render_ccm_invocation(
 ) -> Result<String, Refusal> {
     Ok(ccm_argv(spec, caps)?
         .iter()
-        .map(|t| argv(t))
+        .map(|t| crate::platform::shell::dialect::posix_word(t))
         .collect::<Vec<_>>()
         .join(" "))
 }
@@ -310,7 +272,7 @@ pub(crate) fn render_ccm_invocation_ps(
         if t.starts_with('@') {
             crate::platform::shell::dialect::ps_literal(t)
         } else {
-            argv(t)
+            crate::platform::shell::dialect::posix_word(t)
         }
     }))
     .collect::<Vec<_>>()
@@ -319,6 +281,15 @@ pub(crate) fn render_ccm_invocation_ps(
 
 /// 同一行的 argv 形（不过 shell，`argv[0]` 是 `ccm_path`）：后端自己起这一趟时用它（[`render_ccm_invocation`] 就是把它逐个引号化连起来）。
 pub(crate) fn ccm_argv(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<Vec<String>, Refusal> {
+    ccm_argv_among(crate::agents::REGISTRY, spec, caps)
+}
+
+/// [`ccm_argv`] 的可喂夹具那一半：认是哪一家 · 那一家有没有账号这一维都问 `registry`。
+pub(crate) fn ccm_argv_among(
+    registry: &[crate::agents::Adapter],
+    spec: &CliSpec,
+    caps: &BTreeSet<String>,
+) -> Result<Vec<String>, Refusal> {
     for c in CLI_REQUIRED_CAPS {
         if !caps.contains(*c) {
             return Err(Refusal::MissingCap((*c).to_string()));
@@ -347,7 +318,7 @@ pub(crate) fn ccm_argv(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<Vec<St
         ours.push(name.to_string());
         return Ok(join_halves(tokens, ours));
     }
-    let face = launch_face(spec.agent)?;
+    let face = launch_face(registry, spec.agent)?;
     // `@别名` 只许打头（ccm 只认第一个词是 `@名`）。
     if let Some(a) = spec.alias {
         tokens.push(format!("@{a}"));
@@ -371,10 +342,10 @@ pub(crate) fn ccm_argv(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<Vec<St
     }
     identifiers_ok(spec)?;
     if matches!(spec.account, Settled::Account(_))
-        && crate::agents::account_env_of(spec.agent).is_none()
+        && crate::agents::account_env_among(registry, spec.agent).is_none()
     {
         return Err(Refusal::AgentNoAccounts {
-            agent: face.display_name.to_string(),
+            agent: crate::agents::family_said_among(registry, spec.agent),
         });
     }
     if let Container::Tmux { name, .. } = spec.container {
@@ -397,8 +368,8 @@ pub(crate) fn ccm_argv(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<Vec<St
         }
     }
 
-    // 维度吐的旗标分两半：`--model` 是 agent 的，其余是 ccm 的。
-    for (dim, flags) in dimension_flags(spec, caps)? {
+    // 维度吐的旗标分两半：模型那一维（照那一家 `model_args` 出）是 agent 的，其余是 ccm 的。
+    for (dim, flags) in dimension_flags(spec, &face, caps)? {
         if dim == "model" {
             tokens.extend(flags);
         } else {
@@ -435,18 +406,19 @@ pub(crate) fn ccm_argv(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<Vec<St
     Ok(join_halves(tokens, ours))
 }
 
-/// 起哪一家：空 / 带空白 / 注册表里没有 ⇒ 拒（不落默认那一家：起错家比起不来更坏）。
-fn launch_face(agent: &str) -> Result<crate::agents::LaunchFace, Refusal> {
-    if agent.is_empty() || agent.trim() != agent {
-        let known = crate::agents::launchable_kinds().join(" / ");
-        return Err(Refusal::UnknownAgent(copy_text(
-            "beAgents.pick.unknown",
-            &[("agent", agent), ("known", &known)],
-        )));
+/// 起哪一家：只经 [`crate::agents::pick_kind_among`] 认。这一行要的是那一家的 kind 原样：认出的那一家不是
+/// 写的那个名字（空 ⇒ 落了默认那一家 · 带空白 ⇒ 去掉空白才认出）⇒ 拒（起错家比起不来更坏）。拒的那句都照同一份 `registry` 列。
+fn launch_face(
+    registry: &[crate::agents::Adapter],
+    agent: &str,
+) -> Result<crate::agents::LaunchFace, Refusal> {
+    match crate::agents::pick_kind_among(registry, Some(agent)) {
+        Ok((kind, face)) if kind == agent => Ok(face),
+        Ok(_) => Err(Refusal::UnknownAgent(crate::agents::unknown_agent_said(
+            registry, agent,
+        ))),
+        Err(said) => Err(Refusal::UnknownAgent(said)),
     }
-    crate::agents::pick_kind(Some(agent))
-        .map(|(_, f)| f)
-        .map_err(Refusal::UnknownAgent)
 }
 
 /// 一个**已有**会话的名字：拒绝集（控制符 · 欺骗字符 · `:`）＋ 非空（`control/gate_rules.rs`，全仓唯一一份）。
@@ -468,9 +440,6 @@ fn identifiers_ok(spec: &CliSpec) -> Result<(), Refusal> {
             value: format!("{v:?}"),
         })
     };
-    if let Some(s) = spec.ccm_sid.filter(|s| !shell_quote_core::session_id_ok(s)) {
-        return bad(IdentifierSlot::CcmSid, s);
-    }
     if let Settled::Account(a) = spec.account {
         if !shell_quote_core::account_name_ok(&a.name) {
             return bad(IdentifierSlot::Account, &a.name);

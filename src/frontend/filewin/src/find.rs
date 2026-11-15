@@ -35,8 +35,6 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use serde_json::Value;
-
 use super::source::{Line, Origin};
 
 // ═══════════════════════════════════════════════════════════════════
@@ -96,6 +94,8 @@ pub struct Hit {
     /// 所在目录相对搜索起点那一段（后端算的；直接在起点里 ⇒ 空）。
     pub location: Vec<u8>,
     pub size: Option<u64>,
+    /// `size` 写好的字（后端写好；照抄）。
+    pub size_text: Option<String>,
     /// 修改时间的短写法（那台后端按它的本地钟写好；照抄）。
     pub mtime_text: Option<String>,
     /// 名字里被搜索词对上的字节区间（后端判的；加底色用）。
@@ -128,6 +128,7 @@ impl Hit {
             location: String::from_utf8_lossy(&self.location).to_string(),
             mtime_text: self.mtime_text.clone(),
             size: self.size,
+            size_text: self.size_text.clone(),
             dir: self.dir,
             class: self.class,
         }
@@ -196,13 +197,6 @@ pub struct IndexStatus {
     pub unreadable_paths: Vec<Vec<u8>>,
 }
 
-/// 线上那两种路径形状 → 原始字节。`None` = 形状不对（同 `cmd_wire::files::WirePath` 那一份解法）。
-pub fn decode_path(v: &Value) -> Option<Vec<u8>> {
-    serde_json::from_value::<cmd_wire::files::WirePath>(v.clone())
-        .ok()
-        .map(|p| p.0)
-}
-
 /// `files-find` 的回包 → [`FindOutcome`]（按回包类型解在前一步，解不出一处 ⇒ 整趟失败）。
 pub fn decode_find(d: cmd_wire::files::FindReply) -> FindOutcome {
     use cmd_wire::files::FileKind;
@@ -217,6 +211,7 @@ pub fn decode_find(d: cmd_wire::files::FindReply) -> FindOutcome {
                 class: h.class,
                 location: h.location.0,
                 size: h.size,
+                size_text: h.size_text,
                 mtime_text: h.mtime_text,
                 marks: h
                     .marks

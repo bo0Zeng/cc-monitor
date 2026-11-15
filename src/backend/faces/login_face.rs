@@ -35,13 +35,19 @@ pub(crate) enum PasteKind {
     Code,
     /// 浏览器回跳到本机的那一整条地址（浏览器回不来时地址栏里那一条；Claude 的 MCP 登录）。
     RedirectUrl,
+    /// 不粘回：那一家印了链接与一段码（回包的 `code`），在哪台的浏览器里打开链接、填那段码都行；它自己登完推 `changed {login}`。
+    ShowCode,
+    /// 不粘回：那一家等浏览器回跳到它那一台的本机口；只在那一台的浏览器里登得完（`auto` 说这一趟登不登得完）。
+    NoPaste,
 }
 
 impl PasteKind {
     fn of(p: crate::agents::PasteShape) -> PasteKind {
         match p {
-            crate::agents::PasteShape::Code => PasteKind::Code,
-            crate::agents::PasteShape::RedirectUrl => PasteKind::RedirectUrl,
+            crate::agents::PasteShape::Code(_) => PasteKind::Code,
+            crate::agents::PasteShape::RedirectUrl(_) => PasteKind::RedirectUrl,
+            crate::agents::PasteShape::ShowCode(_) => PasteKind::ShowCode,
+            crate::agents::PasteShape::NoPaste => PasteKind::NoPaste,
         }
     }
 }
@@ -56,9 +62,13 @@ pub struct LoginStarted {
     pub(crate) job: String,
     pub(crate) url: String,
     pub(crate) paste: PasteKind,
+    /// 显示码那一形印的那段码（人在登录页里填它）；别的形 ⇒ `null`。
+    pub(crate) code: Option<String>,
     pub(crate) auto: bool,
     /// 那一家自己在这台开了登录页（它那一形自己开浏览器、发起它的浏览器又在这台）⇒ 界面不再开第二页。
     pub(crate) opened: bool,
+    /// 这一趟只能在那一台的浏览器里登完（不粘回、发起它的浏览器又不在那一台）⇒ 写好的那一句（两端照摆）；别的 ⇒ `null`。
+    pub(crate) elsewhere: Option<String>,
 }
 
 /// 登录失败之后还能怎么办（线上形住 cmd-wire：登录推送的体也带它）。
@@ -134,18 +144,186 @@ impl Command for LoginStart {
     type Err = LoginStartErr;
 }
 
-/// 号在这台账号库里的样子（与 `accounts-list` 同一份成品）：配置目录（账号 0 ⇒ `None`）· 是不是 API 号。
-fn account_of(agent: &str, account: &str) -> Option<(Option<String>, bool)> {
-    crate::faces::launch_account_face::list_of(agent)
+/// 这台的账号库（与 `accounts-list` 同一份成品，不按起的那一家过滤）：几家混列，每个号照它自己那一家判
+/// （key 表里有没有它那一行 · 新建会话那一格），不照默认那一家。
+fn library() -> crate::accounts::manage::library::AccountsList {
+    crate::faces::launch_account_face::list_mixed()
+}
+
+/// 一个号的配置目录（账号 0 ⇒ `None`）。
+fn dir_of(row: &crate::accounts::manage::library::AccountRow) -> Option<String> {
+    row.scanned.config_dir.clone().filter(|d| !d.is_empty())
+}
+
+/// MCP 登录带了号 ⇒ 那个号的配置目录：号只认请求那一家的（同账号登录那一判，[`row_at`]）；API 号也照取（MCP 登录与号怎么登无关）。
+pub(crate) fn mcp_dir_of(
+    registry: &[crate::agents::Adapter],
+    list: &crate::accounts::manage::library::AccountsList,
+    agent: &str,
+    account: &str,
+) -> Result<Option<String>, AccountRefused> {
+    row_at(registry, list, Some(agent), account).map(|(row, _)| dir_of(row))
+}
+
+/// 登录 · 退出 · 问状态一个号要的：那个号是哪一家的（号表里那一格）· 那一家的登录形 · 号的配置目录（账号 0 ⇒ `None`）。
+pub(crate) struct AccountAt {
+    pub(crate) agent: &'static str,
+    pub(crate) face: crate::agents::SignInFace,
+    pub(crate) dir: Option<String>,
+}
+
+/// 照号拿不出 [`AccountAt`] 的那几样（登录 · 退出 · 状态同一套；各自的码表经 [`AccountRefused::for_start`] · [`AccountRefused::for_once`]）。
+#[derive(Debug, Clone)]
+pub(crate) enum AccountRefused {
+    /// 账号库里没有这个号。
+    NotFound { account: String },
+    /// 请求报了家，与号表里那个号的家对不上（`own` ＝ 号表里那一家，认不出 ⇒ 空）。
+    OtherAgent {
+        account: String,
+        own: String,
+        asked: String,
+    },
+    /// 号表里认不出这个号是哪一家的。
+    NoAgent { account: String },
+    /// 那一家不在 app 里登。
+    Unsupported { agent: String },
+    /// API 号（不用登录）。
+    ApiKey { account: String },
+}
+
+impl AccountRefused {
+    /// 那一句（家都照传进来的注册表说成对人的叫法，不露 kind）。
+    fn said(&self, registry: &[crate::agents::Adapter]) -> String {
+        match self {
+            AccountRefused::NotFound { account } => {
+                copy_text("beLogin.account.notFound", &[("account", account)])
+            }
+            AccountRefused::OtherAgent {
+                account,
+                own,
+                asked,
+            } => copy_text(
+                "beLogin.account.otherAgent",
+                &[
+                    ("account", account),
+                    ("own", &crate::agents::family_said_among(registry, own)),
+                    ("agent", &crate::agents::family_said_among(registry, asked)),
+                ],
+            ),
+            AccountRefused::NoAgent { account } => {
+                copy_text("beLogin.account.noAgent", &[("account", account)])
+            }
+            AccountRefused::Unsupported { agent } => copy_text(
+                "beLogin.agent.unsupported",
+                &[("agent", &crate::agents::family_said_among(registry, agent))],
+            ),
+            AccountRefused::ApiKey { account } => {
+                copy_text("beLogin.account.apiKey", &[("account", account)])
+            }
+        }
+    }
+
+    pub(crate) fn for_start(self, registry: &[crate::agents::Adapter]) -> LoginStartErr {
+        let said = self.said(registry);
+        match self {
+            AccountRefused::NotFound { .. } => LoginStartErr::not_found(said),
+            AccountRefused::OtherAgent { .. } => LoginStartErr::BadArgs(said),
+            AccountRefused::NoAgent { .. }
+            | AccountRefused::Unsupported { .. }
+            | AccountRefused::ApiKey { .. } => LoginStartErr::unsupported(said),
+        }
+    }
+
+    pub(crate) fn for_once(self, registry: &[crate::agents::Adapter]) -> LoginOnceErr {
+        let said = self.said(registry);
+        match self {
+            AccountRefused::NotFound { .. } => LoginOnceErr::NotFound(said),
+            AccountRefused::OtherAgent { .. } => LoginOnceErr::BadArgs(said),
+            AccountRefused::NoAgent { .. }
+            | AccountRefused::Unsupported { .. }
+            | AccountRefused::ApiKey { .. } => LoginOnceErr::Unsupported(said),
+        }
+    }
+}
+
+/// 号名 ⇒ 号表里那一行与它是哪一家的（认不出 ⇒ `None`）。请求报了家（`asked`）⇒ 只取那一家的那一行
+/// （看家照选号那一判 [`crate::accounts::manage::library::row_of_family`]；两家同名各取各的）；这个名字只有别家的号 ⇒ 拒。
+/// 本面按号名找号的几处（账号登录 · 退出 · 状态 · MCP 登录）都经这一处。
+fn row_at<'a>(
+    registry: &[crate::agents::Adapter],
+    list: &'a crate::accounts::manage::library::AccountsList,
+    asked: Option<&str>,
+    account: &str,
+) -> Result<
+    (
+        &'a crate::accounts::manage::library::AccountRow,
+        Option<&'static str>,
+    ),
+    AccountRefused,
+> {
+    let named = |a: &&crate::accounts::manage::library::AccountRow| a.scanned.name == account;
+    let first = list
         .accounts
-        .into_iter()
-        .find(|a| a.scanned.name == account)
-        .map(|a| {
-            (
-                a.scanned.config_dir.filter(|d| !d.is_empty()),
-                a.scanned.auth_kind == acct_core::AUTH_KIND_API_KEY,
-            )
-        })
+        .iter()
+        .find(named)
+        .ok_or_else(|| AccountRefused::NotFound {
+            account: account.into(),
+        })?;
+    let row = match asked {
+        None => first,
+        Some(asked) => {
+            let family = cmd_wire::AgentKind::new(asked);
+            list.accounts
+                .iter()
+                .filter(named)
+                .find(|a| crate::accounts::manage::library::row_of_family(&a.scanned, &family))
+                .ok_or_else(|| AccountRefused::OtherAgent {
+                    account: account.into(),
+                    own: first
+                        .scanned
+                        .agent
+                        .as_ref()
+                        .map_or("", cmd_wire::AgentKind::as_str)
+                        .into(),
+                    asked: asked.into(),
+                })?
+        }
+    };
+    let own = row
+        .scanned
+        .agent
+        .as_ref()
+        .and_then(|k| crate::agents::account_kind_among(registry, Some(k.as_str())));
+    Ok((row, own))
+}
+
+/// 号 ⇒ 登录 · 退出 · 状态起哪一家的子命令：家只照号表里那个号带的那一格（几家混列，不照请求那一家）。
+/// 请求报了家（`asked`）却与号表不符 ⇒ 拒（不照它起子命令）；对得上照收。判据拿夹具注册表 · 夹具清单喂它。
+pub(crate) fn account_at(
+    registry: &[crate::agents::Adapter],
+    list: &crate::accounts::manage::library::AccountsList,
+    asked: Option<&str>,
+    account: &str,
+) -> Result<AccountAt, AccountRefused> {
+    let (row, own) = row_at(registry, list, asked, account)?;
+    let agent = own.ok_or_else(|| AccountRefused::NoAgent {
+        account: account.into(),
+    })?;
+    let face = crate::agents::accounts_face_among(registry, agent)
+        .and_then(|f| f.sign_in)
+        .ok_or_else(|| AccountRefused::Unsupported {
+            agent: agent.into(),
+        })?;
+    if row.scanned.auth_kind == acct_core::AUTH_KIND_API_KEY {
+        return Err(AccountRefused::ApiKey {
+            account: account.into(),
+        });
+    }
+    Ok(AccountAt {
+        agent,
+        face,
+        dir: dir_of(row),
+    })
 }
 
 /// `login-start` 的本体（分派的硬臂调它：`conn` ＝ 本连接的号，`replies` ＝ 本连接的应答通道）。
@@ -166,31 +344,24 @@ pub fn start(
             .discard(Why::PeerGone); // 发起登录的那条连接已断 ⇒ 「登录作业收了」那一帧没人收（作业本来就跟着它收）
         crate::history::needs_changed::ring();
     });
-    let unsupported = |agent: &str| {
-        LoginStartErr::unsupported(copy_text("beLogin.agent.unsupported", &[("agent", agent)]))
-    };
-    let not_found = |account: &str| {
-        LoginStartErr::not_found(copy_text(
-            "beLogin.account.notFound",
-            &[("account", account)],
-        ))
-    };
     // 目标键：入参原样（同一个目标新开就替掉旧的；`finish` 成了解回来交给界面）。
     let req = &args.target;
     let target = serde_json::to_string(req).unwrap_or_default();
     let (face, dir, then, cwd) = match req {
         LoginStartReq::Account { agent, account } => {
-            let face = crate::agents::accounts_face(agent)
-                .and_then(|f| f.sign_in)
-                .ok_or_else(|| unsupported(agent))?;
-            let (dir, api) = account_of(agent, account).ok_or_else(|| not_found(account))?;
-            if api {
-                return Err(LoginStartErr::unsupported(copy_text(
-                    "beLogin.account.apiKey",
-                    &[("account", account)],
-                )));
-            }
-            (face, dir, Vec::new(), crate::platform::paths::home_dir())
+            let at = account_at(
+                crate::agents::REGISTRY,
+                &library(),
+                agent.as_ref().map(cmd_wire::AgentKind::as_str),
+                account,
+            )
+            .map_err(|r| r.for_start(crate::agents::REGISTRY))?;
+            (
+                at.face,
+                at.dir,
+                Vec::new(),
+                crate::platform::paths::home_dir(),
+            )
         }
         LoginStartReq::Mcp {
             agent,
@@ -200,10 +371,11 @@ pub fn start(
         } => {
             let face = crate::agents::mcp_face(agent)
                 .and_then(|f| f.sign_in)
-                .ok_or_else(|| unsupported(agent))?;
-            // 号：给了就要在账号库里（API 号也照登：MCP 登录与号怎么登无关）；没给 ⇒ 那一家的默认配置目录。
+                .ok_or_else(|| mcp_unsupported_among(crate::agents::REGISTRY, agent))?;
+            // 号：给了就要是账号库里这一家的号（API 号也照登：MCP 登录与号怎么登无关）；没给 ⇒ 那一家的默认配置目录。
             let dir = match account {
-                Some(a) => account_of(agent, a).ok_or_else(|| not_found(a))?.0,
+                Some(a) => mcp_dir_of(crate::agents::REGISTRY, &library(), agent, a)
+                    .map_err(|r| r.for_start(crate::agents::REGISTRY))?,
                 None => None,
             };
             let project = project_dir.as_deref().map(std::path::Path::new);
@@ -250,8 +422,12 @@ fn started(
         job: s.job,
         url: s.url,
         paste: PasteKind::of(face.paste),
-        auto: args.browser_here,
+        code: s.code,
+        // 显示码那一形在哪台的浏览器里填码都登得完；别的形只有回跳到得了那一台才自己登完。
+        auto: matches!(face.paste, crate::agents::PasteShape::ShowCode(_)) || args.browser_here,
         opened: face.opens_browser && args.browser_here,
+        elsewhere: (matches!(face.paste, crate::agents::PasteShape::NoPaste) && !args.browser_here)
+            .then(|| copy_text("beLogin.start.elsewhere", &[])),
     }
 }
 
@@ -262,8 +438,11 @@ fn mcp_listed(agent: &str, project: Option<&std::path::Path>, server: &str) -> b
         return false;
     }
     let look = crate::accounts::manage::mcp_share_exec::mcp_look(agent);
-    crate::agents::mcp_read(agent, project, &look)
-        .is_some_and(|r| r.entries.iter().any(|e| e.name == server))
+    crate::agents::mcp_read(agent, project, &look).is_some_and(|r| {
+        crate::agents::mcp_held(&r.entries, &look.homes)
+            .iter()
+            .any(|h| h.entry.name == server)
+    })
 }
 
 /// 推给发起它的那条连接的那一帧的小成品（`changed {login, key: 作业号, body}`；线上形住 cmd-wire）。
@@ -373,6 +552,147 @@ impl crate::wire::typed::Handle for LoginFinish {
     }
 }
 
+/// `login-out` · `login-status` 的入参：哪个号（家由后端照号表认，界面不交）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(deny_unknown_fields)]
+pub struct LoginAccountReq {
+    /// 报了家 ⇒ 要与号表里那个号的家对得上，对不上 ⇒ `bad_args`（不照它起子命令）；缺 ⇒ 照号表。
+    #[serde(default)]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub(crate) agent: Option<String>,
+    pub(crate) account: String,
+}
+
+typed::codes! {
+    /// `login-out` · `login-status` 可能回的码。
+    pub enum LoginOnceErr {
+        /// 账号库里没有这个号。
+        NotFound = "not_found",
+        /// 这一家没声明这一条（不在 app 里退出 · 不在 app 里问状态）· 这个号是 API 号。
+        Unsupported = "unsupported",
+        /// 起不来 · 退非 0 · 读不出（原话里是它最后说的几行）。
+        Failed = "failed",
+    }
+}
+
+/// 那个号 ⇒ 它那一家（号表里那一格，[`account_at`]）＋ 起一次要交的（那一家的登录形 · 号的配置目录）。
+fn once_of(req: &LoginAccountReq) -> Result<(&'static str, sign_in::OnceAsk), LoginOnceErr> {
+    let at = account_at(
+        crate::agents::REGISTRY,
+        &library(),
+        req.agent.as_deref(),
+        &req.account,
+    )
+    .map_err(|r| r.for_once(crate::agents::REGISTRY))?;
+    Ok((
+        at.agent,
+        sign_in::OnceAsk {
+            face: at.face,
+            dir: at.dir,
+            cwd: crate::platform::paths::home_dir(),
+            path: None,
+        },
+    ))
+}
+
+fn once_failed(s: crate::common::said::Said) -> LoginOnceErr {
+    let f = crate::wire::spec::fail("failed", s);
+    LoginOnceErr::Failed(crate::common::contract::joined(f.said, f.raw))
+}
+
+/// 退出 · 问状态：那一家没声明那一条 ⇒ 「不在 app 里登」那一句（照 `registry` 说那一家的叫法，同 [`AccountRefused::Unsupported`]）。
+fn not_declared_among(registry: &[crate::agents::Adapter], agent: &str) -> LoginOnceErr {
+    AccountRefused::Unsupported {
+        agent: agent.to_string(),
+    }
+    .for_once(registry)
+}
+
+/// 起 MCP 登录：那一家没有登录形 ⇒ 同一句，照起登录那一套码表。
+fn mcp_unsupported_among(registry: &[crate::agents::Adapter], agent: &str) -> LoginStartErr {
+    AccountRefused::Unsupported {
+        agent: agent.to_string(),
+    }
+    .for_start(registry)
+}
+
+/// `login-out`：退出一个号的登录（跑那一家声明的退出那一条；令牌由那一家自己删）。
+pub struct LoginOut;
+
+/// `login-out` 的成品：写好的那一句（「x 已退出登录」，两端照摆）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct LoginSignedOut {
+    pub(crate) said: String,
+}
+
+impl Command for LoginOut {
+    const NAME: &'static str = "login-out";
+    type Req = LoginAccountReq;
+    type Reply = LoginSignedOut;
+    type Err = LoginOnceErr;
+}
+
+impl crate::wire::typed::Handle for LoginOut {
+    type Needs = crate::wire::typed::needs::Nothing;
+    async fn run(
+        req: LoginAccountReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> Result<LoginSignedOut, LoginOnceErr> {
+        let (agent, ask) = once_of(&req)?;
+        match sign_in::sign_out(&ask) {
+            Ok(true) => Ok(LoginSignedOut {
+                said: copy_text("beLogin.out.done", &[("account", &req.account)]),
+            }),
+            Ok(false) => Err(not_declared_among(crate::agents::REGISTRY, agent)),
+            Err(s) => Err(once_failed(s)),
+        }
+    }
+}
+
+/// `login-status`：问一个号登没登（跑那一家声明的状态那一条、照它的读法读）。
+pub struct LoginStatus;
+
+/// `login-status` 的成品：写好的那一句（「x 已登录」·「x 未登录」，两端照摆；登没登已写进句子，两端不另判）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(rename_all = "camelCase")]
+pub struct LoginStatusRead {
+    pub(crate) said: String,
+}
+
+impl Command for LoginStatus {
+    const NAME: &'static str = "login-status";
+    type Req = LoginAccountReq;
+    type Reply = LoginStatusRead;
+    type Err = LoginOnceErr;
+}
+
+impl crate::wire::typed::Handle for LoginStatus {
+    type Needs = crate::wire::typed::needs::Nothing;
+    async fn run(
+        req: LoginAccountReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> Result<LoginStatusRead, LoginOnceErr> {
+        let (agent, ask) = once_of(&req)?;
+        match sign_in::status(&ask) {
+            Ok(Some(signed_in)) => Ok(LoginStatusRead {
+                said: if signed_in {
+                    copy_text("beLogin.status.in", &[("account", &req.account)])
+                } else {
+                    copy_text("beLogin.status.out", &[("account", &req.account)])
+                },
+            }),
+            Ok(None) => Err(not_declared_among(crate::agents::REGISTRY, agent)),
+            Err(s) => Err(once_failed(s)),
+        }
+    }
+}
+
 /// `login-cancel`：收一份作业（杀那一家的登录子命令）。
 pub struct LoginCancel;
 
@@ -421,14 +741,43 @@ impl crate::wire::typed::Handle for LoginCancel {
 pub(crate) fn manual_here() -> Result<Vec<ManualItem>, String> {
     let mut items = logins_here()?;
     items.extend(secret_files(
-        crate::accounts::upstream_select::file_face::machine_path()
-            .ok()
-            .as_deref(),
+        crate::accounts::upstream_select::file_face::machine_key_path().as_deref(),
         crate::platform::paths::home_dir()
             .map(|h| crate::relay::key_path(&h))
             .as_deref(),
     ));
+    items.extend(own_files(
+        crate::common::machine_prefs::path_now().as_deref(),
+    ));
     Ok(items)
+}
+
+/// 这台自家状态文件（偏好）比此后端读得懂的还老 ⇒ 列那一项（读口当没有、照缺省用，这里照实说一句、落需手动）。不在 · 读得懂 ⇒ 不列；每问一次现读。
+pub(crate) fn own_files(prefs: Option<&Path>) -> Vec<ManualItem> {
+    let Some(path) = prefs else {
+        return Vec::new();
+    };
+    let Some(o) = crate::common::machine_prefs::older_at(path) else {
+        return Vec::new();
+    };
+    // 下次写时原文照字节留在旁边那一份（`own_state` 写口：`<名>.v<盘上那一版>`）。
+    let mut keep = path.as_os_str().to_owned();
+    keep.push(format!(".v{}", o.found));
+    vec![ManualItem::OwnFile {
+        said: copy_text(
+            "beManual.list.prefsOlder",
+            &[
+                ("path", &path.display().to_string()),
+                ("theirs", &o.found.to_string()),
+                ("mine", &o.readable()),
+            ],
+        ),
+        fix: None,
+        why: Some(copy_text(
+            "beManual.why.prefsOlder",
+            &[("keep", &Path::new(&keep).display().to_string())],
+        )),
+    }]
 }
 
 /// 这台自家两份秘密文件（API key 凭据文件 · 中转钥匙文件）各该列的那一项：不在 · 只给本人 ⇒ 不列。判法只在 `creds_core::perm`；每问一次现量。
@@ -464,37 +813,85 @@ pub(crate) fn secret_files(creds: Option<&Path>, key: Option<&Path>) -> Vec<Manu
 
 /// 需登录的号 · 需登录的 MCP（[`manual_of`] 喂这台的）。
 fn logins_here() -> Result<Vec<ManualItem>, String> {
-    let Some(agent) = crate::agents::sole_kind(|a| a.accounts.is_some()) else {
-        return Ok(Vec::new());
+    let hop = crate::faces::rotation_face::Ctx::here().hop;
+    let now = crate::common::time::now_secs();
+    // 续令牌被拒的号照各家自己的号表问（那一家起会话那一面的路由名）。
+    let relogin = |kind: &str| {
+        crate::agents::launch_face_among(crate::agents::REGISTRY, kind)
+            .map(|f| hop.needs_relogin(f.adapter_id, now))
+            .unwrap_or_default()
     };
-    let mcp = crate::agents::sole_kind(|a| a.mcp.is_some()).map(|kind| {
-        // 口径同待办：用户级 ＋ 这台此刻活着的会话所在项目里的（判活住 history，由这里递进去）。
-        let cwds = crate::agents::home_of_kind(kind)
-            .map(|h| crate::history::live_table::now(&h).cwds())
-            .unwrap_or_default();
-        (
-            kind,
-            crate::accounts::manage::mcp_share_exec::needs_login(kind, &cwds),
-        )
-    });
-    let relogin = crate::faces::rotation_face::Ctx::here().hop.needs_relogin(
-        crate::faces::rotation_face::LIBRARY_AGENT,
-        crate::common::time::now_secs(),
-    );
-    manual_of(
-        agent,
-        &crate::faces::launch_account_face::list_of(agent),
+    logins_among(
+        crate::agents::REGISTRY,
         crate::accounts::manage::library::library_unreadable_here(),
-        &relogin,
-        mcp.as_ref().map(|(k, n)| (*k, n.as_slice())),
+        relogin,
+        library(),
+        |kind| {
+            // 口径同待办：用户级 ＋ 这台此刻活着的会话所在项目里的（判活住 history，由这里递进去）。
+            let cwds = crate::agents::home_of_kind(kind)
+                .map(|home| {
+                    crate::history::live_table::now(&crate::agents::AgentHome { kind, home }).cwds()
+                })
+                .unwrap_or_default();
+            crate::accounts::manage::mcp_share_exec::needs_login(kind, &cwds)
+        },
     )
+}
+
+/// [`logins_here`] 的本体：注册表 · 账号库（几家混列那一份，[`library`]）· 各家要登录的 MCP 都是参数（判据拿替身家喂它）。
+/// 问的是声明了账号面或 MCP 面的每一家：账号库里的号各照它那一家算（每一家声明了账号面的各列各的号）；
+/// 要登录的 MCP 逐家各问一遍（只声明 MCP 面、没声明账号面的那一家也问）、并进那一家自己那一份。
+pub(crate) fn logins_among(
+    registry: &[crate::agents::Adapter],
+    unreadable: Option<String>,
+    relogin: impl Fn(&str) -> Vec<String>,
+    library: crate::accounts::manage::library::AccountsList,
+    needs: impl Fn(&'static str) -> Vec<crate::accounts::manage::mcp_share_exec::McpNeed>,
+) -> Result<Vec<ManualItem>, String> {
+    let mcp_kinds = crate::agents::mcp_kinds_among(registry);
+    let kinds: Vec<&'static str> = registry
+        .iter()
+        .filter(|a| a.accounts.is_some() || mcp_kinds.contains(&a.kind))
+        .map(|a| a.kind)
+        .collect();
+    let mut out = Vec::new();
+    for agent in kinds {
+        let mcp = crate::agents::mcp_kind_among(registry, agent).map(|k| (k, needs(k)));
+        let mut list = library.clone();
+        // 号是哪一家的照选号那一判（没写家的扫号单已归缺省那一家）；号表里写了认不出的家（`unknown_agent`）不进任何一家。
+        let kind = cmd_wire::AgentKind::new(agent);
+        list.accounts
+            .retain(|r| crate::accounts::manage::library::row_of_family(&r.scanned, &kind));
+        out.extend(manual_of(
+            registry,
+            agent,
+            &list,
+            unreadable.clone(),
+            &relogin(agent),
+            mcp.as_ref().map(|(k, n)| (*k, n.as_slice())),
+        )?);
+    }
+    // 写了认不出的家的号不归任何一家：照实出一行（号表原名套登录拒的那一句，一个意思一把键）。
+    out.extend(library.accounts.iter().filter_map(|r| {
+        let agent = r.scanned.unknown_agent.clone()?;
+        Some(ManualItem::AccountNoAgent {
+            agent,
+            account: r.scanned.name.clone(),
+            said: copy_text("beLogin.account.noAgent", &[("account", &r.scanned.name)]),
+            go: copy_text("beNeeds.manual.toSettings", &[]),
+            fix: None,
+        })
+    }));
+    Ok(out)
 }
 
 /// 会话外的需手动清单（需登录的号 · 需登录的 MCP，`sessions-needs` 里会外那一截）的纯构造器：账号清单成品（`accounts-list` 那一份）·
 /// 续令牌被拒的号（`relogin`，换号那一侧记的）· 要登录的 MCP（哪一家的 · `mcp_share_exec::needs_login` 判好的那一串，项目级的带着项目）⇒ 清单。判据拿夹具喂它。
 /// `unreadable` ＝ 账号库清单在、却读不懂的那一句（`accounts::manage::library::library_unreadable`）：给了 ⇒ 原样回 `Err`，不列
 /// （说不出哪些号需登录，不回空清单：空清单看起来像「没事」）。
+/// 认家（登不登得了 · 那一家的叫法）照交进来的 `registry`；号名本身的字（`_` · 账号 0 的短形）照 `name_words::account_text_of`，不归这一格。
 pub(crate) fn manual_of(
+    registry: &[crate::agents::Adapter],
     agent: &str,
     accounts: &crate::accounts::manage::library::AccountsList,
     unreadable: Option<String>,
@@ -504,7 +901,8 @@ pub(crate) fn manual_of(
     if let Some(why) = unreadable {
         return Err(why);
     }
-    let signs_in = crate::agents::accounts_face(agent).is_some_and(|f| f.sign_in.is_some());
+    let signs_in =
+        crate::agents::accounts_face_among(registry, agent).is_some_and(|f| f.sign_in.is_some());
     let mut items: Vec<ManualItem> = accounts
         .accounts
         .iter()
@@ -516,7 +914,7 @@ pub(crate) fn manual_of(
                 && (!a.auth_ready || relogin.contains(&a.name))
         })
         .map(|a| {
-            let who = crate::accounts::quota::name_words::account_text(&a.name);
+            let who = crate::accounts::quota::name_words::account_text_of(agent, &a.name);
             ManualItem::AccountLogin {
                 agent: agent.into(),
                 account: a.name.clone(),
@@ -528,8 +926,9 @@ pub(crate) fn manual_of(
                 },
                 fix: ManualFix {
                     command: "login-start".into(),
+                    // 不带家：家由 `login-start` 照号表认（同一个号从哪里点进来都是同一个目标）。
                     args: LoginStartReq::Account {
-                        agent: agent.into(),
+                        agent: None,
                         account: a.name.clone(),
                     },
                 },
@@ -541,12 +940,7 @@ pub(crate) fn manual_of(
         None => ("", &[][..]),
     };
     for e in entries {
-        let who: Vec<Option<String>> = if e.login_in.is_empty() {
-            vec![None]
-        } else {
-            e.login_in.iter().cloned().map(Some).collect()
-        };
-        for account in who {
+        for account in e.login_in.iter().cloned() {
             let said = match &account {
                 Some(a) => copy_text(
                     "beManual.list.mcpLogin",
@@ -554,14 +948,19 @@ pub(crate) fn manual_of(
                         ("server", &e.name),
                         (
                             "account",
-                            &crate::accounts::quota::name_words::account_text(a),
+                            &crate::accounts::quota::name_words::account_text_of(mcp_kind, a),
                         ),
                     ],
                 ),
                 None => copy_text("beManual.list.mcpLoginBare", &[("server", &e.name)]),
             };
-            let McpLoginFix { fix, why, .. } =
-                mcp_fix(mcp_kind, account.clone(), &e.name, e.project.as_deref());
+            let McpLoginFix { fix, why, .. } = mcp_fix(
+                registry,
+                mcp_kind,
+                account.clone(),
+                &e.name,
+                e.project.as_deref(),
+            );
             items.push(ManualItem::McpLogin {
                 account,
                 server: e.name.clone(),
@@ -592,12 +991,14 @@ pub struct McpLoginFix {
 
 /// ★ `kind` 那一家在号 `account` 里登录 MCP 服务器 `server` 怎么解（唯一一处）。`project` ＝ 项目级 · 本地级那一条所在的项目目录。
 pub(crate) fn mcp_fix(
+    registry: &[crate::agents::Adapter],
     kind: &str,
     account: Option<String>,
     server: &str,
     project: Option<&str>,
 ) -> McpLoginFix {
-    let signs_in = crate::agents::mcp_face(kind).is_some_and(|f| f.sign_in.is_some());
+    let signs_in =
+        crate::agents::mcp_face_among(registry, kind).is_some_and(|f| f.sign_in.is_some());
     McpLoginFix {
         fix: signs_in.then(|| ManualFix {
             command: "login-start".into(),
@@ -608,17 +1009,14 @@ pub(crate) fn mcp_fix(
                 project_dir: project.map(str::to_string),
             },
         }),
-        why: (!signs_in)
-            .then(|| copy_text("beManual.list.mcpNoFix", &[("agent", &agent_name(kind))])),
+        why: (!signs_in).then(|| {
+            copy_text(
+                "beManual.list.mcpNoFix",
+                &[("agent", &crate::agents::family_said_among(registry, kind))],
+            )
+        }),
         account,
     }
-}
-
-/// 这一家对用户的叫法（没有起会话那一面 ⇒ 它的 id）。
-fn agent_name(kind: &str) -> String {
-    crate::agents::launch_face_among(crate::agents::REGISTRY, kind)
-        .map_or(kind, |l| l.display_name)
-        .to_string()
 }
 
 #[cfg(test)]

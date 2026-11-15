@@ -11,13 +11,12 @@ import { openMenu, type MenuItem } from "../kit/menu";
 import { statusDot, setDot } from "../kit/status-dot";
 import { copyText } from "../copy-table";
 import { SettingsRouter } from "./router";
-import { hostOs, type HostOs } from "./host-os";
+import { machineName } from "../ipc/chan-caller";
+import { LOCAL } from "../ipc/origin";
 import { paintProblem, paintRoute, type MachineFace, type MachineFix } from "./machine-state";
 import { writeClipboard } from "../clipboard";
 import { failToast, toast } from "../kit/toast";
 import { CONFIG_SHOWN_EVENT } from "./events";
-
-const OS_NAME: Record<HostOs, string | null> = { linux: "Linux", windows: "Windows", macos: "macOS", unknown: null };
 
 /** 后端报来的那台的两样事实（还没报 ⇒ `null`，那一段不写）。 */
 export interface MachineFacts {
@@ -39,12 +38,11 @@ export function dotLabel(name: string, face: MachineFace): string {
 
 /**
  * 一台的第二行：列表那一行 `地址 · 系统`；卡头 `地址:端口 · 系统 · 版本 x`。
- * `who` 为 `null` ＝ 本机（`这台电脑`，系统取这扇窗口所在的那台）。
+ * `who` 为 `null` ＝ 本机（称呼照那台成品的名字）。系统名本机远端都照后端报来的 `os`。
  */
 export function machineMeta(at: "list" | "head", who: string | null, facts: MachineFacts): string {
-  const os = who === null ? (OS_NAME[hostOs()] ?? facts.os) : facts.os;
-  const parts = [who ?? copyText("detail.label.local")];
-  if (os) parts.push(os);
+  const parts = [who ?? machineName(LOCAL)];
+  if (facts.os) parts.push(facts.os);
   if (at === "head" && facts.version) parts.push(copyText("machinePage.meta.version", { ver: facts.version }));
   return parts.filter((p) => p !== "").join(copyText("kit.text.sep"));
 }

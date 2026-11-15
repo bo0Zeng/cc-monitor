@@ -76,7 +76,6 @@ pub const FROZEN: &[(&str, Frozen)] = &[
         "session_status",
         Frozen::Cells(&[
             "sid",
-            "waiting_for",
             "face.dot",
             "face.life.activity",
             "face.can.stop.can",

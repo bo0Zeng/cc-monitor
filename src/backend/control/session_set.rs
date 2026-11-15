@@ -78,15 +78,12 @@ fn more_said(more: u32, whole: bool) -> String {
     }
 }
 
-/// 比目录用的那一形：展开 `~`、去掉末尾的分隔符（根目录本身留着）。
-fn dir_key(d: &str, home: Option<&std::path::Path>) -> String {
-    let full = crate::platform::paths::expand_tilde_from(d.trim(), home);
+/// 比目录用的那一形：展开 `~`、去掉末尾的分隔符（根目录本身留着）。家名不是 UTF-8、展开写不成字 ⇒ `None`：比不了，
+/// 不拿原写法去比（读者把比不了的那一对既不当同一个、也不当不同的；那一行在 [`blocked_of`] 照实拒）。
+fn dir_key(d: &str, home: Option<&std::path::Path>) -> Option<String> {
+    let full = crate::platform::paths::expand_tilde_text(d.trim(), home).ok()?;
     let t = full.trim_end_matches(['/', '\\']);
-    if t.is_empty() {
-        full
-    } else {
-        t.to_string()
-    }
+    Some(if t.is_empty() { full } else { t.to_string() })
 }
 
 /// 别名合下来的标签页分组名（`--tab-group`）；没写 · 合不下来 ⇒ `None`。
@@ -135,19 +132,24 @@ fn blocked_of(
     if let Err(e) = profile::resolve(book, &r.alias, &[]) {
         return Some(e);
     }
-    let d = crate::platform::paths::expand_tilde_from(r.cwd.trim(), home);
+    let d = match crate::platform::paths::expand_tilde_text(r.cwd.trim(), home) {
+        Ok(d) => d,
+        Err(why) => return Some(why),
+    };
     if !is_dir(&d) {
         return Some(copy_text("beSessionSet.dir.missing", &[("cwd", &r.cwd)]));
     }
     None
 }
 
-/// 这一行已有的那几条：目录对得上、用这一行的别名起的。
+/// 这一行已有的那几条：目录对得上、用这一行的别名起的。这一行或那一条的目录比不了（[`dir_key`]）⇒ 不算。
 pub fn members<'a>(r: &RowEdit, live: &'a [Live], home: Option<&std::path::Path>) -> Vec<&'a Live> {
-    let key = dir_key(&r.cwd, home);
+    let Some(key) = dir_key(&r.cwd, home) else {
+        return Vec::new();
+    };
     live.iter()
         .filter(|l| l.alias.as_deref() == Some(r.alias.as_str()))
-        .filter(|l| dir_key(&l.cwd, home) == key)
+        .filter(|l| dir_key(&l.cwd, home).as_ref() == Some(&key))
         .collect()
 }
 
@@ -166,10 +168,12 @@ pub(crate) fn plan_rows(
         .map(|(i, r)| {
             let have = members(r, live, home).len() as u32;
             // 同一目录同一别名的第二行：当场起不了、指着头一行（存的时候配置文件那一侧照旧再判）。
-            let key = dir_key(&r.cwd, home);
-            let first = rows[..i]
-                .iter()
-                .position(|o| o.alias == r.alias && dir_key(&o.cwd, home) == key);
+            // 目录比不了 ⇒ 不算重，落到 `blocked_of` 照实拒。
+            let first = dir_key(&r.cwd, home).and_then(|key| {
+                rows[..i].iter().position(|o| {
+                    o.alias == r.alias && dir_key(&o.cwd, home).as_ref() == Some(&key)
+                })
+            });
             let blocked = match first {
                 Some(at) => Some(copy_text(
                     "beSessionSet.row.dup",
@@ -227,7 +231,8 @@ pub(crate) fn plan_rows(
         .collect();
     let more: u32 = out.iter().map(|r| r.more).sum();
     let dirs = {
-        let mut d: Vec<String> = rows.iter().map(|r| dir_key(&r.cwd, home)).collect();
+        // 只数比得了的（比不了的那几行各自照实拒，算在「起不了」里）。
+        let mut d: Vec<String> = rows.iter().filter_map(|r| dir_key(&r.cwd, home)).collect();
         d.sort();
         d.dedup();
         d.len()

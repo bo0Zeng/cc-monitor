@@ -127,17 +127,16 @@ fn logins_arm(
     account_dirs: AccountDirs,
 ) -> Result<(), String> {
     let (manifest_dir, dirs) = logins_dirs(&home, &account_dirs);
-    let login_name = crate::agents::route_named(crate::agents::credentials_file_agent())
-        .and_then(crate::agents::login_of)
-        .map(|f| f.creds_file.to_string());
+    // 各号目录里那份凭据文件：每一家声明的名字都认（号目录里住的是哪一家的号，那一家的名字就是它）。
+    let login_names = crate::agents::creds_file_names_among(crate::agents::REGISTRY);
     let mut watched: Vec<(std::path::PathBuf, bool)> = vec![(manifest_dir.clone(), false)];
     watched.extend(dirs.into_iter().filter(|d| d.is_dir()).map(|d| (d, false)));
     let md = manifest_dir.clone();
-    let ln = login_name.clone();
+    let ln = login_names;
     let concerns = move |p: &std::path::Path| {
         let name = p.file_name().and_then(|n| n.to_str());
         (p.parent() == Some(md.as_path()) && name == Some(relay_route_core::ACCOUNTS_MANIFEST_NAME))
-            || (ln.is_some() && name == ln.as_deref())
+            || name.is_some_and(|n| ln.iter().any(|l| *l == n))
     };
     let (h2, tx2, home2, md2, lib2) = (
         held.clone(),

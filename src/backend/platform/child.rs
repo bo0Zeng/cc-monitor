@@ -231,7 +231,7 @@ impl ChildFail {
 }
 
 impl ChildFail {
-    /// 同 [`ChildFail::into_cmd_err`]，但句子里只给原因词（`said` 拿到的是 [`copy_core::spawn_reason`] 那一词），
+    /// 同 [`ChildFail::into_cmd_err`]，但句子里只给原因词（经 [`spawn_said`]，`said` 拿到的是 [`copy_core::spawn_reason`] 那一词），
     /// 系统原话另带（进复制详情）。超时那一档照旧：原语那句就是成品，没有原话。
     pub fn into_cmd_said(
         self,
@@ -242,12 +242,15 @@ impl ChildFail {
             ChildFail::TimedOut { .. } => {
                 (TIMED_OUT, copy_core::said::Said::from(self.to_string()))
             }
-            ChildFail::NotFound(e) | ChildFail::Io(e) => (
-                other,
-                copy_core::said::Said::with_raw(said(&copy_core::spawn_reason(e.kind())), &e),
-            ),
+            ChildFail::NotFound(e) | ChildFail::Io(e) => (other, spawn_said(&e, said)),
         }
     }
+}
+
+/// ★ 起不来那一句只这一处取原因词（[`copy_core::spawn_reason`]）：`said` 拿那一词写句子，系统原话另带。
+/// [`ChildFail::into_cmd_said`] 与调用方自己起不来的那几下（取本程序路径 · 起线程）都经它。
+pub fn spawn_said(e: &std::io::Error, said: impl FnOnce(&str) -> String) -> copy_core::said::Said {
+    copy_core::said::Said::with_raw(said(&copy_core::spawn_reason(e.kind())), e)
 }
 
 /// 命令级码：这条命令起的子进程过了期限没结束（已杀整组）。
@@ -261,9 +264,8 @@ pub const TIMED_OUT: &str = "child_timed_out";
 #[cfg_attr(
     any(test, feature = "test-support"),
     expect(
-        clippy::let_underscore_must_use,
         clippy::disallowed_methods,
-        reason = "测试档那一份先建 socket 目录、建不成也照起（同各包测试段放开的那几样）"
+        reason = "测试档那一份先建 socket 目录（同各包测试段放开的那几样）"
     )
 )]
 mod tmux_fence;
@@ -460,11 +462,31 @@ impl Child {
     /// 起它、等它、收两条输出；**期限必填**。到点 ⇒ 杀整组（Windows：终止 Job）、收尸、回 `TimedOut`。
     /// 装着总期限（[`Budget`]）⇒ 只等「自己的期限」与「剩下的」里小的那个；没剩 ⇒ 不起、直接回 `TimedOut`。
     /// 被总期限截短的那一次超时，话里报总期限（整条命令等了这么久）。
+    /// 每条输出超了 [`PIPE_CAP`] ⇒ 这一趟回错。
+    pub fn run(self, within: Deadline) -> Result<Output, ChildFail> {
+        let c = self.run_stdout_capped(within, PIPE_CAP)?;
+        use cap_core::CappedAll::All;
+        match (c.stdout, c.stderr) {
+            (All(stdout), All(stderr)) => Ok(Output {
+                status: c.status,
+                stdout,
+                stderr,
+            }),
+            _ => Err(ChildFail::Io(too_big(PIPE_CAP))),
+        }
+    }
+
+    /// 同 [`Child::run`]，只是标准输出照 `out_cap` 收、stderr 照 [`STDERR_CAP`] 收；哪一路超了都一样：余下的照读掉、那一路交 `OverCap`，
+    /// 退出码照交，不当这一趟失败（一次性跑一件活那一口：结果超了上限照实说没有）。[`Child::run`] 也走这一份。
     #[expect(
         clippy::disallowed_methods,
         reason = "超时杀组之后，等读输出的线程收尾的宽限：过了仍没收尾 ⇒ 输出管道被逃出组的进程攥着，放手并记一行日志；起子进程原语（`Child::run`）等子进程结束的一次有界等待：阻塞档命令起的 tmux / ssh / PowerShell 卡住时，没有它整条命令（或 watcher 的事件循环）就一直挂着"
     )]
-    pub fn run(self, within: Deadline) -> Result<Output, ChildFail> {
+    pub fn run_stdout_capped(
+        self,
+        within: Deadline,
+        out_cap: cap_core::Cap,
+    ) -> Result<Capped, ChildFail> {
         let program = self.label();
         let (within, said) = match Span::here() {
             None => (within, within),
@@ -510,15 +532,17 @@ impl Child {
         let (out, err) = (child.stdout.take(), child.stderr.take());
         let piped_tx = ev_tx.clone();
         std::thread::spawn(move || {
-            let e = std::thread::spawn(move || read_all(err));
-            let o = read_all(out);
-            let e = e.join().unwrap_or_else(|_| Ok(Vec::new()));
+            let e = std::thread::spawn(move || read_capped(err, STDERR_CAP));
+            let o = read_capped(out, out_cap);
+            let e = e
+                .join()
+                .unwrap_or_else(|_| Ok(cap_core::CappedAll::All(Vec::new())));
             piped_tx.send(Ev::Piped(o, e)).discard(Why::PeerGone); // 等待线程已按放手收尾 ⇒ 读完的输出没人收
         });
 
         // 等退出（不收尸）→ 等输出读完或发起方放弃 → 收尸。收尸与杀组互斥：收尸之前 pid 仍被占着，杀组不会误伤。
         let reaped = Arc::new(Mutex::new(false));
-        let (done_tx, done_rx) = mpsc::channel::<std::io::Result<Output>>();
+        let (done_tx, done_rx) = mpsc::channel::<std::io::Result<Capped>>();
         let reaped_w = Arc::clone(&reaped);
         let label = program.clone();
         std::thread::spawn(move || {
@@ -534,7 +558,7 @@ impl Child {
                     // 发起方过了期限已放手、回了超时 ⇒ 这份结果没人收
                     done_tx
                         .send(status.and_then(|s| {
-                            Ok(Output {
+                            Ok(Capped {
                                 status: s,
                                 stdout: o?,
                                 stderr: e?,
@@ -793,8 +817,20 @@ impl Child {
 }
 
 enum Ev {
-    Piped(std::io::Result<Vec<u8>>, std::io::Result<Vec<u8>>),
+    Piped(
+        std::io::Result<cap_core::CappedAll>,
+        std::io::Result<cap_core::CappedAll>,
+    ),
     GaveUp,
+}
+
+/// [`Child::run_stdout_capped`] 交回的：退出状态 · 标准输出（超了给的上限 ⇒ `OverCap`）· stderr（超了 [`STDERR_CAP`] ⇒ `OverCap`）。
+/// 两路同一形：超了是哪一种「没有」写在类型上，不拿 `None` 暗指。
+#[derive(Debug)]
+pub struct Capped {
+    pub status: std::process::ExitStatus,
+    pub stdout: cap_core::CappedAll,
+    pub stderr: cap_core::CappedAll,
 }
 
 /// [`Child::run`] 每一根输出管子收多少（stdout · stderr 各算）：它收的是一问一答的输出（tmux · ssh · git · 一行脚本），
@@ -804,21 +840,31 @@ const PIPE_CAP: cap_core::Cap = cap_core::Cap {
     over: cap_core::Over::HardError,
 };
 
-/// 读一根管子到它关；超了 [`PIPE_CAP`] ⇒ 余下的照读掉、不存（不读完，它会卡在写上、等到期限被杀），回错。
-fn read_all(r: Option<impl Read>) -> std::io::Result<Vec<u8>> {
+/// [`Child::run_stdout_capped`] 的 stderr 收多少：数同 [`PIPE_CAP`]；超了 ⇒ 一个字节不收、那一路交 `OverCap`，不当这一趟失败
+/// （[`Child::run`] 再照 [`PIPE_CAP`] 回错）。
+const STDERR_CAP: cap_core::Cap = cap_core::Cap {
+    bytes: PIPE_CAP.bytes,
+    over: cap_core::Over::Reject,
+};
+
+/// 读一根管子到它关，至多 `cap`；超了 ⇒ 余下的照读掉、不存（不读完，它会卡在写上、等到期限被杀），交 `OverCap`。
+fn read_capped(r: Option<impl Read>, cap: cap_core::Cap) -> std::io::Result<cap_core::CappedAll> {
     let Some(mut r) = r else {
-        return Ok(Vec::new());
+        return Ok(cap_core::CappedAll::All(Vec::new()));
     };
-    match cap_core::read_capped_from(&mut r, PIPE_CAP)? {
-        cap_core::CappedAll::All(buf) => Ok(buf),
-        cap_core::CappedAll::OverCap => {
-            std::io::copy(&mut r, &mut std::io::sink()).discard(Why::Drain); // 只为让它写得完：读错了它照样会退
-            Err(std::io::Error::other(copy_text(
-                "beFs.readRegularCapped.tooBig",
-                &[("cap", &PIPE_CAP.bytes.to_string())],
-            )))
-        }
+    let got = cap_core::read_capped_from(&mut r, cap)?;
+    if got == cap_core::CappedAll::OverCap {
+        std::io::copy(&mut r, &mut std::io::sink()).discard(Why::Drain); // 只为让它写得完：读错了它照样会退
     }
+    Ok(got)
+}
+
+/// 一根输出管子超了 `cap` 那一句。
+fn too_big(cap: cap_core::Cap) -> std::io::Error {
+    std::io::Error::other(copy_text(
+        "beFs.readRegularCapped.tooBig",
+        &[("cap", &cap.bytes.to_string())],
+    ))
 }
 
 fn is_own(k: &OsStr) -> bool {

@@ -81,3 +81,13 @@ fn a_new_session_loads_a_copy_of_for_new_and_keeps_it() {
     std::fs::write(home.sdir().join("mine.rhai"), "fn decide(").expect("坏");
     assert!(setup.for_new().is_none(), "读不懂的那份载入不了");
 }
+
+/// ★ 摘要原样：一段已知字节的 SHA-256 小写十六进制（标准测试向量 `abc`），版本取它前 12 位。
+#[test]
+fn digest_of_known_bytes_is_the_lowercase_sha256_hex() {
+    assert_eq!(
+        shelf::digest(b"abc"),
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    );
+    assert_eq!(shelf::rev_of("abc"), "h:ba7816bf8f01");
+}

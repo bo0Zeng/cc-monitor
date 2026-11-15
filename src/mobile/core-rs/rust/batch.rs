@@ -5,7 +5,7 @@
 //!
 //! Kotlin 交的是「要做什么」（删 · 改权限 · 复制到 · 下到本机 · 上传 · 重试 · 撤销），入参由这里拼；同名那一问的答经 [`answer`]，「停」经 [`stop`]。
 //!
-//! 下到本机那一组（[`Verb::Pull`]）也是 `batch_core::run` 那一圈：「问那台」那一口在这一侧是本机那一圈（[`PhoneBoard::pull_round`]），
+//! 下到本机那一组（[`Verb::Download`]）也是 `batch_core::run` 那一圈：「问那台」那一口在这一侧是本机那一圈（[`PhoneBoard::pull_round`]），
 //! 每项要本机那一份时交 `batch_local {open}`、等 Kotlin 经 [`answer`] 回描述符；Kotlin 只开 · 删本机那一份。
 //!
 //! 上传那一组（[`Verb::Upload`]）同样：本机那一圈是 [`PhoneBoard::put_round`] —— 逐项送块（`chunk_core::stage`）、再提交；
@@ -18,7 +18,7 @@ use batch_core::{Board, Phase, Plan, Rebuff, Tick, Verb};
 use chunk_core::Ask;
 use cmd_wire::batch::{BatchOutcome, BatchReply, Conflict, Conflicts, Decide, ItemState, OnExists};
 use cmd_wire::failed::Failed;
-use cmd_wire::files::{FilesCommitUploadReq, Sha256Expect, Sha256Hex, WirePath};
+use cmd_wire::files::{FilesCommitUploadReq, FilesCopyReq, Sha256Expect, Sha256Hex, WirePath};
 use cmd_wire::frame::{FilesBatch, Frame};
 use cmd_wire::phone::{
     BatchAnswer, BatchKeep, BatchLine, CallEnd, ClashRow, LocalAsk, LocalOpened,
@@ -162,7 +162,7 @@ pub struct PhoneBoard {
     sent: Mutex<Option<serde_json::Value>>,
     /// 从落盘那一份接回来的（进程没了再开）：交的每一行带 `kept`，屏上没起过它也照画。
     kept: bool,
-    /// 下到本机 · 上传那两组才有（[`Verb::Pull`] · [`Verb::Upload`]）。
+    /// 下到本机 · 上传那两组才有（[`Verb::Download`] · [`Verb::Upload`]）。
     leg: Option<Leg>,
     on_event: OnEvent,
 }
@@ -173,7 +173,7 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 
 impl PhoneBoard {
     pub fn new(id: i64, h: i64, plan: Plan, ticket: String, on_event: OnEvent) -> Self {
-        let leg = matches!(plan.verb, Verb::Pull | Verb::Upload).then(|| Leg {
+        let leg = matches!(plan.verb, Verb::Download | Verb::Upload).then(|| Leg {
             outcomes: Mutex::new(vec![None; plan.names.len()]),
             staged: Mutex::new(vec![None; plan.names.len()]),
             ..Leg::default()
@@ -204,7 +204,10 @@ impl PhoneBoard {
             ),
             (<cmd_wire::files::FilesChmodReq as Call>::NAME, Verb::Chmod),
             (<cmd_wire::files::FilesCopyReq as Call>::NAME, Verb::Copy),
-            (<cmd_wire::files::ReadChunkReq as Call>::NAME, Verb::Pull),
+            (
+                <cmd_wire::files::ReadChunkReq as Call>::NAME,
+                Verb::Download,
+            ),
         ]
         .into_iter()
         .find(|(c, _)| v.get("cmd").and_then(|c| c.as_str()) == Some(*c))?;
@@ -279,16 +282,7 @@ impl PhoneBoard {
             }
             call(args)
         };
-        // 上传那一组：`batch_core::run` 此刻对 `Verb::Upload` 走「开了哪几单」那一支（`opens`），本机那一圈交回的是一组的结局 ⇒ 照它落。
-        if let Some(v) = batch_core::run(self, sending, wait_up).await {
-            self.set(match serde_json::from_value::<BatchReply>(v) {
-                Ok(r) => Phase::Ended(r),
-                Err(e) => Phase::Failed(Failed {
-                    detail: e.to_string(),
-                    ..Failed::local(copy_core::copy_text("reason.content.unparsable", &[]))
-                }),
-            });
-        }
+        batch_core::run(self, sending, wait_up).await;
         // 收场（成了 · 没成 · 取消都算）：上传那一组手上还攥着的本机那几份当场关掉。
         if let Some(p) = &self.leg {
             lock(&p.files).clear();
@@ -432,9 +426,12 @@ impl PhoneBoard {
                 title,
                 kept,
                 conflicts: match PullArgs::of(&self.plan.args) {
-                    Some(a) if self.plan.verb == Verb::Pull => local_clashes(&a.names(), &a.here),
+                    Some(a) if self.plan.verb == Verb::Download => {
+                        local_rows(&lock(&self.asking), &a.here)
+                    }
                     _ => clash_rows(&lock(&self.asking)),
                 },
+                whole: batch_core::whole(&lock(&self.asking)),
                 go: self.plan.verb.text(),
             },
             Phase::Cut(line) => BatchLine::Cut {
@@ -470,9 +467,10 @@ impl PhoneBoard {
                 title,
                 kept,
                 said: f.said.clone(),
-                details: batch_core::copy_body(&f.said, &f.detail),
+                // 只放下层原话：那一句在 `said`，［复制详情］拼一次。
+                details: (!f.detail.trim().is_empty()).then(|| f.detail.clone()),
             },
-            Phase::Dropped | Phase::Opened => BatchLine::Dropped { id, title, kept },
+            Phase::Dropped => BatchLine::Dropped { id, title, kept },
         }
     }
 }
@@ -563,30 +561,24 @@ impl PhoneBoard {
         let (Some(p), Some(a)) = (&self.leg, PullArgs::of(args)) else {
             return Err(unreadable(args.to_string()));
         };
-        let rows = local_clashes(&a.names(), &a.here);
+        let clashes = batch_core::local_clashes(&a.names(), &a.here, true);
         let decide: Option<BTreeMap<String, Decide>> = args
             .get("decide")
             .and_then(|d| serde_json::from_value(d.clone()).ok());
         let fresh = lock(&p.outcomes).iter().all(Option::is_none);
-        if decide.is_none() && fresh && !rows.is_empty() {
-            let conflicts: Vec<serde_json::Value> = rows
-                .iter()
-                .map(|r| {
-                    serde_json::json!({ "key": r.key, "name": WirePath(r.name.as_bytes().to_vec()),
-                        "kind": "file", "there": "file",
-                        "answers": r.choices.iter().map(|o| o.decide).collect::<Vec<_>>() })
-                })
-                .collect();
+        if decide.is_none() && fresh && !clashes.is_empty() {
             return Err(Rebuff {
                 failed: Failed {
                     code: batch_core::EXISTS.into(),
-                    data: Some(serde_json::json!({ "conflicts": conflicts })),
+                    data: serde_json::to_value(Conflicts { conflicts: clashes }).ok(),
                     ..Failed::default()
                 },
                 cut: false,
             });
         }
         let one = |key: &str, state: ItemState| BatchOutcome::bare(key, state);
+        // 保留两份起名要避开的：文件夹里已有的 · 这一组要落的 · 这一圈前面刚起的。
+        let mut taken: Vec<String> = a.here.iter().cloned().chain(a.names()).collect();
         for (i, (path, name)) in a.items.iter().enumerate() {
             if lock(&p.outcomes).get(i).is_some_and(Option::is_some) {
                 continue;
@@ -595,18 +587,38 @@ impl PhoneBoard {
                 break;
             }
             let key = i.to_string();
-            let row = rows.iter().find(|r| r.key == key);
-            let d = row.and_then(|_| decide.as_ref()?.get(&key).copied());
-            if d == Some(Decide::Skip) {
-                self.settle(i, one(&key, ItemState::Skipped));
-                continue;
-            }
-            let over = (d == Some(Decide::Overwrite))
-                .then(|| row.and_then(|r| r.there.clone()))
-                .flatten();
+            let clash = clashes.iter().any(|c| c.key == key);
+            let d = clash.then(|| decide.as_ref()?.get(&key).copied()).flatten();
+            let (open_as, over) = match d {
+                Some(Decide::Skip) => {
+                    self.settle(i, one(&key, ItemState::Skipped));
+                    continue;
+                }
+                Some(Decide::Overwrite) => (
+                    name.clone(),
+                    batch_core::taken_as(name, &a.here, true).map(str::to_string),
+                ),
+                Some(Decide::KeepBoth) => match batch_core::keep_both_name(name, &taken, true) {
+                    Some(n) => {
+                        taken.push(n.clone());
+                        (n, None)
+                    }
+                    None => {
+                        self.settle(
+                            i,
+                            BatchOutcome {
+                                reason: Some(copy_core::copy_text("beFiles.batch.mintSpent", &[])),
+                                ..one(&key, ItemState::Failed)
+                            },
+                        );
+                        continue;
+                    }
+                },
+                None => (name.clone(), None),
+            };
             *lock(&p.part) = Some((name.clone(), 0.0));
             self.emit(&Phase::Running);
-            let file = match self.open(p, &a.folder, &key, name, over).await {
+            let file = match self.open(p, &a.folder, &key, &open_as, over).await {
                 Ok(f) => f,
                 Err(Some((said, detail))) => {
                     self.settle(
@@ -936,8 +948,6 @@ impl Board for PhoneBoard {
         match &phase {
             // 同名那一问由 [`Board::ask`] 带着那几项交（这一步先落、那几项还没摆上）。
             Phase::Asking => return,
-            // 上传那一组：本机那一圈交回的是一组的结局，[`Self::go`] 照它落 `Ended`（这一格不交 Kotlin，不然浮卡先收一下）。
-            Phase::Opened => return,
             Phase::Ended(r) => *lock(&self.ended) = Some(r.clone()),
             // 断开时的完成数跟着落盘（进程没了再开，那一行照它写）。
             Phase::Cut(_) => self.keep(true),
@@ -972,21 +982,15 @@ fn clash_rows(conflicts: &[Conflict]) -> Vec<ClashRow> {
         .collect()
 }
 
-/// 本机同名那一步：要下的名字里，文件夹里已有（不分大小写：手机的共享存储不分）的那几项 ⇒ 抽屉那几行（只有名字一格；目录不下，恒给覆盖）。
-fn local_clashes(names: &[String], here: &[String]) -> Vec<ClashRow> {
-    let choices = batch_core::choices(&[Decide::Overwrite, Decide::Skip, Decide::KeepBoth]);
-    names
-        .iter()
-        .enumerate()
-        .filter_map(|(i, n)| {
-            let there = here.iter().find(|h| h.to_lowercase() == n.to_lowercase())?;
-            Some(ClashRow {
-                key: i.to_string(),
-                name: n.clone(),
-                there: Some(there.clone()),
-                meta: String::new(),
-                choices: choices.clone(),
-            })
+/// 本机同名那一问的几行（清单照 `batch_core::local_clashes`，不分大小写：手机的共享存储不分）：只有名字，
+/// 不写大小 · 时刻那一行；带盘上撞的那一份叫什么。
+fn local_rows(conflicts: &[Conflict], here: &[String]) -> Vec<ClashRow> {
+    clash_rows(conflicts)
+        .into_iter()
+        .map(|r| ClashRow {
+            there: batch_core::taken_as(&r.name, here, true).map(str::to_string),
+            meta: String::new(),
+            ..r
         })
         .collect()
 }
@@ -1014,62 +1018,45 @@ fn board(id: i64) -> Option<Arc<PhoneBoard>> {
 pub fn plan_of(want: &serde_json::Value, machine: &str) -> Option<Vec<Plan>> {
     let o = want.as_object()?;
     let (k, v) = o.iter().next()?;
-    let names = |items: &[serde_json::Value]| -> Vec<String> {
-        items
+    let wire = |x: &serde_json::Value| serde_json::from_value::<WirePath>(x.clone()).ok();
+    let root = || wire(v.get("root")?);
+    // 删 · 改权限那几项：`{rel, name}` ⇒ (相对段, 名字)。
+    let rows = || -> Option<Vec<(WirePath, String)>> {
+        v.get("items")?
+            .as_array()?
             .iter()
             .map(|i| {
-                i.get("name")
-                    .and_then(|n| n.as_str())
-                    .unwrap_or_default()
-                    .to_string()
+                Some((
+                    wire(i.get("rel")?)?,
+                    i.get("name")
+                        .and_then(|n| n.as_str())
+                        .unwrap_or_default()
+                        .to_string(),
+                ))
             })
             .collect()
     };
-    let simple = |verb: Verb,
-                  cmd: &'static str,
-                  args: serde_json::Value,
-                  items: &[serde_json::Value]| Plan {
-        verb,
-        cmd,
-        args,
-        names: names(items),
-        into: None,
-        machine: machine.to_string(),
-    };
     Some(match k.as_str() {
         "delete" => {
-            let items = v.get("items")?.as_array()?;
-            let wire: Vec<serde_json::Value> = items
-                .iter()
-                .map(|i| {
-                    let mut w =
-                        serde_json::json!({ "rel": i.get("rel").cloned().unwrap_or_default() });
-                    if i.get("dir").and_then(|d| d.as_bool()) == Some(true) {
-                        w["recursive"] = true.into();
-                    }
-                    w
+            let items = rows()?
+                .into_iter()
+                .zip(v.get("items")?.as_array()?)
+                .map(|((rel, name), i)| {
+                    (
+                        rel,
+                        name,
+                        i.get("dir").and_then(|d| d.as_bool()) == Some(true),
+                    )
                 })
-                .collect();
-            vec![simple(
-                Verb::Delete,
-                <cmd_wire::files::FilesDeleteReq as Call>::NAME,
-                serde_json::json!({ "root": v.get("root")?, "items": wire }),
-                items,
-            )]
+                .collect::<Vec<_>>();
+            vec![batch_core::delete_plan(root()?, &items, machine)]
         }
-        "chmod" => {
-            let items = v.get("items")?.as_array()?;
-            let wire: Vec<serde_json::Value> = items
-                .iter()
-                .map(|i| serde_json::json!({ "rel": i.get("rel").cloned().unwrap_or_default() }))
-                .collect();
-            vec![simple(
-                Verb::Chmod,
-                <cmd_wire::files::FilesChmodReq as Call>::NAME,
-                serde_json::json!({ "root": v.get("root")?, "items": wire, "mode": v.get("mode")?.as_str()? }),
-                items,
-            )]
-        }
+        "chmod" => vec![batch_core::chmod_plan(
+            root()?,
+            &rows()?,
+            v.get("mode")?.as_str()?,
+            machine,
+        )],
         "copy" => {
             let path = |k: &str| serde_json::from_value::<WirePath>(v.get(k)?.clone()).ok();
             let names: Vec<Vec<u8>> = v
@@ -1082,12 +1069,12 @@ pub fn plan_of(want: &serde_json::Value, machine: &str) -> Option<Vec<Plan>> {
                         .map(|p| p.0)
                 })
                 .collect::<Option<_>>()?;
-            vec![batch_core::copy_plan(&path("from")?.0, &names, &path("to")?.0, machine).ok()?]
+            vec![copy_plan(&path("from")?.0, &names, &path("to")?.0, machine).ok()?]
         }
         "download" => {
             let a = PullArgs::of(v)?;
             vec![Plan {
-                verb: Verb::Pull,
+                verb: Verb::Download,
                 cmd: <cmd_wire::files::ReadChunkReq as Call>::NAME,
                 args: serde_json::json!({
                     "items": a.items.iter().map(|(path, name)| serde_json::json!({ "path": path, "name": name })).collect::<Vec<_>>(),
@@ -1128,6 +1115,30 @@ pub fn upload_plan(v: &serde_json::Value, machine: &str) -> Option<Plan> {
     })
 }
 
+/// 改权限那一框：`{names: [..], modes: [权限位 | null]}`（逐项读回来的，`null` ＝ 那一项没读到）⇒ `{title, line, prefill}`
+/// （字照 `batch_core::chmod_title` · `batch_core::mode_line`，桌面那一框同一份）。读不动 ⇒ 空串。
+pub fn chmod_ask(want: &str) -> String {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(want) else {
+        return String::new();
+    };
+    let names: Option<Vec<String>> = v
+        .get("names")
+        .and_then(|n| serde_json::from_value(n.clone()).ok());
+    let modes: Option<Vec<Option<u32>>> = v
+        .get("modes")
+        .and_then(|m| serde_json::from_value(m.clone()).ok());
+    let (Some(names), Some(modes)) = (names, modes) else {
+        return String::new();
+    };
+    let batch_core::ModeLine { line, prefill } = batch_core::mode_line(&modes);
+    serde_json::to_string(&cmd_wire::phone::ChmodAsk {
+        title: batch_core::chmod_title(&names),
+        line,
+        prefill,
+    })
+    .unwrap_or_default()
+}
+
 /// 上传那一组每项的描述符 ⇒ 本机那几份（Kotlin `detachFd()` 交出的，此后归这里）；有一项读不出 ⇒ 读得出的也关掉、交空。
 fn upload_files(v: &serde_json::Value) -> Vec<std::fs::File> {
     let fds: Vec<Option<i32>> = v
@@ -1166,7 +1177,7 @@ fn rebuff_of(machine: &str, cmd: &str, e: CallError) -> Rebuff {
         .get("said")
         .and_then(|m| m.as_str())
         .map(str::to_string)
-        .unwrap_or_else(|| comms_inward::chan::said::offline(machine));
+        .unwrap_or_else(|| copy_core::offline(machine));
     Rebuff {
         failed: Failed {
             detail: line
@@ -1381,9 +1392,91 @@ pub fn took(line: &str) -> bool {
     true
 }
 
+/// 把 `from_dir` 底下的这几项复制进 `to_dir`（同名）：「复制到…」那一组（公共根照 `batch_core::copy_req` 算，桌面同一份）。
+fn copy_plan(
+    from_dir: &[u8],
+    names: &[Vec<u8>],
+    to_dir: &[u8],
+    machine: &str,
+) -> Result<Plan, String> {
+    let join = |d: &[u8], n: &[u8]| {
+        let mut p = d.strip_suffix(b"/").unwrap_or(d).to_vec();
+        p.push(b'/');
+        p.extend_from_slice(n);
+        p
+    };
+    let pairs: Vec<(Vec<u8>, Vec<u8>)> = names
+        .iter()
+        .map(|n| (join(from_dir, n), join(to_dir, n)))
+        .collect();
+    let req = batch_core::copy_req(&pairs)?;
+    Ok(Plan {
+        verb: Verb::Copy,
+        cmd: <FilesCopyReq as Call>::NAME,
+        args: serde_json::to_value(&req).map_err(|e| e.to_string())?,
+        names: names
+            .iter()
+            .map(|n| String::from_utf8_lossy(n).into_owned())
+            .collect(),
+        into: Some(String::from_utf8_lossy(to_dir).into_owned()),
+        machine: machine.to_string(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 🔴 复制一组：同一个父目录 ⇒ 根是那个目录的上一级公共处；目标在别的分支 ⇒ 根是两边的公共上级，`from` / `to` 是根下相对段。
+    #[test]
+    fn a_copy_plan_roots_at_the_common_parent() {
+        let p = copy_plan(
+            b"/srv/a",
+            &[b"x".to_vec(), b"d".to_vec()],
+            b"/srv/a/sub",
+            "devbox",
+        )
+        .unwrap();
+        assert_eq!(
+            p.args,
+            serde_json::json!({"root": "/srv/a", "items": [{"from": "x", "to": "sub/x"}, {"from": "d", "to": "sub/d"}]})
+        );
+        assert_eq!(p.names, vec!["x", "d"]);
+        assert_eq!(p.into.as_deref(), Some("/srv/a/sub"));
+        let p = copy_plan(b"/srv/a/b", &[b"x".to_vec()], b"/srv/c/", "devbox").unwrap();
+        assert_eq!(
+            p.args,
+            serde_json::json!({"root": "/srv", "items": [{"from": "a/b/x", "to": "c/x"}]})
+        );
+        let p = copy_plan(b"/a", &[b"x".to_vec()], b"/b", "devbox").unwrap();
+        assert_eq!(
+            p.args,
+            serde_json::json!({"root": "/", "items": [{"from": "a/x", "to": "b/x"}]}),
+            "只在根下相交"
+        );
+        let p = copy_plan(b"/w", &[b"d".to_vec()], b"/w/d", "devbox").unwrap();
+        assert_eq!(
+            p.args,
+            serde_json::json!({"root": "/w", "items": [{"from": "d", "to": "d/d"}]}),
+            "复制进它自己底下：根按上一级算"
+        );
+    }
+
+    /// 🔴 一组没成：交 Kotlin 的那一句在 `said`，`details` 只放下层原话（不以那一句打头，按钮拼一次）；没有原话 ⇒ 缺。
+    #[test]
+    fn a_failed_group_hands_said_and_details_apart() {
+        let p = copy_plan(b"/srv/a", &[b"x".to_vec()], b"/srv/b", "devbox").unwrap();
+        let b = PhoneBoard::new(1, 1, p, "t".into(), Arc::new(|_, _, _| {}));
+        let line = |f: Failed| serde_json::to_value(b.event(&Phase::Failed(f))).unwrap();
+        let got = line(Failed {
+            detail: "EACCES: permission denied".into(),
+            ..Failed::local("复制没成".into())
+        });
+        assert_eq!(got["said"], "复制没成");
+        assert_eq!(got["details"], "EACCES: permission denied");
+        let bare = line(Failed::local("复制没成".into()));
+        assert!(bare["details"].is_null(), "{bare}");
+    }
 
     fn events() -> (OnEvent, Arc<Mutex<Vec<serde_json::Value>>>) {
         let seen: Arc<Mutex<Vec<serde_json::Value>>> = Arc::default();
@@ -1524,6 +1617,34 @@ mod tests {
         assert_eq!(end["undo"], false);
     }
 
+    /// 🔴 上传那一组（生产那一形 [`PhoneBoard::upload`]）同别的组：本机那一圈交回一组的结局 ⇒ `batch_core::run` 落 `ended`（没有「开了哪几单」那一形）。
+    #[tokio::test]
+    async fn an_upload_group_ends_with_the_group_outcome() {
+        let (on, seen) = events();
+        let plan = upload_plan(
+            &serde_json::json!({"root": "/w", "shown": "~/w", "items": [{"name": "a.txt", "fd": -1}]}),
+            "devbox",
+        )
+        .unwrap();
+        let b = PhoneBoard::upload(7, 1, plan, Vec::new(), on);
+        let sent: Arc<Mutex<Vec<serde_json::Value>>> = Arc::default();
+        let s2 = sent.clone();
+        batch_core::run(
+            &b,
+            |args| {
+                lock(&s2).push(args);
+                async { Ok(reply("上传 1 项 · 完成 1")) }
+            },
+            || async {},
+        )
+        .await;
+        let sent = lock(&sent).clone();
+        assert_eq!(sent.len(), 1);
+        let seen = lock(&seen).clone();
+        let phases: Vec<&str> = seen.iter().map(|e| e["phase"].as_str().unwrap()).collect();
+        assert_eq!(phases, ["ended"]);
+    }
+
     /// 🔴 一组的字只在核心里拼：手机 Kotlin 那几棵一个 `beFiles.batch.` 键都不取（正控：共用那一份里有）。
     #[test]
     fn kotlin_spells_no_batch_sentence() {
@@ -1561,6 +1682,144 @@ mod tests {
             core.contains("\"beFiles.batch.segBad\""),
             "正控：共用那一份取这几个键"
         );
+    }
+
+    /// Kotlin 生产源码里含 `needle` 的那几份（`build` · `.gradle` 不扫）＋ 扫到几份。
+    fn kotlin_hits(needle: &str) -> (Vec<String>, usize) {
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let (mut hits, mut seen) = (Vec::new(), 0usize);
+        let mut stack = vec![src];
+        while let Some(d) = stack.pop() {
+            for e in std::fs::read_dir(&d).into_iter().flatten().flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    if !matches!(
+                        p.file_name().and_then(|n| n.to_str()),
+                        Some("build" | ".gradle")
+                    ) {
+                        stack.push(p);
+                    }
+                } else if p.extension().is_some_and(|x| x == "kt")
+                    && p.to_string_lossy().contains("/src/main/")
+                {
+                    seen += 1;
+                    if std::fs::read_to_string(&p)
+                        .unwrap_or_default()
+                        .contains(needle)
+                    {
+                        hits.push(p.display().to_string());
+                    }
+                }
+            }
+        }
+        (hits, seen)
+    }
+
+    /// 🔴 点一行照菜单那一项走（灰着说它的 why）：Kotlin 不再自己兜「门不明」那一句。
+    #[test]
+    fn kotlin_spells_no_unlisted_gate() {
+        let (hits, seen) = kotlin_hits("rsFilewinSource.gates.unlisted");
+        assert!(seen > 50, "Kotlin 生产源码一份都没扫到 —— 本条在空转");
+        assert!(hits.is_empty(), "Kotlin 里兜了门不明那一句：{hits:?}");
+        let (pos, _) = kotlin_hits("vm.tapOf(");
+        assert!(!pos.is_empty(), "正控：点一行那一处还在照核心的 tap 走");
+    }
+
+    /// 🔴 改权限那一框（几项名 ＋ 逐项权限位 ⇒ 标题 · 那一行 · 预填）由核心写：多选两项权限位不同 ⇒ mixed 那句、不预填。
+    #[test]
+    fn a_chmod_box_over_two_modes_says_mixed_and_leaves_it_blank() {
+        let got: serde_json::Value =
+            serde_json::from_str(&chmod_ask(r#"{"names":["a","b"],"modes":[420,493]}"#)).unwrap();
+        assert_eq!(
+            got["title"],
+            copy_core::copy_text("rsFilewinSelect.label.chmodMany", &[("n", "2")])
+        );
+        assert_eq!(
+            got["line"],
+            copy_core::copy_text("rsFilewinWriteops.mode.mixed", &[])
+        );
+        assert!(got["prefill"].is_null());
+        let one: serde_json::Value =
+            serde_json::from_str(&chmod_ask(r#"{"names":["a"],"modes":[420]}"#)).unwrap();
+        assert_eq!(one["prefill"], "644");
+        let blind: serde_json::Value =
+            serde_json::from_str(&chmod_ask(r#"{"names":["a"],"modes":[null]}"#)).unwrap();
+        assert_eq!(
+            blind["line"],
+            copy_core::copy_text("rsFilewinWriteops.mode.unreadable", &[])
+        );
+        assert_eq!(chmod_ask("nope"), "");
+    }
+
+    /// 🔴 保留两份起的名也避开这一组里别的名字与前面刚起的名：文件夹有 a.txt，一组下 a.txt · a (2).txt ·
+    /// a.txt，两个 a.txt 都答保留两份 ⇒ 起 a (3).txt · a (4).txt，a (2).txt 照原名落，不交给系统另起「(1)」。
+    #[tokio::test]
+    async fn a_keep_both_name_skips_names_in_the_same_group() {
+        let dir = folder("keep-group");
+        let (on, _seen, here, slot) = here_side(dir.clone(), &[]);
+        let plan = plan_of(
+            &serde_json::json!({"download": {"folder": dir.to_str().unwrap(), "here": ["a.txt"],
+                "items": [{"path": "/w/a.txt", "name": "a.txt"}, {"path": "/w/a2", "name": "a (2).txt"},
+                          {"path": "/w/a.txt", "name": "a.txt"}]}}),
+            "devbox",
+        )
+        .unwrap()
+        .remove(0);
+        let b = Arc::new(PhoneBoard::new(9, 1, plan, "t".into(), on));
+        *lock(&slot) = Some(b.clone());
+        let b2 = b.clone();
+        let answering = tokio::spawn(async move {
+            for _ in 0..20_000 {
+                if lock(&b2.answer).is_some() {
+                    assert!(b2.answer(Some(r#"{"all":"keep_both"}"#)));
+                    return;
+                }
+                tokio::task::yield_now().await;
+            }
+            panic!("等不到那一问");
+        });
+        let there = There::of(&[("/w/a.txt", b"AAA"), ("/w/a2", b"BB")]);
+        pull_go(b.clone(), Arc::new(there), false).await;
+        answering.await.unwrap();
+        let opened: Vec<String> = lock(&here.opens)
+            .iter()
+            .map(|(_, n, _)| n.clone())
+            .collect();
+        assert_eq!(opened, ["a (3).txt", "a (2).txt", "a (4).txt"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 🔴 冲突框整组那几颗由核心给：两行答不同 ⇒ `whole` 是两行给了的并起来，先后照核心（跳过 · 覆盖），Kotlin 不另并。
+    #[test]
+    fn the_whole_group_choices_come_with_the_asking_line() {
+        let (on, _) = events();
+        let b = PhoneBoard::new(3, 1, del("devbox"), "t".into(), on);
+        *lock(&b.asking) = serde_json::from_value(serde_json::json!([
+            {"key": "0", "name": "a", "kind": "file", "there": "file", "answers": ["overwrite"]},
+            {"key": "1", "name": "b", "kind": "file", "there": "file", "answers": ["skip"]},
+        ]))
+        .unwrap();
+        let line = serde_json::to_value(b.event(&Phase::Asking)).unwrap();
+        let decides: Vec<&str> = line["whole"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| c["decide"].as_str().unwrap())
+            .collect();
+        assert_eq!(decides, ["skip", "overwrite"]);
+    }
+
+    /// 🔴 下到本机那一组是一组下载（命令照旧逐块读）。
+    #[test]
+    fn a_download_want_is_a_download_group() {
+        let p = plan_of(
+            &serde_json::json!({"download": {"folder": "content://t", "here": [], "items": [{"path": "/w/a", "name": "a"}]}}),
+            "devbox",
+        )
+        .unwrap()
+        .remove(0);
+        assert_eq!(p.verb, Verb::Download);
+        assert_eq!(p.cmd, <cmd_wire::files::ReadChunkReq as Call>::NAME);
     }
 
     /// 替身那台（下到本机那一组逐块问它）：每个路径一份内容；`cut_once` 里的路径头一回问就断；`hang` 里的一直不回。
@@ -1855,9 +2114,40 @@ mod tests {
         );
         assert_eq!(
             end.said,
-            batch_core::said_of(&Verb::Pull.text(), &end.outcomes, None)
+            batch_core::said_of(&Verb::Download.text(), &end.outcomes, None)
         );
         assert_eq!(std::fs::read(dir.join("A.TXT")).unwrap(), b"AAA");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 🔴 本机同名答了保留两份 ⇒ 核心起好「名 (2).ext」（跳过已占的）新建，不盖、不交给系统另起名。
+    #[tokio::test]
+    async fn a_local_keep_both_opens_the_name_the_core_minted() {
+        let dir = folder("keep");
+        let (on, _seen, here, slot) = here_side(dir.clone(), &[]);
+        let mut plan = pull_plan(&dir, &["a.txt", "a (2).txt"]);
+        plan.names.truncate(1);
+        plan.args["items"].as_array_mut().unwrap().truncate(1);
+        let b = Arc::new(PhoneBoard::new(8, 1, plan, "t".into(), on));
+        *lock(&slot) = Some(b.clone());
+        let b2 = b.clone();
+        let answering = tokio::spawn(async move {
+            for _ in 0..20_000 {
+                if lock(&b2.answer).is_some() {
+                    assert!(b2.answer(Some(r#"{"all":"keep_both"}"#)));
+                    return;
+                }
+                tokio::task::yield_now().await;
+            }
+            panic!("等不到那一问");
+        });
+        let there = There::of(&[("/w/a.txt", b"AAA")]);
+        pull_go(b.clone(), Arc::new(there), false).await;
+        answering.await.unwrap();
+        assert_eq!(
+            *lock(&here.opens),
+            [("0".to_string(), "a (3).txt".to_string(), None)]
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

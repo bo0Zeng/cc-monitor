@@ -69,7 +69,7 @@ fn the_list_carries_both_hosts_each_with_its_own_host() {
     assert_eq!(m["terminal"], "m-7f3a", "托管那一行的句柄就是它的 id");
     assert_eq!(
         m["input"],
-        serde_json::json!({"kind": "held", "holder": {"who": "desktop", "mine": true, "said": copy_core::copy_text("beTerminal.holder.here", &[])}}),
+        serde_json::json!({"kind": "held", "holder": {"mine": true, "said": copy_core::copy_text("beTerminal.holder.here", &[])}}),
         "托管那一行带此刻的持有者与给人看的那一句（这一端持有 ⇒ 输入在此处）：{wire}"
     );
     assert_eq!(

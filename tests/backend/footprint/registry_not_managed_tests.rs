@@ -36,14 +36,19 @@ const NOT_MANAGED: &[(&str, &str)] = &[
 /// 受管工具 / 手写环境项的**全集**（本表 ＋ 注册表里各家足迹面带来的那一半）—— 判据按全集判。
 static TOOLS: std::sync::LazyLock<Vec<crate::agents::footprint_decl::ToolSpec>> =
     std::sync::LazyLock::new(|| {
-        crate::footprint::registry::tools()
+        crate::footprint::registry::tools_among(crate::agents::REGISTRY)
             .into_iter()
             .cloned()
             .collect()
     });
 #[allow(dead_code)]
 static UNMANAGED_ENV: std::sync::LazyLock<Vec<crate::agents::footprint_decl::UnmanagedEnv>> =
-    std::sync::LazyLock::new(|| super::unmanaged_on(false).into_iter().cloned().collect());
+    std::sync::LazyLock::new(|| {
+        super::unmanaged_among(crate::agents::REGISTRY, false)
+            .into_iter()
+            .cloned()
+            .collect()
+    });
 
 /// ★ **反向表不许变成许愿池：每条都要论证「为什么不属这张表的语义」。**
 ///

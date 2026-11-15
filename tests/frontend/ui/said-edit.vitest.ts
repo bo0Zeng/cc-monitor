@@ -11,6 +11,9 @@ import type { RewindOptions } from "../../../src/frontend/ui/generated/RewindOpt
 import type { Rewind } from "../../../src/frontend/ui/generated/Rewind";
 import type { LineRecord } from "../../../src/frontend/ui/generated/LineRecord";
 import type { PutEnd } from "../../../src/frontend/ui/session-queue";
+import { Outbox } from "../../../src/frontend/ui/outbox";
+import type { QueueCancelled } from "../../../src/frontend/ui/generated/QueueCancelled";
+import { ChanError } from "../../../src/comms/inward/chan";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import s from "../../../src/frontend/ui/said-edit.module.css";
 
@@ -54,7 +57,7 @@ function stream(): { content: HTMLElement; cards: HTMLElement[] } {
 }
 
 /** 假的两口：`options` 依次回 `answers`（用完了回最后一个）；`send` 回 `end`，或等手动放行（`hold`）。 */
-function rig(opts: { answers?: (RewindOptions | Error)[]; end?: PutEnd; hold?: boolean } = {}) {
+function rig(opts: { answers?: (RewindOptions | Error)[]; end?: PutEnd; hold?: boolean; outbox?: Outbox } = {}) {
   const sent: { text: string; rewind: Rewind }[] = [];
   const answers = opts.answers ?? [IDLE];
   let asked = 0;
@@ -72,7 +75,7 @@ function rig(opts: { answers?: (RewindOptions | Error)[]; end?: PutEnd; hold?: b
       return new Promise<PutEnd>((r) => (release = r));
     }),
   };
-  return { io, sent, edit: new SaidEdit(io), release: (e: PutEnd) => release?.(e) };
+  return { io, sent, edit: new SaidEdit(io, opts.outbox ?? new Outbox(vi.fn(), vi.fn())), release: (e: PutEnd) => release?.(e) };
 }
 
 const box = (): HTMLTextAreaElement => document.querySelector('[data-role="said-edit-box"]') as HTMLTextAreaElement;
@@ -141,6 +144,29 @@ describe("编辑已发的一句 · 桌面", () => {
     btn("said-edit-confirm")!.click();
     await flush();
     expect(sent).toEqual([{ text: "改过的", rewind: { to: "u-2", how: "code_and_conversation", when: "now" } }]);
+  });
+
+  it("★ 那台没给「什么时候退」⇒ 交现在退，不替人缺省成等这一轮完；重问那几项没了 ⇒ 之前选的等这一轮完不留", async () => {
+    const { cards } = stream();
+    const { edit, sent } = rig();
+    edit.open(cards[1]!, AT);
+    await flush();
+    btn("said-edit-confirm")!.click();
+    await flush();
+    expect(sent.map((x) => x.rewind.when)).toEqual(["now"]);
+
+    const { cards: again } = stream();
+    const r = rig({ answers: [BUSY, IDLE] });
+    r.edit.activity("s-1", "working");
+    r.edit.open(again[1]!, AT);
+    await flush();
+    expect(radios("said-edit-when").map((x) => x.checked)).toEqual([true, false]);
+    r.edit.activity("s-1", "idle");
+    await flush();
+    expect(radios("said-edit-when")).toEqual([]);
+    btn("said-edit-confirm")!.click();
+    await flush();
+    expect(r.sent.map((x) => x.rewind.when)).toEqual(["now"]);
   });
 
   it("★ 那条会话忙闲一变 ⇒ 再问一次、照新回包重摆，选过的那一项还在就留着；值没变 · 别的会话 ⇒ 不问", async () => {
@@ -312,5 +338,52 @@ describe("编辑已发的一句 · 桌面", () => {
     const el = (r: ReturnType<typeof renderMessage>): HTMLElement => (r as { element: HTMLElement }).element;
     expect(el(plain).querySelector('[data-role="said-edit"]')).toBeNull();
     expect(el(editable).querySelector('[data-role="said-edit"]')).not.toBeNull();
+  });
+});
+
+describe("编辑那一句上一版还撤着（同手机 SaidEdit）", () => {
+  const down = (): ChanError => new ChanError({ layer: "hop", at: { idx: 0, tag: "wait" }, reach: "Sent", why: "Overrun" }, "no-answer");
+  /** 上一回窗口里：编辑 AT 那一句确认过、没回执、点了撤、那一问还没答就重开了。 */
+  async function parkedEdit(): Promise<void> {
+    const first = new Outbox(async () => Promise.reject(down()), () => new Promise<QueueCancelled>(() => {}));
+    await first.say("devbox", "s-1", "改过的", [], { to: AT.id, how: "conversation", when: "now" });
+    void first.withdraw("devbox", "s-1", first.of("devbox", "s-1")[0]!.id);
+    await flush();
+  }
+
+  it("★ 重开后上一版仍撤着 ⇒［回退并发送］灰着、照那台成品的 rewindHeld 摆，回车不交", async () => {
+    await parkedEdit();
+    const { cards } = stream();
+    const { edit, io } = rig({ outbox: new Outbox(vi.fn(), vi.fn(() => new Promise<QueueCancelled>(() => {}))) });
+    edit.machineChanged("devbox", { rewindHeld: "devbox rewind-held" });
+    edit.open(cards[1]!, AT);
+    await flush();
+    expect(btn("said-edit-confirm")!.getAttribute("aria-disabled")).toBe("true");
+    expect(document.querySelector('[data-role="said-edit-held"]')?.textContent).toBe("devbox rewind-held");
+    key("Enter");
+    await flush();
+    expect(io.send).not.toHaveBeenCalled();
+  });
+
+  it("★ 接着问答撤成了 ⇒ 主按钮当场能点、那一句收掉；别的一句不受它连累", async () => {
+    await parkedEdit();
+    let answer: (v: QueueCancelled) => void = () => {};
+    const outbox = new Outbox(vi.fn(), vi.fn(() => new Promise<QueueCancelled>((r) => (answer = r))));
+    const { cards } = stream();
+    const { edit } = rig({ outbox });
+    edit.machineChanged("devbox", { rewindHeld: "devbox rewind-held" });
+    edit.open(cards[1]!, AT);
+    await flush();
+    outbox.machineUp("devbox");
+    await flush();
+    expect(btn("said-edit-confirm")!.getAttribute("aria-disabled"), "正在问：仍撤着").toBe("true");
+    answer({ cancelled: true, said: "撤了", queue: { items: [], sent: [] } });
+    await flush();
+    expect(btn("said-edit-confirm")!.getAttribute("aria-disabled")).not.toBe("true");
+    expect(document.querySelector('[data-role="said-edit-held"]')).toBeNull();
+    edit.close();
+    edit.open(cards[0]!, { ...AT, id: "u-1" });
+    await flush();
+    expect(btn("said-edit-confirm")!.getAttribute("aria-disabled")).not.toBe("true");
   });
 });

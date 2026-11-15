@@ -2,9 +2,16 @@
 //
 // 这里锁的不是"某个键绑成什么"，而是几条**加 action 时最容易悄悄踩坏**的契约：
 // 漏进显示顺序表 → 整组 action 在编辑器里静默消失，用户既看不到也绑不了，而 TS 不会报错。
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+/** 键位存储读的那一份配置（替身：只回手上摆的）。 */
+const store = vi.hoisted(() => ({ cfg: {} as Record<string, unknown> }));
+vi.mock("../../../../src/frontend/ui/config", () => ({ loadConfig: async () => store.cfg, patchConfig: async () => {}, setAt: () => ({}) }));
+
 import { KeybindingDispatcher } from "../../../../src/frontend/ui/keybindings/registry";
 import { ACTIONS, CATEGORY_LABEL, CATEGORY_ORDER, type Category } from "../../../../src/frontend/ui/keybindings/actions";
+import { getKeybindings } from "../../../../src/frontend/ui/keybindings/store";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 describe("ACTIONS 清单结构性守卫", () => {
   it("每个 Category 都在 CATEGORY_ORDER 里（漏加 = 整组在编辑器里静默消失）", () => {
@@ -70,6 +77,20 @@ describe("〔S4〕预留位不留", () => {
       "正控：谓词认得出一条预留位（否则下面的零命中不可信）",
     ).toEqual(["x.reserved"]);
     expect(reserved(ACTIONS)).toEqual([]);
+  });
+});
+
+describe("待答请求 · 需手动各一个「下一个」（P29）", () => {
+  it("★ Ctrl+J 归待答请求（asks.next）；需手动的下一个（manual.next）默认不绑；旧 id needs.next 不在清单里", () => {
+    const pick = (id: string) => ACTIONS.find((x) => x.id === id);
+    expect([pick("asks.next")?.default, pick("asks.next")?.label]).toEqual(["Ctrl+KeyJ", copyText("tabBar.asks.hint")]);
+    expect([pick("manual.next")?.default, pick("manual.next")?.label]).toEqual([null, copyText("tabBar.manual.hint")]);
+    expect(pick("needs.next")).toBeUndefined();
+  });
+
+  it("★ 配置里存着旧 id needs.next ⇒ 读键位时丢掉、不报错，认得的照读", async () => {
+    store.cfg = { keybindings: { "needs.next": "Ctrl+KeyJ", "asks.next": null } };
+    expect(await getKeybindings()).toEqual({ "asks.next": null });
   });
 });
 

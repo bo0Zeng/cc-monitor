@@ -106,6 +106,27 @@ fn a_deployment_is_staged_as_partial_then_put_in_place() {
     std::fs::remove_dir_all(&home).ok();
 }
 
+/// 旁边不停 fork 时，暂存件写好马上起也起得来：本进程从没有过它的写端，漏不进别人 fork 出来的子进程
+/// （撞上一次 ETXTBSY 当场红、不重试）。
+#[cfg(unix)]
+#[test]
+fn a_staged_program_runs_at_once_while_others_fork() {
+    let home = fake_home("busy");
+    let bin = OwnBin::at(home.join(".cc-monitor").join("bin"));
+    let _f = test_home::forking(4);
+    for i in 0..300 {
+        let staged = bin
+            .stage(&format!("p{i}"), b"#!/bin/sh\nexit 0\n")
+            .expect("暂存");
+        match std::process::Command::new(&staged).status() {
+            Ok(st) => assert!(st.success(), "第 {i} 次：暂存件退出不是 0：{st}"),
+            Err(e) => panic!("第 {i} 次：刚写好的暂存件起不来：{e}（{:?}）", e.kind()),
+        }
+    }
+    drop(_f);
+    std::fs::remove_dir_all(&home).ok();
+}
+
 #[test]
 fn a_log_dir_is_created_where_the_caller_says() {
     let home = fake_home("logs");

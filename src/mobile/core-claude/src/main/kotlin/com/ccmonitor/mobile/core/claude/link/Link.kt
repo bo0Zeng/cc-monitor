@@ -1,7 +1,11 @@
 package com.ccmonitor.mobile.core.claude.link
 
+import com.ccmonitor.mobile.core.wire.gen.AttachDo
+import com.ccmonitor.mobile.core.wire.gen.AttachDone
+import com.ccmonitor.mobile.core.wire.gen.AttachShown
 import com.ccmonitor.mobile.core.wire.gen.BatchAnswer
 import com.ccmonitor.mobile.core.wire.gen.BatchLine
+import com.ccmonitor.mobile.core.wire.gen.Changed
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.LiveCards
 import com.ccmonitor.mobile.core.wire.gen.MachineFix
@@ -10,8 +14,10 @@ import com.ccmonitor.mobile.core.wire.gen.MachineState
 import com.ccmonitor.mobile.core.wire.gen.PhoneMenu
 import com.ccmonitor.mobile.core.wire.gen.SessionBook
 import com.ccmonitor.mobile.core.wire.gen.SessionBranch
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.emptyFlow
 
 /** 正在装 / 更新那一句（成品写好的）；[bar] ⇒ 放字节那一段（屏上走一条进度条）。 */
 data class Busy(
@@ -58,6 +64,9 @@ interface CoreLink {
     /** 流上的 `session_branch`：一个会话的主线外清单的一截（「前 `at` 条照旧，其后换成 `off`」，段照 `runs`），只有名单里要了清单的会话。 */
     val branches: SharedFlow<SessionBranch>
 
+    /** 流上的 `changed` 帧（哪一样变了 · 哪一个）：出口照它重读那一份；登录抽屉照 `login` 那一样收自己那份作业的结局。 */
+    val changed: SharedFlow<Changed>
+
     /**
      * 接上第几回（还没接上过 ⇒ 0）。值变了 ＝ 换了一条流：之前在路上的问答作废（回过 [Reply.LinkDown]），
      * 断着那一段的 `line` 帧没收到 ⇒ 读过的正文要从断处补读。
@@ -75,14 +84,11 @@ interface CoreLink {
     ): Reply
 
     /**
-     * 分块传（循环在核心里，桌面同一份）：[fd] 现开本机那一份、交出描述符（核心用完就关；开不了就抛 [java.io.IOException]）。
-     * 每一块等至多 [withinMs]，走到哪经 [moved]（已过字节 · 总数，不知道 ⇒ `-1`）；结局同 [call]。
-     * [Transfer.Stage]：送进那台的暂存区，成了 ⇒ `{key, chunks, bytes, sha256}`；
-     * [Transfer.Pull]：读进内存（[fd] 不调），成了 ⇒ `{bytes, content, undecodable}`（[Transfer.Pull.of] 解）。
+     * 分块传（循环在核心里，桌面同一份）：每一块等至多 [withinMs]，走到哪经 [moved]（已过字节 · 总数，不知道 ⇒ `-1`）；结局同 [call]。
+     * [Transfer.Pull]：读进内存（不碰本机文件），成了 ⇒ `{bytes, content, undecodable}`（[Transfer.Pull.of] 解）。
      */
     suspend fun transfer(
         how: Transfer,
-        fd: () -> Int,
         withinMs: Long,
         moved: (Long, Long) -> Unit,
     ): Reply
@@ -117,6 +123,15 @@ interface CoreLink {
     /** 撤那一组（「停」）。 */
     fun batchStop(id: Long)
 
+    /**
+     * 输入框上方那一排附件（问收不收 · 送块 · 提交 · 断了重排的那一圈在核心里，桌面同一份）：[op] 是要做的那一下，
+     * 回核心的答（`open` ⇒ 那一排的号；`take` ⇒ 编号）；核心读不懂 ⇒ `null`。
+     */
+    fun attach(op: AttachDo): AttachDone? = null
+
+    /** 核心交的那一排（每变一次一格；按 [AttachShown.tray] 认自己那一排）。 */
+    val attaches: Flow<AttachShown> get() = emptyFlow()
+
     /** 文件页选中这几项（[FilesLs.Entry.row]，那台交来的原行）此刻能做什么（核心照此刻那一台判：断着 · 那台做不到的命令）；核心那一行认不出 ⇒ `null`。 */
     fun picks(rows: List<Any?>): PhoneMenu?
 
@@ -132,12 +147,7 @@ fun CoreLink.retry(ask: () -> Unit) = if (state.value is LinkLine.Down) reconnec
 
 /** 分块传哪一半（[CoreLink.transfer]）。 */
 sealed interface Transfer {
-    /** 上传那一半；[name] 是本机那一份在句子里的名字。 */
-    data class Stage(
-        val name: String,
-    ) : Transfer
-
-    /** 拉进内存那一半：那台的 [path] 逐块读回、过 [cap]（门给的上限）就停；不碰本机文件（[CoreLink.transfer] 的 `fd` 不开）。 */
+    /** 拉进内存那一半：那台的 [path] 逐块读回、过 [cap]（门给的上限）就停；不碰本机文件。 */
     data class Pull(
         val path: RemotePath,
         val cap: Long,

@@ -10,17 +10,22 @@
 //! - 那台流上的事原样转给连着本机后端的每条流连接（[`Relay`]，生产 ＝ 每一份 watcher 的出方向，由 `stream/entry.rs` 接上）：
 //!   每条连接先它的 hello、再流上的帧、丢了一行一格 `gap`、断了一帧 `ended`（`relayed` 帧，`cmd_wire::frame::Relayed`）。
 //!   断的那一刻先给那台活的 · 可重连的每一条转一帧 `session_left`（说不清），这一端记着那台说过的会话（共享核心的会话簿）。
-//!   新连上来的流先收此刻接着的各台的 hello（[`attached_hellos`]），不然它收不到那台这一条连接的开头。
+//! - 那台的会话簿 · 活卡板由这一端折（[`Folds`]，壳不折）：每一行会话帧原样转，改整条的那几种（宣告 · 状态 · 离开 · 运行表 · 清单报完了）紧跟一格 `seats`（那一条此刻整条）；
+//!   `live_card` 不原样转、折好转一格 `live`（[`fold_line`]）；断的那一刻板清空、清单报完了作废（[`ended_now`]）。
+//!   新连上来的流先收此刻接着的各台的 hello、紧跟那台整本（[`attached_hellos`]），不然它收不到那台这一条连接的开头。
 //!   那台接上 · 断了（断了排在 `ended` 之后）还从同一个口推一帧 `changed {groups}`：两端照它重问组，断了那台那一半照上次所知出。
 //! - 在看名单：每台一张名单台（[`Desk`]，随这个进程一直留着，那台换连接重报）；连着本机后端的各条流报那台的名单
 //!   （`stream-watch` 信封带 `machine`，[`watch_at`]），并起来交那张台；那条流走了它那一份摘掉（[`Watching`]）。
 
+use crate::common::time::Tz;
 use crate::wire::{Frame, FrameMake as _};
 use cmd_wire::dial::Captured;
+use cmd_wire::frame::SessionSeats;
 use cmd_wire::frame::{Changed, Relayed};
 use cmd_wire::machine::{MachineState, MachineStopReq, MachineStopped, MachineWakeReq};
 use cmd_wire::watch::{BranchHeld, WatchAsk, WatchFrom};
 use face_core::book::SessionBook;
+use face_core::live::Board;
 use resident_client::feed::{self, Boxed, Config, Event, Feed, Problem, Progress, Transport};
 use resident_client::watch::Desk;
 use std::collections::{BTreeSet, HashMap};
@@ -108,7 +113,8 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 }
 
 /// 照 `wanted`（要连的那几台的名字）对齐：没了的 · 停着的收掉，新来的起；其余不碰（在跑的不断）。
-pub(crate) fn align_in(wanted: &[String], ssh: &Arc<dyn Ssh>, relay: &Relay) {
+/// 新起的那几条 attach 行带 `tz`（看的人的时区，生产 ＝ [`viewer`]）：那台照它写推送帧的钟面。
+pub(crate) fn align_in(wanted: &[String], ssh: &Arc<dyn Ssh>, relay: &Relay, tz: &Tz) {
     let held = lock(stopped()).clone();
     let mut t = lock(table());
     t.retain(|name, f| {
@@ -122,7 +128,7 @@ pub(crate) fn align_in(wanted: &[String], ssh: &Arc<dyn Ssh>, relay: &Relay) {
         if held.contains(name) || t.contains_key(name) {
             continue;
         }
-        t.insert(name.clone(), start_one(name, ssh, relay));
+        t.insert(name.clone(), start_one(name, ssh, relay, tz));
     }
 }
 
@@ -143,10 +149,15 @@ pub(crate) fn hosted() -> bool {
     HOSTED.load(std::sync::atomic::Ordering::SeqCst)
 }
 
+/// 看各台会话的人的时区：本机后端的看客就在这台上 ⇒ 这台的时区（本机后端这一侧接各台常驻流只从这里取）。
+fn viewer() -> Tz {
+    Tz::here()
+}
+
 /// 照这一端的机器表此刻那一张对齐（常驻起来时一次 · 机器表每改一次）。
 pub(crate) fn align() {
     let pool: Arc<dyn Ssh> = Arc::new(Pool);
-    align_in(&wanted_now(), &pool, &relay_out());
+    align_in(&wanted_now(), &pool, &relay_out(), &viewer());
 }
 
 /// 机器表里要连的那几台。
@@ -175,16 +186,22 @@ fn close(machine: &str, f: &Feed<Link>) {
 /// 「起」/［重试］（[`resume_in`] 的生产那一份）。
 pub(crate) fn resume(machine: &str) {
     let pool: Arc<dyn Ssh> = Arc::new(Pool);
-    resume_in(machine, &wanted_now(), &pool, &relay_out());
+    resume_in(machine, &wanted_now(), &pool, &relay_out(), &viewer());
 }
 
 /// 不再停着；在跑 ⇒ 叫醒（断着时不等退避马上再接）；不在跑而机器表要连 ⇒ 起。
-pub(crate) fn resume_in(machine: &str, wanted: &[String], ssh: &Arc<dyn Ssh>, relay: &Relay) {
+pub(crate) fn resume_in(
+    machine: &str,
+    wanted: &[String],
+    ssh: &Arc<dyn Ssh>,
+    relay: &Relay,
+    tz: &Tz,
+) {
     lock(stopped()).remove(machine);
     let running = lock(table()).get(machine).cloned();
     match running {
         Some(f) => f.wake(),
-        None => align_in(wanted, ssh, relay),
+        None => align_in(wanted, ssh, relay, tz),
     }
 }
 
@@ -197,48 +214,131 @@ struct Seen {
     attached: bool,
     /// 那台 hello 自报的版本号（最近一次接上的那一份）。
     version: Option<String>,
-    /// 那台说过的会话（共享核心的会话簿，只折 `session_*` 那几种）：随这一台的 feed 活着，换连接不丢 ——
-    /// 断的那一刻照它说哪几条说不清（[`unclear_now`]），重连之后那台重报的帧把它们一条条换掉。
-    book: SessionBook,
 }
 
-/// 流上这一行是会话帧 ⇒ 折进那台的簿（别的帧不解）；是「活会话清单报完了」那一帧 ⇒ 回 `true`（调用方记进机器状态：首屏那一句照它）。
-fn fold_line(book: &mut SessionBook, line: &str) -> bool {
-    let Ok(kind) = cmd_wire::frame::kind_of(line) else {
-        return false;
+/// **那台说过的会话 · 活卡，这一端替连着它的各条流折好**（共享核心的会话簿 · 活卡板，[`folds`] 一台一份）：
+/// 簿随这一台的 feed 活着、换连接不丢 —— 断的那一刻照它说哪几条说不清（[`ended_now`]），重连之后那台重报的帧把它们一条条换掉；
+/// 板随这一条连接（卡号是那条连接上的），断了清空。转出去的是成品（`relayed` 的 `seats` · `live`），壳不折。
+#[derive(Default)]
+pub(crate) struct Folds {
+    pub(crate) book: SessionBook,
+    board: Board,
+}
+
+/// 各台那一份（[`start_one`] 起一台时换一份新的；新连上来的流照它补整本，[`attached_hellos`]）。收掉一台不摘：
+/// 收掉之后那一条断的那一刻还要照它说说不清；随这个进程留着，一台一份（同 [`desks`]）。
+fn folds() -> &'static Mutex<HashMap<String, Folds>> {
+    static F: std::sync::OnceLock<Mutex<HashMap<String, Folds>>> = std::sync::OnceLock::new();
+    F.get_or_init(Default::default)
+}
+
+/// **那台流上一行 ⇒ 转出去哪几件**：会话帧折进簿、原样那一行之后紧跟一格 `seats`（那一条此刻整条；清单报完了那一帧只带 `listed`）；
+/// `live_card` 折进板、变了转一格 `live`（变了的那一处 ＋ 那一处整份），原样那一行不转；别的原样。
+/// 回的 `bool` ＝ 这一行是「活会话清单报完了」（调用方记进机器状态：首屏那一句照它）。
+pub(crate) fn fold_line(f: &mut Folds, machine: &str, line: &str) -> (Vec<Relayed>, bool) {
+    use cmd_wire::frame::Frame as F;
+    let as_is = || Relayed::Line {
+        machine: machine.to_string(),
+        line: line.to_string(),
     };
-    if !kind.starts_with("session") {
-        return false;
+    let Ok(kind) = cmd_wire::frame::kind_of(line) else {
+        return (vec![as_is()], false);
+    };
+    if kind != "live_card" && !kind.starts_with("session") {
+        return (vec![as_is()], false);
     }
-    if let Ok(f) = cmd_wire::frame::decode::<serde::de::IgnoredAny>(line) {
-        book.fold(&f);
-        return matches!(f, cmd_wire::frame::Frame::SessionsReplayed(_));
+    // 解不开 ⇒ 原样转（收的那一头照实说认不出）。
+    let Ok(frame) = cmd_wire::frame::decode::<serde::de::IgnoredAny>(line) else {
+        return (vec![as_is()], false);
+    };
+    if let F::LiveCard(c) = &frame {
+        let Some(live) = f.board.step(c) else {
+            return (Vec::new(), false);
+        };
+        return (
+            vec![Relayed::Live {
+                machine: machine.to_string(),
+                live,
+            }],
+            false,
+        );
     }
-    false
+    let Some(seats) = f.book.step(&frame) else {
+        // 别的会话帧（预读完了 · 主线外清单 · 记录文件怎么了）不改整条：折进簿、原样转。
+        return (vec![as_is()], false);
+    };
+    (
+        vec![
+            as_is(),
+            Relayed::Seats {
+                machine: machine.to_string(),
+                seats,
+            },
+        ],
+        matches!(frame, F::SessionsReplayed(_)),
+    )
 }
 
-/// 那台这一条连接断的那一刻：簿里活的 · 可重连的每一条落成说不清（[`SessionBook::unseen_now`]，簿里先折好），
-/// 交回要转出去的那几行（按 sid 排）。
-fn unclear_now(book: &mut SessionBook, machine: &str) -> Vec<String> {
-    let offline = cmd_wire::cells::Words(comms_inward::chan::said::offline(machine));
-    book.unseen_now(offline)
+/// **那台这一条连接断的那一刻**：板清空（卡号随这一条连接）、清单报完了作废；簿里活的 · 可重连的每一条落成说不清
+/// （[`SessionBook::unseen_now`]，簿里先折好），交回要转出去的那几件：每一条那一行 ＋ 紧跟它此刻的整条（按 sid 排）。
+pub(crate) fn ended_now(f: &mut Folds, machine: &str) -> Vec<Relayed> {
+    f.board.clear();
+    f.book.listed = false;
+    let offline = cmd_wire::cells::Words(copy_core::offline(machine));
+    // 未读是那条连接上数的：簿里整份作废（`unseen_now`），不说说不清的那几条（已结束 · 记录已不在）也各补一格整条，壳那一格跟着摘。
+    let had_unread: Vec<String> = f.book.unread.keys().cloned().collect();
+    let left = f.book.unseen_now(offline);
+    let mut out = Vec::new();
+    let quiet: Vec<String> = had_unread
         .into_iter()
-        .filter_map(|l| {
-            serde_json::to_string(&cmd_wire::frame::Frame::<serde_json::Value>::SessionLeft(l)).ok()
-        })
-        .collect()
+        .filter(|sid| !left.iter().any(|l| &l.sid == sid))
+        .collect();
+    for l in left {
+        let sid = l.sid.clone();
+        let Ok(line) =
+            serde_json::to_string(&cmd_wire::frame::Frame::<serde_json::Value>::SessionLeft(l))
+        else {
+            continue;
+        };
+        out.push(Relayed::Line {
+            machine: machine.to_string(),
+            line,
+        });
+        out.push(Relayed::Seats {
+            machine: machine.to_string(),
+            seats: SessionSeats {
+                seats: vec![f.book.seat_now(&sid)],
+                listed: false,
+                whole: false,
+            },
+        });
+    }
+    if !quiet.is_empty() {
+        out.push(Relayed::Seats {
+            machine: machine.to_string(),
+            seats: SessionSeats {
+                seats: quiet.iter().map(|sid| f.book.seat_now(sid)).collect(),
+                listed: false,
+                whole: false,
+            },
+        });
+    }
+    out
 }
 
 /// 起一台的那一条：循环交的那一态原样进机器状态；那台流上的事原样转出去（[`Relay`]）。
-fn start_one(machine: &str, ssh: &Arc<dyn Ssh>, relay: &Relay) -> Arc<Feed<Link>> {
+fn start_one(machine: &str, ssh: &Arc<dyn Ssh>, relay: &Relay, tz: &Tz) -> Arc<Feed<Link>> {
     let name = machine.to_string();
     let seen: Mutex<Seen> = Mutex::new(Seen::default());
+    // 起一台 ⇒ 那台的簿与板从空的起（机器表里摘了又加回来的那一台不接旧的）。
+    lock(folds()).insert(name.clone(), Folds::default());
     let relay = Arc::clone(relay);
     Feed::start(
         Config {
             machine: name.clone(),
             mine: Some(crate::common::id::BUILD_ID.to_string()),
-            tz: None,
+            // 那台照这一格写推送帧的钟面、本机原样转给壳（这台说不出时区名 ⇒ `UTC` 明说）。
+            tz: tz.iana_name(),
             handshake: HANDSHAKE,
         },
         Some(Arc::new(Link {
@@ -263,11 +363,17 @@ fn start_one(machine: &str, ssh: &Arc<dyn Ssh>, relay: &Relay) -> Arc<Feed<Link>
                     }));
                 }
                 Event::Frame(line) => {
-                    let listed = fold_line(&mut lock(&seen).book, &line);
+                    let (out, listed) = fold_line(
+                        lock(folds()).entry(machine.clone()).or_default(),
+                        &machine,
+                        &line,
+                    );
                     if listed {
                         crate::control::machine_state::note(&name, deploy::machine::Fact::Listed);
                     }
-                    relay(Frame::Relayed(Relayed::Line { machine, line }));
+                    for r in out {
+                        relay(Frame::Relayed(r));
+                    }
                 }
                 Event::Gap => relay(Frame::Relayed(Relayed::Gap { machine })),
                 Event::State(st) => {
@@ -278,7 +384,7 @@ fn start_one(machine: &str, ssh: &Arc<dyn Ssh>, relay: &Relay) -> Arc<Feed<Link>
                         let came_up = up && !was_up;
                         let ended = !up && std::mem::take(&mut s.attached);
                         let unclear = if ended {
-                            unclear_now(&mut s.book, &name)
+                            ended_now(lock(folds()).entry(name.clone()).or_default(), &name)
                         } else {
                             Vec::new()
                         };
@@ -286,12 +392,9 @@ fn start_one(machine: &str, ssh: &Arc<dyn Ssh>, relay: &Relay) -> Arc<Feed<Link>
                     };
                     if ended {
                         lock(hellos()).remove(&machine);
-                        // 断了 ≠ 会话死了：那台活的 · 可重连的由这一端说说不清（排在 `ended` 之前），壳不合成。
-                        for line in unclear {
-                            relay(Frame::Relayed(Relayed::Line {
-                                machine: machine.clone(),
-                                line,
-                            }));
+                        // 断了 ≠ 会话死了：那台活的 · 可重连的由这一端说说不清（排在 `ended` 之前，各跟它此刻的整条），壳不合成。
+                        for r in unclear {
+                            relay(Frame::Relayed(r));
                         }
                         relay(Frame::Relayed(Relayed::Ended { machine }));
                     }
@@ -363,17 +466,38 @@ fn hellos() -> &'static Mutex<HashMap<String, String>> {
     H.get_or_init(Default::default)
 }
 
-/// 新连上来的一条流要先收的那几帧：此刻接着的各台那一条连接的 hello（按名字排）。
-/// 之后那台流上的帧照常转来（新流在 watcher 上接好之后才取这一份 ⇒ 不会漏开头；同一台的 hello 至多重一次，收的那一头当换了一条）。
-pub fn attached_hellos() -> Vec<Frame> {
+/// 此刻接着的各台（按名字排）那一条连接的 hello 原样那一行（只要 hello 的那几处读它，不拼整本）。
+pub fn hellos_now() -> Vec<(String, String)> {
     let mut all: Vec<(String, String)> = lock(hellos())
         .iter()
         .map(|(m, h)| (m.clone(), h.clone()))
         .collect();
     all.sort();
-    all.into_iter()
-        .map(|(machine, line)| Frame::Relayed(Relayed::Line { machine, line }))
-        .collect()
+    all
+}
+
+/// 那台此刻的整本（那台流上挤丢过一格、补 `gap` 时紧跟它；没起过那台 ⇒ `None`）。
+pub fn whole_now(machine: &str) -> Option<SessionSeats> {
+    lock(folds()).get(machine).map(|f| f.book.whole())
+}
+
+/// 新连上来的一条流要先收的那几帧：此刻接着的各台（按名字排）那一条连接的 hello，紧跟那台此刻的整本（`seats` 带 `whole`）。
+/// 之后那台流上的帧照常转来（新流在 watcher 上接好之后才取这一份 ⇒ 不会漏开头；同一台的 hello 至多重一次，收的那一头当换了一条）。
+pub fn attached_hellos() -> Vec<Frame> {
+    let all = hellos_now();
+    let books = lock(folds());
+    let mut out = Vec::new();
+    for (machine, line) in all {
+        let whole = books.get(&machine).map(|f| f.book.whole());
+        out.push(Frame::Relayed(Relayed::Line {
+            machine: machine.clone(),
+            line,
+        }));
+        if let Some(seats) = whole {
+            out.push(Frame::Relayed(Relayed::Seats { machine, seats }));
+        }
+    }
+    out
 }
 
 /// 各台的名单台（随这个进程一直留着：那台的常驻流断了又起，名单照旧）。
@@ -695,6 +819,7 @@ pub(crate) async fn stop_with(
     Ok(MachineStopped {
         stopped: v["stopped"].as_str().unwrap_or_default().to_string(),
         pid: v["pid"].as_u64().and_then(|p| u32::try_from(p).ok()),
+        said: v["said"].as_str().unwrap_or_default().to_string(),
     })
 }
 
@@ -709,7 +834,7 @@ pub const UNREACHABLE: &str = "unreachable";
 const FORWARD_WITHOUT_DEADLINE: Duration = Duration::from_secs(60);
 
 /// **问那台的一问经它的常驻流转过去**（请求信封带 `machine` 的那一形，分派在 `stream/inbound`）：命令 · 入参 · 出口声明原样交那台，
-/// 那台的回包原样回来；那台拒了 ⇒ 码 · 那一句 · 原话 · 按码定形的 `data` 原样交回。能不能发（那台认不认 · 形状对不对得上）
+/// 那台的回包原样回来；那台拒了 ⇒ 码 · 那一句 · 那台写好的复制详情 · 按码定形的 `data` 原样交回。能不能发（那台认不认 · 形状对不对得上）
 /// 由这一端连那台的客户端判（`InboundClient::relay_until`），判下来的那几种照码说。期限 · 时区都是发起方那一份（`within_ms` · `tz`）。
 #[expect(
     clippy::disallowed_methods,
@@ -722,8 +847,7 @@ pub async fn forward(machine: String, req: crate::wire::Request) -> crate::wire:
     });
     let deadline = tokio::time::Instant::now() + left;
     let feed = lock(table()).get(&machine).cloned();
-    let unreachable =
-        || crate::wire::spec::fail(UNREACHABLE, comms_inward::chan::said::offline(&machine));
+    let unreachable = || crate::wire::spec::fail(UNREACHABLE, copy_core::offline(&machine));
     let Some(feed) = feed else {
         return Err(unreachable());
     };
@@ -741,26 +865,16 @@ pub async fn forward(machine: String, req: crate::wire::Request) -> crate::wire:
         });
     got.map_err(|e| match e {
         CallError::Remote(r) => {
-            let f = crate::wire::spec::fail(&r.code, r.said).and_raw(Some(&r.detail));
+            // 那台写好的复制详情原样带回（原样透传：不当原话、不再按这台写一份）。
+            let f = crate::wire::spec::fail(&r.code, r.said).with_written(r.detail);
             match r.data {
                 Some(d) => f.with_data(d),
                 None => f,
             }
         }
         CallError::Disconnected => unreachable(),
-        // 连那台的客户端事前就拒的那几种：那一句是它自己的（`CallError` 的 `Display` 照文案表写），码照它是哪一种。
-        other => {
-            let code = match &other {
-                CallError::Unsupported { .. } => "unknown_command".to_string(),
-                CallError::Unavailable { code, .. } => code.clone(),
-                CallError::Differs { .. } => "differs".to_string(),
-                CallError::Timeout { .. } => "timeout".to_string(),
-                CallError::TooManyPending => "busy".to_string(),
-                _ => "cancelled".to_string(),
-            };
-            let said = other.to_string();
-            crate::wire::spec::fail(&code, said)
-        }
+        // 连那台的客户端没问成的别几种：那一句是它自己的（`CallError` 的 `Display` 照文案表写），码是它自己的（`CallError::code`）。
+        other => crate::wire::spec::fail(other.code(), other.to_string()),
     })
 }
 

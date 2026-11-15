@@ -20,6 +20,12 @@ class SessionsMidTest {
     }
 
     @Test
+    fun `session-model：选了推理档 ⇒ 入参带 effort；没选 ⇒ 不带这一格`() {
+        assertEquals(mapOf("sid" to "s1", "model" to "opus", "client" to "mobile", "effort" to "high"), SessionModel.args("s1", "opus", "high"))
+        assertEquals(mapOf("sid" to "s1", "model" to "sonnet", "client" to "mobile"), SessionModel.args("s1", "sonnet", null))
+    }
+
+    @Test
     fun `session-permission：入参 sid · mode · client；回包照 ModeSwitched 解`() {
         assertEquals(mapOf("sid" to "s1", "mode" to "plan", "client" to "mobile"), SessionPermission.args("s1", "plan"))
         val r = SessionPermission.of(mapOf("result" to "done", "mode" to "plan", "modeText" to "规划模式"))

@@ -131,7 +131,7 @@ pub fn decode_ready(line: &str) -> Result<Ready, Said> {
 }
 
 /// 「在此打开终端」：窗口在它那条通道上 `call`（寻址 ＝ 那台机器的 `origin`）、
-/// **monitor 自己接下来**的那一条（不按 `origin` 转给后端；先例是传输台的 `transfer-upload` / `-download`）。
+/// **monitor 自己接下来**的那一条（不按 `origin` 转给后端）。
 /// 参数只带意图 `{cwd}`（当前目录的线上形：字符串或 `{"b16": …}`）—— 那一串命令由后端渲（`terminal-ssh`），窗口不拼命令；
 /// 机器事实由 monitor 从它自己的机器表取；开窗是 monitor 的事（`launch::open_terminal_window`，与主界面开终端同一条路）。
 pub const TERMINAL_OPEN_OP: &str = "terminal-open";
@@ -144,10 +144,6 @@ pub const FILEWIN_OPEN_OP: &str = "filewin-open";
 /// 那一组在哪台做，那台的流上就推 `files_batch` 帧，monitor 按票转过来（两台之间的复制在本机后端里做，帧从本机那条流上来）。
 /// 格子：`{done, total, current?, bytes_done?, bytes_total?}`（一整份快照，只留最新的）；流不自己关，那一问回来窗口就停订。
 pub const FILES_BATCH_KIND_PREFIX: &str = "files-batch/";
-
-/// 传输台那一趟进度流的 `kind` 前缀：`transfer/<id>`（`id` 是开单时传输台回的那一份）。窗口订它，**monitor 自己接**：
-/// 照前缀认出来、转给本机后端传输台那一趟的流（`transfer_relay`）；格子是 `cmd_wire::frame::Transfer`，收场是 `TransferEnd`。
-pub const TRANSFER_KIND_PREFIX: &str = "transfer/";
 
 /// 「这扇窗手上有什么会被打断」：窗口在通道上 `call` 这一条（寻址 ＝ 它那台，参数 [`Busy`]），**monitor 自己接**、按窗口记下
 /// （管子断了那一份就删）；退出 / 重启 cc-monitor 那一问现读加起来的数。窗口只在数变了时说（与它关窗那一问同一份 `close_ask`）。回 `{}`。
@@ -201,32 +197,6 @@ pub fn terminal_open_args(cwd: serde_json::Value) -> serde_json::Value {
 /// [`TERMINAL_OPEN_OP`] 的参数 → 当前目录的线上形（缺了就是 `None`：调用方用错了）。
 pub fn terminal_open_cwd(args: &serde_json::Value) -> Option<&serde_json::Value> {
     args.get("cwd")
-}
-
-// ── 远端路径怎么切：开窗入口把「跳到这个文件」切成目录 ＋ 名字交进种子，窗口里之后每一次「上一级」都用同一个切法 ──
-
-/// 上一级目录。只吃一条字符串：远端路径恒用 `/`（SFTP 协议就是这么定的，对面是 Windows 也一样）。
-/// 别换成 `std::path`：它在 Windows 上会把 `\` 也当分隔符 ⇒ 名字里含反斜杠的远端目录会被切成两级。
-/// 到顶了就返回原值：调用方靠「回来的和给出去的相等」判断已经在顶上了。
-pub fn parent_dir(cwd: &str) -> String {
-    let trimmed = cwd.trim_end_matches('/');
-    if trimmed.is_empty() {
-        // `/` 或空串：都已经在根上。
-        return "/".to_string();
-    }
-    match trimmed.rfind('/') {
-        Some(0) | None => "/".to_string(),
-        Some(i) => trimmed[..i].to_string(),
-    }
-}
-
-/// 远端路径的最后一段（basename），与 [`parent_dir`] 是一对（一个给前缀、一个给尾段）。只用 `/`，理由同 [`parent_dir`]。
-pub fn remote_basename(path: &str) -> &str {
-    let t = path.trim_end_matches('/');
-    match t.rfind('/') {
-        Some(i) => &t[i + 1..],
-        None => t,
-    }
 }
 
 /// 窗口进程挑不出一块能画窗口的显卡时，那一句原话里带的记号（Windows：DX12 与 OpenGL 都没有可用的适配器，连系统自带的软件渲染也没有）。

@@ -79,3 +79,49 @@ fn the_child_runs_in_the_given_dir() {
     );
     let _ = std::fs::remove_dir_all(&d);
 }
+
+/// ★ 起不来那一句只一处取原因词：经 [`not_run`] 与经 [`crate::platform::child::spawn_said`] 出同一句（码 · 句子 · 原话）。
+#[test]
+fn a_spawn_error_says_what_spawn_said_says() {
+    use crate::platform::child::{spawn_said, ChildFail};
+    use std::io::{Error, ErrorKind as K};
+    let bin = std::path::Path::new("/nowhere/plugin");
+    for kind in [K::NotFound, K::PermissionDenied, K::Other] {
+        let fail = if kind == K::NotFound {
+            ChildFail::NotFound(Error::new(kind, "boom"))
+        } else {
+            ChildFail::Io(Error::new(kind, "boom"))
+        };
+        let Some(NotRun::Failed(got)) = Some(not_run(bin, fail)) else {
+            panic!("{kind:?} 没交成 Failed");
+        };
+        let want = spawn_said(&Error::new(kind, "boom"), |why| {
+            copy_text(
+                "beInvoke.notRun.failed",
+                &[("bin", &bin.display().to_string()), ("why", why)],
+            )
+        });
+        assert_eq!(got, want, "{kind:?}");
+    }
+}
+
+/// ★ 后端源码里认得起不来原因词（`copy_core::spawn_reason`，连 `use` · 改名引入 · 当函数传）只在
+/// `platform/child.rs::spawn_said` 那一处一次；别处一律经它。注释与字面量里的名字不算（`code_only` 抹掉）。
+#[test]
+fn spawn_reason_is_taken_only_inside_spawn_said() {
+    // 本包在 `src/backend/plugin`，上一层是整棵后端。
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+    let mut hits: Vec<(String, usize)> = guard_core::scan_tree!(&root, &["rs"])
+        .into_iter()
+        .map(|(p, src)| {
+            let n = guard_core::word_count(&guard_core::code_only(&src), "spawn_reason");
+            (p.to_string_lossy().replace('\\', "/"), n)
+        })
+        .filter(|(p, n)| *n > usize::from(p.ends_with("platform/child.rs")))
+        .collect();
+    hits.sort();
+    assert!(
+        hits.is_empty(),
+        "这几处自己取起不来原因词（份 · 次）：{hits:?}"
+    );
+}

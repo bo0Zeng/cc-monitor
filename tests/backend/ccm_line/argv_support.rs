@@ -10,7 +10,7 @@ pub fn parse(args: &[String]) -> Result<Parsed, Die> {
 /// 〔只给测试〕把旧写法（ccm 选项与交给 agent 的词混写、`--` 之后全交 agent）改写成
 /// `<交给 agent 的…> -- <ccm 的…>`。给沿用旧写法写夹具的那几份单测用 —— 意图逐词不变，只换排列。
 pub fn mixed_to_split(old: &[String]) -> Vec<String> {
-    const WITH_VALUE: [&str; 9] = [
+    const WITH_VALUE: [&str; 8] = [
         flag::TMUX_BASE,
         flag::TMUX_SIZE,
         flag::ACCOUNT,
@@ -18,7 +18,6 @@ pub fn mixed_to_split(old: &[String]) -> Vec<String> {
         flag::AGENT,
         flag::LAUNCHER,
         flag::ATTACH,
-        flag::CCM_SID,
         flag::END,
     ];
     const BARE: [&str; 9] = [

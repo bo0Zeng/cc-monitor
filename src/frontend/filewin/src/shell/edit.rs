@@ -14,17 +14,18 @@ impl FileWindow {
 
     /// 起一趟「打开第 `i` 行」。回值 = **真的发出去了**。
     ///
-    /// 🔴 改不了的那几档在这儿就答完了（[`crate::editor::why_not_editable`]），
-    /// **连那趟往返都不发** —— 而且把**为什么**说出来。
-    /// 逐条理由住 `editor.rs` 头注「超了怎么办」那一节。
+    /// 🔴 改不了的那几档照此刻这份选中的成品（`files-menu` 的 `acts` 里「编辑」那一行）答完，
+    /// **连那趟往返都不发** —— 而且把**为什么**说出来（编辑页「为什么改不了」那一句同一格）。
     pub fn begin_edit(&mut self, i: usize, ctx: Option<egui::Context>) -> bool {
-        let Some((row, at, refused)) = self.listing.rows.lock().unwrap().get(i).map(|r| {
-            (
-                r.clone(),
-                self.row_path(r),
-                crate::editor::why_not_editable(r),
-            )
-        }) else {
+        let refused = self.act_why(Action::Edit).ok().flatten();
+        let Some((row, at)) = self
+            .listing
+            .rows
+            .lock()
+            .unwrap()
+            .get(i)
+            .map(|r| (r.clone(), self.row_path(r)))
+        else {
             return false;
         };
         // 挂在窗口里的目录页：交给窗口开一个编辑页（同一份已开着 ⇒ 切过去），这一页还是目录。
@@ -54,7 +55,7 @@ impl FileWindow {
         let row = listed.row.clone();
         // 本地预判（后端那道编辑门）—— 出声，不灰置；放行了 ⇒ 那道门给的数就是这一份的上限。
         let cap = crate::editor::edit_cap(&listed).unwrap_or_default();
-        if let Some(why) = refused.or_else(|| crate::editor::why_not_editable(&listed)) {
+        if let Some(why) = refused {
             let said = copy_text(
                 "rsFilewinShell.edit.refused",
                 &[("name", &row.name.to_string()), ("why", &why.to_string())],
@@ -713,8 +714,10 @@ impl FileWindow {
             }
             if let Some(cut) = self.gate.cut() {
                 let line = match cut {
-                    pick_core::Cut::Monitor => copy_text("rsFilewinEditPage.severed.line", &[]),
-                    pick_core::Cut::Machine => copy_text(
+                    cmd_wire::files::Cut::Monitor => {
+                        copy_text("rsFilewinEditPage.severed.line", &[])
+                    }
+                    cmd_wire::files::Cut::Machine => copy_text(
                         "rsFilewinEditPage.offline.line",
                         &[("machine", &self.source.label())],
                     ),

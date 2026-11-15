@@ -63,7 +63,7 @@ pub fn windows_free_path_ok(p: &str) -> bool {
 /// session id 的上界（与分叉找文件那条路逐字同，见 [`session_id_ok`]）。
 pub const SESSION_ID_MAX: usize = 64;
 
-/// **session id**（resume 的 sid · `--ccm-sid` / `@ccm_sid` 身份标记 · 分叉的 sid 与消息 uuid · 按 sid 找会话文件）。
+/// **session id**（resume 的 sid · `@ccm_sid` 身份标记 · 分叉的 sid 与消息 uuid · 按 sid 找会话文件）。
 ///
 /// 规则 = 1..=[`SESSION_ID_MAX`] 位 · 首字符 ASCII 字母数字 · 其余 `[A-Za-z0-9-]`。
 /// 取的是今天各处规则的**交集**（原 `branch_core::is_plain_sid` 的字符集与上界 ＋ 原 TS `isValidSessionId` 的「不许 `-` 开头」）⇒
@@ -118,9 +118,6 @@ pub fn bus_id_ok(s: &str) -> bool {
         && s.chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
-
-/// 握手目录名（相对 monitor 数据目录）。本机 bash / zsh 接入块（`src/shared/ccm-aliases.sh`）在这里留终端记录 ⇒ **不许改值**。
-pub const AWAIT_SUBDIR: &str = "ps-await";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 〔`INVARIANTS §47` ③〕**命令片段类**：启动器。

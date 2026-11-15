@@ -1,7 +1,25 @@
 //! `upstream-url-core` 的判据。要求：「一个判定只有一个家」。
-//! 与界面生成物逐条对的共用金样那一条住 monitor（`tests/frontend/shell/payload_judgment_rules.rs`，本 crate 零依赖、不读 JSON）。
+//! 金样 `tests/__fixtures__/upstream-url.golden.json` 也只由这里读（[`the_upstream_url_golden_agrees_with_the_one_rule`]）。
 
 use super::*;
+
+/// 金样 `tests/__fixtures__/upstream-url.golden.json` 逐条：[`usable`] 的结论 == 手写的 want。
+#[test]
+fn the_upstream_url_golden_agrees_with_the_one_rule() {
+    let raw = include_str!("../../__fixtures__/upstream-url.golden.json");
+    let g: serde_json::Value = serde_json::from_str(raw).expect("金样不是合法 JSON");
+    let cases = g["cases"].as_array().expect("金样缺 cases");
+    assert!(cases.len() > 40, "金样只有 {} 条 —— 读坏了", cases.len());
+    let mut wrong = Vec::new();
+    for c in cases {
+        let url = c["url"].as_str().expect("url 是字符串");
+        let got = usable(url).err().map(Unusable::code);
+        if got != c["want"].as_str() {
+            wrong.push(format!("{url:?}：得 {got:?}，金样 {:?}", c["want"]));
+        }
+    }
+    assert_eq!(wrong, Vec::<String>::new(), "Rust 那一份与金样对不上");
+}
 
 /// 解析出的几格（`Base` 装的就是它们）· 回环判定（整个 `127/8` 与 `::1`）· `usable` 的明文那一格，正反各一格。
 #[test]

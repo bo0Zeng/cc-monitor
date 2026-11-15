@@ -14,6 +14,7 @@
           "offlineSaid": "box 离线",
           "os": null,
           "reason": null,
+          "rewindHeld": "上一版正在撤回 · 等 box 答复",
           "said": "连接 box · 启动 cc-monitor",
           "seenHostKey": null,
           "stage": "attach",
@@ -23,6 +24,7 @@
             "tone": "busy"
           },
           "version": null,
+          "withdrawHeld": "撤回中 · box 离线 · 连上后接着问",
           "word": "连接中"
         },
         "state": "connecting"
@@ -44,11 +46,13 @@
           "offlineSaid": "box 离线",
           "os": null,
           "reason": null,
+          "rewindHeld": "上一版正在撤回 · 等 box 答复",
           "said": "",
           "seenHostKey": null,
           "stage": null,
           "state": "up",
           "version": null,
+          "withdrawHeld": "撤回中 · box 离线 · 连上后接着问",
           "word": ""
         },
         "state": "up"
@@ -75,6 +79,7 @@
           "offlineSaid": "box 离线",
           "os": null,
           "reason": null,
+          "rewindHeld": "上一版正在撤回 · 等 box 答复",
           "said": "box 要更新",
           "seenHostKey": null,
           "stage": null,
@@ -84,6 +89,7 @@
             "tone": "warn"
           },
           "version": null,
+          "withdrawHeld": "撤回中 · box 离线 · 连上后接着问",
           "word": "要更新"
         },
         "state": "up"
@@ -105,11 +111,13 @@
           "offlineSaid": "box 离线",
           "os": null,
           "reason": null,
+          "rewindHeld": "上一版正在撤回 · 等 box 答复",
           "said": "box 版本较新 · 部分功能不可用",
           "seenHostKey": null,
           "stage": null,
           "state": "newer",
           "version": null,
+          "withdrawHeld": "撤回中 · box 离线 · 连上后接着问",
           "word": "版本较新"
         },
         "state": "up"
@@ -135,6 +143,7 @@
           "offlineSaid": "box 离线",
           "os": null,
           "reason": "other",
+          "rewindHeld": "上一版正在撤回 · 等 box 答复",
           "said": "远端没有后端",
           "seenHostKey": null,
           "stage": null,
@@ -144,6 +153,7 @@
             "tone": "fail"
           },
           "version": null,
+          "withdrawHeld": "撤回中 · box 离线 · 连上后接着问",
           "word": "离线"
         },
         "state": "down"
@@ -169,6 +179,7 @@
           "offlineSaid": "box 离线",
           "os": null,
           "reason": null,
+          "rewindHeld": "上一版正在撤回 · 等 box 答复",
           "said": "box 要更新",
           "seenHostKey": null,
           "stage": null,
@@ -178,6 +189,7 @@
             "tone": "warn"
           },
           "version": null,
+          "withdrawHeld": "撤回中 · box 离线 · 连上后接着问",
           "word": "要更新"
         },
         "state": "down"
@@ -207,6 +219,7 @@
           "offlineSaid": "box 离线",
           "os": null,
           "reason": "auth",
+          "rewindHeld": "上一版正在撤回 · 等 box 答复",
           "said": "连接失败 · 密钥被拒",
           "seenHostKey": null,
           "stage": null,
@@ -216,6 +229,7 @@
             "tone": "offline"
           },
           "version": null,
+          "withdrawHeld": "撤回中 · box 离线 · 连上后接着问",
           "word": "离线"
         },
         "state": "down"
@@ -245,6 +259,7 @@
           "offlineSaid": "box 离线",
           "os": null,
           "reason": "other",
+          "rewindHeld": "上一版正在撤回 · 等 box 答复",
           "said": "box 离线",
           "seenHostKey": null,
           "stage": null,
@@ -254,6 +269,7 @@
             "tone": "offline"
           },
           "version": null,
+          "withdrawHeld": "撤回中 · box 离线 · 连上后接着问",
           "word": "离线"
         },
         "state": "down"
@@ -274,6 +290,7 @@
           "offlineSaid": "box 离线",
           "os": null,
           "reason": null,
+          "rewindHeld": "上一版正在撤回 · 等 box 答复",
           "said": "box · 仅支持 Unix",
           "seenHostKey": null,
           "stage": null,
@@ -283,6 +300,7 @@
             "tone": "fail"
           },
           "version": null,
+          "withdrawHeld": "撤回中 · box 离线 · 连上后接着问",
           "word": "不支持"
         },
         "state": "down"
@@ -303,6 +321,7 @@
           "offlineSaid": "box 离线",
           "os": null,
           "reason": null,
+          "rewindHeld": "上一版正在撤回 · 等 box 答复",
           "said": "连接 box · 核对版本",
           "seenHostKey": null,
           "stage": "deploy",
@@ -312,6 +331,7 @@
             "tone": "busy"
           },
           "version": null,
+          "withdrawHeld": "撤回中 · box 离线 · 连上后接着问",
           "word": "连接中"
         },
         "state": "down"
@@ -332,6 +352,7 @@
           "offlineSaid": "box 离线",
           "os": null,
           "reason": null,
+          "rewindHeld": "上一版正在撤回 · 等 box 答复",
           "said": "安装 cc-monitor → box",
           "seenHostKey": null,
           "stage": null,
@@ -341,6 +362,7 @@
             "tone": "busy"
           },
           "version": null,
+          "withdrawHeld": "撤回中 · box 离线 · 连上后接着问",
           "word": "安装中"
         },
         "state": "down"
@@ -362,6 +384,7 @@
           "offlineSaid": "box 离线",
           "os": null,
           "reason": null,
+          "rewindHeld": "上一版正在撤回 · 等 box 答复",
           "said": "更新 box · cc-monitor",
           "seenHostKey": null,
           "stage": null,
@@ -371,6 +394,7 @@
             "tone": "busy"
           },
           "version": null,
+          "withdrawHeld": "撤回中 · box 离线 · 连上后接着问",
           "word": "更新中"
         },
         "state": "up"

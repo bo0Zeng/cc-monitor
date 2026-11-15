@@ -517,9 +517,12 @@ fn code_after_sees_a_write_call_in_the_family_beats() {
 /// 两家今天的申报：Claude 有（缺省只退对话），Codex 没有。
 #[test]
 fn claude_declares_a_rewind_menu_and_codex_does_not() {
-    let claude = crate::agents::rewind_face(Some("claude")).expect("Claude 申报了");
+    let rewind_of = |kind| {
+        crate::agents::launch_face_among(crate::agents::REGISTRY, kind).and_then(|f| f.rewind)
+    };
+    let claude = rewind_of("claude").expect("Claude 申报了");
     assert_eq!(claude.choices.iter().filter(|c| c.default).count(), 1);
-    assert!(crate::agents::rewind_face(Some("codex")).is_none());
+    assert!(rewind_of("codex").is_none());
 }
 
 /// 结局写成给人看的那一句：成了 · 在等不写；没退成点名缺的是哪一项（投递那一下照它写进那一条的样子）。

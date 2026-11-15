@@ -406,7 +406,9 @@ fn prime_once(
         scans.peek(rec).is_none(),
         "预读收下会话把整张扫描图留在了缓存里（没人开界面）"
     );
-    scans.get(rec).expect("界面问扫描图");
+    let family =
+        crate::agents::record_kind_of(rec).and_then(crate::observe::record_scan::Family::of);
+    scans.get(rec, family).expect("界面问扫描图");
     scans.flush();
     let read = state.prime_bytes + scans.bytes_read();
     let got: Vec<String> = brief(&drain(&mut rx))
@@ -492,11 +494,100 @@ fn a_prime_hands_back_the_record_path_as_written_beside_its_key() {
         tail: None,
         seq: 0,
         chain: None,
-        face: state.root_of(&rec).map(|i| state.roots[i].face),
+        family: state.root_of(&rec).map(|i| state.roots[i].family()),
         runs: None,
         scans: None,
     };
     let (done, _) = prime_file_cursor("p-Case", job);
     assert_eq!(done.key, key);
     assert_eq!(done.path, rec, "交回的路径是键那一形");
+}
+
+/// ★ 根在 watcher 手里、不在根表上（替身家：照路径认不出是哪一家的）⇒ 预读照扫描图起步那一路与实时逐行读那一路，
+/// 家与记录面都取手里那一根：主线外清单一样（扫描那一路不照路径另认、不落到「不问哪一家」）。
+#[test]
+fn a_prime_from_the_scan_map_reads_the_root_in_hand_like_the_live_lines() {
+    let scratch = test_home::scratch("prime-family-of-root");
+    let root = scratch.join("convos");
+    let path = root.join("p1").join("sess-s7.ndjson");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    // 一句被重说过：n2 落在主线外（替身家的链事实：`node` · `up` · `when` · `role`）。
+    let rows = [
+        r#"{"role":"human","node":"n1","when":"t1","words":"a"}"#,
+        r#"{"role":"bot","node":"n2","up":"n1","when":"t2"}"#,
+        r#"{"role":"human","node":"n3","up":"n1","when":"t3","words":"b"}"#,
+        r#"{"role":"bot","node":"n4","up":"n3","when":"t4"}"#,
+    ];
+    std::fs::write(&path, rows.join("\n") + "\n").unwrap();
+    assert_eq!(
+        crate::agents::record_kind_of(&path),
+        None,
+        "夹具要的是根表上认不出"
+    );
+    let face = crate::agents::fake::full_row(|| None)
+        .records
+        .expect("记录面");
+    let with_root = || {
+        let mut s = ReaderState::new(PathBuf::from("/p"));
+        s.add_root(
+            crate::agents::fake::AGENT_KIND,
+            root.clone(),
+            root.clone(),
+            face,
+            false,
+        );
+        s
+    };
+    let off = |s: &ReaderState| {
+        s.branches
+            .get(&path_key(&path))
+            .map(|c| c.off().to_vec())
+            .unwrap_or_default()
+    };
+    let (tx, _rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
+    let mut sink = FrameSink::new(tx);
+
+    // 实时那一路：逐行交 `send_line`（只记账）。
+    let mut live = with_root();
+    let mut at = 0u64;
+    for (seq, raw) in rows.iter().enumerate() {
+        let line = ReadLine {
+            seq: seq as u64,
+            raw: raw.to_string(),
+            byte_offset: at + raw.len() as u64 + 1,
+            start: at,
+        };
+        at += raw.len() as u64 + 1;
+        send_line(
+            "s7",
+            &path.to_string_lossy(),
+            line,
+            &mut live,
+            &mut sink,
+            true,
+        );
+    }
+    settle_chain(&mut live, &path);
+    let want = off(&live);
+    assert_eq!(
+        want,
+        vec!["n2".to_string()],
+        "正控：实时那一路照手里那一根认出主线外那一句"
+    );
+
+    // 扫描那一路：头一次宣告，照冷开扫描图起步（借完不留）。
+    let scans: &'static crate::observe::record_scan::RecordScans = Box::leak(Box::new(
+        crate::observe::record_scan::RecordScans::new(16, 64 << 20),
+    ));
+    let mut primed = with_root();
+    primed.scans = Some(scans);
+    start_prime(
+        "s7",
+        std::slice::from_ref(&path),
+        false,
+        &mut primed,
+        &mut sink,
+    );
+    assert_eq!(off(&primed), want, "扫描那一路与实时那一路出的不一样");
+    std::fs::remove_dir_all(&scratch).ok();
 }

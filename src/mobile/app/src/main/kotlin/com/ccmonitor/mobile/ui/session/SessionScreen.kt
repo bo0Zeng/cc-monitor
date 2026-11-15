@@ -46,7 +46,6 @@ import com.ccmonitor.mobile.core.data.db.Identity
 import com.ccmonitor.mobile.core.data.db.KeyBinding
 import com.ccmonitor.mobile.core.data.db.KeyDao
 import com.ccmonitor.mobile.core.data.db.KeyGroup
-import com.ccmonitor.mobile.core.data.db.appActionName
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.SettingsRepository
 import com.ccmonitor.mobile.core.ssh.SessionStatus
@@ -68,6 +67,9 @@ import com.ccmonitor.mobile.core.wire.gen.MachineFixButton
 import com.ccmonitor.mobile.core.wire.gen.Tone
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.service.AppForeground
+import com.ccmonitor.mobile.ssh.machineName
+import com.ccmonitor.mobile.ui.chat.EffortSheet
+import com.ccmonitor.mobile.ui.chat.afterModelPick
 import com.ccmonitor.mobile.ui.common.BarLook
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
 import com.ccmonitor.mobile.ui.common.EditHostButton
@@ -76,6 +78,7 @@ import com.ccmonitor.mobile.ui.common.MachineBarView
 import com.ccmonitor.mobile.ui.common.barOf
 import com.ccmonitor.mobile.ui.copyPlainText
 import com.ccmonitor.mobile.ui.pastePlainText
+import com.ccmonitor.mobile.ui.session.keys.appActionName
 import com.ccmonitor.mobile.ui.theme.AppTerminalPalette
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -102,7 +105,7 @@ fun SessionScreen(
     onEditHost: (hostId: String) -> Unit = {}, // 跳板坏了 ⇒ 进那一台的编辑页
 ) {
     val hostRepo = koinInject<HostRepository>()
-    val hostLabel by produceState(hostId, hostId) { value = hostRepo.get(hostId)?.label ?: hostId }
+    val hostLabel by produceState(hostId, hostId) { value = hostRepo.machineName(hostId) }
     CompositionLocalProvider(LocalKeysEnv provides KeysEnv(onEditKeys, hostLabel)) {
         SessionContent(hostId, cd, tmuxSession, resume, run, onAttachInNewTab, onShowTabs, onEditHost)
     }
@@ -217,6 +220,8 @@ private fun NeedIdentityContent(
         Text(copyText("mobSession.identity.pickTitle"), style = MaterialTheme.typography.titleMedium)
         Text(copyText("mobSession.identity.pickHint"), style = MaterialTheme.typography.bodySmall)
         identities.forEach { id ->
+            // 身份不是机器：身份没起名就照它的 id。
+            @Suppress("MachineNameFallback")
             SecondaryButton(onClick = { onPick(id.id) }) { Text(id.label.ifBlank { id.id }) }
         }
     }
@@ -402,11 +407,14 @@ private fun ConnectedTerminal(
         value = currentTmux?.let { vm.terminals.modelsIn(it) }.orEmpty()
     }
     val onCapture = rememberCaptureAction(vm.terminals, { currentTmux }, onCaptured)
+    // 点了有推理档的模型 ⇒ 先升起选档那一屏（与聊天输入区同一个），选了档才换；没档 ⇒ 当场换、不带档。
+    var effortFor by remember { mutableStateOf<AgentPick?>(null) }
+    effortFor?.let { m -> EffortSheet(m, { effortFor = null }) { onSwitchModel(m.value, it) } }
     TerminalTab(
         session = s.session,
         onShowTmux = onShowTmux,
         models = models,
-        onModel = onSwitchModel,
+        onModel = { m -> if (afterModelPick(m) != null) effortFor = m else onSwitchModel(m.value, null) },
         onCapture = onCapture,
         onPushKey = onPushKey,
         onShowTabs = onShowTabs,
@@ -422,14 +430,14 @@ private fun ConnectedTerminal(
 private fun rememberModelSwitchAction(
     terminals: TerminalOps,
     currentTmux: () -> String?,
-): (String) -> Unit {
+): (String, String?) -> Unit {
     val snackbar = LocalAppSnackbar.current
     val scope = rememberCoroutineScope()
-    return { model ->
+    return { model, effort ->
         currentTmux()?.let { ts ->
             scope.launch {
                 terminals
-                    .switchModel(ts, model)
+                    .switchModel(ts, model, effort)
                     .onSuccess { said -> snackbar.show(said) }
                     .onFailure { snackbar.show(Notice(copyText("mobTerm.model.sendFailed"), it.message.orEmpty())) }
             }
@@ -560,6 +568,8 @@ private fun PushKeyDialog(
                 } else {
                     Text(copyText("mobKeyPush.dialog.hint"), style = MaterialTheme.typography.bodySmall)
                     identities.forEach { id ->
+                        // 身份不是机器：身份没起名就照它的 id。
+                        @Suppress("MachineNameFallback")
                         SecondaryButton(onClick = { onPick(id) }) { Text(id.label.ifBlank { id.id }) }
                     }
                 }
@@ -598,7 +608,7 @@ private fun TerminalTab(
     session: TerminalSession,
     onShowTmux: () -> Unit,
     models: List<AgentPick>,
-    onModel: (String) -> Unit,
+    onModel: (AgentPick) -> Unit,
     onCapture: () -> Unit,
     onPushKey: () -> Unit,
     onShowTabs: () -> Unit,
@@ -657,7 +667,7 @@ private fun TerminalBottomControls(
     onShowTabs: () -> Unit,
     onShowTmux: () -> Unit,
     models: List<AgentPick>,
-    onModel: (String) -> Unit,
+    onModel: (AgentPick) -> Unit,
     onCapture: () -> Unit,
     onPushKey: () -> Unit,
 ) {
@@ -768,7 +778,7 @@ private fun KeyBar(
 internal fun terminalPaletteActions(
     reach: Reach,
     models: List<AgentPick>,
-    onModel: (String) -> Unit,
+    onModel: (AgentPick) -> Unit,
     onCapture: () -> Unit,
     onShowTmux: () -> Unit,
     onPushKey: () -> Unit,
@@ -776,7 +786,7 @@ internal fun terminalPaletteActions(
     buildList {
         if (reach.noBackend == null) {
             // 那台给的可选模型（名字照那台写好的字，副标题是原值）。
-            models.forEach { m -> add(PaletteAction(copyText("session.model.title"), m.text, m.value) { onModel(m.value) }) }
+            models.forEach { m -> add(PaletteAction(copyText("session.model.title"), m.text, m.value) { onModel(m) }) }
             add(PaletteAction(copyText("mobCapture.dialog.title"), copyText("mobPalette.item.capture")) { onCapture() })
             add(PaletteAction(copyText("mobDrawer.item.terminal"), copyText("mobPalette.item.tmux")) { onShowTmux() })
         }

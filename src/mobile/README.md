@@ -14,11 +14,10 @@ Claude Code 的手机前端：长得像 Claude app 的聊天，背后是用户�
 | `core-claude` | `link/`：那台常驻流交来的事落成手机这一侧的几条流（接 · 重连 · 握手 · 版本门 · 一问一答整条在 `core-rs` 里那份 `resident-client`，桌面同一份；会话簿 · 活卡在核心里照共享核心 `face-core` 那一份折好再交）；回包 · 核心交上来的几样事都照 `core-wire` 那份生成的类解（缺格报两端契约对不上）；手机里没有任何一家 agent 的知识：哪几家 · 叫什么 · 能换哪些模型都问那台 `session-open-facts`；`model/RecordUnits.kt` 把核心的通用记录映射成渲染单元 |
 | `core-wire` | 线上契约（`src/common/cmd-wire`）的 Kotlin 那一头：生成的类与编解码（`gen/`，`tests/scripts/gen-kotlin-wire.mjs` 从 ts-rs 导出的声明生成，不手改）＋ `Wire` 那几口；不放判定。回包金样 `RepliesGoldenTest` 解再写回与 Rust 逐字节同 |
 | `core-ssh` | 终端 · 文件走的那层连接（按机器单飞；自己不拨重连、不判死、不退避，跟着常驻流那条循环换连接）与 `RustTransport`：SSH 本身走 `core-rs` 那份 Rust 核心（竞速 · 跳板 · SFTP · host key · 鉴权都在核心里）；`~/.ssh/config` 导入与钥匙派生也经它 |
-| `core-rs` | 手机嵌的 Rust 核心 `libmobcore.so`：与后端同一份的拨号核心（`src/comms/ssh-dial`）的 FFI 外壳，手写 JNI、窄口、走消息；Rust 源在 `core-rs/rust/`（后端那一棵 cargo workspace 的成员），Gradle 调 cargo 编 |
+| `core-rs` | 手机嵌的 Rust 核心 `libmobcore.so`：与后端同一份的拨号核心（`src/comms/ssh-dial`）的 FFI 外壳，手写 JNI、窄口、走消息；Rust 源在 `core-rs/rust/`（后端那一棵 cargo workspace 的成员），Gradle 调 cargo 编。Kotlin 认识这份 `.so` 的只有 `Core`（判据 `tests/mobile/core-rs/jni_surface_tests.rs`）；取文口 `copyText` 与时长格式 `DurationFormat`（包 `core.copy`）也住这里，上屏有字的模块经 `core-ui` 拿到；手机生产源码不写死界面中文，判据 `app/src/test/kotlin/com/ccmonitor/mobile/copy/MobileLiteralsTest.kt` |
 | `core-data` | Room 库 |
 | `core-terminal` | 终端引擎（termlib） |
 | `core-ui` | 共用主题与反馈 |
-| `core-copy` | 取文口 `copyText` 与大小 · 时长格式（纯 JVM，上屏有字的模块依赖它，`core-claude` 不上屏、不依赖；写法都经 JNI 调手机那份核心里的 `copy-core`，JVM 单测加载它的宿主版）。手机生产源码不写死界面中文，判据 `app/src/test/kotlin/com/ccmonitor/mobile/copy/MobileLiteralsTest.kt` |
 | `baselineprofile` | Baseline Profile 的生成器与量测（Macrobenchmark，`com.android.test` 模块，驱动 `app`）：录「冷启到主屏」「打开长会话往上滑」两条路，见下文「Baseline Profile」 |
 
 ## 技术栈
@@ -47,11 +46,11 @@ cd src/mobile
 ## 测试
 
 ```sh
-./gradlew ktlintCheck detektDebug :app:lintDebug testDebugUnitTest :core-claude:test :core-claude:detektMain :core-wire:test :core-wire:detektMain :core-copy:test :core-copy:detektMain
+./gradlew ktlintCheck detektDebug :app:lintDebug testDebugUnitTest :core-claude:test :core-claude:detektMain :core-wire:test :core-wire:detektMain
 bash scripts/gate-count.sh            # 刚跑完上面那条之后看条数（读 .build/mobile/*/test-results）
 ```
 
-`:core-claude`、`:core-wire`、`:core-copy` 是纯 JVM 模块，`testDebugUnitTest` 不覆盖，要显式带上。
+`:core-claude`、`:core-wire` 是纯 JVM 模块，`testDebugUnitTest` 不覆盖，要显式带上。
 
 - **门禁**：仓根 `tests/scripts/gate.sh` 的 `mobile` 格跑的就是上面这几条 ＋ `:app:assembleRelease` ＋ `:app:assembleDebug`（两趟各编 Rust 核心那一个 ABI、各核一次包里的 ABI；CI 的 `mobile` job 调同一格，Linux 上跑，不起模拟器）。
 - **要设备的 instrumentation 测（androidTest）进全量门禁、不进 CI**：门禁的 `android-device` 那一格起一台封了内存的模拟器跑它（CI 的 runner 上没有 KVM 模拟器）；手跑时接好模拟器或真机后跑 `bash scripts/android-test.sh`（先装 app、`pm clear` 清数据，清不掉就停）。其中 `:core-ssh` 的 `RustTransportTest` 要一台私起的 sshd（冒烟台架 `tests/mobile-smoke/rig.sh`），不给 `sshHost` · `sshKey` 就整份跳过（入口脚本就是这样跑的）；连台架的跑法见它的头注。

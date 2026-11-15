@@ -3,13 +3,15 @@
 //! - 判定：用户点名的号 · 账号 0 · 跟随（这条会话上次的号 → 这台的默认号 → 账号 0）。
 //!   跟随时上次那个号选不了 ⇒ 不起、给一个显式的替代（绝不悄悄换成别的号）。
 //! - 记录：`ccm` 在最终那一跳给将要跑 agent 的那个进程留一张**便条**（`launch-pending/<pid>.json`：号 ＋ 时刻，
-//!   各写各的；起会话时给了 `--tab` 也记在这张上，起在宿主里的记宿主）；观测侧看见那个 pid 的会话时认便条，把 `sid → 号`（与 `sid → 标签页` · `sid → 宿主`）记进
+//!   各写各的；起会话时给了 `--tab` 也记在这张上，起在宿主里的记宿主）；观测侧看见那个 pid 的会话时认便条（Windows 托管终端里那一跳包一层时，会话进程是它的直接子进程，认法只经 [`noted_pid`]），把 `sid → 号`（与 `sid → 标签页` · `sid → 宿主`）记进
 //!   `launch-accounts.json`（启动台账：只有观测侧写，锁里原子写；形状与读住 `history/launch_book.rs`）。
 //!   便条留到那个 pid 不在了才清（`/clear` 原地换 sid 也记得到）。
 
+use crate::accounts::manage::library::row_of_family;
 use crate::history::launch_book::{read_book, Book};
 use crate::platform::fs::{Own, OwnPath};
 use cmd_wire::accounts::{AccountRow, AccountsList};
+use cmd_wire::AgentKind;
 use copy_core::{copy_text, Discard, Why};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -19,28 +21,50 @@ use std::path::Path;
 //（`acct_core::account_selectable`，已含「写了号目录」），默认号是 `meta.effectiveDefault`（`acct_core::effective_default`），这里都不另判。
 // `meta.enabled = false` ⇒ 清单读不出来（说不清默认号是谁）。界面起会话 · 换号重启 · `ccm --account` / 裸 `ccm` 都只经 [`pick`]。
 
-/// 能拿来起会话：成品说选得了（账号 0 恒不在此列）。
-fn usable(a: &AccountRow) -> bool {
-    !a.scanned.name.is_empty() && a.scanned.selectable
+/// 能拿来起会话：成品说选得了（账号 0 恒不在此列），且是起的那一家的号（[`row_of_family`]，新建会话的选号表同一判）。
+fn usable(a: &AccountRow, agent: &AgentKind) -> bool {
+    !a.scanned.name.is_empty() && a.scanned.selectable && row_of_family(&a.scanned, agent)
 }
 
-fn usable_named<'a>(list: &'a AccountsList, name: &str) -> Option<&'a AccountRow> {
+fn usable_named<'a>(
+    list: &'a AccountsList,
+    name: &str,
+    agent: &AgentKind,
+) -> Option<&'a AccountRow> {
     list.accounts
         .iter()
-        .find(|a| a.scanned.name == name && usable(a))
+        .find(|a| a.scanned.name == name && usable(a, agent))
 }
 
-/// 这台的默认号（成品写好的那一格）。
-fn default_one(list: &AccountsList) -> Option<&AccountRow> {
+/// 这台的默认号（成品写好的那一格），且是起的那一家的号；别家的默认号不算。
+fn default_one<'a>(list: &'a AccountsList, agent: &AgentKind) -> Option<&'a AccountRow> {
     let d = list.meta.effective_default.as_deref()?;
-    list.accounts.iter().find(|a| a.scanned.name == d)
+    list.accounts
+        .iter()
+        .find(|a| a.scanned.name == d && row_of_family(&a.scanned, agent))
 }
 
-/// 要的号选不了时给的那个显式替代：默认号（能用、且不是要的那个）；清单读不出 ⇒ 没有。
-fn alternative_to(list: &AccountsList, requested: &str) -> Option<String> {
-    default_one(list)
-        .filter(|a| list.meta.enabled && usable(a) && a.scanned.name != requested)
+/// 要的号选不了时给的那个显式替代：同家的默认号（能用、且不是要的那个）；清单读不出 ⇒ 没有。
+fn alternative_to(list: &AccountsList, requested: &str, agent: &AgentKind) -> Option<String> {
+    default_one(list, agent)
+        .filter(|a| list.meta.enabled && usable(a, agent) && a.scanned.name != requested)
         .map(|a| a.scanned.name.clone())
+}
+
+/// 要的号在清单里、是起的那一家的号、那一行可登录 ⇒ 给［登录 {号}］。
+fn can_log_in(list: &AccountsList, requested: &str, agent: &AgentKind) -> bool {
+    list.accounts
+        .iter()
+        .any(|a| a.scanned.name == requested && row_of_family(&a.scanned, agent) && a.login)
+}
+
+/// 要的号在清单里、却是别家的号 ⇒ 那一家。
+fn owner_if_other(list: &AccountsList, requested: &str, agent: &AgentKind) -> Option<AgentKind> {
+    list.accounts
+        .iter()
+        .find(|a| a.scanned.name == requested)
+        .and_then(|a| a.scanned.agent.clone())
+        .filter(|k| k != agent)
 }
 
 /// 选不了的那一形（线上 `account_unavailable` 的 `data`）。
@@ -55,24 +79,34 @@ pub struct AccountUnavailable {
     pub pinned: bool,
     /// 这台的账号清单读得出来。
     pub list_known: bool,
-    /// 给的显式替代（这台的默认号）；`null` ⇒ 只能「不指定号」。
+    /// 给的显式替代（这台的默认号，与起的那一家同家才给）；`null` ⇒ 只能「不指定号」。
     pub alternative: Option<String>,
+    /// 给不给［登录 {号}］：要的号在清单里、与起的那一家同家、那一行可登录（成品那一格 `login`）⇒ `true`；界面照它给。
+    pub login: bool,
+    /// 要的号在清单里、却是别家的号 ⇒ 那一家（kind）；同家 · 不在清单里 · 说不清是哪一家 ⇒ `None`。
+    /// 那一句（[`unavailable_said`] · ccm 的中止句）读它，不上线：界面照后端写好的那一句说。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
+    pub other_agent: Option<AgentKind>,
 }
 
 /// **起会话用哪个号 —— 唯一的判定。**
 ///
 /// `last` ＝ 这条会话上次用的号（[`last_of`]；只有跟随看它）。跟随却什么都没选上（没有上次的号、默认号也用不了）⇒ [`Settled::Unsaid`]；
-/// 点名的 · 上次的号选不了 ⇒ `Err`（不起，给一个显式的替代）。判出来的号不带模型（模型由调用方照号补，[`settle`]）。
+/// 点名的 · 上次的号选不了 ⇒ `Err`（不起，给一个显式的替代）。只认 `agent` 那一家的号：别家的号点名 · 跟随都拒（说出是哪一家的），默认号是别家的 ⇒ 当没有。判出来的号不带模型（模型由调用方照号补，[`settle`]）。
 pub fn pick(
     asked: &AccountAsk,
     list: &AccountsList,
     last: Option<&str>,
+    agent: &AgentKind,
 ) -> Result<Settled, AccountUnavailable> {
     let refuse = |requested: &str, pinned: bool| AccountUnavailable {
         requested: requested.to_string(),
         pinned,
         list_known: list.meta.enabled,
-        alternative: alternative_to(list, requested),
+        alternative: alternative_to(list, requested, agent),
+        login: can_log_in(list, requested, agent),
+        other_agent: owner_if_other(list, requested, agent),
     };
     let take = |a: &AccountRow| {
         Settled::Account(LaunchedAccount {
@@ -83,15 +117,15 @@ pub fn pick(
     };
     match asked {
         AccountAsk::Base => Ok(Settled::Base),
-        AccountAsk::Named { name } => usable_named(list, name)
+        AccountAsk::Named { name } => usable_named(list, name, agent)
             .map(take)
             .ok_or_else(|| refuse(name, false)),
         AccountAsk::Follow => match last {
-            Some(p) => usable_named(list, p)
+            Some(p) => usable_named(list, p, agent)
                 .map(take)
                 .ok_or_else(|| refuse(p, true)),
-            None => Ok(default_one(list)
-                .filter(|a| usable(a))
+            None => Ok(default_one(list, agent)
+                .filter(|a| usable(a, agent))
                 .map_or(Settled::Unsaid, take)),
         },
     }
@@ -104,6 +138,8 @@ pub use cmd_wire::open::AccountAsk;
 
 /// 判定要的事实，由入口交（control 不读观测层）。
 pub struct Facts<'a> {
+    /// 起的那一家（线上的 kind）：只认这一家的号。
+    pub agent: AgentKind,
     /// 这一家有没有账号这一维（没有 ⇒ 跟随什么都不选）。
     pub has_accounts: bool,
     /// 这台的账号清单成品（`accounts-list`，只在要判的时候读）。
@@ -142,18 +178,49 @@ pub fn settle(
         (AccountAsk::Follow, Some(sid)) => (facts.last)(sid),
         _ => None,
     };
-    Ok(match pick(asked, &(facts.library)(), last.as_deref())? {
-        Settled::Account(mut a) => {
-            a.model = models.get(&a.name).filter(|m| !m.is_empty()).cloned();
-            Settled::Account(a)
-        }
-        other => other,
-    })
+    Ok(
+        match pick(asked, &(facts.library)(), last.as_deref(), &facts.agent)? {
+            Settled::Account(mut a) => {
+                a.model = models.get(&a.name).filter(|m| !m.is_empty()).cloned();
+                Settled::Account(a)
+            }
+            other => other,
+        },
+    )
 }
 
 /// `account_unavailable` 那一句（界面照 `data` 自己说，这一句给命令行面与日志）。
 pub(crate) fn unavailable_said(u: &AccountUnavailable) -> String {
+    unavailable_said_among(crate::agents::REGISTRY, u)
+}
+
+/// [`unavailable_said`] 的可喂夹具那一半：号是哪一家的那一格（`{owner}`）说那一家的叫法（问 `registry`）。
+pub(crate) fn unavailable_said_among(
+    registry: &[crate::agents::Adapter],
+    u: &AccountUnavailable,
+) -> String {
     let name = u.requested.as_str();
+    // 别家的号：跟随与点名同一句，只分有没有替代。
+    if let Some(owner) = u.other_agent.as_deref() {
+        use crate::agents::family_said_among;
+        return match u.alternative.as_deref() {
+            Some(alt) => copy_text(
+                "beLaunchAccount.unavailable.otherAgentToDefault",
+                &[
+                    ("name", name),
+                    ("owner", &family_said_among(registry, owner)),
+                    ("alt", alt),
+                ],
+            ),
+            None => copy_text(
+                "beLaunchAccount.unavailable.otherAgentToBase",
+                &[
+                    ("name", name),
+                    ("owner", &family_said_among(registry, owner)),
+                ],
+            ),
+        };
+    }
     match (u.list_known, u.pinned, u.alternative.as_deref()) {
         (false, ..) => copy_text("beLaunchAccount.unavailable.listUnknown", &[("name", name)]),
         (true, true, Some(alt)) => copy_text(
@@ -235,8 +302,25 @@ pub fn leave_note(
     )
 }
 
+/// **照会话进程 `pid` 找起会话便条 —— 只此一口**（答题口没接上的那两问 `faces::read_face` · hook 认「ccm 起的那一个」`control::asks::hook`
+/// 都经它）：认哪个 pid 上的那一张照 [`noted_pid`]（同 [`adopt_seen`] 记号那一认），且对那个进程作数（不早于它起）。
+/// `data` ＝ 数据目录；`hop_of` ＝ 会话进程住的托管终端里记的那一跳（生产交 `host::managed::hop_of_pid`）。没有 ⇒ `None`。
+pub fn session_note(
+    data: &Path,
+    pid: u32,
+    hop_of: &dyn Fn(u32) -> Option<crate::host::managed::Hop>,
+) -> Option<Note> {
+    let at = noted_pid(pid, hop_of(pid), crate::platform::proc::parent_of);
+    note_of(data, at, started_at(at))
+}
+
+/// 进程 `p` 的起始时刻（unix 秒；说不出 ⇒ `None`）。
+fn started_at(p: u32) -> Option<u64> {
+    crate::platform::proc::start_epoch_from_ticks(crate::platform::proc::proc_starttime(p))
+}
+
 /// 这个进程（`pid`，起始时刻 `started`）的便条，且对它作数（不早于它起）。`data` ＝ 数据目录。没有 ⇒ `None`。
-pub fn note_of(data: &Path, pid: u32, started: Option<u64>) -> Option<Note> {
+fn note_of(data: &Path, pid: u32, started: Option<u64>) -> Option<Note> {
     let f = data.join(NOTES_DIR).join(format!("{pid}.json"));
     match NOTE.read(&f) {
         crate::common::own_state::Read::Present(n) => Some(n).filter(|n| fresh(n, started)),
@@ -263,14 +347,33 @@ fn places(own: &Own) -> Result<(OwnPath, OwnPath), crate::common::said::Said> {
     Ok((home, dir))
 }
 
-/// 观测侧看见 `pid` 的会话 `sid` 那一刻（`observe::watcher::Reactions::session_seen`，由 `stream/entry.rs` 接上）：照这个进程与别的进程此刻在不在 [`adopt`]；写不成只出声。
+/// 观测侧看见 `pid` 的会话 `sid` 那一刻（`observe::watcher::Reactions::session_seen`，由 `stream/entry.rs` 接上）：认哪张便条照 [`noted_pid`]，
+/// 照那个进程与别的进程此刻在不在 [`adopt`]；写不成只出声。
 pub fn adopt_seen(own: &Own, pid: u32, sid: &str) {
-    let started_at = |p: u32| {
-        crate::platform::proc::start_epoch_from_ticks(crate::platform::proc::proc_starttime(p))
-    };
     let alive = |p: u32| crate::platform::proc::pid_alive(p).then(|| started_at(p));
-    if let Err(e) = adopt(own, pid, sid, started_at(pid), &alive) {
+    let hop = crate::host::managed::hop_of_pid(pid);
+    let at = noted_pid(pid, hop, crate::platform::proc::parent_of);
+    if let Some(h) = hop.filter(|h| h.pid != at) {
+        tracing::info!(
+            "pid {pid} 住在托管终端里、却不是 ccm 起的那一跳（{}）：不认那一跳的起会话便条",
+            h.pid
+        );
+    }
+    if let Err(e) = adopt(own, at, sid, started_at(at), &alive) {
         tracing::warn!("起会话账号没记上（pid {pid} · sid {sid}）：{}", e.logged());
+    }
+}
+
+/// 会话进程 `pid` 该认哪个 pid 上的起会话便条：它住在托管终端里、是 ccm 起的那一跳（[`crate::host::managed::is_the_hop`]，
+/// 包一层时它是那一跳的直接子进程）⇒ 那一跳的 pid；不是（再往下的后代）· 不在托管终端里（tmux · 直路，`hop` 为 `None`）⇒ 它自己。**纯函数**。
+pub(crate) fn noted_pid(
+    pid: u32,
+    hop: Option<crate::host::managed::Hop>,
+    parent: impl Fn(u32) -> Option<u32>,
+) -> u32 {
+    match hop {
+        Some(h) if crate::host::managed::is_the_hop(pid, h, parent) => h.pid,
+        _ => pid,
     }
 }
 

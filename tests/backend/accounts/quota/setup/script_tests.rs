@@ -46,6 +46,7 @@ fn ctx_of(now: u64) -> Ctx<'static> {
         settings: SETTINGS.get_or_init(|| serde_json::json!({"accounts": [{"start": true}]})),
         memo: None,
         accounts: vec![CtxAcct {
+            agent: String::new(),
             id: "a".into(),
             pos: 0,
             api: false,
@@ -90,6 +91,25 @@ fn a_strategy_reads_the_size_of_one_percent_and_nothing_where_unmeasured() {
     c.accounts[0].per_pct = [Some(25_000), None];
     let v = f.code.decide(&c).expect("跑得通");
     assert_eq!(v.why, [("a".to_string(), "25000|()".to_string())]);
+}
+
+/// ★ 策略读得到每号是哪一家的号：照线上的 kind 写（同号表那一格），不是账上的路由名。
+#[test]
+fn a_strategy_reads_which_agent_an_account_belongs_to() {
+    let f = parse(&with_code(
+        r#"fn decide(ctx) { #{ order: ["a"], why: #{ a: ctx.accounts[0].agent } } }"#,
+    ))
+    .expect("编得过");
+    let mut c = ctx_of(1);
+    c.accounts[0].agent = "claude-code".into();
+    let v = f.code.decide(&c).expect("跑得通");
+    let kind = crate::agents::kind_of_route("claude-code");
+    assert_ne!(
+        kind.as_str(),
+        "claude-code",
+        "这一家的 kind 与路由名不同，才验得出换没换"
+    );
+    assert_eq!(v.why, [("a".to_string(), kind.as_str().to_string())]);
 }
 
 /// ★ 策略读得到智能切换要的事实：每号有没有周上限 · 本会话先不用 · 别的会话压在上面的用速；本会话的用速 · 起伏 · 上下文 ·
@@ -247,6 +267,7 @@ fn the_sandbox_holds_a_hundred_accounts() {
         .iter()
         .enumerate()
         .map(|(pos, id)| CtxAcct {
+            agent: String::new(),
             id: id.clone(),
             pos,
             per_pct: [Some(150_000), Some(1_000_000)],
@@ -298,7 +319,7 @@ fn the_sandbox_stops_loops_and_offers_no_files_clock_or_randomness() {
         let f = parse(&with_code(code)).expect("编得过（函数是跑的时候才找）");
         assert_eq!(
             f.code.decide(&ctx_of(1)).expect_err(code).kind,
-            FailKind::Broke,
+            FailKind::Failed,
             "{code}"
         );
     }
@@ -413,7 +434,7 @@ fn unreadable_files_say_why_and_where() {
     assert!(parse("fn decide(ctx) { #{} }").is_err());
     assert!(parse("/*--- rotation\n{\"format\": 5}\n---*/\nfn decide(ctx) { #{} }").is_err());
     let e = parse(&with_code("\nfn decide(ctx) { let = ; }")).expect_err("编不过");
-    assert_eq!((e.kind, e.line), (FailKind::Broke, Some(5)));
+    assert_eq!((e.kind, e.line), (FailKind::Failed, Some(5)));
     assert!(parse(&with_code("fn other(ctx) { #{} }")).is_err());
 }
 
@@ -441,6 +462,7 @@ fn the_backend_knows_no_strategy_and_no_rule() {
     assert!(hits.is_empty(), "后端源码点了策略或规则的名：{hits:?}");
     let f = [
         Acct {
+            agent: String::new(),
             id: "a".into(),
             api: false,
             used: [40.0, 0.0],
@@ -454,6 +476,7 @@ fn the_backend_knows_no_strategy_and_no_rule() {
             past: Default::default(),
         },
         Acct {
+            agent: String::new(),
             id: "b".into(),
             api: false,
             used: [95.0, 0.0],
@@ -467,6 +490,7 @@ fn the_backend_knows_no_strategy_and_no_rule() {
             past: Default::default(),
         },
         Acct {
+            agent: String::new(),
             id: "c".into(),
             api: false,
             used: [10.0, 0.0],

@@ -134,7 +134,6 @@ dependencies = [
  "ring",
  "serde",
  "serde_json",
- "sha2 0.11.0",
  "shell-quote-core",
  "ssh-dial",
  "test-home",
@@ -149,7 +148,6 @@ dependencies = [
 name = "backend-agents"
 version = "0.0.0"
 dependencies = [
- "acct-core",
  "backend-common",
  "backend-platform",
  "cap-core",
@@ -165,6 +163,7 @@ dependencies = [
  "shell-quote-core",
  "test-home",
  "test-meters",
+ "toml_edit",
  "tracing",
  "ts-rs",
  "walkdir",
@@ -203,7 +202,6 @@ name = "backend-common"
 version = "0.0.0"
 dependencies = [
  "backend-platform",
- "batch-core",
  "cap-core",
  "cmd-wire",
  "copy-core",
@@ -238,7 +236,6 @@ dependencies = [
  "backend-history",
  "backend-host",
  "backend-platform",
- "backend-stderr-log",
  "backend-wire",
  "batch-core",
  "cap-core",
@@ -318,7 +315,6 @@ dependencies = [
  "batch-core",
  "cap-core",
  "cmd-wire",
- "comms-inward",
  "copy-core",
  "creds-core",
  "face-core",
@@ -350,10 +346,10 @@ dependencies = [
  "flate2",
  "guard-core",
  "libc",
+ "pick-core",
  "plain-path-core",
  "serde",
  "serde_json",
- "sha2 0.11.0",
  "tar",
  "test-home",
  "test-meters",
@@ -401,7 +397,6 @@ dependencies = [
  "backend-wire",
  "cap-core",
  "cmd-wire",
- "comms-inward",
  "copy-core",
  "face-core",
  "guard-core",
@@ -500,11 +495,9 @@ version = "0.0.0"
 dependencies = [
  "acct-core",
  "cap-core",
- "cmd-wire",
  "copy-core",
  "creds-core",
  "guard-core",
- "jiff",
  "libc",
  "notify",
  "own-chan",
@@ -552,6 +545,7 @@ dependencies = [
  "ring",
  "rustls",
  "test-home",
+ "upstream-url-core",
 ]
 
 [[package]]
@@ -562,8 +556,8 @@ dependencies = [
  "backend-platform",
  "copy-core",
  "guard-core",
+ "relay-route-core",
  "test-home",
- "tracing",
 ]
 
 [[package]]
@@ -576,7 +570,6 @@ dependencies = [
  "backend-platform",
  "cap-core",
  "cmd-wire",
- "comms-inward",
  "copy-core",
  "deploy-contract",
  "face-core",
@@ -784,7 +777,6 @@ dependencies = [
  "backend-relay",
  "backend-stderr-log",
  "backend-wire",
- "batch-core",
  "cap-core",
  "cmd-wire",
  "comms-inward",
@@ -795,24 +787,14 @@ dependencies = [
  "deploy-contract",
  "egress",
  "face-core",
- "flate2",
  "guard-core",
- "jiff",
  "libc",
  "md-core",
  "mimalloc",
- "notify",
  "own-chan",
- "pidwatch-core",
- "platform-core",
- "portable-pty",
  "relay-route-core",
  "resident-client",
- "rhai",
  "ring",
- "russh",
- "russh-sftp",
- "rustls",
  "serde",
  "serde_json",
  "sha2 0.11.0",
@@ -826,10 +808,6 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "ts-rs",
- "upstream-url-core",
- "vt100",
- "walkdir",
- "win-path-core",
 ]
 
 [[package]]
@@ -950,7 +928,6 @@ dependencies = [
  "copy-core",
  "relay-route-core",
  "rustls",
- "upstream-url-core",
  "webpki-roots",
 ]
 
@@ -1248,11 +1225,11 @@ name = "deploy"
 version = "0.1.0"
 dependencies = [
  "cmd-wire",
- "comms-inward",
  "copy-core",
  "deploy-contract",
  "relay-route-core",
  "serde_json",
+ "shell-quote-core",
  "ssh-dial",
  "test-home",
  "tokio",
@@ -1265,7 +1242,6 @@ version = "0.1.0"
 dependencies = [
  "cmd-wire",
  "copy-core",
- "shell-quote-core",
 ]
 
 [[package]]
@@ -1668,7 +1644,6 @@ version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fb130435a959a8d525e6bca66ff6c40981a300ee96d70e3ef56f046556d614a3"
 dependencies = [
- "generic-array 0.14.7",
  "rustversion",
  "typenum",
 ]
@@ -2179,10 +2154,12 @@ dependencies = [
  "resident-client",
  "ring",
  "russh",
+ "serde",
  "serde_json",
  "ssh-dial",
  "test-home",
  "tokio",
+ "ts-rs",
 ]
 
 [[package]]
@@ -2965,9 +2942,9 @@ dependencies = [
 
 [[package]]
 name = "russh"
-version = "0.65.0"
+version = "0.65.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3bb77a4b259312b2abbc541bca1c13cb4e9b61c560a7fd894068c3b92e0c9dc3"
+checksum = "94be3d86c71b9ed220a675c405e35c7a02565a009bf8da2e9cc13a700320a5c5"
 dependencies = [
  "aes",
  "bitflags 2.13.2",
@@ -3474,6 +3451,7 @@ dependencies = [
  "libc",
  "plain-path-core",
  "rand 0.10.1",
+ "relay-route-core",
  "ring",
  "russh",
  "russh-sftp",

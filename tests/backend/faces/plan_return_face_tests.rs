@@ -29,10 +29,12 @@ fn live(activity: crate::agents::SessionActivity) -> impl Fn(&str) -> Whose {
         let l = Some(Live {
             activity: Some(activity),
             needs: None,
+            housed: None,
         });
         match id {
             MAIN => Whose::Session {
                 sid: MAIN.into(),
+                title: "甲会话".into(),
                 live: l,
             },
             SUB => Whose::Subagent {
@@ -243,6 +245,7 @@ fn ended(id: &str) -> Whose {
     match id {
         MAIN => Whose::Session {
             sid: MAIN.into(),
+            title: "甲会话".into(),
             live: None,
         },
         _ => Whose::Unknown,

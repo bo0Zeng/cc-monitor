@@ -11,4 +11,13 @@ value: string,
 /**
  * 写给人看的字。
  */
-text: string, };
+text: string, 
+/**
+ * 这个模型能选的推理档：原值（`session-model` 的 `effort` 收的就是其一）＋ 后端写好的字，那一家排的先后；
+ * 不在 · 空 ⇒ 这个模型不给选推理档（不是模型的那几项也不在）。
+ */
+efforts?: Array<AgentPick>, 
+/**
+ * 不选推理档时那一家用哪一档（`efforts` 里一项的原值）；那一家没说 ⇒ 不在。
+ */
+defaultEffort?: string, };

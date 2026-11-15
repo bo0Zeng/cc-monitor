@@ -104,6 +104,8 @@ export interface Tab {
   /** 本会话写类工具（Edit / Write / MultiEdit / NotebookEdit）碰过的文件路径（原样、去重、近因序）。
    * 后端出成品（`history-facts` 的 `touchedFiles`），供监控板 peek 列最近改过的文件。纯内存、不落盘（守 §28）。 */
   touchedFiles: Set<string>;
+  /** 「改过的文件 N」（后端 `history-facts` 的 `touchedText`，监控板 peek 照抄）；还没有 ⇒ `null`。 */
+  touchedText: string | null;
   /** 本会话最新一轮的用量与上下文（后端 `history-facts` 的 `usage`：数 ＋ 写好的字，HUD 与监控板照抄）。null = 还没有（或事实还没到）。 */
   usage: UsageFact | null;
   /** 模型写给人看的字（后端 `history-facts` 的 `modelText`，会话头 · HUD · 监控板照抄）；没有 ⇒ `null`。 */
@@ -142,7 +144,8 @@ export interface Tab {
   stream: MessageStream;
   /** 父 JSONL 路径（subagent 加载需要） */
   parentPath: string;
-  unread: number;
+  /** 这条连接上它的未读（后端写好的字，含「99+」；`TabManager.onSessionUnread` 照摆）；没有 ⇒ null。界面不自己数。 */
+  unreadSaid: string | null;
   /** 按 seq 排序的 timeline：renderStreamRecord 调 `insert / peekPrev` 决定挂载位置与相邻合并。 */
   timeline: RecordTimeline;
   /**

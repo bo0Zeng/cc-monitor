@@ -13,7 +13,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     super::typed::blocking::<crate::accounts::quota::warm::QuotaWarm>("给一个号开窗")
         .capped(crate::accounts::quota::warm::WARM_CAP)
         .stream_only(
-            "「同一个号 15 分钟只发一次」那一本只住常驻进程的内存（轮换判完开窗也记在那里）；一次性进程每次是新的一本，答的 `sent` 是假话、还会重发。",
+            "「同一个号 15 分钟只发成一次（没发成的不占）」那一本只住常驻进程的内存（轮换判完开窗也记在那里）；一次性进程每次是新的一本，答的 `sent` 是假话、还会重发。",
         ),
     // 轮换第五版：每个号此刻的事实（typed）。只读。
     super::typed::blocking::<crate::faces::rotation_facts_face::RotationFacts>(
@@ -95,6 +95,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     .stream_only(
         "它找的登录作业住常驻进程那一份作业表里；一次性进程里那张表是空的，只能答「没有这份作业」—— 那是假话。",
     ),
+    // 退出 · 问状态：跑那一家声明的那一条（本体 `accounts::sign_in::{sign_out, status}`）；没声明的家答「不支持」。
+    super::typed::blocking::<crate::faces::login_face::LoginOut>("退出一个号的登录（跑那一家声明的退出那一条）"),
+    super::typed::blocking::<crate::faces::login_face::LoginStatus>("问一个号登没登（跑那一家声明的状态那一条）"),
     super::typed::blocking::<crate::faces::login_face::LoginCancel>(
         "收一份登录作业",
     )

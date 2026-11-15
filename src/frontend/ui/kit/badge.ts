@@ -6,7 +6,7 @@
  */
 import s from "./badge.module.css";
 
-/** 一个计数写成的字：超过 99 写 `99+`（标签页未读 · 格子监视未读这类自带样式的计数也照它写）。 */
+/** 一个计数写成的字：超过 99 写 `99+`（界面自己数的计数照它写；标签页 · 格子监视的未读是后端写好的字，不经它）。 */
 export function cappedCount(n: number): string {
   return n > 99 ? "99+" : String(n);
 }

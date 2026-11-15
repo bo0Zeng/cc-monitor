@@ -29,14 +29,15 @@ class LocalCache(
     fun batches(hostId: String): KeptBatches = RoomKeptBatches(hand, hostId)
 
     /** 这台名下该再交的待发（有会话 · 还没回执 · 没被拒），照落库的先后；那台一接上就照原编号重交（`PendingResend`）。 */
-    suspend fun due(hostId: String): List<Pending> = hand.duePending(hostId).map { Pending(it.id, it.sid, it.text, it.outcome, it.attempts) }
+    suspend fun due(hostId: String): List<Pending> = hand.duePending(hostId).map { Pending(it.id, it.sid, it.text, it.outcome, it.attempts, it.refusedSaid) }
 
     /** 记回一句交的结局（同 [ChatCache.settle]）。 */
     suspend fun settle(
         id: String,
         outcome: String,
         attempts: Int,
-    ) = hand.settle(id, outcome, attempts)
+        refusedSaid: String?,
+    ) = hand.settle(id, outcome, attempts, refusedSaid)
 }
 
 private class RoomKeptBatches(
@@ -105,18 +106,19 @@ private class RoomChatCache(
         dao.putPages(hostId, sid, appendRows(last, rows, anchor?.offset).map { it.row(sid) }, anchor?.row(sid))
     }
 
-    override suspend fun pending(sid: String): List<Pending> = hand.pending(hostId, sid).map { Pending(it.id, it.sid, it.text, it.outcome, it.attempts) }
+    override suspend fun pending(sid: String): List<Pending> = hand.pending(hostId, sid).map { Pending(it.id, it.sid, it.text, it.outcome, it.attempts, it.refusedSaid) }
 
     override suspend fun promote(
         draftSid: String,
         p: Pending,
-    ) = hand.promote(hostId, draftSid, PendingSend(p.id, hostId, p.sid, p.text, now(), p.outcome, p.attempts))
+    ) = hand.promote(hostId, draftSid, PendingSend(p.id, hostId, p.sid, p.text, now(), p.outcome, p.attempts, p.refusedSaid))
 
     override suspend fun settle(
         id: String,
         outcome: String,
         attempts: Int,
-    ) = hand.settle(id, outcome, attempts)
+        refusedSaid: String?,
+    ) = hand.settle(id, outcome, attempts, refusedSaid)
 
     override suspend fun bind(
         ids: List<String>,

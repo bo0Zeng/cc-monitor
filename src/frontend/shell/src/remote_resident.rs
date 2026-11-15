@@ -1,7 +1,7 @@
 //! **远端常驻后端，monitor 这一侧剩下的那一件**：起 · 找 · 只升不降（接上 · ensure · 换装 · 退避）是本机后端那几条常驻流
 //! （`control/feeds.rs`，循环是 `resident_client::feed`，手机同一份）。这里剩：
 //! - 停：请本机后端 `machine-stop`（它先停自己那一条、再在那台跑一次 `--resident-stop`：那台自己做「请它收尾 → 宽限期内等 → 到点强杀」），
-//!   拿回 `graceful | killed | not_running`。本机那一趟（`local_backend_host::run_resident_stop`）读 `--resident-stop` 那一行，读法同循环那一份。
+//!   拿回 `graceful | killed | not_running` 与那台写好的那一句。本机那一趟（`local_backend_host::run_resident_stop`）读 `--resident-stop` 那一行，读法同循环那一份。
 
 use crate::detail::Shell as _;
 use cmd_wire::machine::{MachineStopReq, MachineStopped};
@@ -25,11 +25,33 @@ pub enum StopWord {
     NotRunning,
 }
 
-/// `backend_stop` 交给机器页的结局：`{stopped, pid}`（本机远端同形）。
+/// `backend_stop` 交给机器页的结局：`{stopped, pid, said}`（本机远端同形）；`said` 是那台 `--resident-stop` 写好的那一句，壳与机器页都照抄。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct StopAnswer {
     pub stopped: StopWord,
     pub pid: Option<u32>,
+    pub said: String,
+}
+
+impl StopAnswer {
+    /// 壳自己那一侧的结局（没问到哪一台的 `--resident-stop`）：自己监护的那个子进程是壳亲手杀的 ⇒ 壳说「强杀」那一句。
+    pub(crate) fn killed_here(pid: Option<u32>) -> Self {
+        let n = pid.map(|p| p.to_string()).unwrap_or_default();
+        Self {
+            stopped: StopWord::Killed,
+            pid,
+            said: copy_text("backend.stopSaid.killed", &[("pid", &n)]),
+        }
+    }
+
+    /// 壳自己那一侧的结局：口上没人在听 ⇒「没在跑」（骨架上那一句，不带事实）。
+    pub(crate) fn not_running_here() -> Self {
+        Self {
+            stopped: StopWord::NotRunning,
+            pid: None,
+            said: copy_text("backend.stopSaid.notRunning", &[]),
+        }
+    }
 }
 
 /// 读 `--resident-stop` 那一趟（纯函数）：三个词之外的一律是错，不猜（本机那一趟经它，`local_backend_host::run_resident_stop`）。
@@ -38,14 +60,14 @@ pub struct StopAnswer {
 pub(crate) fn read_stop(got: &cmd_wire::dial::Captured, machine: &str) -> Result<StopAnswer, Said> {
     let v = resident_client::feed::read_one_shot(got, machine)
         .map_err(|f| crate::stream_source::said_of(&f.problem))?;
-    stop_answer_of(&v)
+    stop_answer_of(&v, machine)
 }
 
 /// **停那台的常驻后端**（机器页「停」）：请本机后端停（`machine-stop`：先停它那一条，再在那台发**一次** `--resident-stop`），
 /// 等与强杀由那台自己做（同机监督者），这里只拿回结局。本机后端答了失败 ⇒ 它那一份原样；
 /// 壳自己这一侧没成（本机后端不在 · 回包读不懂）⇒ 那一句说哪台没停成，下层那一句进原话。
 pub(crate) async fn stop(machine: &str) -> Result<StopAnswer, cmd_wire::failed::Failed> {
-    use crate::backend_route::{route_call_error, Routed};
+    use crate::backend_route::route_call_error;
     const NAME: &str = MachineStopReq::NAME;
     let own = |s: Said| {
         s.retold(copy_text(
@@ -62,34 +84,43 @@ pub(crate) async fn stop(machine: &str) -> Result<StopAnswer, cmd_wire::failed::
     };
     let deadline = tokio::time::Instant::now() + STOP_BUDGET;
     let got = client.ask(None, &req, None, deadline).await.map_err(|e| {
-        let said = match route_call_error(&e, &copy_core::local_machine(), |_code, message| {
+        let said = route_call_error(&e, &copy_core::local_machine(), |_code, message| {
             message.to_string()
-        }) {
-            Routed::NoChannel(s) | Routed::Refused(s) => s,
-        };
+        });
         crate::detail::of_call(said, NAME, &e)
     })?;
     match got {
-        Ok(r) => answer_of_stopped(&r).map_err(own),
+        // 那台后端版本过旧（结局里没那一句）⇒ 照原样说那台要更新，不再套一层「没停成」：「停」本身可能已经成了。
+        Ok(r) if r.said.is_empty() => answer_of_stopped(&r, machine).map_err(|s| s.named(NAME)),
+        Ok(r) => answer_of_stopped(&r, machine).map_err(own),
         Err(e) => Err(own(unknown_answer(e.to_string()))),
     }
 }
 
 /// `machine-stop` 的回包 ⇒ 结局（三个词之外的一律是错，不猜）。
-pub(crate) fn answer_of_stopped(r: &MachineStopped) -> Result<StopAnswer, Said> {
+pub(crate) fn answer_of_stopped(r: &MachineStopped, machine: &str) -> Result<StopAnswer, Said> {
     let raw = || serde_json::to_string(r).unwrap_or_default();
-    answer_of(Some(&r.stopped), r.pid, raw)
+    answer_of(Some(&r.stopped), r.pid, Some(&r.said), machine, raw)
 }
 
-/// `--resident-stop` 那一行 `{stopped, pid}` ⇒ 结局（同上）。
-pub(crate) fn stop_answer_of(v: &serde_json::Value) -> Result<StopAnswer, Said> {
+/// `--resident-stop` 那一行 `{stopped, pid, said}` ⇒ 结局（同上）。
+pub(crate) fn stop_answer_of(v: &serde_json::Value, machine: &str) -> Result<StopAnswer, Said> {
     let pid = v["pid"].as_u64().and_then(|p| u32::try_from(p).ok());
-    answer_of(v["stopped"].as_str(), pid, || v.to_string())
+    answer_of(
+        v["stopped"].as_str(),
+        pid,
+        v["said"].as_str(),
+        machine,
+        || v.to_string(),
+    )
 }
 
+/// 三个词之外的 · 那台没写那一句的 ⇒ 错（不替那台补字）。
 fn answer_of(
     stopped: Option<&str>,
     pid: Option<u32>,
+    said: Option<&str>,
+    machine: &str,
     raw: impl FnOnce() -> String,
 ) -> Result<StopAnswer, Said> {
     let stopped = match stopped {
@@ -98,7 +129,15 @@ fn answer_of(
         Some("not_running") => StopWord::NotRunning,
         _ => return Err(unknown_answer(raw())),
     };
-    Ok(StopAnswer { stopped, pid })
+    match said.filter(|s| !s.is_empty()) {
+        Some(said) => Ok(StopAnswer {
+            stopped,
+            pid,
+            said: said.to_string(),
+        }),
+        // 那一句没写 ⇒ 那台后端版本过旧（「停」本身可能已经成了）：不替它补字，照版本族那一句说那台后端要更新、原话进复制详情。
+        None => Err(Said::with_raw(copy_core::backend_old(machine), raw())),
+    }
 }
 
 fn unknown_answer(raw: String) -> Said {

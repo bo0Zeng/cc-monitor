@@ -14,7 +14,6 @@ import { copyCommand, NoTerminalWindow, openTerminal, sayNoTerminal } from "./te
 import { chosenAccount } from "./launch-account";
 import { offerResyncRetry } from "./resync";
 import { openLoginDrawer } from "./login-drawer";
-import { DEFAULT_AGENT } from "./agent-profile";
 import type { SessionOpenReq } from "./generated/SessionOpenReq";
 import type { OpenWhat } from "./generated/OpenWhat";
 import type { Opened } from "./generated/Opened";
@@ -96,7 +95,7 @@ export async function askArrive(origin: Machine, ask: ArriveAsk, within: number 
 
 /**
  * 起了一家之后：主窗口里有目录 ⇒ 交占位标签页（它自己问、照回包画）；否则问那台等报到 ——
- * 报到了 ⇒ 交 `onArrived`（缺 ⇒ 说 `title` ＋「已报出此会话」）；没见到 ⇒ 那台那一句原样上屏。
+ * 报到了 ⇒ 交 `onArrived`（缺 ⇒ 说 `title` ＋「已报出此会话」）；没见到 ⇒ 那台分好的标题 · 那一句照格上屏。
  */
 export function awaitArrival(origin: Machine, ask: ArriveAsk, cwd: string | null, title: string, onArrived?: (sid: string) => void): void {
   if (cwd !== null && slots?.({ origin, cwd, tmuxName: ask.session, arrival: ask })) return;
@@ -105,7 +104,8 @@ export function awaitArrival(origin: Machine, ask: ArriveAsk, cwd: string | null
       if (onArrived) onArrived(end.sid);
       else toast(title, copyText("sessionOpen.arrived.body", { machine: machineName(origin) }), { level: "info" });
     } else if (end.kind === "missed") {
-      toast(...lines(end.said), { level: "error" });
+      // 那台分好的三格：标题 · 那一句 · 画面末几行（进［复制详情］）。
+      toast(end.title, end.said, { level: "error", detail: end.words ?? "" });
     } else {
       toast(end.said, "", { detail: end.detail });
     }
@@ -177,10 +177,9 @@ function sayEnd(origin: Machine, req: SessionOpenReq, how: OpenHow, end: Exclude
   }
   const [title, body] = lines(end.said);
   const again = (r: SessionOpenReq): Promise<void> => openSession(origin, r, how).then(() => undefined);
-  // 那台说了是哪个号选不了 ⇒［登录…］开那个号的登录抽屉（同新建会话框那一颗）。
+  // 那台说了是哪个号选不了、且说给登录（`login`）⇒［登录…］开那个号的登录抽屉（同新建会话框那一颗）。
   const u = end.unavailable;
-  const agent = req.what.kind === "new" ? req.what.agent : DEFAULT_AGENT;
-  const login = u === null ? [] : [{ label: copyText("newSession.account.login"), run: () => void openLoginDrawer({ origin, target: { kind: "account" as const, agent, account: u.requested } }) }];
+  const login = u === null || !u.login ? [] : [{ label: copyText("newSession.account.login"), run: () => void openLoginDrawer({ origin, target: { kind: "account" as const, account: u.requested } }) }];
   switch (end.code) {
     case "account_unavailable": {
       const alt = u?.listKnown ? u.alternative : null;
@@ -220,7 +219,7 @@ async function openLine(origin: Machine, line: string, cwd: string | null, sid: 
     }
     const where = isLocalOrigin(origin)
       ? copyText("sessionOpen.copy.runLocal")
-      : copyText("sessionOpen.copy.runRemote", { machine: origin });
+      : copyText("sessionOpen.copy.runRemote", { machine: machineName(origin) });
     toast(copyText("sessionOpen.terminal.notOpened"), `${where}\n${line}`, {
       detail: detailOf(err),
       level: "error",

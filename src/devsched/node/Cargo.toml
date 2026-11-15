@@ -1,0 +1,27 @@
+[package]
+name = "devsched-node"
+description = "开发调度的编译节点：编译机上的静态单文件"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "devsched-node"
+path = "src/main.rs"
+
+[dependencies]
+devsched-wire.workspace = true
+libc.workspace = true
+
+# 测试住仓根 tests/ 的同形位置（仓里的守卫只剥 #[cfg(test)] mod，src/ 下整份测试会被当生产段扫）
+[[test]]
+name = "node"
+path = "../../../tests/devsched/node/node.rs"
+
+[[test]]
+name = "thread_cap"
+path = "../../../tests/devsched/node/thread_cap.rs"
+
+[[test]]
+name = "thread_cap_drop"
+path = "../../../tests/devsched/node/thread_cap_drop.rs"

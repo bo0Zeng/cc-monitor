@@ -1,1 +1,2 @@
 com.ccmonitor.mobile.detekt.ExitRuleSetProvider
+com.ccmonitor.mobile.detekt.HostNameRuleSetProvider

@@ -53,7 +53,7 @@ fn stamp(id: &str) -> String {
 }
 
 fn landing_scan() -> String {
-    deploy_contract::stamp_scan_cmd(relay_route_core::BACKEND_LANDING_SHELL, MARKS)
+    deploy::stamp_scan_cmd(relay_route_core::BACKEND_LANDING_SHELL, MARKS)
 }
 
 impl Fake {
@@ -61,7 +61,7 @@ impl Fake {
     fn linux(landing: Option<&str>) -> Fake {
         let mut f = Fake::default();
         f.exec
-            .insert(deploy_contract::UNAME_CMD.into(), said(0, "Linux x86_64\n"));
+            .insert(deploy::UNAME_CMD.into(), said(0, "Linux x86_64\n"));
         match landing {
             Some(id) => {
                 f.stat.insert(
@@ -137,7 +137,7 @@ async fn nothing_at_the_landing_is_deployed() {
     // 不在就不必再扫它的身份戳：只问了机器与旧落点那一格（旧落点也不在 ⇒ 也不扫）。
     assert_eq!(
         *f.asked.lock().unwrap(),
-        vec![deploy_contract::UNAME_CMD.to_string()]
+        vec![deploy::UNAME_CMD.to_string()]
     );
 }
 
@@ -188,7 +188,7 @@ async fn a_machine_this_build_does_not_carry_is_refused_before_the_landing_is_as
 async fn a_windows_remote_is_refused_as_not_promised() {
     let mut f = Fake::linux(Some("p9a-mine"));
     f.exec.insert(
-        deploy_contract::UNAME_CMD.into(),
+        deploy::UNAME_CMD.into(),
         said(0, "MINGW64_NT-10.0-19045 x86_64\n"),
     );
     let e = plan(&f, &carried("p9a-mine"), "box", NOW)
@@ -202,7 +202,7 @@ async fn a_windows_remote_is_refused_as_not_promised() {
 async fn what_the_machine_said_to_uname_goes_to_the_detail_not_the_sentence() {
     let mut f = Fake::linux(Some("p9a-mine"));
     f.exec.insert(
-        deploy_contract::UNAME_CMD.into(),
+        deploy::UNAME_CMD.into(),
         Ok(crate::dial::Captured {
             stdout: String::new(),
             stderr: "uname : The term 'uname' is not recognized\n".into(),
@@ -302,7 +302,7 @@ async fn stale_deploy_leftovers_in_staging_are_handed_over_and_nothing_else() {
 }
 
 /// 键集合 == 金样 `tests/__fixtures__/deploy-install.golden.json` 的键（两端同一份类型 `cmd_wire::deploy`，它照同一份金样解再写回）：装 · 卸的应答各一份。
-/// 应答那一句是 `deploy` crate 写的那一句；`build` 是落点上现在那一份（`keep` ⇒ 那台的）。
+/// 两条应答都只有那一句（`deploy` crate 写的；Keep 那一句后端接上出路）。
 #[test]
 fn the_install_reply_has_exactly_the_golden_keys() {
     let golden: serde_json::Value = serde_json::from_str(include_str!(
@@ -324,25 +324,19 @@ fn the_install_reply_has_exactly_the_golden_keys() {
         leftovers: vec![],
     };
     let got = installed_json(&p);
+    assert_eq!(
+        keys(&got),
+        ["said"],
+        "装的回包只有那一句（没人读的格不上线）"
+    );
     assert_eq!(keys(&got), keys(&golden["product"]));
     assert_eq!(
-        (
-            got["action"].as_str(),
-            got["build"].as_str(),
-            got["said"].as_str()
-        ),
-        (
-            Some("keep"),
-            Some("p9b"),
-            Some(copy_text("rsSftp.deploy.keptNotOlder", &[("why", "w")]).as_str())
-        ),
+        got["said"].as_str(),
+        Some(copy_text("rsSftp.deploy.keptNotOlder", &[("why", "w")]).as_str()),
         "Keep 那一句连出路由后端写全（壳与界面不再接句子）"
     );
-    let un = serde_json::to_value(Uninstalled {
-        removed: true,
-        said: "s".into(),
-    })
-    .unwrap();
+    let un = serde_json::to_value(Uninstalled { said: "s".into() }).unwrap();
+    assert_eq!(keys(&un), ["said"], "卸的回包只有那一句");
     assert_eq!(keys(&un), keys(&golden["uninstalled"]));
 }
 
@@ -442,8 +436,8 @@ async fn an_install_with_only_the_machine_uses_the_slots_left_on_this_machine() 
     let got = super::install(&req, &home, &f, &|_| {})
         .await
         .expect("带着那一格 ⇒ 判得出");
-    assert_eq!(got.action, cmd_wire::deploy::ActionTag::Skip);
-    assert_eq!(got.build, "p9a-mine");
+    assert_eq!(got.action, DeployAction::Skip, "落点上已是它 ⇒ 跳过");
+    assert_eq!(got.expected, "p9a-mine");
     let _ = std::fs::remove_dir_all(&home);
 }
 

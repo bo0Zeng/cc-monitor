@@ -195,11 +195,6 @@ pub fn owner_line(slice: &str, o: &Owner) -> String {
     parts.join(&copy_text("kit.text.sep", &[]))
 }
 
-/// 右键菜单那一项的字。
-pub fn menu_label(o: &Owner) -> String {
-    copy_text("rsFilewinPlan.menu.open", &[("title", &o.label)])
-}
-
 /// 预览头那颗按钮的字。
 pub fn open_label() -> String {
     copy_text("rsFilewinPlan.owner.open", &[])

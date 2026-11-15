@@ -1,12 +1,13 @@
 //! 中转发之前那一判（第五版）：只在节点上判、节点之间一发都不叫策略（#28）；节点怎么作废缓存；429 同一发重判；停发回「用满」；
 //! 推演借用速只借同一档的号、借不到不编数。临时家目录、假凭据、自己的节点通道（不跟并行的判据串）、不起中转。
 
+use super::Swap;
 use crate::accounts::quota::ledger::{self, Ledger};
 use crate::accounts::quota::nodes::Source;
 use crate::accounts::quota::rotation::{self, RotationStore};
 use crate::accounts::quota::rules::book::{self, Cause};
 use crate::accounts::quota::setup::{script, shelf, uses};
-use crate::accounts::upstream_select::rotate::{Go, Hop, Turn};
+use crate::accounts::upstream_select::rotate::{Go, Hop, Turn, Unready};
 use crate::agents::{QuotaReading, QuotaStatus, QuotaWindow};
 use std::sync::Arc;
 
@@ -22,7 +23,7 @@ fn now() -> u64 {
 fn dead_token_endpoint() -> crate::accounts::oauth::TokenEndpoint {
     let port = crate::refusing_port::refusing_port();
     crate::accounts::oauth::TokenEndpoint {
-        base: crate::relay::Base::parse(&format!("http://127.0.0.1:{port}")).expect("base"),
+        base: crate::relay::base_of(&format!("http://127.0.0.1:{port}")).expect("base"),
         rest: "/v1/oauth/token".into(),
         deadline: std::time::Duration::from_millis(2_000),
     }
@@ -193,6 +194,7 @@ fn steer(hop: &Hop, own: &crate::platform::fs::Own, at: u64) -> Go {
         },
         own,
     )
+    .go
 }
 
 /// 这个进程里重跑过几次判。
@@ -389,7 +391,8 @@ fn a_refusal_rejudges_in_the_same_send() {
             &["a".to_string()],
             &own,
         )
-        .expect("换得了");
+        .expect("换得了")
+        .go;
     assert_eq!(which(&go), "b");
     let s = home.session();
     assert_eq!(
@@ -456,7 +459,7 @@ fn a_refusal_rejudges_inside_the_ledger_lock() {
     );
     other.join().expect("线程");
     assert_eq!(
-        go.as_ref().map(which),
+        go.as_ref().map(|s| which(&s.go)),
         Some("hold"),
         "看得见 b 不用了 ⇒ 停发"
     );
@@ -548,7 +551,25 @@ fn a_switch_whose_account_cannot_be_reached_is_not_logged() {
     let own = home.own();
     let t = now();
     home.seen(&hop.quota, None, "a", 0.6, t);
-    assert_ne!(which(&steer(&hop, &own, t + 1)), "b", "b 接不上还发给了它");
+    let b = body();
+    let none = |_: &str| None;
+    let out = hop.steer(
+        &Turn {
+            agent: "claude-code",
+            start: "a",
+            sid: SID,
+            body: &b,
+            row: &none,
+            now: t + 1,
+        },
+        &own,
+    );
+    assert_ne!(which(&out.go), "b", "b 接不上还发给了它");
+    assert_eq!(
+        out.missed,
+        vec![("b".to_string(), Unready::NeedsLogin)],
+        "策略选的号换不过去，结局里没照实说为什么"
+    );
     let s = home.session();
     let log: Vec<(&str, &str)> = s
         .log
@@ -603,7 +624,7 @@ fn counting_token_endpoint(
     });
     (
         crate::accounts::oauth::TokenEndpoint {
-            base: crate::relay::Base::parse(&format!("http://127.0.0.1:{port}")).expect("base"),
+            base: crate::relay::base_of(&format!("http://127.0.0.1:{port}")).expect("base"),
             rest: "/v1/oauth/token".into(),
             deadline: std::time::Duration::from_millis(2_000),
         },
@@ -702,6 +723,7 @@ fn a_failed_renewal_retries_at_the_time_it_names() {
 
 fn acct(id: &str, used: f64, rate: Option<f64>, t: u64) -> crate::accounts::quota::rules::Acct {
     crate::accounts::quota::rules::Acct {
+        agent: String::new(),
         id: id.into(),
         api: false,
         used: [used, 0.0],
@@ -851,6 +873,7 @@ fn idle_ledger(home: &Home, t: u64, b_weekly: bool) {
         .filter(|_| !(b_weekly && acct == "b"))
         .collect(),
         history: Default::default(),
+        reread_failed: Default::default(),
     };
     std::fs::write(
         home.root.join(ledger::FILE_NAME),
@@ -889,6 +912,7 @@ fn steer_as(hop: &Hop, own: &crate::platform::fs::Own, sid: &str, at: u64) -> Go
         },
         own,
     )
+    .go
 }
 
 /// ★ 各会话的判依次来：两个会话都在 a 上、同一刻判，策略挑别的会话压得少的那个号。先判的那个看见另一个压在 a 上 ⇒ 换 b；
@@ -1034,14 +1058,17 @@ fn the_past_of_an_account_comes_from_its_ledger_windows() {
     let mut all: Vec<Acct> = ["a", "b"]
         .iter()
         .map(|id| {
-            Acct::of_fact(&hop.fact_one(
+            Acct::of_fact(
                 "claude-code",
-                &lib,
-                id,
-                &|_| None,
-                t,
-                &crate::common::time::Tz::default(),
-            ))
+                &hop.fact_one(
+                    "claude-code",
+                    &lib,
+                    id,
+                    &|_| None,
+                    t,
+                    &crate::common::time::Tz::default(),
+                ),
+            )
         })
         .collect();
     hop.with_past("claude-code", &mut all, t);
@@ -1079,7 +1106,7 @@ fn a_hold_past_a_day_says_claude_code_will_not_resume_by_itself() {
             warm: Vec::new(),
             warm_dropped: Vec::new(),
         };
-        super::apply(&mut s, &d, &[], t, None);
+        super::apply(&mut s, &d, &[], t, None, claude_resumes_within());
         s.log.last().expect("记了一条停发").why.clone()
     };
     let dur = copy_core::format_duration(24 * 3600 * 1000);
@@ -1122,7 +1149,7 @@ fn a_switch_logs_the_facts_it_saw() {
         warm_dropped: Vec::new(),
     };
     let mut s = book::Session::fresh("claude-code", "a", t);
-    super::apply(&mut s, &d, &[a, b], t, None);
+    super::apply(&mut s, &d, &[a, b], t, None, claude_resumes_within());
     let saw = s.log.last().and_then(|l| l.saw.clone()).expect("记了事实");
     assert_eq!(
         serde_json::to_value(&saw).expect("json"),
@@ -1136,4 +1163,108 @@ fn a_switch_logs_the_facts_it_saw() {
             "context": 80_000
         })
     );
+}
+
+// ── 替身家注册表喂进上游选择：换到接不上的号，结局带着为什么 ──
+
+/// 替身家一家的换号：账号 0（家目录下那份配置）与号载体 `c`，会话起在 `a` 上、没选策略。
+fn fake_hop(home: &Home) -> Hop {
+    let c = home.root.join("accts").join("c");
+    Hop::new(
+        Arc::new(RotationStore::with_nodes(
+            Some(home.root.join(rotation::FILE_NAME)),
+            home.tx.clone(),
+        )),
+        &crate::accounts::quota::adoptions_at(),
+        home.ledger(),
+        Some(home.root.clone()),
+        Arc::new(move |_| {
+            Some(acct_core::AccountBook {
+                // 号表照实写是替身家的号（没说家只认默认那一家，替身家不是默认）。
+                accounts: [
+                    crate::accounts::upstream_select::rotate::test_support::book_row(
+                        "0", None, false,
+                    ),
+                    crate::accounts::upstream_select::rotate::test_support::book_row(
+                        "c",
+                        Some(c.clone()),
+                        false,
+                    ),
+                ]
+                .into_iter()
+                .map(|a| acct_core::ManifestAccount {
+                    agent: Some(crate::agents::fake::AGENT_KIND.to_string()),
+                    ..a
+                })
+                .collect(),
+            })
+        }),
+        crate::accounts::upstream_select::rotate::HistoryPorts {
+            live: Arc::new(std::collections::BTreeSet::new),
+            ring: Arc::new(|| {}),
+        },
+        Some(dead_token_endpoint()),
+    )
+    .among(crate::accounts::upstream_select::rotate::test_support::fake_registry())
+}
+
+fn fake_steer(hop: &Hop, own: &crate::platform::fs::Own, at: u64) -> Swap {
+    let b = b"{}".to_vec();
+    let none = |_: &str| None;
+    hop.steer(
+        &Turn {
+            agent: crate::agents::fake::AGENT_KIND,
+            start: "a",
+            sid: SID,
+            body: &b,
+            row: &none,
+            now: at,
+        },
+        own,
+    )
+}
+
+/// 手动把会话换到 `to`（会话那一条的在用号写成它）。
+fn switch_to(hop: &Hop, own: &crate::platform::fs::Own, to: &str) {
+    rotation::face_change(&hop.store, own, |b| {
+        if let Some(s) = b.sessions.get_mut(SID) {
+            s.current = to.into();
+        }
+    })
+    .expect("w");
+}
+
+/// ★ 换到过期的账号 0（那一家声明不续不写）⇒ 这一发照开会话的号走，结局照实说换不过去是因为「不由 cc-monitor 续」（不是要重新登录）；
+/// 换到没过期的号载体 ⇒ 换上它，结局里没有换不过去的号。
+#[test]
+fn a_switch_that_cannot_reach_its_account_says_why_in_the_outcome() {
+    use crate::accounts::upstream_select::rotate::test_support::fake_creds_in;
+    let home = Home::new("fake-why", [None, None]);
+    let hop = fake_hop(&home);
+    let own = home.own();
+    let t = now();
+    fake_creds_in(&home.root.join("shared"), t - 7_200);
+    fake_creds_in(&home.root.join("accts").join("c"), t - 60);
+    assert!(matches!(fake_steer(&hop, &own, t).go, Go::Start));
+    switch_to(&hop, &own, "0");
+    let out = fake_steer(&hop, &own, t + 1);
+    assert!(matches!(out.go, Go::Start), "接不上的账号 0 还发给了它");
+    assert_eq!(
+        out.missed,
+        vec![("0".to_string(), Unready::BaseUntouched)],
+        "换不过去的原因没照实带出来"
+    );
+    switch_to(&hop, &own, "c");
+    let out = fake_steer(&hop, &own, t + 2);
+    assert_eq!(which(&out.go), "c", "号载体没换上");
+    assert!(out.missed.is_empty(), "{:?}", out.missed);
+}
+
+/// Claude 那一行登记的「客户端自己等到重置再续的最远时长」（照生产注册表里那一家的默认上游）。
+fn claude_resumes_within() -> Option<u64> {
+    crate::agents::REGISTRY
+        .iter()
+        .filter_map(|a| a.upstream.as_ref())
+        .find(|u| u.route_id == "claude-code")
+        .and_then(|u| u.resumes_within)
 }

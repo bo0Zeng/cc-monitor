@@ -41,16 +41,19 @@ pub(crate) fn facts_with(
     now: u64,
     tz: &crate::common::time::Tz,
 ) -> Result<RotationFactsReply, RotationFactsErr> {
-    let agent = match &req.agent {
-        None => crate::accounts::upstream_select::CREDENTIALS_FILE_AGENT,
-        Some(k) => crate::agents::pick_route(Some(k))
-            .map_err(RotationFactsErr::BadArgs)?
-            .id(),
-    };
+    // 没写家 ⇒ 默认那一家（照请求的规整，`pick_route`）。
+    let agent = crate::agents::pick_route(req.agent.as_ref())
+        .map_err(RotationFactsErr::BadArgs)?
+        .id();
     let row = |a: &str| (ctx.rows)(agent, a);
     Ok(RotationFactsReply {
         now,
-        accounts: ctx.hop.facts(agent, &row, now, tz),
+        accounts: ctx
+            .hop
+            .facts(agent, &row, now, tz)
+            .into_iter()
+            .map(crate::accounts::quota::facts::Fact::wire)
+            .collect(),
     })
 }
 

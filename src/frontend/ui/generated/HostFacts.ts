@@ -5,7 +5,7 @@
  */
 export type HostFacts = { 
 /**
- * 系统：`linux` · `macos` · `windows`（别的原样）。根元素 `data-host-os` 与「这台电脑」那一行的系统名用它。
+ * 系统：`linux` · `macos` · `windows`（别的原样）。只给根元素 `data-host-os` 用（机器页那一行的系统名照本机那台的机器成品）。
  */
 os: string, 
 /**

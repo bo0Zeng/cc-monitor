@@ -14,7 +14,15 @@ fn a_project_with_no_sessions_has_no_row_at_all() {
     let dir = root.join("projects").join("empty");
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("README.md"), b"x").unwrap();
-    assert!(project_rows(&dir).is_empty(), "没有会话的项目出了一行");
+    assert!(
+        project_rows(
+            crate::agents::REGISTRY,
+            &crate::agents::IntoHomes::into_homes(&root)[0],
+            &dir
+        )
+        .is_empty(),
+        "没有会话的项目出了一行"
+    );
 }
 
 /// 两个真实目录撞成同一个记录目录名（`/home/u/文档/x` 与 `/home/u/桌面/x` 都记在 `-home-u----x`）⇒ 两行，各是一项；
@@ -35,10 +43,14 @@ fn two_real_directories_behind_one_record_folder_name_are_two_projects() {
     put("doc-2", r#"{"cwd":"/home/u/文档/x"}"#, 3_000);
     put("desk-1", r#"{"cwd":"/home/u/桌面/x"}"#, 2_000);
     put("nocwd", "{}", 500);
-    let got: Vec<(String, i64)> = project_rows(&dir)
-        .into_iter()
-        .map(|r| (r.project_path, r.last_activity_ms))
-        .collect();
+    let got: Vec<(String, i64)> = project_rows(
+        crate::agents::REGISTRY,
+        &crate::agents::IntoHomes::into_homes(&root)[0],
+        &dir,
+    )
+    .into_iter()
+    .map(|r| (r.project_path, r.last_activity_ms))
+    .collect();
     assert_eq!(
         got,
         vec![
@@ -85,7 +97,12 @@ fn sessions_in_the_hidden_dir_are_left_out_of_the_project_list() {
     };
     put("mine", Path::new("/home/u/proj"));
     put("auto", &auto);
-    let rows = project_rows_hiding(&dir, &|c| hidden_cwd_in(&home, c));
+    let rows = project_rows_hiding(
+        crate::agents::REGISTRY,
+        &crate::agents::IntoHomes::into_homes(&root)[0],
+        &dir,
+        &|c| hidden_cwd_in(&home, c),
+    );
     let paths: Vec<&str> = rows.iter().map(|r| r.project_path.as_str()).collect();
     assert_eq!(paths, vec!["/home/u/proj"]);
     // 记录里的目录是解析过链接的那一形：家经一条链接到达时也认得出。

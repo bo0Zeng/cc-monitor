@@ -36,9 +36,13 @@ unset CCM_RELAY_PORT CCM_RELAY_ALL_SESSIONS ANTHROPIC_BASE_URL
 # 本文件不用 `jq` 也不用 `npx`：账号表由后端自己读那份 manifest，会话名派生那一节是手写期望。
 
 . "$HERE/assert.sh"
-# ccm 起的会话（启动器就是这一家默认的那一个）在启动器后面垫答题 hook：会话级 `--settings <只含那一个 hook 的 JSON>`，
-#   入口是那个家里的 ccm。`hk <家>` 是打印那一行里的样子（单引号包着），`hkraw <家>` 是 claude 收到的那两个词（空格连）。
-hook_json() { printf '{"hooks":{"PermissionRequest":[{"hooks":[{"args":["--","--answer-hook","claude"],"command":"%s/.cc-monitor/bin/ccm","timeout":3600,"type":"command"}]}]}}' "$1"; }
+# ccm 起的会话（启动器就是这一家默认的那一个）在启动器后面垫 hook：会话级 `--settings <那几个 hook 的 JSON>`——答题那一个
+#   （PermissionRequest），另有活会话表收事件的三个（闲着通知 · 一轮结束 · 提交，0a90f13601），入口都是那个家里的 ccm。
+#   `hk <家>` 是打印那一行里的样子（单引号包着），`hkraw <家>` 是 claude 收到的那两个词（空格连）。
+hook_json() {
+  local e="{\"args\":[\"--\",\"--answer-hook\",\"claude\"],\"command\":\"$1/.cc-monitor/bin/ccm\""
+  printf '{"hooks":{"Notification":[{"hooks":[%s,"timeout":10,"type":"command"}],"matcher":"idle_prompt"}],"PermissionRequest":[{"hooks":[%s,"timeout":3600,"type":"command"}]}],"Stop":[{"hooks":[%s,"timeout":10,"type":"command"}]}],"UserPromptSubmit":[{"hooks":[%s,"timeout":10,"type":"command"}]}]}}' "$e" "$e" "$e" "$e"
+}
 hk() { printf " --settings '%s'" "$(hook_json "$1")"; }
 hkraw() { printf -- "--settings %s" "$(hook_json "$1")"; }
 # **全文件恒隔离家目录与 CLAUDE_CONFIG_DIR**：账号库跟着家目录走（`<家>/.cc-monitor/accounts/`），
@@ -52,7 +56,7 @@ NOHOME="$CCMDIR/home"; mkdir -p "$NOHOME"
 nofrom() { local o rc; o="$("$@" 2>&1)"; rc=$?; printf '%s\n' "$o" | sed '/^# /d'; return $rc; }
 ccm() { nofrom env -u CLAUDE_CONFIG_DIR HOME="$NOHOME" "$CCM" "$@"; }
 
-UNSET="unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION"
+UNSET="unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION CODEX_THREAD_ID"
 # 换了启动器那一支看 `PATH` 上那份 claude 是哪一版（够新才经 CLAUDE_CODE_PLUGIN_DIRS 交答题插件）⇒ 不钉 PATH 的话结果随
 #   「这台装没装 claude、装的哪一版」漂移（开发机上走插件、CI 上标 version）。这几条一律钉住：
 #   `ccm_newcc` = PATH 上只有一份装成原生形（`versions/<版本>`）的够新的假 claude；`ccm_nocc` = PATH 上没有 claude。
@@ -98,8 +102,8 @@ ck "--resume=<sid> 等号形式原样交出去" \
    "$UNSET; cd '/p' && exec $BIN/claude$(hk "$NOHOME") --resume=abc-123" \
    "$(ccm --resume=abc-123 -- --cwd /p --ccm-print)"
 # 会话号变量照样清（同起子进程原语：真跑那一趟摘掉它们，打印那一行也写上，print↔exec 才一样）。
-ck "--ccm-agent codex：换启动器 + 不连共享后台 + 不清 claude 的嵌套 env（只清会话号变量）" \
-   "unset CLAUDE_CODE_SESSION_ID; cd '/p' && exec $BIN/codex --no-daemon" \
+ck "--ccm-agent codex：换启动器 + 不连共享后台 + 清 codex 自己那四个嵌套变量、claude 的只清会话号；假 codex 认不出版本 ⇒ 答题口标 version" \
+   "unset CODEX_THREAD_ID CODEX_SESSION_ID CODEX_TOOL_CALL_ID CODEX_VERSION CLAUDE_CODE_SESSION_ID; export CCM_ANSWER_HOOK_OFF=version; cd '/p' && exec $BIN/codex --no-daemon" \
    "$(ccm -- --ccm-agent codex --cwd /p --ccm-print)"
 ck "--ccm-agent codex：resume <sid> 原样交给 codex（它自己的子命令形）" \
    "yes" \

@@ -12,10 +12,10 @@
 //! 本模块不起进程、不碰 tmux、不认识 shell。
 //! 请求指了 sid 时，喂进来的是挂着它的那个窗格上的 `@ccm_sid`（一个 tmux 会话里可以有几个 claude 窗格，活动窗格是谁不算数）。
 //!
-//! # ⚠ `@ccm_sid` 不是 `@ccm_sid_expect`
+//! # ⚠ 只认事实标
 //!
-//! 通道 A（意图）写 `@ccm_sid_expect`，只有通道 B（后端 `control/identity_tag.rs` 读会话文件确认后）才写 `@ccm_sid`。
-//! 调用方喂进 [`gate2`] 的必须是 `@ccm_sid`。**放宽到 `_expect` 就是把这道门拆了。**
+//! `@ccm_sid` 只由后端 `control/identity_tag.rs` 读会话文件确认后写；建会话的那一方一个身份标都不写。
+//! 调用方喂进 [`gate2`] 的必须是这一格，不许拿别的会话选项替它。
 
 /// Gate 2 的判定结果。**三态而不是 bool** —— 两种「允许」的代价不同：
 /// 名字命中是零 IO 的，`@ccm_sid` 命中是花了一次 round-trip 换来的。

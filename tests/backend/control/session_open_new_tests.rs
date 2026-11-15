@@ -100,10 +100,12 @@ impl Rig {
             use crate::accounts::manage::library::test_support::{list, row_with};
             list(vec![
                 row_with("work", |a| {
+                    a.agent = Some(crate::agents::default_kind().into());
                     a.config_dir = Some("/h/.cc/work".into());
                     a.is_default = true;
                 }),
                 row_with("gone", |a| {
+                    a.agent = Some(crate::agents::default_kind().into());
                     a.config_dir = Some("/h/.cc/gone".into());
                     a.exists = false;
                     a.auth_ready = false;
@@ -112,6 +114,7 @@ impl Rig {
         };
         let last_of = |_: &str| self.last.map(str::to_string);
         let accounts = la::Facts {
+            agent: crate::agents::default_kind().into(),
             has_accounts: true,
             library: &library,
             last: &last_of,
@@ -345,10 +348,8 @@ fn a_fork_writes_its_record_only_after_every_slot_passed_and_resumes_the_new_ses
     let argv = rig.ccm.borrow()[0].clone();
     assert!(argv.windows(2).any(|w| w == ["--resume", NEW]), "{argv:?}");
     assert!(
-        argv.iter()
-            .any(|a| a.contains(NEW) && a.starts_with("--ccm-sid"))
-            || argv.windows(2).any(|w| w[0] == "--ccm-sid" && w[1] == NEW),
-        "身份标记打上新 sid：{argv:?}"
+        !argv.iter().any(|a| a.starts_with("--ccm-sid")),
+        "建会话不写身份：{argv:?}"
     );
 }
 
@@ -429,11 +430,27 @@ fn unknown_fields_are_refused() {
 #[test]
 fn a_tilde_directory_is_read_under_this_machines_home() {
     let h = Some(std::path::Path::new("/h"));
-    assert_eq!(expand_home("~/srv/x", h), "/h/srv/x");
-    assert_eq!(expand_home("~", h), "/h");
-    assert_eq!(expand_home("~bob/x", h), "~bob/x");
-    assert_eq!(expand_home("/srv", h), "/srv");
-    assert_eq!(expand_home("~/x", None), "~/x");
+    assert_eq!(expand_home("~/srv/x", h).as_deref(), Ok("/h/srv/x"));
+    assert_eq!(expand_home("~", h).as_deref(), Ok("/h"));
+    assert_eq!(expand_home("~bob/x", h).as_deref(), Ok("~bob/x"));
+    assert_eq!(expand_home("/srv", h).as_deref(), Ok("/srv"));
+    assert_eq!(expand_home("~/x", None).as_deref(), Ok("~/x"));
+}
+
+/// 家目录名不是 UTF-8：`~` 开头的工作目录写不成字 ⇒ 照实拒（带用户写的那一串），不按替换符拼出一个不存在的目录去起会话；
+/// 不带 `~` 的照原样，跟家无关。
+#[cfg(unix)]
+#[test]
+fn a_tilde_directory_under_a_home_that_is_not_utf8_is_refused_not_mangled() {
+    use std::os::unix::ffi::OsStrExt;
+    let h = std::path::Path::new(std::ffi::OsStr::from_bytes(b"/h/caf\xe9"));
+    let e = expand_home("~/srv", Some(h)).expect_err("非 UTF-8 的家被有损拼成了字");
+    assert!(!e.contains('\u{FFFD}'), "{e}");
+    assert!(
+        copy_core::copy_matches_with("bePaths.expandTilde.notUtf8", &[("path", "~/srv")], &e),
+        "不是「主目录名不是合法 UTF-8」那一句：{e}"
+    );
+    assert_eq!(expand_home("/srv", Some(h)).as_deref(), Ok("/srv"));
 }
 
 #[test]
@@ -455,6 +472,7 @@ fn the_directory_question_answers_presence_and_the_name_this_machine_would_mint(
     let no = |_: &str, _: Option<&str>| -> Result<(bool, String), String> { unreachable!() };
     let library = || crate::accounts::manage::library::test_support::list(Vec::new());
     let accounts = la::Facts {
+        agent: crate::agents::default_kind().into(),
         has_accounts: false,
         library: &library,
         last: &|_| None,
@@ -486,7 +504,7 @@ fn the_directory_question_answers_presence_and_the_name_this_machine_would_mint(
     };
     assert_eq!(
         run(&some, json!({ "cwd": "~/srv" })).unwrap(),
-        json!({ "exists": true, "shown": "~/srv", "tmuxName": "cwd:/h/srv" })
+        json!({ "said": null, "shown": "~/srv", "tmuxName": "cwd:/h/srv" })
     );
     // 显示形由这台按自己的家目录写（两端照抄，不自己缩）。
     assert_eq!(
@@ -495,7 +513,16 @@ fn the_directory_question_answers_presence_and_the_name_this_machine_would_mint(
     );
     assert_eq!(
         run(&none, json!({ "cwd": "/x" })).unwrap(),
-        json!({ "exists": false, "shown": "/x", "tmuxName": null })
+        json!({
+            "said": copy_core::copy_text("bePath.dir.missing", &[("path", "/x")]),
+            "shown": "/x",
+            "tmuxName": null
+        })
+    );
+    // 不在那一句带用户敲的原样（`~` 不展开）。
+    assert_eq!(
+        run(&none, json!({ "cwd": " ~/gone " })).unwrap()["said"],
+        copy_core::copy_text("bePath.dir.missing", &[("path", "~/gone")])
     );
     assert_eq!(
         run(&some, json!({ "cwd": "/h/srv", "forkOf": SRC })).unwrap()["tmuxName"],
@@ -589,8 +616,8 @@ fn a_config_at_launch_is_written_under_a_preset_sid_before_starting() {
         "交给那一家的那一串里带 --session-id：{argv:?}"
     );
     assert!(
-        argv[sep..].iter().any(|a| a.contains(PRESET)),
-        "身份标记：{argv:?}"
+        !argv[sep..].iter().any(|a| a.contains(PRESET)),
+        "ccm 自己那一半不带身份标（`@ccm_sid` 由后端认过会话文件才打）：{argv:?}"
     );
 }
 
@@ -767,6 +794,21 @@ fn a_launch_carries_the_model_and_the_permission_mode_it_was_asked_for() {
         json!({"permissionMode": "nope"}),
         json!({"agent": "codex", "permissionMode": "plan"}),
         json!({"model": "bad model;"}),
+    ] {
+        let rig = Rig::new(Some(vec![]));
+        let e = rig.call(req(extra.clone())).expect_err("不收");
+        assert_eq!(e.code.as_deref(), Some("bad_args"), "{extra}");
+        assert!(rig.ccm.borrow().is_empty(), "{extra}");
+    }
+}
+
+/// 推理档只跟模型：没选模型带了推理档 · 推理档不是一个档名 ⇒ `bad_args`，什么都不起。
+#[test]
+fn an_effort_goes_only_with_a_model_and_must_be_a_name() {
+    for extra in [
+        json!({"effort": "high"}),
+        json!({"model": "opus", "effort": "hi gh;"}),
+        json!({"model": "opus", "effort": ""}),
     ] {
         let rig = Rig::new(Some(vec![]));
         let e = rig.call(req(extra.clone())).expect_err("不收");

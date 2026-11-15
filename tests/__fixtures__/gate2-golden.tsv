@@ -12,8 +12,7 @@
 #   remote_sid：`<none>` = 没问/问不到 · `<unset>` = 问了但没设 · 其余 = 设了这个值
 #   expect：allowed_by_name | allowed_by_remote_sid | rejected
 #
-# ⚠ `remote_sid` 指的是 `@ccm_sid`，**不是 `@ccm_sid_expect`**（见后端 `control/gate_rules.rs` 头注：
-#   通道 A 只写意图，破坏性动作只认通道 B 确认过的事实）。
+# ⚠ `remote_sid` 指的是 `@ccm_sid`（身份标只由后端写；破坏性动作只认它确认过的事实，见后端 `control/gate_rules.rs` 头注）。
 old_prefix	cc-abc12345	<none>	rejected
 old_prefix_bare	cc-proj	<none>	rejected
 old_prefix_collision	cc-abc12345-2	<none>	rejected

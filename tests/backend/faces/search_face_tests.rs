@@ -35,7 +35,7 @@ fn the_search_answer_says_what_it_could_not_search_and_titles_mode_finds_title_o
             query: "订单".to_string(),
             include_tools: None,
             scope: None,
-            after_ms: None,
+            within_days: None,
             limit: None,
             titles: Some(titles),
         };
@@ -95,7 +95,7 @@ fn each_row_carries_its_row_and_span_texts_written_here() {
         query: "占位词".to_string(),
         include_tools: None,
         scope: None,
-        after_ms: None,
+        within_days: None,
         limit: None,
         titles: None,
     };
@@ -133,7 +133,7 @@ fn each_row_carries_this_machines_label_star_and_hidden() {
         query: "占位词".to_string(),
         include_tools: None,
         scope: None,
-        after_ms: None,
+        within_days: None,
         limit: None,
         titles: None,
     };
@@ -206,7 +206,7 @@ fn search_req() -> HistorySearchMergeReq {
             query: "docker".into(),
             include_tools: None,
             scope: None,
-            after_ms: None,
+            within_days: None,
             limit: Some(20),
             titles: None,
         },
@@ -369,7 +369,7 @@ fn an_oversized_search_answer_is_refused_not_truncated() {
         query: "占位词".to_string(),
         include_tools: None,
         scope: None,
-        after_ms: None,
+        within_days: None,
         limit: None,
         titles: None,
     };
@@ -428,7 +428,7 @@ fn hits_carry_their_offset_in_the_record() {
         query: "命中词".to_string(),
         include_tools: None,
         scope: None,
-        after_ms: None,
+        within_days: None,
         limit: None,
         titles: None,
     };
@@ -459,5 +459,48 @@ fn hits_carry_their_offset_in_the_record() {
     );
     let wire = serde_json::to_value(c).unwrap();
     assert!(wire.get("parent").is_none(), "父会话 id 上了线");
+    std::fs::remove_dir_all(&home).ok();
+}
+
+/// ★ 时间窗交天数：这台照自己的钟（`now_ms`）换成起点；记录在窗外 ⇒ 不中，在窗里 ⇒ 中；不交 ⇒ 不限。
+#[test]
+fn within_days_is_turned_into_a_start_by_this_machines_clock() {
+    let home = std::env::temp_dir().join(format!("b8-search-within-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    let dir = home.join("projects").join("-w-d");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("0000aaaa-0000-4000-8000-0000000000e1.jsonl"),
+        r#"{"type":"user","uuid":"u1","timestamp":"2026-10-07T09:05:00Z","cwd":"/w/d","message":{"role":"user","content":"占位词"}}"#,
+    )
+    .unwrap();
+    let at =
+        (crate::common::time::days_from_civil(2026, 10, 7) * 86_400 + 9 * 3_600 + 5 * 60) * 1_000;
+    // 此刻 ＝ 那条记录之后两天。
+    let now = at + 2 * 86_400_000;
+    let hits = |within_days: Option<u64>| {
+        let req = HistorySearchReq {
+            query: "占位词".to_string(),
+            include_tools: None,
+            scope: None,
+            within_days,
+            limit: None,
+            titles: None,
+        };
+        search_at(
+            &home,
+            req,
+            crate::faces::read_face::LINES_CAP_BYTES.as_len(),
+            now,
+            &Default::default(),
+            &plain,
+        )
+        .expect("搜索")
+        .sessions
+        .len()
+    };
+    assert_eq!(hits(Some(1)), 0, "一天之内：两天前那条不中");
+    assert_eq!(hits(Some(3)), 1, "三天之内：中");
+    assert_eq!(hits(None), 1, "不交 ⇒ 不限");
     std::fs::remove_dir_all(&home).ok();
 }

@@ -77,6 +77,7 @@ fn the_attach_reply_says_how_this_build_stands_against_the_clients() {
                 deflate: false
             },
             watch: None,
+            folded: false,
         }
     );
     // 要了 deflate ⇒ 这台总认（回话多一格）；没要 ⇒ 不回。
@@ -88,6 +89,15 @@ fn the_attach_reply_says_how_this_build_stands_against_the_clients() {
     assert!(matches!(
         admit(r#"{"attach":true,"watch":{"sids":["a"]}}"#, own),
         Admit::Stream { watch: Some(w), .. } if w.sids == ["a"]
+    ));
+    // 要折好的成品（桌面壳）⇒ 交给接流那一步；没要（手机 · 各台的常驻流）⇒ 照原始帧发。
+    assert!(matches!(
+        admit(r#"{"attach":true,"folded":true}"#, own),
+        Admit::Stream { folded: true, .. }
+    ));
+    assert!(matches!(
+        admit(r#"{"attach":true}"#, own),
+        Admit::Stream { folded: false, .. }
     ));
     for bad in [
         r#"{"attach":"0123456789abcdef0123456789abcdef"}"#,

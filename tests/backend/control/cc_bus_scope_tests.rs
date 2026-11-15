@@ -1,4 +1,4 @@
-//! cc-bus 组范围（`control/cc_bus_scope.rs`）的判据。
+//! cc-bus 组范围（`control/cc_bus/scope.rs`）的判据。
 //!
 //! | # | 判据 |
 //! |---|---|

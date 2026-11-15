@@ -104,6 +104,11 @@ pub struct NewOpen {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub model: Option<String>,
+    /// 这一趟用的推理档（`model` 那个模型在 `AgentPick.efforts` 里列着的一档的原值）；只跟 `model`；缺 ＝ 那一家照它自己的缺省。
+    /// 交给那一家的参数照它的 `model_args` 出。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub effort: Option<String>,
     /// 起在哪一个权限档（那一家声明的档之一）；缺 ＝ 这台偏好里那一家的那一档，没设 ⇒ 那一家自己的默认。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
@@ -172,10 +177,10 @@ pub enum AccountAsk {
     any(test, feature = "ts"),
     ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
-#[serde(deny_unknown_fields)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct OpenFactsReq {
     /// 可缺：分叉源会话 sid。
-    #[serde(default, rename = "forkOf", skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub fork_of: Option<String>,
     /// 可缺（随 `forkOf`）：从哪条消息处分叉（框顶说第几轮、几点）。

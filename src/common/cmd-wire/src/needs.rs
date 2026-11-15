@@ -124,9 +124,28 @@ pub enum ManualItem {
         #[cfg_attr(any(test, feature = "ts"), ts(optional))]
         why: Option<String>,
     },
+    /// 号表里一个号写了注册表里没有的家（`agent` ＝ 号表原样）：认不出是哪一家的号，起不了、也登不了。
+    /// 没有后端命令能修（`fix` 恒 `null`）：界面点它去设置里那个号（锚点照 `agent` ＋ `account`），改号表里那一格或删号；
+    /// 那颗按钮上的字（`go`）由后端写好。
+    AccountNoAgent {
+        agent: String,
+        account: String,
+        said: String,
+        go: String,
+        fix: Option<ManualFix>,
+    },
     /// 一份自家秘密文件（API key 凭据文件 · 中转钥匙文件）权限太宽 / 查不出：`said` ＝ 哪份 ＋ 路径 ＋ 宽在哪；
     /// app 里没有解法（`fix` 恒 `null`），`why` ＝ 怎么手动修（查不出那一种 `said` 里已说要手动确认 ⇒ 缺）。权限改好，下一问就不列了。
     SecretFile {
+        said: String,
+        fix: Option<ManualFix>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        why: Option<String>,
+    },
+    /// 一份自家状态文件（这台的偏好）格式比此后端读得懂的还老：读口当没有、照缺省用。`said` ＝ 哪份 ＋ 盘上第几版 ＋ 此后端认哪几版；
+    /// app 里没有解法（`fix` 恒 `null`），`why` ＝ 怎么办与下次写时原文留在哪。重写成这一版（改一次设置）或删掉，下一问就不列了。
+    OwnFile {
         said: String,
         fix: Option<ManualFix>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -146,9 +165,12 @@ pub enum ManualItem {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub enum LoginStartReq {
-    /// 一个号：哪一家（`accounts-list` 的 `agent`）· 账号库里的哪个号（账号 0 是 `0`）。
+    /// 一个号：账号库里的哪个号（账号 0 是 `0`）。家由后端照号表里那个号带的那一格认，界面不交；
+    /// 报了家（`agent`）却与号表对不上 ⇒ `bad_args`，不照它起登录。
     Account {
-        agent: crate::AgentKind,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        agent: Option<crate::AgentKind>,
         account: String,
     },
     /// 一个号里的一个 MCP 服务器：哪一家 · 哪个号（没设账号 ⇒ `null`：那一家的默认配置目录）· 服务器名（`mcp-read` 里那一条）·
@@ -161,21 +183,48 @@ pub enum LoginStartReq {
     },
 }
 
-/// `sessions-needs-merge` 的回包（几台合法只在 `face_core::needs::merge_needs`，本机后端与手机核心同一份）：各台需手动的每一项，先答的在前；
-/// `total` 是各台加起来几项（入口 · 窗口标题照它写）；会话外那一截读不出的那几台（各带那一句，那几台的会外项这时不在 `items` 里）；
-/// 没问到的那几台（不计，各带那一句）。头那一句 · 数说得准说不准都在合的那一下写好，出口照摆。
+/// `sessions-needs-merge` 的回包（几台合法与分列只在 `face_core::needs::merge_needs`，本机后端与手机核心同一份）：各台在等人的每一项分两列——
+/// 待答请求（界面答得了的会话）· 需手动（答不了的会话 · 计划要看的格 · 会话外的），各自先答的在前、各带几项 · 头那一句 · 说得准说不准；
+/// 会话外那一截读不出的那几台（各带那一句，那几台的会外项这时不在需手动那一列里）；没问到的那几台（不计，各带那一句）。
+/// 头那一句 · 窗口标题 · 数说得准说不准都在合的那一下写好，出口照摆。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct NeedsMerged {
-    pub items: Vec<NeedsAt>,
-    pub total: u32,
-    /// 头那一句（入口 · 总览组头）：数说得准 ⇒「需手动 n」；说不准 ⇒「需手动」（不带数）。
-    pub head: Words,
-    /// 数说得准：没有哪台还在读 · 答失败 · 会外读不出（断着不算，断着的那台本来就不计）。
-    pub sure: bool,
+    /// 待答请求：挂着、此刻在界面里答得了的会话（`needs.ask` 在）。头那一句：准 ⇒「待答请求 n」，不准 ⇒「待答请求」。
+    pub asks: NeedsColumn,
+    /// 需手动：答不了的会话 · 计划要看的格 · 会话外的。头那一句：准 ⇒「需手动 n」，不准 ⇒「需手动」。
+    pub manual: NeedsColumn,
     pub unreadable: Vec<NeedsUnreadable>,
     pub down: Vec<NeedsDown>,
+    /// 答了的那几台各自 `ended` 那几条（上一条请求怎么收的场），带上是哪台：聊天屏那一块照本台那一条摆。
+    pub ended: Vec<NeedsEnded>,
+    /// 窗口标题：非零那几列 ⇒「cc-monitor · 待答请求 n · 需手动 m」（待答请求在前，零的那一列不说）；都 0 ⇒「cc-monitor」。
+    pub window_title: Words,
+}
+
+/// 合好的一列：那几项（先答的在前）· 几项（各台加起来）· 头那一句 · 数说得准说不准
+/// （待答请求：没有哪台还在读、没问到；需手动：再加没有哪台会外读不出）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct NeedsColumn {
+    pub items: Vec<NeedsAt>,
+    pub total: u32,
+    pub head: Words,
+    pub sure: bool,
+}
+
+/// 合好的一条收了场的：哪台 · 那一条原样（`sessions-needs.ended` 的一项）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct NeedsEnded {
+    pub origin: crate::Machine,
+    pub sid: String,
+    pub end: AskEnd,
 }
 
 /// 没问到的一台：哪台 · 那一句（够不着 · 那台常驻不在 · 那台答了失败 …；句里叫出了那台）· 复制详情（没有 ⇒ 空）。
@@ -261,8 +310,6 @@ pub struct NeedsRow {
     pub sid: String,
     /// 叫这条会话什么（同清单那一行的标题）。
     pub label: crate::cells::Words,
-    /// 此刻这条会话的整份脸。
-    pub face: crate::frame::SessionFace,
     pub needs: Needs,
     /// 隐藏那一格（照常列在这里：隐藏不影响需手动）；不隐藏 ⇒ `null`（格恒在）。
     pub hidden: Option<crate::session::Hidden>,
@@ -293,10 +340,47 @@ pub enum NeedsKind {
 
 /// **需手动**的成品：种类 · 等的那一句 · 从何时起等。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "NeedsWire", into = "NeedsWire")]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, as = "NeedsWire", export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct Needs {
+    pub kind: NeedsKind,
+    pub tool: Option<String>,
+    pub call: Option<String>,
+    pub what: Option<String>,
+    pub text: Words,
+    pub head: Words,
+    pub head_code: Option<String>,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub rank: u64,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number | null"))]
+    pub waited_ms: Option<u64>,
+    /// 这一次从几时起等：后端只存这一份（状态一句会走的起点 · 过程那一轮的起点都读它），线上 `sinceMs` 也是它。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number | null"))]
+    pub since_ms: Option<u64>,
+    /// 怎么答：答得了 · 答不了二选一（[`NeedsReply`]），造不出两格对不上的那一形。
+    pub reply: NeedsReply,
+}
+
+/// 一份需手动怎么答（唯一判在后端 `agents::asks::Asked::manual`）。线上摊成 `ask` · `askHead` · `askPage` · `manualText` 四格（[`NeedsWire`]）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NeedsReply {
+    /// 界面答得了：挂着的那一条（选项非空）· 答题块抬头 · 一屏一题那一端的抬头（只提问那一种有）。
+    Ask {
+        ask: Ask,
+        head: Words,
+        page: Option<Words>,
+    },
+    /// 界面答不了：写好的那一句。
+    Manual(Words),
+}
+
+/// 线上那一份 `needs`（格与 [`Needs`] 一一对上，答的那一格摊成四格）：只在写出去 · 读回来那一下用，读回来经 [`Needs::try_from`] 查四格对得上。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct Needs {
+#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+struct NeedsWire {
     pub kind: NeedsKind,
     /// 等的是哪个工具调用（工具名原样）；判不出 ⇒ `null`。
     pub tool: Option<String>,
@@ -304,10 +388,6 @@ pub struct Needs {
     pub call: Option<String>,
     /// 批准：那一步的主参数（命令取说得出用意的那一段）；回答：问题原文头一行；计划 / 判不出 ⇒ `null`。
     pub what: Option<String>,
-    /// 何时起等（那台 pidfile 的 `statusUpdatedAt`，epoch ms）；没有 ⇒ `null`。后端算 `waitedMs` · 排先后用，不上线。
-    #[serde(skip)]
-    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
-    pub since_ms: Option<u64>,
     /// 写好的字（等批准 · 等回答 · 需手动），出口照抄。
     pub text: Words,
     /// 钉条第一行（种类 ＋ 工具名：「等批准 · Bash」· 等批准 · 计划 · 等放行 · 联网 …，[`needs_head`]），出口照抄；短的那一格是 `text`。
@@ -320,14 +400,157 @@ pub struct Needs {
     /// 不知道等了多久的排这一档最后。算进的是这一份答出那一刻已等多久 ⇒ 会走的钟那一侧从收到起又等了多久照减（`waitedMs` 为 `null` 的不减）。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub rank: u64,
-    /// 到这一份答出的那一刻已经等了多久（毫秒）：`sinceMs` 与读那份 pidfile 的时刻**同在那台的钟上**相减，不跨机器减；
-    /// 起点比那一刻还晚（那台的钟往回拨过）⇒ 0。没有起点 ⇒ `null`。会走的钟：各出口从收到那一刻起按本机钟接着加（时长读口对同一份金样）。
+    /// 到这一份答出的那一刻已经等了多久（毫秒），**同在那台的钟上**相减，不跨机器减：pidfile 说在等的 ⇒ 读那份 pidfile 的时刻减它的 `statusUpdatedAt`；
+    /// pidfile 没说在等、只照挂着的待答请求补出的 ⇒ 答出这一份的时刻减挂上那一刻。起点比那一刻还晚（那台的钟往回拨过）⇒ 0。没有起点 ⇒ `null`。会走的钟：各出口从收到那一刻起按本机钟接着加（时长读口对同一份金样）。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number | null"))]
     pub waited_ms: Option<u64>,
-    /// 这一条可以怎么答（挂着的待答请求，`control::asks`）：选项的字 · 样子 · 段 · 要不要附话都写好；没有挂着的 ⇒ `null`（只能去终端）。
+    /// 这一次从几时起等（那台的钟，epoch 毫秒）：与脸上在等那一句会走的起点（`clock.from`）同一个来源，出口拿它认「这一份是不是脸这一轮在等的那一份」
+    /// （对不上 ⇒ 是上一轮的，不画）。说不出 ⇒ 缺（出口照事实画、不猜）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
+    pub since_ms: Option<u64>,
+    /// 这一条可以怎么答（挂着的待答请求，`control::asks`）：选项的字 · 样子 · 段 · 要不要附话都写好；没有挂着的 · 挂着的那一条界面答不了（后端 `agents::asks::Asked::manual` 一处判，挡着终端的那一种）⇒ `null`，那一句在 `manualText`。
     pub ask: Option<Ask>,
-    /// `ask` 为 `null` 时写好的那一句（「只能在终端里答」）；有 `ask` ⇒ `null`。
+    /// `ask` 为 `null` 时写好的那一句（界面答不了：「只能在终端里答」· 挂着的那一条在终端里答 ⇒「在终端里答」· 答题口没接上的原因）；有 `ask` ⇒ `null`。
+    /// **不变式**：`ask` 为 `null` ⇔ 这一格有字；`ask` 在 ⇒ 它的选项非空。两格只经 [`Needs::answer_with`] · [`Needs::manual`] 一起改。
     pub manual_text: Option<Words>,
+    /// 答题块抬头那一句：有 `ask` ⇒ `head`，提问那一种再带题数（「{head} · n 题」）；没有 `ask` ⇒ 缺。出口照抄。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub ask_head: Option<Words>,
+    /// 一屏一题那一端（手机抽屉）的抬头：提问那一种 ⇒「{head} · {i}/n」，共几题写好，第几题留 `{i}` 那个空给出口填（1 起）
+    /// （翻到哪一页是出口自己的状态）；别的种类 · 没有 `ask` ⇒ 缺。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub ask_page: Option<Words>,
+}
+
+/// 造一份 [`Needs`] 要交的那几格：答的那四格（`ask` · `manualText` · 两格抬头）不在这里，由 [`Needs::new`] 与两个写口管；语气恒 `need`，也不交。不上线。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NeedsBase {
+    pub kind: NeedsKind,
+    pub tool: Option<String>,
+    pub call: Option<String>,
+    pub what: Option<String>,
+    pub text: Words,
+    pub head: Words,
+    pub head_code: Option<String>,
+    pub rank: u64,
+    pub waited_ms: Option<u64>,
+    pub since_ms: Option<u64>,
+}
+
+/// 答的内容与答不了那一句是同一判的两面（判在后端 `agents::asks::Asked::manual` 一处）：类型上二选一（[`NeedsReply`]），换只经两个写口。
+impl Needs {
+    /// 造一份：先是界面答不了那一态（`manual` 那一句摆在答的位置上）；答得了再经 [`Needs::answer_with`] 配上。
+    pub fn new(base: NeedsBase, manual: Words) -> Self {
+        let NeedsBase {
+            kind,
+            tool,
+            call,
+            what,
+            text,
+            head,
+            head_code,
+            rank,
+            waited_ms,
+            since_ms,
+        } = base;
+        Self {
+            kind,
+            tool,
+            call,
+            what,
+            text,
+            head,
+            head_code,
+            rank,
+            waited_ms,
+            since_ms,
+            reply: NeedsReply::Manual(manual),
+        }
+    }
+
+    /// 界面答得了：配上那一条成品与两格抬头。
+    pub fn answer_with(&mut self, ask: Ask, head: Words, page: Option<Words>) {
+        self.reply = NeedsReply::Ask { ask, head, page };
+    }
+
+    /// 界面答不了：那一句摆在答的位置上。
+    pub fn manual(&mut self, text: Words) {
+        self.reply = NeedsReply::Manual(text);
+    }
+
+    /// 界面答得了 ⇒ 挂着的那一条；答不了 ⇒ `None`。
+    pub fn ask(&self) -> Option<&Ask> {
+        match &self.reply {
+            NeedsReply::Ask { ask, .. } => Some(ask),
+            NeedsReply::Manual(_) => None,
+        }
+    }
+}
+
+impl From<Needs> for NeedsWire {
+    fn from(n: Needs) -> Self {
+        let (ask, ask_head, ask_page, manual_text) = match n.reply {
+            NeedsReply::Ask { ask, head, page } => (Some(ask), Some(head), page, None),
+            NeedsReply::Manual(text) => (None, None, None, Some(text)),
+        };
+        Self {
+            kind: n.kind,
+            tool: n.tool,
+            call: n.call,
+            what: n.what,
+            text: n.text,
+            head: n.head,
+            head_code: n.head_code,
+            tone: Tone::Need,
+            rank: n.rank,
+            waited_ms: n.waited_ms,
+            since_ms: n.since_ms,
+            ask,
+            manual_text,
+            ask_head,
+            ask_page,
+        }
+    }
+}
+
+/// 线上读回来的那一份进同一个构造口：答的四格只许是 [`NeedsReply`] 两种之一（`ask` 在 ⇒ 选项非空 · 带抬头 · 不带 `manualText`；
+/// `ask` 缺 ⇒ 只带 `manualText`），对不上 ⇒ 拒（那一份不是哪台后端写得出的）。
+impl TryFrom<NeedsWire> for Needs {
+    type Error = &'static str;
+
+    fn try_from(w: NeedsWire) -> Result<Self, Self::Error> {
+        let reply = match (w.ask, w.ask_head, w.ask_page, w.manual_text) {
+            (Some(ask), Some(head), page, None) if !ask.choices.is_empty() => {
+                NeedsReply::Ask { ask, head, page }
+            }
+            (None, None, None, Some(text)) => NeedsReply::Manual(text),
+            _ => {
+                return Err(
+                    "needs: ask/askHead/askPage/manualText disagree (answerable = ask with choices + askHead, no manualText; otherwise manualText only)",
+                )
+            }
+        };
+        let mut n = Needs::new(
+            NeedsBase {
+                kind: w.kind,
+                tool: w.tool,
+                call: w.call,
+                what: w.what,
+                text: w.text,
+                head: w.head,
+                head_code: w.head_code,
+                rank: w.rank,
+                waited_ms: w.waited_ms,
+                since_ms: w.since_ms,
+            },
+            Words(String::new()),
+        );
+        n.reply = reply;
+        Ok(n)
+    }
 }
 
 /// 一条待答请求的成品（`needs.ask`）。
@@ -359,10 +582,6 @@ pub struct Ask {
     pub choices: Vec<Choice>,
     /// 提问那一种的题目；别的种类为空。
     pub questions: Vec<Question>,
-    /// 何时挂上的（epoch ms，这台的钟；后端排先后用，不上线）。
-    #[serde(skip)]
-    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
-    pub since_ms: u64,
 }
 
 /// 发请求的那一趟子运行。
@@ -410,7 +629,7 @@ pub struct Choice {
     pub picks: bool,
 }
 
-/// 一颗选项长什么样：主按钮（main 段第一颗，只这一颗）· 危险（停下整轮）· 普通 · 弱（改到终端里答 · 有题时的不回答）。
+/// 一颗选项长什么样：主按钮（main 段第一颗，只这一颗）· 危险（停下整轮）· 普通 · 弱（有题时的不回答）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -429,7 +648,7 @@ pub enum ChoiceLook {
     Ghost,
 }
 
-/// 选项排在哪一段：批准分三段（照做 · 拒绝一族 · 改到终端里答）；批计划 · 有题的提问全在 main 一段。
+/// 选项排在哪一段：批准分两段（照做 · 拒绝一族）；批计划 · 有题的提问全在 main 一段。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -444,7 +663,6 @@ pub enum ChoiceLook {
 pub enum ChoiceRow {
     Main,
     Hold,
-    Release,
 }
 
 /// 选项要不要附一句话。
@@ -512,12 +730,10 @@ pub struct QuestionOption {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(rename_all = "lowercase")]
 pub enum AskKind {
-    #[serde(rename = "approve")]
     Approve,
-    #[serde(rename = "answer")]
-    Question,
-    #[serde(rename = "plan")]
+    Answer,
     Plan,
 }
 
@@ -596,3 +812,7 @@ pub enum AnswerResult {
     Answered,
     Gone,
 }
+
+#[cfg(test)]
+#[path = "../../../../tests/common/cmd-wire/needs_tests.rs"]
+mod tests;

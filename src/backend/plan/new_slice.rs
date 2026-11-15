@@ -7,7 +7,8 @@
 //! - 名字合不合 pb 的规矩这里不判：提交即起 `pb repo`，照它的退出码与那一句（[`super::command`]）。
 
 use super::locate::Missing;
-use cmd_wire::plan::{PlanNewExisting, PlanNewForm, PlanPb};
+use super::locate::{pb_missing, pb_ok, pb_unsupported};
+use cmd_wire::plan::{PlanNewExisting, PlanNewForm};
 use copy_core::copy_text;
 use std::path::{Path, PathBuf};
 
@@ -25,7 +26,7 @@ pub(crate) type SlicesPort<'a> = &'a dyn Fn(&str) -> Vec<(String, Option<String>
 pub fn form(ask: &Ask, entry: Result<PathBuf, Missing>, slices: SlicesPort) -> PlanNewForm {
     let dir = trim(ask.dir);
     let mut out = PlanNewForm {
-        pb: pb_state("ok", None),
+        pb: pb_ok(),
         workspace: None,
         root: dir.to_string(),
         slice: None,
@@ -39,7 +40,7 @@ pub fn form(ask: &Ask, entry: Result<PathBuf, Missing>, slices: SlicesPort) -> P
     let entry = match entry {
         Ok(e) => e,
         Err(m) => {
-            out.pb = pb_state("missing", Some(m.said()));
+            out.pb = pb_missing(&m);
             return out;
         }
     };
@@ -54,7 +55,7 @@ pub fn form(ask: &Ask, entry: Result<PathBuf, Missing>, slices: SlicesPort) -> P
                 .map(|w| trim(w).to_string());
         }
         super::dump::Ran::Unsupported(said) => {
-            out.pb = pb_state("unsupported", Some(said));
+            out.pb = pb_unsupported(said);
             return out;
         }
         super::dump::Ran::NotWorkspace(said) => {
@@ -109,14 +110,6 @@ pub fn repo_args(path: &str, domain: Option<&str>, existing: Option<&str>) -> Ve
             d.into(),
         ],
         (None, None) => vec!["repo".into(), path.trim().trim_matches('/').into()],
-    }
-}
-
-fn pb_state(state: &str, said: Option<String>) -> PlanPb {
-    PlanPb {
-        state: state.to_string(),
-        said,
-        version: None,
     }
 }
 

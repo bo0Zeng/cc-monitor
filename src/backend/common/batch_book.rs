@@ -9,7 +9,7 @@
 //! 住 `common/`：文件管理那一块（同台三条）与原生那一块（两台之间的复制）各引各的，两块之间不互相引。
 
 use std::collections::VecDeque;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 
@@ -301,20 +301,6 @@ pub fn choice_of(
     }
 }
 
-/// 同名的那一项能怎么答（同名清单里那一格，两端照画）：两头有一头是目录 ⇒ 目录不合并、不给覆盖；
-/// `skip` ⇒ 这条命令收不收「跳过」（只一项的上传提交不收：跳过就是什么都不交）。
-pub fn answers_of(dir_into: bool, skip: bool) -> Vec<Decide> {
-    let mut a = Vec::with_capacity(3);
-    if !dir_into {
-        a.push(Decide::Overwrite);
-    }
-    if skip {
-        a.push(Decide::Skip);
-    }
-    a.push(Decide::KeepBoth);
-    a
-}
-
 /// 同名清单里那两格时刻（文件的修改时刻，unix 秒）⇒ 写好的字：按此刻与看的那一台的时区（同额度与轮换那几处时刻的写法）。
 pub fn moment_text(secs: Option<i64>, tz: &crate::common::time::Tz) -> Option<String> {
     secs.filter(|s| *s > 0)
@@ -336,17 +322,4 @@ pub fn key_of(i: usize) -> String {
 /// 撤了 ⇒ 剩下那几项都回 `cancelled`。
 pub fn cancel_rest(out: &mut Vec<BatchOutcome>, from: usize, total: usize) {
     out.extend((from..total).map(|i| BatchOutcome::bare(key_of(i), ItemState::Cancelled)));
-}
-
-/// 保留两份另起名时最多往后试到第几个。
-pub const MINT_TRIES: u32 = 999;
-
-/// 保留两份：`名 (k).ext` 里 `k` 从 2 起。
-pub fn minted(to: &Path, k: u32) -> PathBuf {
-    let name = to
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    let (stem, ext) = batch_core::split_ext(&name);
-    to.with_file_name(format!("{stem} ({k}){ext}"))
 }

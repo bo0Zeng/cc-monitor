@@ -21,7 +21,65 @@ struct SeenIn {
     #[serde(default)]
     limiting: Option<String>,
     #[serde(flatten)]
+    show: cmd_wire::quota::QuotaShow,
+}
+
+/// [`SeenIn`] 的显示态换成后端的行之后。
+struct SeenRow {
+    agent: String,
+    account: String,
+    seen_at: u64,
+    reading: crate::agents::QuotaReading,
+    limiting: Option<String>,
     show: crate::accounts::quota::show::QuotaShow,
+}
+
+/// 金样里线上那一份显示态 ⇒ 后端的行（只给后端看的几格先空着，由调用方照金样的输入补）。
+fn row_of(w: cmd_wire::quota::QuotaShow) -> crate::accounts::quota::show::QuotaShow {
+    use crate::accounts::quota::show::{QuotaShow, SlotShow, WindowShow};
+    QuotaShow {
+        kind: w.kind,
+        state: w.state,
+        stale: w.stale,
+        limiting: None,
+        slots: w
+            .slots
+            .into_iter()
+            .map(|s| SlotShow {
+                slot: s.slot,
+                pct: s.pct,
+                resets_at: s.resets_at,
+                full: s.full,
+                text: s.text,
+                tone: s.tone,
+                per_pct_text: s.per_pct_text,
+                window: String::new(),
+            })
+            .collect(),
+        login: w.login,
+        windows: w
+            .windows
+            .into_iter()
+            .map(|x| WindowShow {
+                name: x.name,
+                key: x.key,
+                pct: x.pct,
+                resets_at: x.resets_at,
+                resets_at_text: None,
+                resets_at_rel_text: None,
+                seen_at: 0,
+                from: x.from,
+                tokens_per_pct: x.tokens_per_pct,
+                per_pct_text: x.per_pct_text,
+                lapsed: None,
+                full: x.tone == Tone::Fail,
+                near: x.tone != Tone::Plain,
+                tone: x.tone,
+                row: None,
+            })
+            .collect(),
+        usage: w.usage,
+    }
 }
 
 /// 一个号的开窗那一判照生产同一条路得出：账上那一条 ⇒ 事实（`facts::fact_of`）⇒ `rules::decide::warm_verdict`。
@@ -29,7 +87,6 @@ fn warm_from(
     agent: &str,
     account: &str,
     r: Option<&crate::agents::QuotaReading>,
-    seen_at: Option<u64>,
     kind: cmd_wire::quota::Kind,
     login: cmd_wire::quota::LoginState,
     now: u64,
@@ -41,22 +98,33 @@ fn warm_from(
         rate: &|_| None,
         per_pct: &|_| None,
     };
-    let f = fact_of(
-        account,
-        r,
-        seen_at,
-        kind,
-        login,
-        None,
-        now,
-        &slot,
-        &m,
-        &|t| t.to_string(),
-    );
+    let f = fact_of(account, r, kind, login, None, now, &slot, &m, &|t| {
+        t.to_string()
+    });
     crate::accounts::quota::rules::decide::warm_verdict(
-        &crate::accounts::quota::rules::Acct::of_fact(&f),
+        &crate::accounts::quota::rules::Acct::of_fact(agent, &f),
         now,
     )
+}
+
+/// 金样的输入只记显示态的各语义位、不记原窗口：照那几格还原原窗口（5h ⇒ five_hour · 7d ⇒ seven_day）。
+fn windows_from_slots(
+    slots: &[crate::accounts::quota::show::SlotShow],
+) -> Vec<crate::agents::QuotaWindow> {
+    slots
+        .iter()
+        .map(|s| crate::agents::QuotaWindow {
+            name: if s.slot == "5h" {
+                "five_hour"
+            } else {
+                "seven_day"
+            }
+            .into(),
+            used: s.pct.map(|p| f64::from(p) / 100.0),
+            resets_at: s.resets_at,
+            warned_at: None,
+        })
+        .collect()
 }
 
 /// 一份回包照真出口走一遍（[`crate::faces::quota_read::reply_of`]，钟按金样那一份的时区）：金样里只留原数与显示态，
@@ -72,13 +140,44 @@ fn through_the_exit(reply: &Value, tz: &crate::common::time::Tz) -> Value {
             // 用量那一格由出口写：金样里没有，先占个位。
             let mut a = a.clone();
             a["usage"] = serde_json::json!({"value": "", "text": ""});
-            let mut x: SeenIn = serde_json::from_value(a.clone()).unwrap();
+            let x: SeenIn = serde_json::from_value(a.clone()).unwrap();
+            let mut x = SeenRow {
+                show: row_of(x.show),
+                agent: x.agent,
+                account: x.account,
+                seen_at: x.seen_at,
+                reading: x.reading,
+                limiting: x.limiting,
+            };
             // 不上线的那几格从金样的输入里补回去（显示态那一处算好的样子）。
             x.show.limiting = x.limiting.take();
             for (i, w) in x.show.windows.iter_mut().enumerate() {
                 let raw = &a["windows"][i];
-                w.reset_since_seen = raw["resetSinceSeen"].as_bool().unwrap_or(false);
+                w.lapsed = match raw["lapsed"].as_str() {
+                    Some("reading") => Some(crate::accounts::quota::show::Lapsed::Reading),
+                    Some("reset") => Some(crate::accounts::quota::show::Lapsed::Reset),
+                    _ => None,
+                };
                 w.seen_at = raw["seenAt"].as_u64().unwrap_or_default();
+            }
+            // 金样的输入只记各语义位、没记窗口的：各窗口照生产那一处（`windows_of`）从还原的原窗口算（5h ⇒ five_hour · 7d ⇒ seven_day）。
+            if x.show.windows.is_empty() {
+                let mut o = crate::accounts::quota::ledger::Observed {
+                    agent: x.agent.clone(),
+                    account: x.account.clone(),
+                    seen_at: x.seen_at,
+                    reading: x.reading.clone(),
+                    windows_seen: Default::default(),
+                    trend: Default::default(),
+                    per_pct: Default::default(),
+                    history: Default::default(),
+                    reread_failed: Default::default(),
+                };
+                if o.reading.windows.is_empty() {
+                    o.reading.windows = windows_from_slots(&x.show.slots);
+                }
+                let key = |w: &str| crate::agents::claudecode::quota::key_of(w);
+                x.show.windows = crate::accounts::quota::show::windows_of_with(&o, &key, now, true);
             }
             // 语义位那一格取的是哪个窗口（不上线）：照窗口键与语义位同名的那个补回去。
             for s in &mut x.show.slots {
@@ -94,28 +193,12 @@ fn through_the_exit(reply: &Value, tz: &crate::common::time::Tz) -> Value {
             // 金样的输入只记显示态的各语义位、不记原窗口：开窗那一判要的事实照那几格还原（5h ⇒ five_hour · 7d ⇒ seven_day）。
             let mut facts_in = x.reading.clone();
             if facts_in.windows.is_empty() {
-                facts_in.windows = x
-                    .show
-                    .slots
-                    .iter()
-                    .map(|s| crate::agents::QuotaWindow {
-                        name: if s.slot == "5h" {
-                            "five_hour"
-                        } else {
-                            "seven_day"
-                        }
-                        .into(),
-                        used: s.pct.map(|p| f64::from(p) / 100.0),
-                        resets_at: s.resets_at,
-                        warned_at: None,
-                    })
-                    .collect();
+                facts_in.windows = windows_from_slots(&x.show.slots);
             }
             let warm = warm_from(
                 &x.agent,
                 &x.account,
                 Some(&facts_in),
-                Some(x.seen_at),
                 x.show.kind,
                 x.show.login,
                 now,
@@ -141,7 +224,7 @@ fn through_the_exit(reply: &Value, tz: &crate::common::time::Tz) -> Value {
             let mut h: UnseenHead = serde_json::from_value(u).unwrap();
             // 金样里记的是账上的路由名；造没出过数的号那一处（`rotation_face`）换成线上的 kind。
             h.agent = crate::agents::kind_of_route(h.agent.as_str());
-            let warm = warm_from(&route, &h.account, None, None, h.kind, h.login, now);
+            let warm = warm_from(&route, &h.account, None, h.kind, h.login, now);
             Unseen { head: h, warm }
         })
         .collect();
@@ -157,10 +240,15 @@ fn through_the_exit(reply: &Value, tz: &crate::common::time::Tz) -> Value {
         detail: reply["detail"].as_str().map(str::to_string),
         path: reply["path"].as_str().map(str::to_string),
         now,
-        usable: serde_json::from_value(reply["usable"].clone()).unwrap_or_default(),
+        // 金样只记号名：显示只看号名，家空着。
+        usable: serde_json::from_value::<Vec<String>>(reply["usable"].clone())
+            .unwrap_or_default()
+            .into_iter()
+            .map(|a| (String::new(), a))
+            .collect(),
         earliest: reply["earliest"]["account"].as_str().map(|a| {
             (
-                a.to_string(),
+                (String::new(), a.to_string()),
                 reply["earliest"]["at"].as_u64().unwrap_or_default(),
             )
         }),
@@ -241,11 +329,7 @@ fn warm_sends_only_when_the_window_is_not_ticking() {
         overage: None,
     };
     let warm = |r: Option<&QuotaReading>, kind: Kind, login: LoginState| {
-        warm_of(
-            warm_from(ROUTE, "a", r, r.map(|_| now), kind, login, now),
-            None,
-            &clock,
-        )
+        warm_of(warm_from(ROUTE, "a", r, kind, login, now), None, &clock)
     };
     let at = |secs: u64| Some(i64::try_from(secs).unwrap());
     assert_eq!(warm(None, Kind::Sub, LoginState::Ok).act, WarmAct::Send);
@@ -278,7 +362,7 @@ fn warm_sends_only_when_the_window_is_not_ticking() {
     let api = warm(None, Kind::Api, LoginState::Ok);
     assert_eq!(api.act, WarmAct::Wait, "按量号没有 5 小时窗可开：{api:?}");
     let api_reading = reading(Vec::new(), Some(now + 300));
-    let api_show = cmd_wire::quota::QuotaShow {
+    let api_show = crate::accounts::quota::show::QuotaShow {
         kind: Kind::Api,
         state: cmd_wire::quota::QuotaState::Refused,
         stale: false,
@@ -293,7 +377,6 @@ fn warm_sends_only_when_the_window_is_not_ticking() {
             ROUTE,
             "k",
             Some(&api_reading),
-            Some(now),
             Kind::Api,
             LoginState::Ok,
             now,
@@ -357,7 +440,7 @@ fn the_wire_golden_is_what_the_exit_writes() {
         cases.push(serde_json::json!({"name": c["name"], "tz": c["tz"], "reply": v}));
     }
     let got = serde_json::json!({
-        "说明": "quota-read 的线上形状（后端真出口走完那一份，由 quota_rows_tests::the_wire_golden_is_what_the_exit_writes 写）：每号 rows 是 [[{text, tone}]]、warm、names。三个语言的读者都照它比，不各自手抄。",
+        "说明": "quota-read 的线上形状（后端真出口走完那一份，由 quota_rows_tests::the_wire_golden_is_what_the_exit_writes 写）：每号 rows 是 [[{text, tone}]]、sampled、warm、names。三个语言的读者都照它比，不各自手抄。",
         "cases": cases,
     });
     test_meters::golden::assert_golden(
@@ -434,8 +517,11 @@ fn the_verdict_says_whether_anything_can_send() {
         detail: None,
         path: None,
         now,
-        usable: usable.iter().map(|s| s.to_string()).collect(),
-        earliest: earliest.map(|(a, t)| (a.to_string(), t)),
+        usable: usable
+            .iter()
+            .map(|s| (String::new(), s.to_string()))
+            .collect(),
+        earliest: earliest.map(|(a, t)| ((String::new(), a.to_string()), t)),
     };
     let verdict = |b: Base, u: Vec<_>| reply_of(b, Vec::new(), u, &clock).verdict;
     let sep = copy_core::copy_text("kit.text.sep", &[]);
@@ -604,6 +690,7 @@ mod written_from_show {
         Facts {
             kind,
             login: LoginState::Ok,
+            retry_at: None,
         }
     }
 
@@ -621,7 +708,7 @@ mod written_from_show {
             (c("acct.row.over", &[]), Tone::Warn)
         );
         assert_eq!(
-            w(QuotaState::ResetSinceSeen, true, Some(40), false),
+            w(QuotaState::Unseen, true, None, false),
             (c("acct.val.none", &[]), Tone::Plain)
         );
         assert_eq!(
@@ -658,7 +745,7 @@ mod written_from_show {
         let clock = crate::common::time::TextClock::new(NOW, &crate::common::time::Tz::default());
         let shown = |r: Option<&QuotaReading>, kind: Kind| {
             let mut q = show(r.map(|r| (r, NOW)), facts(kind), NOW, &slot);
-            written(&mut q, r.and_then(|r| r.resets_at));
+            written(&mut q, r.and_then(|r| r.resets_at), &clock);
             q.stamp(&clock);
             q.usage
         };
@@ -772,7 +859,54 @@ mod written_from_show {
             ]
             .into(),
             history: Default::default(),
+            reread_failed: Default::default(),
         }
+    }
+
+    /// ★ 窗口那一格的语气只在出口写（`written`）：显示态只判用满 · 快满（`full` · `near`），出来时语气还是常规；
+    /// 写过之后用满 ⇒ fail · 快满 ⇒ warn · 其余常规。
+    #[test]
+    fn window_tone_is_written_only_by_the_exit() {
+        use crate::common::cells::Tone;
+        let mut o = observed();
+        o.reading.windows.push(win("seven_day_sonnet", 1.0, LATER));
+        let key = |w: &str| crate::agents::claudecode::quota::key_of(w);
+        let mut sh = show(Some((&o.reading, o.seen_at)), facts(Kind::Sub), NOW, &slot);
+        sh.windows = windows_of(&o, &key, NOW);
+        let judged: Vec<_> = sh
+            .windows
+            .iter()
+            .map(|w| (w.name.as_str(), w.full, w.near, w.tone))
+            .collect();
+        assert_eq!(
+            judged,
+            vec![
+                ("five_hour", false, false, Tone::Plain),
+                ("seven_day", false, false, Tone::Plain),
+                ("seven_day_opus", false, true, Tone::Plain),
+                ("seven_day_sonnet", true, true, Tone::Plain),
+            ],
+            "显示态只判、不写语气"
+        );
+        written(
+            &mut sh,
+            None,
+            &crate::common::time::TextClock::new(NOW, &crate::common::time::Tz::default()),
+        );
+        let tones: Vec<_> = sh
+            .windows
+            .iter()
+            .map(|w| (w.name.as_str(), w.tone))
+            .collect();
+        assert_eq!(
+            tones,
+            vec![
+                ("five_hour", Tone::Plain),
+                ("seven_day", Tone::Plain),
+                ("seven_day_opus", Tone::Warn),
+                ("seven_day_sonnet", Tone::Fail),
+            ]
+        );
     }
 
     /// ★ 「1% ≈ 多少」写好的字：每个量过的窗口一格（短写的数）；语义位那一格照它取的那个窗口（7d 取用得多的 opus），没量过 ⇒ 缺。
@@ -782,7 +916,11 @@ mod written_from_show {
         let key = |w: &str| crate::agents::claudecode::quota::key_of(w);
         let mut sh = show(Some((&o.reading, o.seen_at)), facts(Kind::Sub), NOW, &slot);
         sh.windows = windows_of(&o, &key, NOW);
-        written(&mut sh, None);
+        written(
+            &mut sh,
+            None,
+            &crate::common::time::TextClock::new(NOW, &crate::common::time::Tz::default()),
+        );
         let pp = |n: &str| Some(Words(copy_core::copy_text("acct.val.perPct", &[("n", n)])));
         let win_pp: Vec<_> = sh
             .windows
@@ -805,8 +943,8 @@ mod written_from_show {
         assert_eq!(slot_pp, vec![("5h", pp("2.1M")), ("7d", pp("25K"))]);
     }
 
-    /// ★ 语义位那一格的重置字（`resetText`）与 `rows` 里那一格同一个写法：还没到 ⇒ ↻时刻；已过 ⇒ ↻时刻 已过。
-    /// 7d 那两个窗口都已重置 ⇒ 那一格照旧取其中一个、写「已过」。
+    /// ★ 紧凑那一格的重置字（[`slot_reset`]）与 `rows` 里那一格同一个写法：还没到 ⇒ ↻时刻；已过 ⇒ 不写（不说「已过」）。
+    /// 7d 那两个窗口都已重置 ⇒ 那一格没有重置字。
     #[test]
     fn slot_reset_text_is_the_rows_reset_cell() {
         let o = observed();
@@ -814,12 +952,16 @@ mod written_from_show {
         let mut r = o.reading.clone();
         r.windows[1].resets_at = Some(EARLIER);
         r.windows[2].resets_at = Some(EARLIER);
-        let mut sh = show(Some((&r, o.seen_at)), facts(Kind::Sub), NOW, &slot);
-        sh.stamp(&clock);
+        let sh = show(Some((&r, o.seen_at)), facts(Kind::Sub), NOW, &slot);
         let got: Vec<_> = sh
             .slots
             .iter()
-            .map(|s| (s.slot.as_str(), s.reset_text.clone().map(|w| w.0)))
+            .map(|s| {
+                (
+                    s.slot.as_str(),
+                    slot_reset(s.resets_at, &clock).map(|w| w.0),
+                )
+            })
             .collect();
         assert_eq!(
             got,
@@ -828,17 +970,686 @@ mod written_from_show {
                     "5h",
                     Some(copy_core::copy_text(
                         "acct.reset.at",
-                        &[("at", &clock.text(LATER).0)]
+                        &[("at", &reset_at_text(LATER, &clock))]
                     ))
                 ),
-                (
-                    "7d",
-                    Some(copy_core::copy_text(
-                        "acct.reset.past",
-                        &[("at", &clock.text(EARLIER).0)]
-                    ))
-                ),
+                ("7d", None),
             ]
         );
+    }
+}
+
+/// ★ 那一家不归我方续的账号 0 令牌过期了（[`LoginState::BaseUntouched`]）：账号行打后端写好的那一句（警示语气，不说「需登录」）；
+/// 开窗那一判等着、说的也是那一句。正常的号不打标签。
+#[test]
+fn an_account_zero_left_to_its_family_says_so_on_its_row_and_warm() {
+    use cmd_wire::quota::{Kind, LoginState};
+    let said = copy_text("acct.tag.baseUntouched", &[]);
+    let row = head(
+        "claude-code",
+        "0",
+        Kind::Sub,
+        LoginState::BaseUntouched,
+        None,
+    );
+    let tag = row.last().expect("有格");
+    assert_eq!((tag.text.0.as_str(), tag.tone), (said.as_str(), Tone::Warn));
+    assert_ne!(said, copy_text("acct.tag.login", &[]));
+    assert_eq!(
+        head("claude-code", "0", Kind::Sub, LoginState::Ok, None).len(),
+        2,
+        "正常的号不打标签"
+    );
+    let now: u64 = 1_000_000;
+    let clock = crate::common::time::TextClock::new(now, &crate::common::time::Tz::default());
+    let w = warm_of(
+        warm_from(
+            "claude-code",
+            "0",
+            None,
+            Kind::Sub,
+            LoginState::BaseUntouched,
+            now,
+        ),
+        None,
+        &clock,
+    );
+    assert_eq!((w.act, w.text.0), (WarmAct::Wait, said));
+}
+
+/// ★ 每号几行只说两样：收到几个窗口列几行 · 每行用量与几点重置 · 过了重置不出旧数 · 超额关着不出 · 采样不成行 · 状态只在抬头。
+mod two_things {
+    use super::*;
+    use crate::accounts::quota::facts::Kind;
+    use crate::accounts::quota::ledger::Observed;
+    use crate::accounts::quota::show::{show, windows_of_with, Facts, LoginState};
+    use crate::agents::{QuotaOverage, QuotaReading, QuotaStatus, QuotaWindow};
+    use crate::common::time::{TextClock, Tz};
+
+    /// 2027-01-15 08:00 UTC：当天 · 明天 · 别天三种时刻都落得开。
+    const NOW: u64 = 1_800_000_000 - 1_800_000_000 % 86_400 + 8 * 3_600;
+
+    fn win(name: &str, used: f64, resets_at: u64) -> QuotaWindow {
+        QuotaWindow {
+            name: name.into(),
+            used: Some(used),
+            resets_at: Some(resets_at),
+            warned_at: None,
+        }
+    }
+
+    fn reading(windows: Vec<QuotaWindow>) -> QuotaReading {
+        QuotaReading {
+            status: Some(QuotaStatus::Allowed),
+            refused: false,
+            limiting: None,
+            resets_at: windows.first().and_then(|w| w.resets_at),
+            windows,
+            overage: None,
+        }
+    }
+
+    fn observed(r: QuotaReading) -> Observed {
+        Observed {
+            agent: "claude".into(),
+            account: "a".into(),
+            seen_at: NOW - 600,
+            reading: r,
+            windows_seen: Default::default(),
+            trend: Default::default(),
+            per_pct: Default::default(),
+            history: Default::default(),
+            reread_failed: Default::default(),
+        }
+    }
+
+    fn facts(login: LoginState) -> Facts {
+        Facts {
+            kind: Kind::Sub,
+            login,
+            retry_at: None,
+        }
+    }
+
+    /// 照真出口走一遍：显示态 ⇒ 各窗口（`can` ＝ 那一家查得了用量）⇒ 出口那一条（[`crate::faces::quota_read::account_of`]）。
+    fn account_with(o: &Observed, login: LoginState, can: bool) -> cmd_wire::quota::QuotaAccount {
+        let slot = |w: &str| crate::agents::claudecode::quota::slot_of(w);
+        let key = |w: &str| crate::agents::claudecode::quota::key_of(w);
+        let mut sh = show(Some((&o.reading, o.seen_at)), facts(login), NOW, &slot);
+        sh.windows = windows_of_with(o, &key, NOW, can);
+        crate::faces::quota_read::account_of(
+            crate::faces::quota_read::Seen {
+                agent: "claude".into(),
+                account: o.account.clone(),
+                seen_at: o.seen_at,
+                reading: o.reading.clone(),
+                show: sh,
+                warm: warm_from(
+                    "claude",
+                    &o.account,
+                    Some(&o.reading),
+                    Kind::Sub,
+                    login,
+                    NOW,
+                ),
+            },
+            &TextClock::new(NOW, &Tz::default()),
+        )
+    }
+
+    fn rows_with(o: &Observed, login: LoginState, can: bool) -> Rows {
+        account_with(o, login, can).rows
+    }
+
+    fn rows_of(o: &Observed) -> Rows {
+        rows_with(o, LoginState::Ok, true)
+    }
+
+    fn texts(rows: &Rows) -> Vec<Vec<String>> {
+        rows.iter()
+            .map(|r| r.iter().map(|c| c.text.0.clone()).collect())
+            .collect()
+    }
+
+    fn t(k: &str, a: &[(&str, &str)]) -> String {
+        copy_text(k, a)
+    }
+
+    fn hm(at: u64) -> String {
+        TextClock::new(NOW, &Tz::default()).text(at).0
+    }
+
+    /// 只收到 5h 的号：抬头 ＋ 一行（不再补「7d —」）。
+    #[test]
+    fn only_the_five_hour_window_gives_one_row() {
+        let o = observed(reading(vec![win("five_hour", 0.3, NOW + 3_600)]));
+        let got = texts(&rows_of(&o));
+        assert_eq!(got.len(), 2, "{got:?}");
+        assert_eq!(
+            got[1],
+            vec![
+                "5h".to_string(),
+                t("acct.val.pct", &[("pct", "30")]),
+                t("acct.reset.at", &[("at", &hm(NOW + 3_600))]),
+                "+1h".to_string(),
+            ]
+        );
+    }
+
+    /// 收到第三窗（`seven_day_fable`）多一行，名字照字段名写。
+    #[test]
+    fn a_third_window_adds_a_row_named_by_its_field() {
+        let o = observed(reading(vec![
+            win("five_hour", 0.3, NOW + 3_600),
+            win("seven_day", 0.4, NOW + 3 * 86_400),
+            win("seven_day_fable", 0.5, NOW + 3 * 86_400),
+        ]));
+        let names: Vec<String> = texts(&rows_of(&o))
+            .into_iter()
+            .skip(1)
+            .map(|r| r[0].clone())
+            .collect();
+        assert_eq!(
+            names,
+            vec![
+                "5h".to_string(),
+                "7d".to_string(),
+                t("acct.window.tier", &[("slot", "7d"), ("tier", "fable")]),
+            ]
+        );
+    }
+
+    /// 重置时刻已过：查得了 ⇒「读取中」；查不了 ⇒「已重置」。都不出旧数、不出「已过」、不出时刻。
+    #[test]
+    fn a_lapsed_window_shows_no_old_number() {
+        let o = observed(reading(vec![
+            win("five_hour", 0.9, NOW - 60),
+            win("seven_day", 0.4, NOW + 3 * 86_400),
+        ]));
+        let reading_now = texts(&rows_of(&o));
+        assert_eq!(
+            reading_now[1],
+            vec!["5h".to_string(), t("kit.state.reading", &[])]
+        );
+        let cannot = texts(&rows_with(&o, LoginState::Ok, false));
+        assert_eq!(
+            cannot[1],
+            vec!["5h".to_string(), t("acct.window.reset", &[])]
+        );
+        let all = format!("{reading_now:?}{cannot:?}");
+        assert!(!all.contains("90%"), "旧数还在：{all}");
+        assert!(!all.contains(&hm(NOW - 60)), "过了的时刻还在：{all}");
+    }
+
+    /// 重读没成（账上记着这一窗这一刻没读回来）⇒「已重置」，不再写「读取中」。
+    #[test]
+    fn a_failed_reread_says_reset() {
+        let mut o = observed(reading(vec![win("five_hour", 0.9, NOW - 60)]));
+        o.reread_failed.insert("five_hour".into(), NOW - 60);
+        assert_eq!(
+            texts(&rows_of(&o))[1],
+            vec!["5h".to_string(), t("acct.window.reset", &[])]
+        );
+    }
+
+    /// 重置时刻：当天写时刻 · 明天写「明天 HH:MM」· 别天写日期；后面跟还剩多久。
+    #[test]
+    fn the_reset_says_today_tomorrow_or_the_date() {
+        let tomorrow = NOW + 20 * 3_600;
+        let later = NOW + 3 * 86_400;
+        let o = observed(reading(vec![
+            win("five_hour", 0.3, tomorrow),
+            win("seven_day", 0.4, later),
+        ]));
+        let got = texts(&rows_of(&o));
+        let clock_hm = |at: u64| crate::common::time::hm(at as i64);
+        assert_eq!(
+            got[1][2],
+            t(
+                "acct.reset.at",
+                &[(
+                    "at",
+                    &t("acct.reset.tomorrow", &[("at", &clock_hm(tomorrow))])
+                )]
+            )
+        );
+        assert_eq!(got[2][2], t("acct.reset.at", &[("at", &hm(later))]));
+        assert!(hm(later).contains('-'), "别天带日期");
+        assert_eq!(got[1].len(), 4, "带还剩多久");
+    }
+
+    /// 超额关着（没开 · 没在用）不出行；开着 ⇒ 一行；在用 ⇒ 一行、警示。
+    #[test]
+    fn overage_shows_only_when_on_or_in_use() {
+        let over = |status, disabled: Option<&str>, in_use| {
+            let mut r = reading(vec![win("five_hour", 0.3, NOW + 3_600)]);
+            r.overage = Some(QuotaOverage {
+                status: Some(status),
+                resets_at: None,
+                disabled: disabled.map(str::to_string),
+                in_use,
+            });
+            rows_of(&observed(r))
+        };
+        let label = t("acct.row.over", &[]);
+        let has = |rows: &Rows| texts(rows).iter().any(|r| r[0] == label);
+        assert!(!has(&rows_of(&observed(reading(vec![win(
+            "five_hour",
+            0.3,
+            NOW + 3_600
+        )])))));
+        assert!(!has(&over(
+            QuotaStatus::Rejected,
+            Some("org_level_disabled"),
+            false
+        )));
+        let on = over(QuotaStatus::Allowed, None, false);
+        assert!(has(&on));
+        let using = over(QuotaStatus::Allowed, None, true);
+        let row = using
+            .iter()
+            .find(|r| r[0].text.0 == label)
+            .expect("在用有一行");
+        assert_eq!(
+            (row[1].text.0.as_str(), row[1].tone),
+            (t("acct.val.overOn", &[]).as_str(), Tone::Warn)
+        );
+    }
+
+    /// 采样不成行：几点采的是每号那一条的那一句（出口放进悬停提示）。
+    #[test]
+    fn sampling_is_not_a_row() {
+        let o = observed(reading(vec![win("five_hour", 0.3, NOW + 3_600)]));
+        let rows = rows_of(&o);
+        assert_eq!(rows.len(), 2, "抬头 ＋ 5h 一行：{:?}", texts(&rows));
+        assert!(
+            rows.iter()
+                .flatten()
+                .all(|c| !c.text.0.contains(&hm(NOW - 600))),
+            "几点采的不成格：{:?}",
+            texts(&rows)
+        );
+        assert_eq!(
+            account_with(&o, LoginState::Ok, true).sampled.0,
+            t("beLastSeen.said.sampled", &[("time", &hm(NOW - 600))])
+        );
+    }
+
+    /// ★ 号级「已重置」（`resetSinceSeen`）与窗口级「读取中 / 已重置」是一个判法：按钮那一格（用量）· 起会话菜单那一格（语义位）
+    /// 都照那一窗那一行写；卡着的那一窗说不出几点重置、是回包那一刻过了 ⇒ 没有哪一窗在重读，说「已重置」，不写「—」。
+    #[test]
+    fn the_account_reset_and_the_window_reset_are_one_judgment() {
+        let mut lapsed = reading(vec![win("five_hour", 0.9, NOW - 60)]);
+        lapsed.limiting = Some("five_hour".into());
+        let mut no_time = lapsed.clone();
+        no_time.windows[0].resets_at = None;
+        for (r, can, want) in [
+            (lapsed.clone(), true, t("kit.state.reading", &[])),
+            (lapsed, false, t("acct.window.reset", &[])),
+            (no_time, true, t("acct.window.reset", &[])),
+        ] {
+            let a = account_with(&observed(r), LoginState::Ok, can);
+            let show = &a.head.show;
+            assert_eq!(show.state, cmd_wire::quota::QuotaState::ResetSinceSeen);
+            let five = show.slots.iter().find(|s| s.slot == "5h").expect("5h");
+            assert_eq!(
+                (five.text.0.as_str(), show.usage.value.0.as_str()),
+                (want.as_str(), want.as_str()),
+                "语义位那一格与按钮那一格同一句"
+            );
+            assert_eq!(
+                texts(&a.rows)[1],
+                vec!["5h".to_string(), want.clone()],
+                "那一窗那一行同一句（不写旧数）"
+            );
+            assert_eq!(show.windows[0].pct, None, "计量条不画旧数");
+        }
+    }
+
+    /// ★ 设置页那几行：去掉账号行自己有的那几格（名 · 类型 · 需登录），被拒到几点留成一行，其余各行照抄；
+    /// 成了行的每一窗记下它是第几行（手机计量条照那一行画）。
+    #[test]
+    fn the_account_line_keeps_the_state_and_every_window_row() {
+        let mut r = reading(vec![
+            win("five_hour", 0.6, NOW + 3_600),
+            win("seven_day", 0.4, NOW + 3 * 86_400),
+            win("seven_day_opus", 0.1, NOW + 3 * 86_400),
+        ]);
+        r.refused = true;
+        r.status = Some(QuotaStatus::Rejected);
+        r.limiting = Some("five_hour".into());
+        let a = account_with(&observed(r), LoginState::Ok, true);
+        let line = texts(&account_line_rows(&a.rows, LoginState::Ok, false));
+        assert_eq!(
+            line[0],
+            vec![t("acct.head.refused", &[("at", &hm(NOW + 3_600))])]
+        );
+        assert_eq!(line[1..], texts(&a.rows)[1..]);
+        let at: Vec<Option<u32>> = a.head.show.windows.iter().map(|w| w.row).collect();
+        assert_eq!(at, vec![Some(1), Some(2), Some(3)]);
+        let ok = account_with(
+            &observed(reading(vec![win("five_hour", 0.3, NOW + 3_600)])),
+            LoginState::Ok,
+            true,
+        );
+        assert_eq!(
+            texts(&account_line_rows(&ok.rows, LoginState::Ok, false)),
+            texts(&ok.rows)[1..].to_vec(),
+            "没有状态那几格 ⇒ 不成那一行"
+        );
+    }
+
+    /// ★ 按钮那一格的重置时刻与行同一写法（明天写「明天 HH:MM」）。
+    #[test]
+    fn the_button_reset_is_written_like_the_rows() {
+        let tomorrow = NOW + 20 * 3_600;
+        let mut r = reading(vec![win("five_hour", 1.0, tomorrow)]);
+        r.refused = true;
+        r.status = Some(QuotaStatus::Rejected);
+        r.limiting = Some("five_hour".into());
+        let a = account_with(&observed(r), LoginState::Ok, true);
+        let at = t(
+            "acct.reset.tomorrow",
+            &[("at", &crate::common::time::hm(tomorrow as i64))],
+        );
+        assert_eq!(
+            a.head.show.usage.reset.map(|w| w.0),
+            Some(t("acct.reset.at", &[("at", &at)]))
+        );
+        assert!(
+            a.warm.text.0.contains(&at),
+            "开窗那句的时刻同一写法：{:?}",
+            a.warm
+        );
+    }
+
+    /// ★ 开窗那句：5h 那一窗过了重置 ⇒ 照那一行的说法（会到点重读 ⇒ `5h 读取中`；查不了 ⇒ `5h 已重置`），不另说「窗口已过期」。
+    #[test]
+    fn warm_says_what_the_row_says_when_five_hours_lapsed() {
+        for (can, v) in [(true, "kit.state.reading"), (false, "acct.window.reset")] {
+            let a = account_with(
+                &observed(reading(vec![win("five_hour", 0.9, NOW - 60)])),
+                LoginState::Ok,
+                can,
+            );
+            assert_eq!(a.warm.act, WarmAct::Send);
+            assert_eq!(
+                a.warm.text.0,
+                t("acct.usage.wv", &[("w", "5h"), ("v", &t(v, &[]))])
+            );
+            assert_eq!(texts(&a.rows)[1][1], t(v, &[]));
+        }
+    }
+
+    /// ★ 设置页那几行数旧 ⇒ 常规那几格画警示（同紧凑那一格的判法），名字那一格不动。
+    #[test]
+    fn stale_account_lines_turn_plain_values_into_warn() {
+        let a = account_with(
+            &observed(reading(vec![win("five_hour", 0.3, NOW + 3_600)])),
+            LoginState::Ok,
+            true,
+        );
+        let tones = |stale| -> Vec<Vec<Tone>> {
+            account_line_rows(&a.rows, LoginState::Ok, stale)
+                .iter()
+                .map(|r| r.iter().map(|c| c.tone).collect())
+                .collect()
+        };
+        assert_eq!(tones(false), vec![vec![Tone::Plain; 4]]);
+        assert_eq!(
+            tones(true),
+            vec![vec![Tone::Plain, Tone::Warn, Tone::Warn, Tone::Warn]]
+        );
+    }
+
+    /// ★ 照时长写的窗口键给人看时经文案表写（整天 · 整点 · 分钟各一条）。
+    #[test]
+    fn a_window_keyed_by_its_length_is_named_through_the_copy_table() {
+        assert_eq!(
+            window_label("6h"),
+            t("durationFormat.short.hour", &[("n", "6")])
+        );
+        assert_eq!(
+            window_label("30d"),
+            t("durationFormat.short.day", &[("n", "30")])
+        );
+        assert_eq!(
+            window_label("90m"),
+            t("durationFormat.short.min", &[("n", "90")])
+        );
+        assert_eq!(window_label("5h"), t("acct.slot.fiveHour", &[]));
+    }
+
+    /// 号的状态（需登录 · 被拒到几点）只写在抬头那一行；窗口那几行不另写状态行。
+    #[test]
+    fn the_account_state_lives_only_in_the_head() {
+        let mut r = reading(vec![win("five_hour", 1.0, NOW + 3_600)]);
+        r.refused = true;
+        r.status = Some(QuotaStatus::Rejected);
+        r.limiting = Some("five_hour".into());
+        let refused = t("acct.head.refused", &[("at", &hm(NOW + 3_600))]);
+        let ok = texts(&rows_with(&observed(r.clone()), LoginState::Ok, true));
+        assert_eq!(ok[0][2..], [refused.clone()], "{ok:?}");
+        let rows = texts(&rows_with(&observed(r), LoginState::NeedsLogin, true));
+        assert_eq!(
+            rows[0][2..],
+            [t("acct.tag.login", &[])],
+            "号的状态只写一个，需登录在被拒之前：{rows:?}"
+        );
+        assert_eq!(rows.len(), 2, "只有抬头与 5h 一行：{rows:?}");
+        let status = t("backend.column.status", &[]);
+        assert!(rows.iter().skip(1).all(|r| r[0] != status));
+    }
+
+    /// ★ 没出过数的号：状态那一格也只写一个，先后「需登录 > 需 key > 无采样」（需登录自然无采样，两样都写是重复）。
+    #[test]
+    fn an_unseen_head_says_one_state_login_first() {
+        let head = |login| {
+            unseen_block(&crate::faces::quota_read::UnseenHead {
+                agent: crate::agents::AgentKind::new("claude"),
+                account: "team".into(),
+                kind: Kind::Sub,
+                login,
+                usage: unseen_usage(Kind::Sub),
+            })[0]
+                .iter()
+                .skip(2)
+                .map(|c| c.text.0.clone())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(head(LoginState::NeedsLogin), [t("acct.tag.login", &[])]);
+        assert_eq!(head(LoginState::NeedsKey), [t("acct.tag.key", &[])]);
+        assert_eq!(head(LoginState::Ok), [t("acct.seen.none", &[])]);
+    }
+}
+
+/// ★ 语义位那一格（账号行 · 起会话菜单 · 按钮照它）取的那一窗过了重置时刻 ⇒ 同那一窗那一行写「读取中」/「已重置」，不写数。
+#[test]
+fn a_slot_on_a_lapsed_window_says_what_its_row_says() {
+    use crate::accounts::quota::facts::Kind;
+    use crate::accounts::quota::show::{show, windows_of_with, Facts, LoginState};
+    const NOW: u64 = 1_800_000_000;
+    let o = crate::accounts::quota::ledger::Observed {
+        agent: "claude".into(),
+        account: "a".into(),
+        seen_at: NOW - 600,
+        reading: crate::agents::QuotaReading {
+            status: Some(crate::agents::QuotaStatus::Allowed),
+            refused: false,
+            limiting: Some("five_hour".into()),
+            resets_at: Some(NOW - 60),
+            windows: vec![crate::agents::QuotaWindow {
+                name: "five_hour".into(),
+                used: Some(0.9),
+                resets_at: Some(NOW - 60),
+                warned_at: None,
+            }],
+            overage: None,
+        },
+        windows_seen: Default::default(),
+        trend: Default::default(),
+        per_pct: Default::default(),
+        history: Default::default(),
+        reread_failed: Default::default(),
+    };
+    let slot = |w: &str| crate::agents::claudecode::quota::slot_of(w);
+    let key = |w: &str| crate::agents::claudecode::quota::key_of(w);
+    let facts = Facts {
+        kind: Kind::Sub,
+        login: LoginState::Ok,
+        retry_at: None,
+    };
+    for (can, want) in [(true, "kit.state.reading"), (false, "acct.window.reset")] {
+        let mut sh = show(Some((&o.reading, o.seen_at)), facts.clone(), NOW, &slot);
+        sh.windows = windows_of_with(&o, &key, NOW, can);
+        written(
+            &mut sh,
+            o.reading.resets_at,
+            &crate::common::time::TextClock::new(NOW, &crate::common::time::Tz::default()),
+        );
+        let five = sh.slots.iter().find(|s| s.slot == "5h").expect("5h 那一格");
+        assert_eq!(five.text.0, copy_text(want, &[]));
+    }
+}
+
+/// ★ 审实现那一轮补的三条：过了重置的那一窗线上不带数 · 被拒到几点照回包那一刻（与「被拒」那一判同一处）· 超额在用过了重置不再说「使用中」。
+mod lapsed_and_refused {
+    use super::*;
+    use crate::accounts::quota::facts::Kind;
+    use crate::accounts::quota::ledger::Observed;
+    use crate::accounts::quota::show::{overage_of, show, windows_of_with, Facts, LoginState};
+    use crate::agents::{QuotaOverage, QuotaReading, QuotaStatus, QuotaWindow};
+    use crate::common::time::{TextClock, Tz};
+
+    const NOW: u64 = 1_800_000_000;
+
+    fn win(name: &str, used: f64, resets_at: u64) -> QuotaWindow {
+        QuotaWindow {
+            name: name.into(),
+            used: Some(used),
+            resets_at: Some(resets_at),
+            warned_at: None,
+        }
+    }
+
+    fn observed(r: QuotaReading) -> Observed {
+        Observed {
+            agent: "claude".into(),
+            account: "a".into(),
+            seen_at: NOW - 600,
+            reading: r,
+            windows_seen: Default::default(),
+            trend: Default::default(),
+            per_pct: Default::default(),
+            history: Default::default(),
+            reread_failed: Default::default(),
+        }
+    }
+
+    fn shown(o: &Observed) -> crate::accounts::quota::show::QuotaShow {
+        let clock = TextClock::new(NOW, &Tz::default());
+        let slot = |w: &str| crate::agents::claudecode::quota::slot_of(w);
+        let key = |w: &str| crate::agents::claudecode::quota::key_of(w);
+        let facts = Facts {
+            kind: Kind::Sub,
+            login: LoginState::Ok,
+            retry_at: None,
+        };
+        let mut sh = show(Some((&o.reading, o.seen_at)), facts, NOW, &slot);
+        sh.windows = windows_of_with(o, &key, NOW, true);
+        written(&mut sh, o.reading.resets_at, &clock);
+        sh.stamp(&clock);
+        sh
+    }
+
+    fn reading(windows: Vec<QuotaWindow>, resets_at: Option<u64>) -> QuotaReading {
+        QuotaReading {
+            status: Some(QuotaStatus::Allowed),
+            refused: false,
+            limiting: Some("five_hour".into()),
+            resets_at,
+            windows,
+            overage: None,
+        }
+    }
+
+    #[test]
+    fn a_lapsed_window_carries_no_number_on_the_wire() {
+        let o = observed(reading(
+            vec![win("five_hour", 0.97, NOW - 60)],
+            Some(NOW - 60),
+        ));
+        let sh = shown(&o);
+        assert_eq!(sh.windows[0].pct, None, "窗口那一格不带旧数");
+        let five = sh.slots.iter().find(|s| s.slot == "5h").expect("5h");
+        assert_eq!(
+            (five.pct, five.full),
+            (None, false),
+            "语义位那一格不带数（不编 0）"
+        );
+    }
+
+    #[test]
+    fn the_refused_head_says_the_time_the_reply_gave() {
+        let mut r = reading(vec![win("five_hour", 0.58, NOW + 3_600)], Some(NOW + 600));
+        r.refused = true;
+        r.status = Some(QuotaStatus::Rejected);
+        let o = observed(r);
+        let clock = TextClock::new(NOW, &Tz::default());
+        let slot = |w: &str| crate::agents::claudecode::quota::slot_of(w);
+        let key = |w: &str| crate::agents::claudecode::quota::key_of(w);
+        let facts = Facts {
+            kind: Kind::Sub,
+            login: LoginState::Ok,
+            retry_at: None,
+        };
+        let mut sh = show(Some((&o.reading, o.seen_at)), facts, NOW, &slot);
+        sh.windows = windows_of_with(&o, &key, NOW, true);
+        let rows = crate::faces::quota_read::account_of(
+            crate::faces::quota_read::Seen {
+                agent: "claude".into(),
+                account: "a".into(),
+                seen_at: o.seen_at,
+                reading: o.reading.clone(),
+                show: sh,
+                warm: warm_from(
+                    "claude",
+                    "a",
+                    Some(&o.reading),
+                    Kind::Sub,
+                    LoginState::Ok,
+                    NOW,
+                ),
+            },
+            &clock,
+        )
+        .rows;
+        let want = copy_text(
+            "acct.head.refused",
+            &[("at", &reset_at_text(NOW + 600, &clock))],
+        );
+        assert!(
+            rows[0].iter().any(|c| c.text.0 == want),
+            "抬头照回包那一刻（与被拒那一判同一处）：{:?}",
+            rows[0]
+        );
+    }
+
+    #[test]
+    fn overage_in_use_past_its_reset_is_not_in_use() {
+        let mut r = reading(vec![win("five_hour", 1.0, NOW - 60)], Some(NOW - 60));
+        r.overage = Some(QuotaOverage {
+            status: Some(QuotaStatus::Allowed),
+            resets_at: None,
+            disabled: None,
+            in_use: true,
+        });
+        assert_eq!(
+            overage_of(&r, Kind::Sub, NOW),
+            Some(false),
+            "过了重置 ⇒ 只说开着"
+        );
+        r.resets_at = Some(NOW + 600);
+        assert_eq!(overage_of(&r, Kind::Sub, NOW), Some(true));
     }
 }

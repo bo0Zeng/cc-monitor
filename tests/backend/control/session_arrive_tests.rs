@@ -77,6 +77,10 @@ fn said_of(e: &ArriveEnd) -> &str {
     }
 }
 
+fn title() -> String {
+    copy_core::copy_text("beSessionArrive.missed.title", &[])
+}
+
 #[test]
 fn arrived_answers_the_sid_and_does_not_read_the_screen() {
     let h = fake(Some("s-new"), there);
@@ -117,18 +121,32 @@ fn missed_in_tmux_says_the_last_words_and_hands_the_terminal() {
         panic!("{got:?}")
     };
     assert_eq!(terminal.as_deref(), Some("t-1"));
-    let said = said_of(&got);
-    let (title, body) = said.split_once('\n').expect("标题 ＋ 正文");
+    // 三格各自成立、互不包含：标题 · 那个终端怎样的那一句（一行）· 画面末几行。
+    let ArriveEnd::Missed {
+        title: t,
+        said,
+        words,
+        ..
+    } = &got
+    else {
+        unreachable!()
+    };
+    assert_eq!(*t, title());
     assert_eq!(
-        title,
-        copy_core::copy_text("beSessionArrive.missed.title", &[])
+        *said,
+        copy_core::copy_text(
+            "beSessionArrive.missed.words",
+            &[("dur", &copy_core::short_duration(45_000)), ("name", "w-1")]
+        )
     );
-    assert!(body.contains("w-1"), "{body}");
-    assert!(body.contains(&copy_core::short_duration(45_000)), "{body}");
-    assert!(
-        body.ends_with("c\nd\ne\nf\ng\nError: no such flag --x"),
-        "末 6 行非空行：{body}"
+    assert!(!said.contains('\n') && !said.contains(t.as_str()), "{said}");
+    assert_eq!(
+        words.as_deref(),
+        Some("c\nd\ne\nf\ng\nError: no such flag --x"),
+        "末 6 行非空行"
     );
+    let w = words.as_deref().unwrap_or_default();
+    assert!(!w.contains(said.as_str()) && !w.contains(t.as_str()), "{w}");
     assert!(h
         .asked
         .lock()
@@ -148,14 +166,12 @@ fn missed_says_which_way_the_screen_was_not_there() {
     assert_eq!(
         gone,
         ArriveEnd::Missed {
-            said: format!(
-                "{}\n{}",
-                copy_core::copy_text("beSessionArrive.missed.title", &[]),
-                copy_core::copy_text(
-                    "beSessionArrive.missed.gone",
-                    &[("dur", &copy_core::short_duration(1_000)), ("name", "w-1")]
-                )
+            title: title(),
+            said: copy_core::copy_text(
+                "beSessionArrive.missed.gone",
+                &[("dur", &copy_core::short_duration(1_000)), ("name", "w-1")]
             ),
+            words: None,
             terminal: None
         }
     );
@@ -168,10 +184,14 @@ fn missed_says_which_way_the_screen_was_not_there() {
         }),
     ))
     .unwrap();
-    assert!(said_of(&empty).ends_with(&copy_core::copy_text(
-        "beSessionArrive.missed.emptyScreen",
-        &[("dur", &copy_core::short_duration(1_000)), ("name", "w-1")]
-    )));
+    assert_eq!(
+        said_of(&empty),
+        copy_core::copy_text(
+            "beSessionArrive.missed.emptyScreen",
+            &[("dur", &copy_core::short_duration(1_000)), ("name", "w-1")]
+        )
+    );
+    assert!(matches!(empty, ArriveEnd::Missed { words: None, .. }));
     let unread = block(run(
         ask(ArriveBy::Cwd { cwd: "/w".into() }, Some("w-1")),
         1_000,
@@ -208,29 +228,36 @@ fn missed_in_a_managed_terminal_never_says_tmux() {
         Screen::There { text, .. } => text,
         _ => unreachable!(),
     });
-    for (got, key, extra) in [
-        (&gone, "beSessionArrive.managedMissed.gone", None),
+    for (got, key, extra, screen) in [
+        (&gone, "beSessionArrive.managedMissed.gone", None, None),
         (
             &unread,
             "beSessionArrive.managedMissed.noScreen",
             Some(("why", "读不动")),
+            None,
         ),
-        (&empty, "beSessionArrive.managedMissed.emptyScreen", None),
+        (
+            &empty,
+            "beSessionArrive.managedMissed.emptyScreen",
+            None,
+            None,
+        ),
         (
             &words,
             "beSessionArrive.managedMissed.words",
-            Some(("words", last.as_str())),
+            None,
+            Some(last.as_str()),
         ),
     ] {
         let said = said_of(got);
         assert!(!said.contains("tmux"), "{key}：{said}");
         let mut args = vec![("dur", dur.as_str()), ("name", "h-7")];
         args.extend(extra);
-        assert_eq!(
-            said.split_once('\n').expect("标题 ＋ 正文").1,
-            copy_core::copy_text(key, &args),
-            "{key}"
-        );
+        assert_eq!(said, copy_core::copy_text(key, &args), "{key}");
+        let ArriveEnd::Missed { words: w, .. } = got else {
+            unreachable!()
+        };
+        assert_eq!(w.as_deref(), screen, "{key}");
     }
 }
 
@@ -246,14 +273,12 @@ fn missed_in_a_window_points_at_the_window_and_reads_nothing() {
     assert_eq!(
         got,
         ArriveEnd::Missed {
-            said: format!(
-                "{}\n{}",
-                copy_core::copy_text("beSessionArrive.missed.title", &[]),
-                copy_core::copy_text(
-                    "beSessionArrive.missed.inWindow",
-                    &[("dur", &copy_core::short_duration(2_000))]
-                )
+            title: title(),
+            said: copy_core::copy_text(
+                "beSessionArrive.missed.inWindow",
+                &[("dur", &copy_core::short_duration(2_000))]
             ),
+            words: None,
             terminal: None
         }
     );

@@ -14,7 +14,7 @@ use std::cell::Cell;
 /// 这台那一半：g1「开发」· g3「评审」里有 MAIN；g2「杂项」里只有别人。
 fn ties() -> GroupsRead {
     let member = |sid: &str, groups: &[&str]| {
-        let (face, facts) = unlisted(None, WireLife::Ended { by: None });
+        let (face, facts) = unlisted(None, WireLife::Ended { by: None }, None);
         HereMember {
             sid: sid.into(),
             groups: groups.iter().map(|g| g.to_string()).collect(),
@@ -88,6 +88,7 @@ fn 接手会话在哪几组_子agent照父会话_字照排() {
 fn 读到了_不在组里是一杠() {
     let mut doc = made_with(&dump("/w"), &|_: &str| crate::plan::Whose::Session {
         sid: "lonely".into(),
+        title: "孤会话".into(),
         live: None,
     });
     annotate(&mut doc, &|| Ok(ties()));

@@ -100,6 +100,7 @@ internal object Wires {
             "contextLimits" to emptyMap<String, Any>(),
             "agentHomes" to emptyMap<String, Any>(),
             "pbDir" to null,
+            "planDirs" to emptyList<String>(),
             "childTab" to "show",
             "bgTab" to "show",
         ) + set

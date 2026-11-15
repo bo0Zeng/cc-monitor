@@ -11,7 +11,7 @@ import { appStore } from "./app-store";
 import { attachTooltip } from "./kit/tooltip";
 import { icon } from "./kit/icon";
 import { acctAvatar, hoverTable } from "./acct-dom";
-import { machineLabel } from "./acct-view";
+import { machineName } from "./ipc/chan-caller";
 import type { SessionAccountReply } from "./generated/SessionAccountReply";
 import s from "./acct.module.css";
 
@@ -121,12 +121,9 @@ export class AccountChip {
     const a = this.active;
     const m = this.chipModel;
     if (!a || !m) return null;
-    // 采样那一格后面接上是哪台采的（问的是哪台、那台叫什么是这一侧的事）。
-    const rows = m.hover.map((r, i) => (i === m.sampled ? [...r, machineLabel(a.origin)] : [...r]));
-    const tone = m.usage?.tone ?? "plain";
-    const tones: Record<number, "refused" | "warn"> = {};
-    if (tone !== "plain") tones[1] = tone === "fail" ? "refused" : "warn";
-    return hoverTable(m.account, rows, tones);
+    // 几点采的那一句后面接上是哪台采的（问的是哪台、那台叫什么是这一侧的事），进号名的悬停提示。
+    const hint = m.sampled === null ? undefined : `${m.sampled}${copyText("kit.text.sep")}${machineName(a.origin)}`;
+    return hoverTable(m.account, m.hover, hint);
   }
 
   /** 画本会话那一形（`m` 由 [`sessionModel`] 算）。 */

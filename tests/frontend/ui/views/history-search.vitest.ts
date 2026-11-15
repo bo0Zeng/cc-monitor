@@ -21,10 +21,10 @@ import { chanArgsJson, chanReply, isChanCall, NO_CHANNEL, type ChanCallArgs } fr
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 
-const Q: FullTextQuery = { query: "kw", includeTools: false, scope: null, afterMs: null, limit: 300 };
+const Q: FullTextQuery = { query: "kw", includeTools: false, scope: null, withinDays: null, limit: 300 };
 
 /** 本机后端合好的那一份（替身：界面只照抄）。 */
-const MERGED: Merged = { totalHits: 9, truncated: true, sessions: [], notes: ["核心·头底下那一句"], down: [{ origin: "down", said: "down 离线 · 上线后自动恢复" }], summary: "核心·结果头" };
+const MERGED: Merged = { totalHits: 9, truncated: true, sessions: [], notes: ["核心·头底下那一句"], down: [{ origin: "down", said: "down 离线 · 上线后自动恢复" }], summary: "核心·结果头", empty: "核心·空态那一句" };
 
 beforeEach(() => invokeMock.mockReset());
 
@@ -57,16 +57,16 @@ describe("只问本机后端一次", () => {
 });
 
 describe("选项只下发后端认的那几格（各台同一份）", () => {
-  it("include_tools 只在真时给 · scope 只给 user/assistant/report · after_ms 只给正数 · limit 原样", () => {
+  it("include_tools 只在真时给 · scope 只给 user/assistant/report · within_days 只给正数（换成时刻是那台的事）· limit 原样", () => {
     expect(searchArgs(Q)).toEqual({ query: "kw", limit: 300 });
-    expect(searchArgs({ ...Q, includeTools: true, scope: "user", afterMs: 7 })).toEqual({
+    expect(searchArgs({ ...Q, includeTools: true, scope: "user", withinDays: 7 })).toEqual({
       query: "kw",
       limit: 300,
       include_tools: true,
       scope: "user",
-      after_ms: 7,
+      within_days: 7,
     });
-    expect(searchArgs({ ...Q, scope: "all", afterMs: 0, limit: null })).toEqual({ query: "kw" });
+    expect(searchArgs({ ...Q, scope: "all", withinDays: 0, limit: null })).toEqual({ query: "kw" });
     expect(searchArgs({ ...Q, titles: true })).toEqual({ query: "kw", limit: 300, titles: true });
   });
 });

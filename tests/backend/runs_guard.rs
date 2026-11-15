@@ -16,7 +16,7 @@ use crate::agents::{RunEnd, RunFaces, StreamEv, StreamFamily};
 use crate::observe::run_route::{Routed, RunRouter};
 use crate::observe::runs::{next_event, RunBook, RunTrack, RUNS_KEEP, STALE_AFTER};
 use crate::relay::{TapBody, TapEvent};
-use crate::wire::FrameRules as _;
+use crate::wire::FrameExit as _;
 use crate::wire::{Frame, RunState};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -1359,6 +1359,12 @@ fn info_of(book: &RunBook, run: &str) -> crate::wire::RunInfo {
         .unwrap_or_else(|| panic!("运行表里没有 {run}"))
 }
 
+/// 簿里这个运行不上线的两格：`(收场时刻, 调了几次工具)`。
+fn kept_of(book: &RunBook, run: &str) -> (Option<u64>, u32) {
+    crate::observe::runs::testing::kept(book, SID, run)
+        .unwrap_or_else(|| panic!("运行表里没有 {run}"))
+}
+
 /// 基准之后第 `secs` 秒（毫秒）。
 fn at(secs: u64) -> Option<u64> {
     Some((BASE_S + secs) * 1000)
@@ -1436,13 +1442,23 @@ fn extra_cells_scenario(shape: &Shape) {
 
     let i = info_of(&book, "g1");
     assert_eq!(
-        (i.calls, i.background, info_of(&book, "g2").background),
+        (
+            kept_of(&book, "g1").1,
+            i.background,
+            info_of(&book, "g2").background
+        ),
         (3, true, false),
         "[{}] 调了几次工具（Bash · 派出孙运行那次 · Read）；后台派出的才是后台",
         shape.name
     );
     assert_eq!(
-        (i.state, i.waiting, i.active_ms, i.why, i.ended_ms),
+        (
+            i.state,
+            i.waiting,
+            i.active_ms,
+            i.why,
+            kept_of(&book, "g1").0
+        ),
         (RunState::Running, None, at(130), None, None),
         "[{}] 交回了结果 ⇒ 不再在等；最近动静 ＝ 它自己最近那条；在跑的没有结局",
         shape.name
@@ -1454,7 +1470,7 @@ fn extra_cells_scenario(shape: &Shape) {
             i.parent.as_deref(),
             i.label.as_deref(),
             i.started_ms,
-            i.ended_ms,
+            kept_of(&book, "g3").0,
             i.why,
             i.error
         ),
@@ -1476,7 +1492,7 @@ fn extra_cells_scenario(shape: &Shape) {
             i.state,
             i.started_ms,
             i.active_ms,
-            i.ended_ms,
+            kept_of(&book, "g2").0,
             i.why,
             i.error.as_deref(),
             i.waiting
@@ -1495,7 +1511,7 @@ fn extra_cells_scenario(shape: &Shape) {
     );
     let i = info_of(&book, "g4");
     assert_eq!(
-        (i.state, i.why, i.error.as_deref(), i.ended_ms),
+        (i.state, i.why, i.error.as_deref(), kept_of(&book, "g4").0),
         (
             RunState::Failed,
             Some(RunWhy::Own),
@@ -1507,7 +1523,7 @@ fn extra_cells_scenario(shape: &Shape) {
     );
     let i = info_of(&book, "g5");
     assert_eq!(
-        (i.state, i.why, i.ended_ms, i.waiting),
+        (i.state, i.why, kept_of(&book, "g5").0, i.waiting),
         (RunState::Unknown, Some(RunWhy::Quiet), None, None),
         "[{}] 久未再写 ⇒ 状态不明（quiet），没有收场时刻、不算在等",
         shape.name
@@ -1540,13 +1556,13 @@ fn extra_cells_scenario(shape: &Shape) {
         shape.name
     );
     let sh = crate::common::time::Tz::named("Asia/Shanghai").unwrap();
-    let mut f = crate::wire::Frame::SessionRuns(crate::wire::SessionRuns {
+    let f = crate::wire::Frame::SessionRuns(crate::wire::SessionRuns {
         sid: "s".into(),
         runs: vec![info_of(&book, "g6")],
         ..Default::default()
     });
-    f.stamp(&sh);
-    let crate::wire::Frame::SessionRuns(crate::wire::SessionRuns { runs, .. }) = f else {
+    let f = f.stamp(&sh);
+    let crate::wire::WireFrame::SessionRuns(crate::wire::SessionRuns { runs, .. }) = f else {
         unreachable!()
     };
     assert_eq!(
@@ -1703,14 +1719,14 @@ fn line(key: &str, args: &[(&str, &str)], from: Option<u64>) -> cmd_wire::frame:
 #[test]
 fn the_run_table_writes_facts_explain_and_end() {
     use crate::common::cells::Words;
-    use crate::observe::runs::testing::seed;
+    use crate::observe::runs::testing::{seed, seed_with};
     use crate::wire::{RunInfo, RunWhy};
     use cmd_wire::frame::{RunEndLine, RunExplain};
     use copy_core::copy_text;
     let book = RunBook::default();
     let sid = "s-said";
-    // 在跑、在等 Bash、派出过一个、后台派出。
-    seed(
+    // 在跑、在等 Bash、调了 3 次工具、派出过一个、后台派出。
+    seed_with(
         &book,
         sid,
         RunInfo {
@@ -1718,13 +1734,14 @@ fn the_run_table_writes_facts_explain_and_end() {
             waiting: Some("Bash".into()),
             started_ms: Some(1_000),
             active_ms: Some(5_000),
-            calls: 3,
             background: true,
             ..RunInfo::default()
         },
+        None,
+        3,
     );
     // 它派出的那一个：失败收场，跑了 6 分钟。
-    seed(
+    seed_with(
         &book,
         sid,
         RunInfo {
@@ -1732,12 +1749,13 @@ fn the_run_table_writes_facts_explain_and_end() {
             parent: Some("a".into()),
             state: RunState::Failed,
             started_ms: Some(0),
-            ended_ms: Some(360_000),
             active_ms: Some(360_000),
             why: Some(RunWhy::Reported),
             error: Some("boom".into()),
             ..RunInfo::default()
         },
+        Some(360_000),
+        0,
     );
     // 状态不明：会话退了 · 记录久未再写。
     seed(
@@ -1946,20 +1964,23 @@ fn a_run_carries_the_ask_it_is_waiting_on() {
     let sid = "s-needs";
     seed_running(&book, sid, "a", None);
     seed_running(&book, sid, "b", None);
-    let ask = crate::agents::asks::specimen();
-    assert_eq!(ask.run.as_ref().map(|r| r.id.as_str()), Some("a"));
+    let ask = crate::agents::asks::Asked {
+        ask: crate::agents::asks::specimen(),
+        since_ms: 1,
+    };
+    assert_eq!(ask.ask.run.as_ref().map(|r| r.id.as_str()), Some("a"));
     assert!(book.dress_needs(sid, vec![ask.clone()]), "挂上 ⇒ 变了");
     assert!(!book.dress_needs(sid, vec![ask.clone()]), "同一份 ⇒ 没变");
     let Frame::SessionRuns(s) = book.frame_at(sid, SystemTime::now()) else {
         panic!()
     };
     let n = s.runs[0].needs.as_ref().expect("a 带 needs");
-    assert_eq!(n.ask.as_ref().map(|a| a.id.as_str()), Some(ask.id.as_str()));
+    assert_eq!(n.ask().map(|a| a.id.as_str()), Some(ask.ask.id.as_str()));
     assert_eq!(
         n.head,
         crate::observe::recognize::facts::needs_head(
             cmd_wire::needs::NeedsKind::Answer,
-            Some(&ask.tool)
+            Some(&ask.ask.tool)
         )
     );
     assert_eq!(s.runs[1].needs, None, "b 没挂");

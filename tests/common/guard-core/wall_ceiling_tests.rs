@@ -264,7 +264,14 @@ fn lang_of(rel: &str) -> Option<&'static str> {
     if rel == SELF {
         return None;
     }
-    let out_of_gate = ["tests/evidence/", "tests/benches/"];
+    // 开发调度（`src/devsched` 与它的判据 `tests/devsched`）：独立工作区、按设计不链产品包，引不到 `guard_core::wall::CEILING`；
+    // 它里面的兜底期限只一个常量，由它自己守。
+    let out_of_gate = [
+        "tests/evidence/",
+        "tests/benches/",
+        "src/devsched/",
+        "tests/devsched/",
+    ];
     if out_of_gate.iter().any(|p| rel.starts_with(p)) {
         return None;
     }

@@ -32,6 +32,7 @@ import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.SettingsRepository
 import com.ccmonitor.mobile.core.ui.feedback.AppSnackbarHostScaffold
 import com.ccmonitor.mobile.link.HostBackends
+import com.ccmonitor.mobile.ssh.machineName
 import com.ccmonitor.mobile.ui.agents.AgentScreen
 import com.ccmonitor.mobile.ui.agents.AgentStack
 import com.ccmonitor.mobile.ui.agents.AgentsScreen
@@ -449,7 +450,7 @@ private fun HereOrNone(content: @Composable (Here?) -> Unit) {
     val settings = koinInject<SettingsRepository>()
     val hosts = koinInject<HostRepository>()
     val here by produceState<Result<Here?>?>(null) {
-        value = Result.success(settings.getLastHost()?.let { id -> hosts.get(id) }?.let { Here(it.id, it.label.ifEmpty { it.id }) })
+        value = Result.success(settings.getLastHost()?.let { id -> hosts.get(id) }?.let { Here(it.id, hosts.machineName(it.id)) })
     }
     here?.let { content(it.getOrNull()) }
 }
@@ -463,7 +464,7 @@ private fun RotationRoute(
     focus: RotFocus? = null,
 ) {
     val hosts = koinInject<HostRepository>()
-    val machine by produceState<String?>(null, hostId) { value = runCatching { hosts.get(hostId) }.getOrNull()?.label ?: hostId }
+    val machine by produceState<String?>(null, hostId) { value = hosts.machineName(hostId) }
     val name = machine ?: return
     RotationScreen(
         hostId = hostId,
@@ -545,6 +546,7 @@ private fun NavGraphBuilder.chatRoutes(
             current = entry.arguments?.getString("hostId").orEmpty(),
             onOpen = { host, sid -> nav.navigate(Screen.Chat.of(host, sid)) },
             onPlan = { host, ws, slice, cell -> nav.navigate(cell?.let { Screen.PlanCell.of(host, ws, slice, it) } ?: Screen.PlanSlice.of(host, ws, slice, null)) },
+            onAccounts = { nav.navigate(Screen.Accounts.route) },
             onBack = { nav.popBackStack() },
         )
     }

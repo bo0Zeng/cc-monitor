@@ -2,29 +2,35 @@
 //!
 //! 连托管口、`hello{want: input}`（最新连上的真终端持有输入）；进外层终端的备用屏、退出还原。
 //! 本地一个 `vt100` 照托管伪终端的尺寸跑：`welcome` / `resync` 整屏重来，`out` 接着算，只把变了的画出去（`contents_diff`），
-//! 拍子跟着 `out` 走，不用定时器。不持有时外层标题前加「[只看] 」，敲的键不送，底行提示「输入在 … · 回车接管」
-//! （这个回车不送进去），下一个键收掉提示。外层窗口改尺寸 ⇒ 发 `resize`（托管只认持有者的）。
+//! 拍子跟着 `out` 走（只有模板里有时刻那一格才另起一个分钟拍）。不持有时外层标题前加「[只看] 」，敲的键不送，最底一行提示
+//! 「输入在 … · 回车接管」（这个回车不送进去），下一个键收掉提示。外层窗口改尺寸 ⇒ 发 `resize`（托管只认持有者的）。
+//!
+//! 状态行（照 tmux 的 `status`）：偏好里的模板要那一行 ⇒ 外层最底一行只归它，报给托管的尺寸是外层少一行；
+//! 那一行照模板写（`status`），提示 · 「结束？」· 在 tmux 里那几句也在那一行；模板空 ⇒ 不留，提示与排队照旧盖最底一行。
+//! 各格的值由上层装进来的耳朵说（[`install_status`]）。
 //! 关真终端窗口 · ssh 断 ⇒ 只算断开，会话照跑。退出码：断开 0，会话结束带子进程的码。
 //!
 //! 外层终端（键 · 尺寸 · 画）由 [`Outer`] 交进来：生产是本进程的 stdin / stdout（[`stdio_outer`]），判据交一个假的。
 //!
 //! 尺寸（A3-3-14）：伪终端的尺寸跟持有者；外层比它小（只看的一端 · 持有者刚改了尺寸、托管还没跟上）⇒ 只画左上那一块，
 //! 不缩放、不折行；外层大 ⇒ 多出来的空着。只看的一端标题前缀带伪终端的尺寸。
-//! 终端模式（A3-3-15）：外层的输入模式由这里自己管（[`Modes`]），持有者照里面开的开；只看的不开鼠标 · 括号粘贴 · 焦点。
+//! 终端模式（A3-3-15）：外层的输入模式由这里自己管（[`Modes`]），持有者照里面开的开；只看的不开括号粘贴 · 焦点（鼠标上报恒开，见下）。
 //! 里面开着同步输出 `?2026` ⇒ 屏照算、先不画，关上那一下一次画完。
 //!
-//! 鼠标（A3-3-33，照 tmux `mouse on`）：外层的鼠标上报由这里自己开（SGR 1006；按键起落，持有者且里面要拖动 / 任意移动时跟着开），
+//! 鼠标（A3-3-33，照 tmux `mouse on`）：外层的鼠标上报由这里自己开（SGR 1006；按着拖动，持有者且里面要任意移动时跟着开），
 //! 出外层备用屏那一下关掉。里面开了鼠标上报 ⇒ 持有者照里面的模式与编码交进去（只看的丢）；没开 ⇒ 滚轮往上进翻看、
-//! 翻看里滚轮上下各 [`WHEEL_LINES`] 行、往下滚到底退回实时，别的鼠标事件丢。外层原生选字按住 Shift（外层终端自己的规矩）。
+//! 翻看里滚轮上下各 [`WHEEL_LINES`] 行、往下滚到底退回实时；左键拖动在本地屏上反显选区，松手经 OSC 52 交外层剪贴板、选区留着；
+//! 有选区时 Ctrl+C 再交一次、收掉选区、不送中断，别的键或再按一下先收掉选区。外层原生选字按住 Shift（外层终端自己的规矩）。
 //! 外层读不到鼠标事件（老的 Windows 控制台只给鼠标事件记录、不变成序列）⇒ 没有滚轮翻看，`前缀 [` 照旧。
 //! 剪贴板（照 tmux `set-clipboard`）：里面写剪贴板的那一句（OSC 52：程序自己选完字要外层复制）不上屏、重算屏会吞掉 ⇒
 //! parser 接住，算完那一块原样转给外层（持有者与只看的都转，不看盖着哪一层）；读剪贴板的询问不转。
 
 use super::hold;
+use super::hold::HolderWho;
 use super::keys::{self, Act, Copy, CopyKeys, Keys, Mice, Mouse, Piece, Wheel};
 use super::screen::Extra;
+use super::status::{self, Snap, Template, Values};
 use super::wire::{self, ClientRow, Ctl, Frame, Holder, Size, Want, Who, WhoKind, PROTO};
-use cmd_wire::session::HolderWho;
 use copy_core::copy_text;
 use copy_core::said::Said;
 use copy_core::{Discard, Why};
@@ -122,7 +128,7 @@ pub(crate) enum Left {
     OuterGone,
 }
 
-/// 底行 / 整屏盖在上面的那一层。
+/// 最底一行 / 整屏盖在上面的那一层。
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Over {
     None,
@@ -146,6 +152,16 @@ struct CopyView {
     found: Option<(String, bool)>,
 }
 
+/// 写剪贴板那一句（OSC 52，BEL 收尾）：`ty` 选哪块剪贴板，`b64` 是 base64 过的字。里面写的照转、这边拖选复制的，都拼成这一形。
+fn osc52(ty: &[u8], b64: &[u8]) -> Vec<u8> {
+    let mut v = b"\x1b]52;".to_vec();
+    v.extend_from_slice(ty);
+    v.push(b';');
+    v.extend_from_slice(b64);
+    v.push(0x07);
+    v
+}
+
 /// parser 碰到的、屏本身不管的：标题 · 铃 · 写剪贴板 · `vt100` 不记的那几样模式（焦点 · 同步输出 · 光标形状）。
 #[derive(Default)]
 struct Hooks {
@@ -164,11 +180,7 @@ impl vt100::Callbacks for Hooks {
         self.title = Some(t.to_vec());
     }
     fn copy_to_clipboard(&mut self, _: &mut vt100::Screen, ty: &[u8], data: &[u8]) {
-        self.clip.extend_from_slice(b"\x1b]52;");
-        self.clip.extend_from_slice(ty);
-        self.clip.push(b';');
-        self.clip.extend_from_slice(data);
-        self.clip.push(0x07);
+        self.clip.extend_from_slice(&osc52(ty, data));
     }
     fn unhandled_csi(
         &mut self,
@@ -201,12 +213,41 @@ struct Client {
     taking: bool,
     /// 那段时间里敲的键（换过来就送；没换过来 ⇒ 丢）。
     typed_while_taking: Vec<u8>,
-    /// 底行「排队 N 条」：会话那台写好的那一句（`history::session_queue::line_of_host`），照摆；没有 ⇒ 不盖。
-    queued: Option<String>,
+    /// 状态行的模板（解析好的）与各格的值（`holder` · `time` 由这里照那一刻填）。
+    status: Template,
+    values: Values,
+    /// 状态行那一行上次写出去的字（`None` ⇒ 下一次照写）。模板空时是盖在最底一行的那一句。
+    drawn_status: Option<String>,
+    /// 临时占那一行的一句（「结束？」· 在 tmux 里）：收掉照模板重画。
+    notice: Option<String>,
+    /// 这台的时区（时刻那一格照它写）。
+    tz: crate::common::time::Tz,
     /// 外层送来的字节里认鼠标上报。
     mice: Mice,
     /// 已经出了外层备用屏（建时进，[`Client::leave`] 出一次；落地时还没出 ⇒ 那一下出）。
     left: bool,
+    /// 这边自己拖出来的选区（里面没要鼠标时）。
+    sel: Option<Sel>,
+}
+
+/// 一段选区：按下那一格 · 此刻那一格（行 · 列，从 0 数，落在伪终端那一屏里）；拖过没有；还按着没有。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Sel {
+    anchor: (u16, u16),
+    head: (u16, u16),
+    moved: bool,
+    held: bool,
+}
+
+impl Sel {
+    /// 两端，靠前的在前（含）。
+    fn span(&self) -> ((u16, u16), (u16, u16)) {
+        if self.anchor <= self.head {
+            (self.anchor, self.head)
+        } else {
+            (self.head, self.anchor)
+        }
+    }
 }
 
 impl Drop for Client {
@@ -216,13 +257,15 @@ impl Drop for Client {
 }
 
 /// 接一个托管终端，直到断开 / 会话结束 / 切到另一个。外层终端的进出由调用方（[`stdio_outer`] 那一侧）管。
-/// `queued`：底行那一句（[`QueueEars`] 说来的），来一句照摆一句。`name` ＝ 断开 · 结束之后那一行里的名（`ccm --attach` 认的那个）。
+/// `first`：接上那一刻的状态行（模板 ＋ 值）；`snaps`：之后变了的（[`StatusEars`] 说来的），来一份照画一份。
+/// `name` ＝ 断开 · 结束之后那一行里的名（`ccm --attach` 认的那个）。
 pub(crate) async fn session(
     sock: &std::path::Path,
     name: &str,
     outer: Outer,
     list: &(dyn Fn() -> Vec<(String, String)> + Sync),
-    mut queued: UnboundedReceiver<Option<String>>,
+    first: Snap,
+    mut snaps: UnboundedReceiver<Snap>,
 ) -> Result<Left, Said> {
     let stream = own_chan::connect(sock).await.map_err(|e| {
         Said::with_raw(
@@ -234,7 +277,9 @@ pub(crate) async fn session(
         )
     })?;
     let (mut rd, mut wr) = tokio::io::split(stream);
-    let size = (outer.size)();
+    let in_tmux = outer.in_tmux;
+    let mut c = Client::new(outer, first);
+    let size = c.pty_size();
     wire::write_frame(
         &mut wr,
         &Frame::Ctl(Ctl::Hello {
@@ -250,8 +295,6 @@ pub(crate) async fn session(
     )
     .await
     .map_err(|e| Said::with_raw(copy_text("beHost.attach.lost", &[]), &e))?;
-    let in_tmux = outer.in_tmux;
-    let mut c = Client::new(outer);
     let (ftx, mut frx) = tokio::sync::mpsc::unbounded_channel::<Option<Frame>>();
     let reader = tokio::spawn(async move {
         loop {
@@ -271,6 +314,16 @@ pub(crate) async fn session(
         }
     });
     let mut told_tmux = !in_tmux;
+    // 时刻那一格按分钟走：模板里有要分钟拍的那一格才看这个拍子（`Template::ticks`）；第一拍对齐到下一个整分。
+    let into_minute = crate::common::time::now_secs() % 60;
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "状态行的时刻那一格（时:分）要按整分重画：模板里有它才看分钟拍，没有它分钟拍不起作用；去掉时刻那一格就不用它"
+    )]
+    let mut minute = tokio::time::interval_at(
+        tokio::time::Instant::now() + std::time::Duration::from_secs(60 - into_minute),
+        std::time::Duration::from_secs(60),
+    );
     let left = loop {
         tokio::select! {
             f = frx.recv() => {
@@ -285,7 +338,7 @@ pub(crate) async fn session(
                 }
                 if !told_tmux && c.you != 0 {
                     told_tmux = true;
-                    c.bottom_line(&copy_text("beHost.attach.inTmux", &[]));
+                    c.passing_notice(copy_text("beHost.attach.inTmux", &[]));
                 }
             }
             k = c.outer.keys.recv() => {
@@ -302,7 +355,12 @@ pub(crate) async fn session(
                     break l;
                 }
             }
-            Some(line) = queued.recv() => c.queued_now(line),
+            Some(s) = snaps.recv() => {
+                if let Some(s) = c.snap_now(s) {
+                    send(&mut wr, &Frame::Ctl(Ctl::Resize { rows: s.rows, cols: s.cols })).await;
+                }
+            }
+            _ = minute.tick(), if c.ticks() => c.draw_status(false),
             r = c.outer.resized.recv() => {
                 if r.is_some() {
                     // 托管只认持有者的；只看的也报（接管那一下托管照它改），自己这边照新尺寸重裁。
@@ -324,13 +382,17 @@ pub(crate) async fn session(
     Ok(left)
 }
 
-/// 不持有时底行那一句：名单那一句（[`hold::said_of`]，同一处写）＋「 · 回车接管」。
+/// 不持有时的提示那一句：名单那一句（[`holder_said`]）＋「 · 回车接管」。
 pub fn held_line(holder: Option<&Holder>) -> String {
-    let said = match holder {
+    copy_text("beHost.attach.heldBy", &[("said", &holder_said(holder))])
+}
+
+/// 输入在谁手里那一句（名单那一句 [`hold::said_of`]，按收的这一端算）：提示那一句与状态行 `holder` 那一格都照它。
+fn holder_said(holder: Option<&Holder>) -> String {
+    match holder {
         None => hold::said_of(HolderWho::None, false),
         Some(h) => hold::said_of(hold::who_of(h.kind, h.front.as_deref()), h.mine),
-    };
-    copy_text("beHost.attach.heldBy", &[("said", &said)])
+    }
 }
 
 /// `前缀 D` 那张单子：一端一行（种类那一列是 [`hold::word_of`] 的短词），末行一次图例。
@@ -383,7 +445,7 @@ async fn send<W: tokio::io::AsyncWrite + Unpin>(wr: &mut W, f: &Frame) -> bool {
 
 impl Client {
     /// 建的那一下进外层备用屏。
-    fn new(mut outer: Outer) -> Self {
+    fn new(mut outer: Outer, first: Snap) -> Self {
         let (prefix, vi) = (outer.prefix, outer.vi);
         let view = (outer.size)();
         put(&mut *outer.out, ENTER_OUTER);
@@ -401,9 +463,14 @@ impl Client {
             title: Vec::new(),
             taking: false,
             typed_while_taking: Vec::new(),
-            queued: None,
+            status: Template::parse(&first.template),
+            values: first.values,
+            drawn_status: None,
+            notice: None,
+            tz: crate::common::time::Tz::here(),
             mice: Mice::default(),
             left: false,
+            sel: None,
         }
     }
 
@@ -414,54 +481,155 @@ impl Client {
         }
     }
 
-    /// 底行那一句换了：没别的盖着 ⇒ 盖上新的；清了 ⇒ 整屏重画（那一行照里面）。提示那一层盖着 ⇒ 照新的整句重盖；
-    /// 别的那几层盖着 ⇒ 收掉时照此刻的画。
-    fn queued_now(&mut self, line: Option<String>) {
-        if line == self.queued {
-            return;
+    /// 状态行那一份换了（耳朵说来的）：照新的模板 · 值重画那一行；要不要那一行变了 ⇒ 整屏重画、交回新的伪终端尺寸（报给托管）。
+    fn snap_now(&mut self, s: Snap) -> Option<Size> {
+        let had = self.has_row();
+        let t = Template::parse(&s.template);
+        if t == self.status && s.values == self.values {
+            return None;
         }
-        self.queued = line;
-        if self.over == Over::Hint {
-            let said = self.holder_said();
-            self.bottom_line(&said);
-            return;
+        self.status = t;
+        self.values = s.values;
+        if had == self.has_row() {
+            if matches!(self.over, Over::None | Over::Hint) || self.has_row() {
+                self.draw_status(false);
+            }
+            return None;
         }
-        if self.over != Over::None {
-            return;
-        }
-        if self.queued.is_some() {
-            self.show_queued();
-        } else {
+        self.drawn_status = None;
+        if matches!(self.over, Over::None | Over::Hint) {
             self.redraw();
+        }
+        self.pty_size()
+    }
+
+    /// 临时占那一行的一句换了（`None` ⇒ 收掉，照模板重画）。
+    fn notice_now(&mut self, n: Option<String>) {
+        if n != self.notice {
+            self.notice = n;
+            self.draw_status(true);
         }
     }
 
-    /// 没别的盖着、有那一句 ⇒ 盖在最底一行。
-    fn show_queued(&mut self) {
-        if self.over == Over::None {
-            if let Some(l) = self.queued.clone() {
-                self.bottom_line(&l);
+    /// 一句过路的提示（在 tmux 里）：留了那一行 ⇒ 占那一行、下一个键收掉；没留 ⇒ 盖一次最底一行，下一次画屏照里面冲掉。
+    fn passing_notice(&mut self, n: String) {
+        if self.has_row() {
+            self.notice_now(Some(n));
+        } else {
+            self.bottom_line(&n);
+        }
+    }
+
+    /// 留不留状态行那一行：模板不空、外层至少两行。
+    fn has_row(&self) -> bool {
+        self.status.shows() && self.view.is_none_or(|v| v.rows >= 2)
+    }
+
+    /// 要不要分钟拍（模板里有时刻那一格）。
+    fn ticks(&self) -> bool {
+        self.has_row() && self.status.ticks()
+    }
+
+    /// 报给托管的尺寸：外层（留了状态行 ⇒ 少一行）。外层问不出 ⇒ 不报。
+    fn pty_size(&self) -> Option<Size> {
+        let v = self.view?;
+        Some(Size {
+            rows: v.rows - u16::from(self.has_row()),
+            cols: v.cols,
+        })
+    }
+
+    /// 此刻最底一行该是什么：留了那一行 ⇒ 临时那一句，或（提示 ＋）照模板写的那一句；没留 ⇒ 盖在最底一行的那一句（没有 ⇒ `None`）。
+    fn status_text(&self) -> Option<String> {
+        let cols = usize::from(self.view.map_or(self.parser.screen().size().1, |v| v.cols));
+        let sep = copy_text("kit.text.sep", &[]);
+        let queue = self
+            .values
+            .get("queue")
+            .map(|q| q.trim().to_string())
+            .filter(|q| !q.is_empty());
+        if !self.has_row() {
+            if let Some(n) = &self.notice {
+                return Some(n.clone());
+            }
+            return match (self.over == Over::Hint, queue) {
+                (true, Some(q)) => Some([held_line(self.holder.as_ref()), q].join(&sep)),
+                (true, None) => Some(held_line(self.holder.as_ref())),
+                (false, q) => q,
+            };
+        }
+        if let Some(n) = &self.notice {
+            return Some(status::cut(n, cols));
+        }
+        let mut v = self.values.clone();
+        v.insert(status::HOLDER.into(), holder_said(self.holder.as_ref()));
+        let now = i64::try_from(crate::common::time::now_secs()).unwrap_or(i64::MAX);
+        v.insert(
+            status::TIME.into(),
+            crate::common::time::hm(self.tz.local(now)),
+        );
+        let (l, r) = self.status.halves(&v);
+        let l = if self.over == Over::Hint {
+            let hint = held_line(self.holder.as_ref());
+            if l.is_empty() {
+                hint
+            } else {
+                [hint, l].join(&sep)
+            }
+        } else {
+            l
+        };
+        Some(status::line_of(&l, &r, cols))
+    }
+
+    /// 画最底那一行：留了那一行 ⇒ 字变了（或 `force`）才写；没留 ⇒ 有那一句就盖（里面的字可能盖过它，每次都写），
+    /// 那一句没了 ⇒ 整屏重画（那一行照里面）。
+    fn draw_status(&mut self, force: bool) {
+        let text = self.status_text();
+        if self.has_row() {
+            let text = text.unwrap_or_default();
+            if !force && self.drawn_status.as_deref() == Some(text.as_str()) {
+                return;
+            }
+            let row = self.view.map_or(self.parser.screen().size().0, |v| v.rows);
+            self.line_at(row, &text);
+            self.drawn_status = Some(text);
+            return;
+        }
+        match text {
+            Some(t) => {
+                self.bottom_line(&t);
+                self.drawn_status = Some(t);
+            }
+            None => {
+                if self.drawn_status.take().is_some() {
+                    self.paint(true);
+                    self.flush();
+                }
             }
         }
     }
 
-    /// 盖在上面的那几层（底行 · 单子 · 翻看）按外层的行数摆。
+    /// 盖在上面的那几层（单子 · 翻看）与伪终端那一块按外层的行数摆（留了状态行 ⇒ 少一行）。
     fn rows(&self) -> u16 {
-        self.view.map_or(self.parser.screen().size().0, |v| v.rows)
+        self.view.map_or(self.parser.screen().size().0, |v| {
+            v.rows - u16::from(self.has_row())
+        })
     }
 
     /// 外层改了尺寸：记下、照新尺寸重画；交回新尺寸（报给托管）。
     fn outer_resized(&mut self) -> Option<Size> {
         let s = (self.outer.size)()?;
         self.view = Some(s);
+        self.drawn_status = None;
         if matches!(self.over, Over::None | Over::Hint) {
             self.redraw();
         }
-        Some(s)
+        self.pty_size()
     }
 
     /// 外层该开的输入模式：持有者照里面开的；只看的不开括号粘贴 · 焦点（敲的不送）。
-    /// 鼠标上报恒开（SGR 1006 · 按键起落，滚轮要用）；持有者且里面要拖动 / 任意移动 ⇒ 外层跟着开那一档。
+    /// 鼠标上报恒开（SGR 1006 · 按着拖动：滚轮与拖选要用）；持有者且里面要任意移动 ⇒ 外层跟着开那一档。
     fn wanted_modes(&self) -> Modes {
         let s = self.parser.screen();
         let x = &self.parser.callbacks().extra;
@@ -472,8 +640,8 @@ impl Client {
             cursor_keys: s.application_cursor(),
             paste: hold && s.bracketed_paste(),
             mouse: match inner {
-                MouseProtocolMode::ButtonMotion | MouseProtocolMode::AnyMotion if hold => inner,
-                _ => MouseProtocolMode::PressRelease,
+                MouseProtocolMode::AnyMotion if hold => inner,
+                _ => MouseProtocolMode::ButtonMotion,
             },
             encoding: MouseProtocolEncoding::Sgr,
             focus: hold && x.focus,
@@ -502,10 +670,16 @@ impl Client {
         }
         let now = self.parser.screen().clone();
         let (prow, pcol) = now.size();
-        let view = self.view.unwrap_or(Size {
-            rows: prow,
-            cols: pcol,
-        });
+        let view = self.view.map_or(
+            Size {
+                rows: prow,
+                cols: pcol,
+            },
+            |v| Size {
+                rows: self.rows(),
+                cols: v.cols,
+            },
+        );
         let prev = match (&self.drawn, full) {
             (Some((s, v)), false) if s.size() == now.size() && *v == view => Some(s),
             _ => None,
@@ -513,6 +687,7 @@ impl Client {
         let mut b = Vec::new();
         if prev.is_none() {
             b.extend_from_slice(b"\x1b[m\x1b[H\x1b[2J");
+            self.drawn_status = None;
         }
         if view.rows >= prow && view.cols >= pcol {
             match prev {
@@ -541,8 +716,136 @@ impl Client {
         }
         self.write(&b);
         self.drawn = Some((now, view));
+        self.draw_sel(view);
         self.sync_modes();
         true
+    }
+
+    /// 选区反显盖在画好的屏上（只盖外层装得下的那一块；光标存了再放回）。画进 `drawn` 的是没盖的那一屏，
+    /// 收掉或改小选区 ⇒ 整屏重画（[`Client::repaint_sel`]）。
+    fn draw_sel(&mut self, view: Size) {
+        let Some(sel) = self.sel else { return };
+        let ((r0, c0), (r1, c1)) = sel.span();
+        let s = self.parser.screen();
+        let cols = s.size().1.min(view.cols);
+        let mut b = b"\x1b7".to_vec();
+        let wide = |r: u16, c: u16| s.cell(r, c).is_some_and(vt100::Cell::is_wide);
+        let tail = |r: u16, c: u16| s.cell(r, c).is_some_and(vt100::Cell::is_wide_continuation);
+        for r in r0..=r1.min(view.rows.saturating_sub(1)) {
+            let mut from = if r == r0 { c0 } else { 0 };
+            let mut to = if r == r1 { c1 + 1 } else { cols }.min(cols);
+            // 宽字两格当一格：起点落在右半格 ⇒ 往左挪到它的左半格；终点落在左半格 ⇒ 盖住整个字，盖不下（最右一列）⇒ 不盖它。
+            if from > 0 && tail(r, from) {
+                from -= 1;
+            }
+            if to > 0 && wide(r, to - 1) {
+                to = if to < cols { to + 1 } else { to - 1 };
+            }
+            if from >= to {
+                continue;
+            }
+            b.extend_from_slice(format!("\x1b[{};{}H\x1b[m\x1b[7m", r + 1, from + 1).as_bytes());
+            for c in from..to {
+                match s.cell(r, c) {
+                    Some(cell) if cell.is_wide_continuation() => {}
+                    Some(cell) if cell.has_contents() => {
+                        b.extend_from_slice(cell.contents().as_bytes())
+                    }
+                    _ => b.push(b' '),
+                }
+            }
+            b.extend_from_slice(b"\x1b[m");
+        }
+        b.extend_from_slice(b"\x1b8");
+        self.write(&b);
+    }
+
+    /// 选区变了（拖到别处 · 收掉）：整屏重画，再按此刻的选区盖上。
+    fn repaint_sel(&mut self) {
+        self.paint(true);
+        self.draw_status(true);
+        self.flush();
+    }
+
+    /// 选区里的字（照本地屏取），经 OSC 52 交外层剪贴板（同里面写剪贴板转给外层的那一形）。
+    fn copy_sel(&mut self) {
+        let Some(sel) = self.sel else { return };
+        let ((r0, c0), (r1, c1)) = sel.span();
+        let s = self.parser.screen();
+        // 宽字两格当一格（同 [`Client::draw_sel`]）：起点在右半格 ⇒ 从左半格起；终点在左半格 ⇒ 连右半格。
+        let c0 = if c0 > 0
+            && s.cell(r0, c0)
+                .is_some_and(vt100::Cell::is_wide_continuation)
+        {
+            c0 - 1
+        } else {
+            c0
+        };
+        let end = if s.cell(r1, c1).is_some_and(vt100::Cell::is_wide) {
+            c1 + 2
+        } else {
+            c1 + 1
+        };
+        let text = s.contents_between(r0, c0, r1, end);
+        if text.is_empty() {
+            return;
+        }
+        let seq = osc52(b"c", cmd_wire::b64::b64_encode(text.as_bytes()).as_bytes());
+        self.write(&seq);
+        self.flush();
+    }
+
+    /// 收掉选区（有的话），整屏重画。
+    fn drop_sel(&mut self) {
+        if self.sel.take().is_some() {
+            self.repaint_sel();
+        }
+    }
+
+    /// 里面没要鼠标时左键的按 · 拖 · 放：做选区。别的键（中键 · 右键）丢。
+    fn select(&mut self, m: Mouse) {
+        let code = m.code & !(4 | 8 | 16);
+        let motion = code & 32 != 0;
+        if code & !32 != 0 {
+            return;
+        }
+        let (rows, cols) = self.parser.screen().size();
+        let at = (
+            m.row.saturating_sub(1).min(rows.saturating_sub(1)),
+            m.col.saturating_sub(1).min(cols.saturating_sub(1)),
+        );
+        match (m.press, motion) {
+            (true, false) => {
+                self.drop_sel();
+                self.sel = Some(Sel {
+                    anchor: at,
+                    head: at,
+                    moved: false,
+                    held: true,
+                });
+            }
+            (true, true) => {
+                if let Some(s) = self.sel.as_mut().filter(|s| s.held) {
+                    if s.head != at || !s.moved {
+                        s.head = at;
+                        s.moved = true;
+                        self.repaint_sel();
+                    }
+                }
+            }
+            (false, _) => match self.sel {
+                Some(s) if s.held && s.moved => {
+                    if let Some(s) = self.sel.as_mut() {
+                        s.head = at;
+                        s.held = false;
+                    }
+                    self.repaint_sel();
+                    self.copy_sel();
+                }
+                Some(s) if s.held => self.sel = None,
+                _ => {}
+            },
+        }
     }
 
     fn holding(&self) -> bool {
@@ -565,7 +868,7 @@ impl Client {
     fn redraw(&mut self) {
         self.paint(true);
         self.retitle(true);
-        self.show_queued();
+        self.draw_status(true);
         self.flush();
     }
 
@@ -591,7 +894,12 @@ impl Client {
     /// 最底一行盖一句（反显），光标放回原处。
     fn bottom_line(&mut self, text: &str) {
         let rows = self.rows();
-        let seq = format!("\x1b7\x1b[{rows};1H\x1b[7m{text}\x1b[K\x1b[m\x1b8");
+        self.line_at(rows, text);
+    }
+
+    /// 第 `row` 行（从 1 数）写一句反显，光标放回原处。
+    fn line_at(&mut self, row: u16, text: &str) {
+        let seq = format!("\x1b7\x1b[{row};1H\x1b[m\x1b[7m{text}\x1b[K\x1b[m\x1b8");
         self.write(seq.as_bytes());
         self.flush();
     }
@@ -604,22 +912,17 @@ impl Client {
             let seq = format!("\x1b[{};1H{l}\x1b[m", i + 1);
             self.write(seq.as_bytes());
         }
+        if self.has_row() {
+            self.draw_status(true);
+        }
         self.flush();
     }
 
     fn take_over(&mut self) {
         if self.over != Over::None {
             self.over = Over::None;
+            self.notice = None;
             self.redraw();
-        }
-    }
-
-    /// 不持有时底行那一句：持有者那一句（[`held_line`]）；队里有东西 ⇒ 接上队那一句，两句并一行，谁也不盖掉谁。
-    fn holder_said(&self) -> String {
-        let held = held_line(self.holder.as_ref());
-        match &self.queued {
-            Some(q) => [held, q.clone()].join(&copy_text("kit.text.sep", &[])),
-            None => held,
         }
     }
 
@@ -640,11 +943,8 @@ impl Client {
                         self.write(b"\x07");
                     }
                     self.retitle(false);
-                    if painted && self.over == Over::Hint {
-                        let said = self.holder_said();
-                        self.bottom_line(&said);
-                    } else if painted {
-                        self.show_queued();
+                    if painted {
+                        self.draw_status(false);
                     }
                     self.flush();
                 }
@@ -685,6 +985,7 @@ impl Client {
                     self.redraw();
                 } else {
                     self.retitle(false);
+                    self.draw_status(false);
                 }
                 // 持有者换了 ⇒ 外层的模式照新身份补齐 / 关掉。
                 self.sync_modes();
@@ -695,8 +996,7 @@ impl Client {
                 self.sync_modes();
                 if self.over == Over::None {
                     self.over = Over::Hint;
-                    let said = self.holder_said();
-                    self.bottom_line(&said);
+                    self.draw_status(true);
                 }
             }
             Ctl::Captured { lines, .. } => {
@@ -834,7 +1134,7 @@ impl Client {
         (sends, None)
     }
 
-    /// 一次鼠标上报：翻看里滚轮翻；里面开了鼠标上报 ⇒ 持有者照里面的交进去；没开 ⇒ 滚轮往上进翻看。别的丢。
+    /// 一次鼠标上报：翻看里滚轮翻；里面开了鼠标上报 ⇒ 持有者照里面的交进去；没开 ⇒ 滚轮往上进翻看、左键拖选（[`Client::select`]）。别的丢。
     fn mouse(&mut self, m: Mouse) -> Option<Frame> {
         match &self.over {
             Over::Copy(_) => {
@@ -856,11 +1156,19 @@ impl Client {
                 .encode(mode, s.mouse_protocol_encoding(), s.size())
                 .map(Frame::In);
         }
-        (m.wheel() == Some(Wheel::Up)).then(|| self.enter_copy(WHEEL_LINES))
+        match m.wheel() {
+            Some(Wheel::Up) => Some(self.enter_copy(WHEEL_LINES)),
+            Some(Wheel::Down) => None,
+            None => {
+                self.select(m);
+                None
+            }
+        }
     }
 
     /// 进翻看、先上翻 `up` 行（`usize::MAX` ⇒ 一页）；交回要历史的那一帧。
     fn enter_copy(&mut self, up: usize) -> Frame {
+        self.sel = None;
         self.over = Over::Copy(CopyView {
             lines: Vec::new(),
             up,
@@ -898,6 +1206,10 @@ impl Client {
         k: &[u8],
         list: &(dyn Fn() -> Vec<(String, String)> + Sync),
     ) -> (Vec<Frame>, Option<Left>) {
+        // 过路的那一句（在 tmux 里）：下一个键收掉，照模板重画。
+        if self.over == Over::None && self.notice.is_some() {
+            self.notice_now(None);
+        }
         // 盖着的那几层先吃键。
         match &self.over {
             Over::Copy(_) => {
@@ -925,7 +1237,18 @@ impl Client {
         let mut sends = Vec::new();
         for a in self.keys.feed(k) {
             match a {
-                Act::Send(b) => {
+                Act::Send(mut b) => {
+                    // 有选区：Ctrl+C 是复制（再交一次剪贴板、不送中断）；别的键先收掉选区、照常走。
+                    if self.sel.is_some() {
+                        if b.contains(&0x03) {
+                            self.copy_sel();
+                            b.retain(|&c| c != 0x03);
+                        }
+                        self.drop_sel();
+                        if b.is_empty() {
+                            continue;
+                        }
+                    }
                     if self.holding() {
                         sends.push(Frame::In(b));
                     } else if self.taking {
@@ -943,8 +1266,7 @@ impl Client {
                         self.take_over();
                     } else {
                         self.over = Over::Hint;
-                        let said = self.holder_said();
-                        self.bottom_line(&said);
+                        self.draw_status(true);
                     }
                 }
                 Act::Detach => return (sends, Some(Left::Detached)),
@@ -971,7 +1293,7 @@ impl Client {
                 }
                 Act::AskEnd => {
                     self.over = Over::Confirm;
-                    self.bottom_line(&copy_text("beHost.attach.confirmEnd", &[]));
+                    self.notice_now(Some(copy_text("beHost.attach.confirmEnd", &[])));
                 }
                 Act::End => {
                     self.take_over();
@@ -1060,15 +1382,45 @@ pub(crate) fn stdio_outer(prefix: u8) -> Result<(Outer, crate::platform::term::R
     ))
 }
 
-/// 底行那一句的耳朵：盯 `id` 那个托管终端那条会话的队，那一句变了就说（`ccm` 入口交 `history::session_queue::host_line_ears`）。
-pub type QueueEars = fn(
+/// 状态行的耳朵：盯 `id` 那个托管终端那几格与偏好里的模板，起来那一下先说一次、之后变了就说（后端入口装 `faces::status_line_face::ears`）。
+pub type StatusEars = fn(
     &crate::platform::fs::Own,
     &str,
-    Box<dyn Fn(Option<String>) + Send>,
+    Box<dyn Fn(Snap) + Send + Sync>,
 ) -> Result<crate::platform::watch_file::Watching, String>;
 
+static EARS: std::sync::OnceLock<StatusEars> = std::sync::OnceLock::new();
+
+/// 装上状态行的耳朵（进程里第一次装的那一个算数）。host 不引上层 ⇒ 由后端入口在分流到 `ccm` 之前装（`stream/entry.rs`）。
+pub fn install_status(f: StatusEars) {
+    EARS.get_or_init(|| f);
+}
+
+/// 没装耳朵时那一份：只照这台偏好里的模板，各格空着。
+fn bare_snap(own: &crate::platform::fs::Own) -> Snap {
+    Snap {
+        template: template_at(own),
+        values: Values::new(),
+    }
+}
+
+/// `own` 那个家里这台偏好那一份的落点（家目录说不出 ⇒ `None`）。
+pub fn prefs_at(own: &crate::platform::fs::Own) -> Option<std::path::PathBuf> {
+    own.at_home(relay_route_core::PREFS_REL)
+        .ok()
+        .map(|p| p.as_path().to_path_buf())
+}
+
+/// `own` 那个家里偏好照用的那一条状态行模板（现读；没设 ⇒ 随包的缺省，读不懂 · 没有家照缺省办）。瘦客户端与耳朵都照它。
+pub fn template_at(own: &crate::platform::fs::Own) -> String {
+    let prefs = prefs_at(own).map_or_else(Default::default, |p| {
+        crate::common::machine_prefs::read_at(&p).prefs()
+    });
+    status::template_of(prefs.status_line.as_deref()).to_string()
+}
+
 /// `ccm --attach <名|句柄>` 认到托管终端时走这里：接上、切换、直到断开或结束。交回进程退出码。
-pub async fn attach(own: &crate::platform::fs::Own, first: &str, ears: QueueEars) -> i32 {
+pub async fn attach(own: &crate::platform::fs::Own, first: &str) -> i32 {
     let mut id = first.to_string();
     loop {
         let sock = match super::home::sock_of(own, &id) {
@@ -1091,23 +1443,26 @@ pub async fn attach(own: &crate::platform::fs::Own, first: &str, ears: QueueEars
                 .map(|f| (f.id, f.name))
                 .collect::<Vec<_>>()
         };
-        // 底行那一句：盯不上 ⇒ 记一行、底行不显示，接照接。
-        let (qtx, qrx) = tokio::sync::mpsc::unbounded_channel();
-        let heard = ears(
-            own,
-            &id,
-            Box::new(move |l| {
-                qtx.send(l).discard(Why::PeerGone); // 接着的那一趟已经断开 ⇒ 没人要这一句
-            }),
-        );
-        if let Err(e) = &heard {
-            tracing::warn!("瘦客户端：托管终端 {id} 的队没盯上，底行不显示排队：{e}");
+        // 状态行：耳朵起来那一下先说一次（就是接上那一刻的那一份）；没装 · 盯不上 ⇒ 记一行，照偏好里的模板、各格空着，接照接。
+        let (qtx, mut qrx) = tokio::sync::mpsc::unbounded_channel();
+        let heard = EARS.get().map(|ears| {
+            ears(
+                own,
+                &id,
+                Box::new(move |s| {
+                    qtx.send(s).discard(Why::PeerGone); // 接着的那一趟已经断开 ⇒ 没人要这一份
+                }),
+            )
+        });
+        if let Some(Err(e)) = &heard {
+            tracing::warn!("瘦客户端：托管终端 {id} 的状态行没盯上，各格空着：{e}");
         }
+        let first_snap = qrx.try_recv().unwrap_or_else(|_| bare_snap(own));
         let name = list()
             .into_iter()
             .find(|(i, _)| *i == id)
             .map_or_else(|| id.clone(), |(_, n)| n);
-        let left = session(&sock, &name, outer, &list, qrx).await;
+        let left = session(&sock, &name, outer, &list, first_snap, qrx).await;
         drop(heard);
         drop(raw);
         match left {
@@ -1131,5 +1486,9 @@ pub async fn attach(own: &crate::platform::fs::Own, first: &str, ears: QueueEars
 mod tests;
 
 #[cfg(test)]
-#[path = "../../../../tests/backend/host/attach_bottom_tests.rs"]
-mod bottom_tests;
+#[path = "../../../../tests/backend/host/attach_status_tests.rs"]
+mod status_tests;
+
+#[cfg(test)]
+#[path = "../../../../tests/backend/host/attach_keys_tests.rs"]
+mod keys_tests;

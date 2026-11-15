@@ -9,9 +9,9 @@ export type SearchHit = {
  */
 uuid: string, 
 /**
- * `user` · `assistant` · `tool` · `report`。
+ * 谁说的（那台写好的那个词：用户 · 那一家 · 工具 · agent 回报），出口照摆。
  */
-kind: string, before: string, matched: string, after: string, 
+who: string, before: string, matched: string, after: string, 
 /**
  * 它落在哪次工具调用的卡里（调用 id，同会话内查找的 `tool`）；缺 ⇒ 落在它自己那张卡上。
  */

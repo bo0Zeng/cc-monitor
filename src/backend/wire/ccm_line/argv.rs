@@ -33,7 +33,6 @@ pub mod flag {
     pub const CCM_HELP: &str = "--ccm-help";
     pub const CCM_VERSION: &str = "--ccm-version";
     pub const CCM_PROBE: &str = "--ccm-probe";
-    pub const CCM_SID: &str = "--ccm-sid";
     /// `--tab <show|hide>`：新会话进不进标签页（不给 ⇒ 照这台偏好，判定住 `history/session_hidden.rs`）。claude 没有同名旗标。
     pub const TAB: &str = "--tab";
     /// `--tab-from <别名>`：`--tab` 是哪个别名写的（ccm 往 tmux 里那一趟交下去用，那一趟的命令行里已经没有别名了）。
@@ -129,7 +128,6 @@ pub struct Opts {
     pub cwd_if: Vec<(String, String)>,
     pub agent: String,
     pub launcher: String,
-    pub ccm_sid: String,
     /// `--tab`；没给 ⇒ `None`。
     pub tab: Option<cmd_wire::session::Tab>,
     /// `--tab` 是哪个别名写的（合并那一处按来处填 · tmux 里那一趟由 `--tab-from` 交来）；空 ＝ 命令行当场给的 / 没给。
@@ -242,7 +240,6 @@ pub fn blank_opts(left: &[String]) -> Opts {
         cwd_if: Vec::new(),
         agent: Defaults::agent().to_string(),
         launcher: String::new(),
-        ccm_sid: String::new(),
         tab: None,
         tab_from: String::new(),
         alias: String::new(),
@@ -278,7 +275,6 @@ pub const RIGHT_WORDS: &[&str] = &[
     flag::CCM_HELP,
     flag::CCM_VERSION,
     flag::CCM_PROBE,
-    flag::CCM_SID,
     flag::TAB,
     flag::TAB_FROM,
     flag::CCM_ALIAS,
@@ -336,7 +332,6 @@ pub fn word_at(args: &[String], i: usize) -> Result<Word, Die> {
         | flag::AGENT
         | flag::LAUNCHER
         | flag::ATTACH
-        | flag::CCM_SID
         | flag::TAB
         | flag::TAB_FROM
         | flag::CCM_ALIAS
@@ -381,7 +376,6 @@ pub fn apply_word(o: &mut Opts, w: &Word, at: usize) -> Result<Option<Early>, Di
         flag::AGENT => o.agent = v(0),
         flag::LAUNCHER => o.launcher = v(0),
         flag::ATTACH => o.attach_name = v(0),
-        flag::CCM_SID => o.ccm_sid = v(0),
         flag::TAB => {
             o.tab = Some(tab_of(&v(0)).ok_or_else(|| {
                 Die(copy_text(
@@ -523,12 +517,17 @@ pub fn parse_layered(layers: &[Layer], args: &[String]) -> Result<(Parsed, Vec<O
 }
 
 /// 逐词落完之后的收尾：认是哪一家、按那一家的写法认 resume、组合校验。[`parse_layered`] 与别名校验（`assets/aliases::check_alias`）共用。
-pub(crate) fn finish(mut o: Opts) -> Result<Opts, Die> {
+pub(crate) fn finish(o: Opts) -> Result<Opts, Die> {
+    finish_among(crate::agents::REGISTRY, o)
+}
+
+/// [`finish`] 的可喂夹具那一半：认是哪一家 · 那一家有没有账号这一维都问 `registry`。
+pub(crate) fn finish_among(registry: &[crate::agents::Adapter], mut o: Opts) -> Result<Opts, Die> {
     // 哪一家：空 ⇒ 默认那一家；注册表里没有 ⇒ 报错、列出认得的几家（不落默认）。下游只见解析好的 kind。
-    let (kind, face) = crate::agents::pick_kind(Some(&o.agent)).map_err(Die)?;
+    let (kind, face) = crate::agents::pick_kind_among(registry, Some(&o.agent)).map_err(Die)?;
     o.agent = kind.to_string();
-    o.resumes = resume_sid(&o.passthru, face.resume_token).map(str::to_string);
-    validate(&o)?;
+    o.resumes = resume_sid(&o.passthru, face.resume_token, face.resume_short).map(str::to_string);
+    validate(registry, &o)?;
     // 不轮换是起之前按定好的会话ID记的：只有起新会话、且那一家认先定会话ID才记得上。
     if o.no_rotation {
         if o.resumes.is_some() || !o.attach_name.is_empty() {
@@ -537,45 +536,86 @@ pub(crate) fn finish(mut o: Opts) -> Result<Opts, Die> {
         if face.preset_sid.is_none() {
             return die(copy_text(
                 "beArgv.validate.noRotationNoSid",
-                &[("agent", &o.agent.to_string())],
+                &[(
+                    "agent",
+                    &crate::agents::family_said_among(registry, &o.agent),
+                )],
             ));
         }
     }
     Ok(o)
 }
 
-/// 透传里 resume 的那条会话，按这一家的 resume 写法认（`token` ＝ `LaunchFace::resume_token`）：
-/// - 旗标形（`--` 开头）：`<token> <值>` / `<token>=<值>` / `-r <值>`（最后一个算；agent 自己的 `--` 之后不看）；
+/// 透传里 resume 的那条会话，按这一家的 resume 写法认（`token` ＝ `LaunchFace::resume_token`，`short` ＝ `LaunchFace::resume_short`）：
+/// - 旗标形（`--` 开头）：`<token> <值>` / `<token>=<值>` / `<short> <值>`（最后一个算；agent 自己的 `--` 之后不看）；
 /// - 子命令形：透传第一个词恰是 `<token>` ⇒ 下一个词（不以 `-` 开头才算）。
 ///
 /// 值可能是搜索词 / 会话名而不是 sid —— 那只会对不上快照里任何 `@ccm_sid`，不误伤。
-pub(crate) fn resume_sid<'a>(passthru: &'a [String], token: &str) -> Option<&'a str> {
+pub(crate) fn resume_sid<'a>(
+    passthru: &'a [String],
+    token: &str,
+    short: Option<&str>,
+) -> Option<&'a str> {
     if !token.starts_with("--") {
         return match passthru {
             [first, v, ..] if first == token && !v.starts_with('-') => Some(v.as_str()),
             _ => None,
         };
     }
+    let names: Vec<&str> = std::iter::once(token).chain(short).collect();
+    flag_at(passthru, &names)
+        .and_then(|at| at.value(passthru))
+        .filter(|v| !v.is_empty() && !v.starts_with('-'))
+}
+
+/// 透传里一个旗标的值在哪：`<旗标> <值>`（下一个词，[`FlagAt::Next`]；旗标在末尾没给值也算，值读不出）或 `<旗标>=<值>`（同一个词，[`FlagAt::Inline`]）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FlagAt {
+    Next(usize),
+    Inline(usize),
+}
+
+impl FlagAt {
+    /// 那个值；`Next` 越过末尾 ⇒ `None`。
+    pub fn value(self, words: &[String]) -> Option<&str> {
+        match self {
+            FlagAt::Next(i) => words.get(i).map(String::as_str),
+            FlagAt::Inline(i) => words.get(i).and_then(|w| w.split_once('=')).map(|(_, v)| v),
+        }
+    }
+
+    /// 把那个值换成 `v`（`flag` 是 `Inline` 那一形要写回的旗标名）。`Next` 越过末尾 ⇒ 不动。
+    pub fn put(self, words: &mut [String], flag: &str, v: String) {
+        match self {
+            FlagAt::Next(i) => {
+                if let Some(w) = words.get_mut(i) {
+                    *w = v;
+                }
+            }
+            FlagAt::Inline(i) => words[i] = format!("{flag}={v}"),
+        }
+    }
+}
+
+/// **找透传里某个旗标的位置 —— 全仓一份**（`names` 是同一个意思的几种写法，如 `--resume` 与 `-r`）：写了几次认最后一个
+/// （那一家自己也是后写的盖前写的）；那一家自己的 `--` 之后不看；`<旗标> <值>` 那一形的值那一格不再当旗标认。
+pub fn flag_at(words: &[String], names: &[&str]) -> Option<FlagAt> {
     let mut found = None;
     let mut i = 0;
-    while let Some(w) = passthru.get(i) {
-        match w.as_str() {
-            flag::END => break,
-            w if w == token || w == "-r" => {
-                if let Some(v) = passthru.get(i + 1).filter(|v| !v.starts_with('-')) {
-                    found = Some(v.as_str());
-                    i += 1;
-                }
-            }
-            w => {
-                if let Some(v) = w
-                    .strip_prefix(token)
-                    .and_then(|r| r.strip_prefix('='))
-                    .filter(|v| !v.is_empty())
-                {
-                    found = Some(v);
-                }
-            }
+    while let Some(w) = words.get(i) {
+        if w == flag::END {
+            break;
+        }
+        if names.contains(&w.as_str()) {
+            found = Some(FlagAt::Next(i + 1));
+            i += 2;
+            continue;
+        }
+        if names
+            .iter()
+            .any(|n| w.strip_prefix(n).is_some_and(|r| r.starts_with('=')))
+        {
+            found = Some(FlagAt::Inline(i));
         }
         i += 1;
     }
@@ -584,7 +624,7 @@ pub(crate) fn resume_sid<'a>(passthru: &'a [String], token: &str) -> Option<&'a 
 
 /// 组合校验。**一条都不许静默忽略** —— 静默忽略正是本工作区反复消灭的那类病
 ///（写了个修饰、看起来生效了、实际被吃掉）。
-fn validate(o: &Opts) -> Result<(), Die> {
+fn validate(registry: &[crate::agents::Adapter], o: &Opts) -> Result<(), Die> {
     if !o.account.is_empty() && o.use_base {
         return die(copy_text("beArgv.validate.accountAndBase", &[]));
     }
@@ -593,11 +633,14 @@ fn validate(o: &Opts) -> Result<(), Die> {
     }
     // 这一家没有账号这一维 ⇒ 选号说不出：明说，不导出一个它不读的变量（`--base` 照收，什么都不做）。
     if (!o.account.is_empty() || !o.account_dir.is_empty())
-        && crate::agents::account_env_of(&o.agent).is_none()
+        && crate::agents::account_env_among(registry, &o.agent).is_none()
     {
         return die(copy_text(
             "beArgv.validate.agentNoAccounts",
-            &[("agent", &o.agent.to_string())],
+            &[(
+                "agent",
+                &crate::agents::family_said_among(registry, &o.agent),
+            )],
         ));
     }
     if o.hosted && o.use_tmux {
@@ -626,14 +669,6 @@ pub fn check_values(o: &Opts) -> Result<(), Die> {
         return die(copy_text(
             "beArgv.validate.badSize",
             &[("size", &o.tmux_size.to_string())],
-        ));
-    }
-    // 标识符在拼进容器路那条 shell 串之前先过放行判定（`INVARIANTS §47` ①；判定住 `shell-quote-core`；
-    // quote 只管元字符，管不了 `-` 开头的选项注入）。
-    if !o.ccm_sid.is_empty() && !shell_quote_core::session_id_ok(&o.ccm_sid) {
-        return die(copy_text(
-            "beArgv.validate.badCcmSid",
-            &[("sid", &format!("{:?}", o.ccm_sid))],
         ));
     }
     if !o.account_dir.is_empty() && !acct_core::config_dir_ok(&o.account_dir) {

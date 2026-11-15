@@ -10,9 +10,10 @@
 //!
 //! 期望值一律手写自上面三处原文（**不**取自被测的 `LINES`），两侧同源会恒真。
 //! 表 B（承诺面）是判定、住后端：它的判据（判序 · 账本 == 代码）随 `promised` 搬进 `tests/backend/control/deploy_plan_tests.rs`。
+//! `uname -s -m` 的回话 → 键（`key_from_uname`）随它住进后端 `deploy`，判据在 `tests/backend/deploy/lib_tests.rs`。
 
 use super::*;
-use deploy_contract::{key_from_uname, key_of, Route};
+use deploy_contract::{key_of, Route};
 use std::collections::BTreeSet;
 
 fn k(os: Os, arch: Arch) -> Key {
@@ -81,115 +82,6 @@ fn the_key_is_read_from_what_the_machine_answers() {
             arch: "riscv64".into()
         })
     );
-}
-
-/// B5b：`uname -s -m` 收全的三样 → 键。退出码不是 0（Windows 默认 shell 没有 `uname`）/ 空 ⇒ 问不出 OS；只一段 ⇒ 问不出 arch。
-#[test]
-fn uname_answers_map_to_a_key_or_a_named_refusal() {
-    assert_eq!(
-        key_from_uname(Some(0), "Linux x86_64\n", ""),
-        Ok(k(Os::Linux, Arch::X86_64))
-    );
-    match key_from_uname(
-        Some(1),
-        "",
-        "'uname' is not recognized as an internal command",
-    ) {
-        Err(r @ Refusal::OsUnknown(_)) => {
-            assert_eq!(
-                r.raw(),
-                Some("'uname' is not recognized as an internal command"),
-                "那台的原话交给复制详情"
-            );
-            let said = r.say("devbox");
-            assert!(!said.contains("is not recognized"), "原话不上句子：{said}");
-            assert!(
-                said.contains(copy_core::copy_static!("rsByteTable.key.said")),
-                "{said}"
-            );
-        }
-        other => panic!("退出码 1 该是问不出 OS：{other:?}"),
-    }
-    // 答了认不出的几段 ⇒ 句子只说「应答无法解析」，那几段进复制详情。
-    match key_from_uname(Some(0), "Linux x86_64 extra", "") {
-        Err(r @ Refusal::OsUnknown(_)) => {
-            assert_eq!(r.raw(), Some("Linux x86_64 extra"));
-            let said = r.say("devbox");
-            assert!(!said.contains("extra"), "{said}");
-            assert!(
-                said.contains(copy_core::copy_static!("rsByteTable.key.unreadable")),
-                "{said}"
-            );
-        }
-        other => panic!("{other:?}"),
-    }
-    // 只答一段 ⇒ 问不出 arch，答的那一段进详情；什么都没答 ⇒ 没有原话。
-    match key_from_uname(Some(0), "Linux\n", "") {
-        Err(r @ Refusal::ArchUnknown(_)) => assert_eq!(r.raw(), Some("Linux")),
-        other => panic!("{other:?}"),
-    }
-    assert_eq!(key_from_uname(Some(0), "", "").unwrap_err().raw(), None);
-    // 没送退出码（连接被掐）≠ 0：不许读成「跑成了」。
-    assert!(matches!(
-        key_from_uname(None, "Linux x86_64", ""),
-        Err(Refusal::OsUnknown(_))
-    ));
-    assert!(matches!(
-        key_from_uname(Some(0), "", ""),
-        Err(Refusal::OsUnknown(_))
-    ));
-    assert!(matches!(
-        key_from_uname(Some(0), "Linux\n", ""),
-        Err(Refusal::ArchUnknown(_))
-    ));
-    assert!(matches!(
-        key_from_uname(Some(0), "Linux x86_64 extra", ""),
-        Err(Refusal::OsUnknown(_))
-    ));
-}
-
-/// Windows 那台用本地代码页（GBK）回话 ⇒ 界面上**不照抄乱码**，拒绝照旧。
-///
-/// 要求：「**拒绝是一个会到达用户的结论，不是一行 `debug` 日志**；文案照」
-/// 与第 4 条「**OS 问不出 ＝ 拒绝，不是回落**」；读数
-/// 「Windows 远端 `uname` 的回话在 toast / 日志里是**乱码**：PowerShell 按控制台代码页（GBK）吐错误，我们按 UTF-8 解」。
-/// 异源：语料是**手写的 GBK 字节**（「无法将“uname”」），走与后端 `ssh-dial/uses.rs` 同一种有损解（`from_utf8_lossy`）；
-/// 期望是「整句里零个 U+FFFD」＋「说得出不是 UTF-8」，不从被测常量里抠。正控：UTF-8 的回话照旧原样带出。
-#[test]
-fn an_answer_that_is_not_utf8_is_not_parroted_as_mojibake() {
-    // 「uname : 无法将“uname”项识别为…」的 GBK 字节（前半段）。
-    let gbk: &[u8] = b"uname : \xce\xde\xb7\xa8\xbd\xab\xa1\xb0uname\xa1\xb1";
-    let lossy = String::from_utf8_lossy(gbk).into_owned();
-    assert!(
-        lossy.contains('\u{FFFD}'),
-        "语料自检：GBK 字节按 UTF-8 解应当留下 U+FFFD"
-    );
-    for (exit, out, err) in [(Some(1), "", lossy.as_str()), (Some(0), lossy.as_str(), "")] {
-        let r = key_from_uname(exit, out, err);
-        let Err(refusal @ Refusal::OsUnknown(_)) = &r else {
-            panic!("不是 UTF-8 的回话照样该是「问不出 OS」：{r:?}");
-        };
-        let said = refusal.say("vmself");
-        assert!(!said.contains('\u{FFFD}'), "界面那句里照抄了乱码：{said}");
-        assert!(
-            said.contains(copy_core::copy_static!("rsByteTable.key.unreadable")),
-            "那句话没说出「应答无法解析」：{said}"
-        );
-        assert!(said.contains("vmself"), "{said}");
-        assert_eq!(refusal.raw(), Some(lossy.trim()), "回话原样进复制详情");
-    }
-    // 正控：UTF-8 的报错照旧说「应答报错」（不说成无法解析），原话进复制详情。
-    match key_from_uname(Some(1), "", "'uname' is not recognized") {
-        Err(r @ Refusal::OsUnknown(_)) => {
-            let said = r.say("vmself");
-            assert!(
-                said.contains(copy_core::copy_static!("rsByteTable.key.said")),
-                "{said}"
-            );
-            assert_eq!(r.raw(), Some("'uname' is not recognized"));
-        }
-        other => panic!("{other:?}"),
-    }
 }
 
 // ═══ 拒绝点：六键 × 两路的全表 ═══════════════════════════════════════════════

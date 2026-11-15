@@ -113,10 +113,68 @@
     "tip": "记录已不在 · 不可恢复",
     "tone": "plain"
   },
+  "live-asks": {
+    "can": {
+      "attach": {
+        "can": "no",
+        "why": "无法确定所在终端"
+      },
+      "close": {
+        "can": "no",
+        "why": "运行中"
+      },
+      "end": {
+        "can": "yes"
+      },
+      "front": {
+        "can": "yes"
+      },
+      "model": {
+        "can": "no",
+        "why": "请求未答 · 答完再换"
+      },
+      "permission": {
+        "can": "no",
+        "why": "请求未答 · 答完再换"
+      },
+      "reattach": {
+        "can": "no",
+        "why": "运行中"
+      },
+      "resume": {
+        "can": "no",
+        "why": "运行中"
+      },
+      "say": {
+        "can": "yes",
+        "hint": "发消息…"
+      },
+      "stop": {
+        "can": "no",
+        "why": "待答请求"
+      },
+      "view": {
+        "can": "no",
+        "why": "无法确定所在终端"
+      }
+    },
+    "dot": "asks",
+    "life": {
+      "activity": "needs_you",
+      "is": "live"
+    },
+    "line": "等批准",
+    "name": "待答请求",
+    "order": 0,
+    "settled": false,
+    "tip": "待答请求",
+    "tone": "need"
+  },
   "live-background": {
     "can": {
       "attach": {
-        "can": "yes"
+        "can": "no",
+        "why": "无法确定所在终端"
       },
       "close": {
         "can": "no",
@@ -151,11 +209,8 @@
         "why": "后台任务运行中"
       },
       "view": {
-        "can": "yes",
-        "open": {
-          "kind": "attach"
-        },
-        "said": "在 cc-monitor 里打开它的终端"
+        "can": "no",
+        "why": "无法确定所在终端"
       }
     },
     "dot": "background",
@@ -173,7 +228,8 @@
   "live-idle": {
     "can": {
       "attach": {
-        "can": "yes"
+        "can": "no",
+        "why": "无法确定所在终端"
       },
       "close": {
         "can": "no",
@@ -208,11 +264,8 @@
         "why": "空闲"
       },
       "view": {
-        "can": "yes",
-        "open": {
-          "kind": "attach"
-        },
-        "said": "在 cc-monitor 里打开它的终端"
+        "can": "no",
+        "why": "无法确定所在终端"
       }
     },
     "dot": "idle",
@@ -244,11 +297,11 @@
       },
       "model": {
         "can": "no",
-        "why": "先答完需手动"
+        "why": "请求未答 · 答完再换"
       },
       "permission": {
         "can": "no",
-        "why": "先答完需手动"
+        "why": "请求未答 · 答完再换"
       },
       "reattach": {
         "can": "no",
@@ -289,7 +342,8 @@
   "live-unclear": {
     "can": {
       "attach": {
-        "can": "yes"
+        "can": "no",
+        "why": "无法确定所在终端"
       },
       "close": {
         "can": "no",
@@ -324,11 +378,8 @@
         "why": "状态不明"
       },
       "view": {
-        "can": "yes",
-        "open": {
-          "kind": "attach"
-        },
-        "said": "在 cc-monitor 里打开它的终端"
+        "can": "no",
+        "why": "无法确定所在终端"
       }
     },
     "dot": "idle",

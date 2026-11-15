@@ -16,7 +16,7 @@ fn ask<A: crate::files::Ask, E: Codes>(
     crate::files::answer(req, &cx.tz).map_err(|f| {
         typed::of_fail(
             {
-                let code = f.code_or_fallback().to_string();
+                let code = cmd_wire::failed::Failed::code_or_fallback(f.code.clone());
                 crate::wire::spec::fail(&code, f)
             },
             fallback,
@@ -26,8 +26,12 @@ fn ask<A: crate::files::Ask, E: Codes>(
 
 /// 资产域那扇门（`doors::LocalFiles`）问读的那几样：同一个本体，失败只交码与那一句（不过这一条的码表：门不是帧面）。
 pub(crate) fn in_process<A: crate::files::Ask>(req: A) -> Result<A::Reply, Said> {
-    crate::files::answer(req, &Default::default())
-        .map_err(|f| crate::common::door::said_of(f.code_or_fallback(), &f.said))
+    crate::files::answer(req, &Default::default()).map_err(|f| {
+        crate::common::door::said_of(
+            &cmd_wire::failed::Failed::code_or_fallback(f.code.clone()),
+            &f.said,
+        )
+    })
 }
 
 /// 正被浏览的目录有了动静的通道（流的 tap 订它推 `changed {files_dir}`）：经这一扇门交出去，tap 不伸进文件管理那一块。
@@ -177,6 +181,36 @@ impl crate::wire::typed::Handle for FilesIndexStatus {
 }
 
 codes! {
+    /// `files-menu` 的码。
+    pub(crate) enum FilesMenuErr {
+    }
+}
+
+/// `files-menu`：桌面文件窗口选中这几项 ⇒ 那一份菜单成品（右键菜单那几组 · 十四件每件此刻的样子）。寻址本机，不碰盘。
+pub(crate) struct FilesMenu;
+
+impl Command for FilesMenu {
+    typed::by_call!(wire::FilesMenuReq);
+    type Err = FilesMenuErr;
+}
+
+impl crate::wire::typed::Handle for FilesMenu {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: wire::FilesMenuReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::DeskMenu, FilesMenuErr>> + Send + 'static
+    {
+        let (cx, ()) = cx.split();
+        async move {
+            let cx = &cx;
+
+            ask(req, cx, FilesMenuErr::BadArgs)
+        }
+    }
+}
+
+codes! {
     /// `files-index-rebuild` 的码。
     pub(crate) enum FilesIndexRebuildErr {
         /// 另一趟正在走。
@@ -236,7 +270,7 @@ pub(crate) fn browse(conn: u64, req: wire::BrowseReq) -> Result<wire::BrowseRepl
     crate::files::browse(conn, req).map_err(|f| {
         typed::of_fail(
             {
-                let code = f.code_or_fallback().to_string();
+                let code = cmd_wire::failed::Failed::code_or_fallback(f.code.clone());
                 crate::wire::spec::fail(&code, f)
             },
             FilesBrowseErr::BadArgs,
@@ -424,7 +458,7 @@ impl crate::wire::typed::Handle for FilesGrep {
             .map_err(|f| {
                 typed::of_fail(
                     {
-                        let code = f.code_or_fallback().to_string();
+                        let code = cmd_wire::failed::Failed::code_or_fallback(f.code.clone());
                         crate::wire::spec::fail(&code, f)
                     },
                     FilesGrepErr::BadArgs,

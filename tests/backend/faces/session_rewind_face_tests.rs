@@ -94,21 +94,23 @@ fn what_happened_after_the_line_is_read_from_the_record_and_the_run_table() {
         },
     ];
     use crate::control::rewind::After;
+    // 夹具记录是默认那一家的形状（认家由调用方照按 sid 找到它的那一家交进来）。
+    let kind = crate::agents::default_kind();
     assert_eq!(
-        after_in(&p, "u1", &runs).expect("读得到"),
+        after_in(&p, kind, "u1", &runs).expect("读得到"),
         Some(After {
             code: true,
             runs: 2
         })
     );
     assert_eq!(
-        after_in(&p, "u2", &runs).expect("读得到"),
+        after_in(&p, kind, "u2", &runs).expect("读得到"),
         Some(After {
             code: false,
             runs: 1
         })
     );
-    assert_eq!(after_in(&p, "zz", &runs).expect("读得到"), None);
+    assert_eq!(after_in(&p, kind, "zz", &runs).expect("读得到"), None);
 }
 
 /// 这台没有那条会话的记录 ⇒ 一个键不按，回不支持（测试沙箱的家是空的）。
@@ -126,4 +128,53 @@ fn a_session_without_a_record_here_is_not_walked() {
     )
     .expect("没有记录不是命令级错");
     assert_eq!(got, Walked::No(Why::Unsupported));
+}
+
+/// ★ 回退菜单照按 sid 找到它的那一家认：那一家没申报 ⇒ 没有（不支持、一个键不按），不落到默认那一家的菜单；申报了 ⇒ 就是它那一份。
+#[test]
+fn the_menu_follows_the_family_the_session_was_found_in() {
+    let (reg, at) = found_in_the_other("rewind-none", None);
+    assert!(
+        face_among(&reg, &at).is_none(),
+        "那一家没申报回退 ⇒ 没有菜单，不照默认那一家按键"
+    );
+    let (reg, at) = found_in_the_other("rewind-own", crate::agents::fake::LAUNCH.rewind);
+    assert!(face_among(&reg, &at).is_some(), "申报了 ⇒ 照那一家的菜单");
+}
+
+/// ★ 弹选项判忙只照那一屏：空着的输入行（只有后台子 agent 在跑、主 agent 空着时活会话表照样说在跑，实测屏上就是这一屏）⇒ 不忙、
+/// 不给「什么时候退」；屏上在出字 ⇒ 给，缺省等这一轮完；读不了屏 ⇒ 回退那一串退不了：只写为什么、一项不给（不拿「不忙」顶上）。
+#[test]
+fn the_options_judge_a_running_turn_by_the_screen_alone() {
+    use crate::agents::fake::rewind::{FakeTerm, FACE};
+    let mut t = FakeTerm::with(&["一"]);
+    assert!(!turn_running(&FACE, &t.drawn()), "空着的输入行 ⇒ 不忙");
+    let idle = options_on(&FACE, Ok(t.drawn()), After::default());
+    assert!(!idle.how.is_empty());
+    assert!(idle.when.is_empty(), "不忙 ⇒ 不给「什么时候退」");
+    t.busy = true;
+    assert!(turn_running(&FACE, &t.drawn()), "屏上在出字 ⇒ 忙");
+    let busy = options_on(&FACE, Ok(t.drawn()), After::default());
+    assert_eq!(
+        busy.when.iter().find(|r| r.default).map(|r| r.when),
+        Some(cmd_wire::rewind::RewindWhen::AfterTurn)
+    );
+    let gone = options_on(&FACE, Err("终端已结束".into()), After::default());
+    assert!(
+        gone.how.is_empty() && gone.when.is_empty(),
+        "读不了屏 ⇒ 一项不给"
+    );
+    assert_eq!(gone.said.as_deref(), Some("终端已结束"), "照实写为什么");
+}
+
+/// 会话落在 `other` 那一家（照路径认不出），`other` 回退那一格照 `rewind`；默认那一家申报了回退菜单（[`crate::agents::fake::found_in_the_other`]）。
+fn found_in_the_other(
+    tag: &str,
+    rewind: Option<RewindFace>,
+) -> (Vec<crate::agents::Adapter>, crate::agents::SessionAt) {
+    assert!(
+        crate::agents::fake::LAUNCH.rewind.is_some(),
+        "默认那一家申报了回退菜单"
+    );
+    crate::agents::fake::found_in_the_other(tag, |f| crate::agents::LaunchFace { rewind, ..f })
 }

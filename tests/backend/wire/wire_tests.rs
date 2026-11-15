@@ -221,22 +221,22 @@ use serde_json::Value;
 fn changed_frames_have_exactly_these_bytes() {
     let cases = [
         (
-            Frame::changed(crate::wire::Changed::Accounts {}),
+            WireFrame::changed(crate::wire::Changed::Accounts {}),
             "{\"kind\":\"changed\",\"topic\":\"accounts\"}\n",
         ),
         (
-            Frame::changed(crate::wire::Changed::RotationStrategies { body: None }),
+            WireFrame::changed(crate::wire::Changed::RotationStrategies { body: None }),
             "{\"kind\":\"changed\",\"topic\":\"rotation_strategies\"}\n",
         ),
         (
-            Frame::changed(crate::wire::Changed::Tasks {
+            WireFrame::changed(crate::wire::Changed::Tasks {
                 key: "s1".into(),
                 body: None,
             }),
             "{\"kind\":\"changed\",\"topic\":\"tasks\",\"key\":\"s1\"}\n",
         ),
         (
-            Frame::changed(crate::wire::Changed::Plan {
+            WireFrame::changed(crate::wire::Changed::Plan {
                 key: "/w".into(),
                 rev: Some("0123abcd".into()),
                 body: Some(cmd_wire::frame::PlanNeeds { needs: 2 }),
@@ -249,63 +249,6 @@ fn changed_frames_have_exactly_these_bytes() {
     }
 }
 
-/// ★ B8：`transfer` 帧的**逐字节**金标准（四形：进行中 · 传完 · 失败 · 撤）；`end` 缺席时不上线；
-/// 它丢了不可恢复（终局丢了，看的人永远等下去）。
-#[test]
-fn transfer_frames_have_exactly_these_bytes() {
-    let f = |end: Option<crate::wire::TransferEnd>| {
-        Frame::Transfer(crate::wire::Transfer {
-            id: "xfer-7".into(),
-            got: 262144,
-            total: 1000000,
-            end,
-        })
-    };
-    let cases = [
-        (
-            f(None),
-            "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000}\n",
-        ),
-        (
-            f(Some(crate::wire::TransferEnd::Done {
-                bytes: 1000000,
-                sha256: None,
-            })),
-            "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000,\"end\":{\"state\":\"done\",\"bytes\":1000000}}\n",
-        ),
-        // 上传那一路的传完带整份摘要（提交时的对拍依据）；下载那一路没有 ⇒ 上一格原样不上线。
-        (
-            f(Some(crate::wire::TransferEnd::Done {
-                bytes: 1000000,
-                sha256: Some("ab".repeat(32)),
-            })),
-            "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000,\"end\":{\"state\":\"done\",\"bytes\":1000000,\"sha256\":\"abababababababababababababababababababababababababababababababab\"}}\n",
-        ),
-        (
-            f(Some(crate::wire::TransferEnd::Failed(crate::wire::detail::Failed::local("写暂存件失败".into())))),
-            "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000,\"end\":{\"state\":\"failed\",\"code\":\"failed\",\"said\":\"写暂存件失败\",\"detail\":\"\"}}\n",
-        ),
-        // 带码 · 复制详情的那一形（今天按码换路的只有 SFTP 起始目录不是后端 home 那一码；句子只带原因词，原话在 `detail` 里）。
-        (
-            f(Some(crate::wire::TransferEnd::Failed(crate::wire::detail::Failed {
-                code: "sftp_home_mismatch".into(),
-                said: "w".into(),
-                detail: "d".into(),
-                data: None,
-            }))),
-            "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000,\"end\":{\"state\":\"failed\",\"code\":\"sftp_home_mismatch\",\"said\":\"w\",\"detail\":\"d\"}}\n",
-        ),
-        (
-            f(Some(crate::wire::TransferEnd::Cancelled)),
-            "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000,\"end\":{\"state\":\"cancelled\"}}\n",
-        ),
-    ];
-    for (frame, want) in cases {
-        assert_eq!(to_line(&frame).unwrap(), want);
-        assert!(!frame.loss_is_recoverable(), "传输帧被判成丢了可恢复");
-    }
-}
-
 /// `live` 的逐字节线上形状（期望是手写字面量；客户端按 `cmd-wire` 的类型解同样的串）。
 /// 一张卡五种 `op`：整卡 · 加块 · 加字 · 说完了 · 撤卡；`run` 缺 ＝ 主运行。可丢（SSE 只保快，写者最低优先）。
 #[test]
@@ -313,7 +256,7 @@ fn live_frames_have_exactly_these_bytes() {
     use crate::agents::BlockKind;
     use crate::wire::{LiveBlock, LiveCard, LiveOp, LivePhase, LiveWhy};
     let live = |run: Option<&str>, n: u64, op: LiveOp| {
-        Frame::LiveCard(LiveCard {
+        WireFrame::LiveCard(LiveCard {
             sid: "0b6c1f7e-sid".into(),
             run: run.map(str::to_string),
             card: 12,
@@ -384,7 +327,7 @@ fn live_frames_have_exactly_these_bytes() {
 fn session_runs_frames_have_exactly_these_bytes() {
     use crate::agents::RunDid;
     use crate::wire::{RunEnded, RunInfo, RunState, RunWhy};
-    let f = Frame::SessionRuns(crate::wire::SessionRuns {
+    let f = WireFrame::SessionRuns(crate::wire::SessionRuns {
         sid: "s1".into(),
         runs: vec![
             RunInfo {
@@ -403,7 +346,6 @@ fn session_runs_frames_have_exactly_these_bytes() {
                 waiting: Some("Bash".into()),
                 started_ms: Some(1_000),
                 active_ms: Some(2_000),
-                calls: 3,
                 background: true,
                 ..RunInfo::default()
             },
@@ -413,7 +355,6 @@ fn session_runs_frames_have_exactly_these_bytes() {
                 last: Some(RunDid::Say),
                 started_ms: Some(1_000),
                 active_ms: Some(2_000),
-                ended_ms: Some(3_000),
                 why: Some(RunWhy::Reported),
                 error: Some("boom".into()),
                 ..RunInfo::default()
@@ -489,20 +430,20 @@ fn b64_matches_the_rfc_4648_test_vectors() {
 /// `overflow` 只有那一句：只丢了行 · 已重新对齐 · 两样都有，三种各一句（数在句子里）。
 #[test]
 fn the_overflow_frame_is_the_one_sentence() {
-    let said = |f: Frame| -> Value {
+    let said = |f: WireFrame| -> Value {
         let line = to_line(&f).expect("serialize");
         serde_json::from_str(line.strip_suffix('\n').unwrap()).expect("valid json")
     };
     assert_eq!(
-        said(Frame::overflow(42, false)),
+        said(WireFrame::overflow(42, false)),
         serde_json::json!({ "kind": "overflow", "said": copy_core::copy_text("beStream.overflow.lines", &[("n", "42")]) })
     );
     assert_eq!(
-        said(Frame::overflow(0, true))["said"],
+        said(WireFrame::overflow(0, true))["said"],
         copy_core::copy_text("beStream.overflow.realigned", &[])
     );
     assert_eq!(
-        said(Frame::overflow(3, true))["said"],
+        said(WireFrame::overflow(3, true))["said"],
         copy_core::copy_text("beStream.overflow.realignedLines", &[("n", "3")])
     );
 }
@@ -532,7 +473,7 @@ fn seq_counter_is_monotonic_per_path_and_independent_across_paths() {
 #[test]
 fn line_with_quotes_backslashes_and_newline_roundtrips() {
     let raw = "before\"quote\\backslash\nafter-newline";
-    let frame = Frame::Line(crate::wire::Line {
+    let frame = WireFrame::Line(cmd_wire::frame::Line {
         session_id: "sid".into(),
         path: "/some/path.jsonl".into(),
         seq: 42,
@@ -578,7 +519,7 @@ fn the_session_left_frame_has_exactly_these_bytes() {
         ),
         (crate::wire::Life::Gone, None, r#"{"is":"gone"}"#),
     ] {
-        let line = to_line(&Frame::session_left(
+        let line = to_line(&WireFrame::session_left(
             "abc".into(),
             life,
             by.map(str::to_string),
@@ -598,7 +539,10 @@ fn the_session_left_frame_has_exactly_these_bytes() {
 #[test]
 fn sessions_replayed_has_exactly_these_bytes() {
     assert_eq!(
-        to_line(&Frame::SessionsReplayed(crate::wire::SessionsReplayed {})).unwrap(),
+        to_line(&WireFrame::SessionsReplayed(
+            crate::wire::SessionsReplayed {}
+        ))
+        .unwrap(),
         "{\"kind\":\"sessions_replayed\"}\n"
     );
 }
@@ -645,7 +589,7 @@ fn hx2_the_echo_list_is_exactly_the_two_handed_names() {
 #[test]
 fn hx2_production_hello_bytes_do_not_change_when_nothing_was_handed() {
     let hello = |host_env: std::collections::BTreeMap<String, String>| {
-        to_line(&Frame::Hello(crate::wire::Hello {
+        to_line(&WireFrame::Hello(crate::wire::Hello {
             build_id: "b".into(),
             host_arch: "x86_64".into(),
             version: None,
@@ -690,7 +634,7 @@ fn hx2_production_hello_bytes_do_not_change_when_nothing_was_handed() {
 fn every_frame_the_second_frontend_reads() -> Vec<Value> {
     let s = Some("x".to_string());
     let frames = [
-        Frame::Hello(crate::wire::Hello {
+        WireFrame::Hello(crate::wire::Hello {
             build_id: "b".into(),
             host_arch: "x86_64".into(),
             version: None,
@@ -700,7 +644,7 @@ fn every_frame_the_second_frontend_reads() -> Vec<Value> {
             shapes: Default::default(),
             frames: Default::default(),
         }),
-        Frame::Line(crate::wire::Line {
+        WireFrame::Line(cmd_wire::frame::Line {
             session_id: "s".into(),
             path: "/p".into(),
             seq: 1,
@@ -709,8 +653,8 @@ fn every_frame_the_second_frontend_reads() -> Vec<Value> {
             byte_offset: 9,
             rid: None,
         }),
-        Frame::overflow(2, true),
-        Frame::LiveCard(crate::wire::LiveCard {
+        WireFrame::overflow(2, true),
+        WireFrame::LiveCard(crate::wire::LiveCard {
             sid: "s".into(),
             run: s.clone(),
             card: 1,
@@ -728,7 +672,7 @@ fn every_frame_the_second_frontend_reads() -> Vec<Value> {
                 }],
             },
         }),
-        Frame::Reply(crate::wire::Reply {
+        WireFrame::Reply(crate::wire::Reply {
             id: "1".into(),
             ok: false,
             code: s.clone(),
@@ -736,7 +680,7 @@ fn every_frame_the_second_frontend_reads() -> Vec<Value> {
             detail: s.clone(),
             data: Some(serde_json::json!({})),
         }),
-        Frame::Cancelled(crate::wire::Cancelled { id: "1".into() }),
+        WireFrame::Cancelled(crate::wire::Cancelled { id: "1".into() }),
     ];
     frames
         .iter()
@@ -798,7 +742,7 @@ fn the_shapes_the_second_frontend_reads_stay_put() {
 }
 
 /// 请求信封的 `tz`（看的那一台的时区）：认得的 IANA 名 ⇒ 那个时区；缺 · 认不得 · 不是串 ⇒ UTC（不拒，同 `within_ms` 的宽读）。
-/// 推出去的帧在写出去那一下按这条流的时区写钟面（[`Frame::stamp`]）：`line.record.timeText`。
+/// 推出去的帧在写出去那一下按这条流的时区写钟面（[`crate::wire::FrameExit::stamp`]）：`line.record.timeText`。
 #[test]
 fn the_envelope_carries_the_viewer_zone_and_pushed_lines_are_stamped_by_it() {
     let sh = crate::common::time::Tz::named("Asia/Shanghai").unwrap();
@@ -816,7 +760,7 @@ fn the_envelope_carries_the_viewer_zone_and_pushed_lines_are_stamped_by_it() {
     .unwrap()
     .unwrap()
     .record;
-    let mut f = Frame::Line(crate::wire::Line {
+    let f = Frame::Line(crate::wire::Line {
         session_id: "s".into(),
         path: "/p".into(),
         seq: 0,
@@ -825,11 +769,14 @@ fn the_envelope_carries_the_viewer_zone_and_pushed_lines_are_stamped_by_it() {
         byte_offset: 0,
         rid: None,
     });
-    assert!(
-        !to_line(&f).unwrap().contains("timeText"),
-        "产帧那一层不写钟面"
-    );
-    f.stamp(&sh);
+    let Frame::Line(crate::wire::Line {
+        record: Some(made), ..
+    }) = &f
+    else {
+        unreachable!()
+    };
+    assert!(made.rec.time_text.is_none(), "产帧那一层不写钟面");
+    let f = f.stamp(&sh);
     assert!(
         to_line(&f).unwrap().contains(r#""timeText":"04:30""#),
         "{}",
@@ -867,7 +814,7 @@ fn a_changed_body_over_its_cap_is_left_off() {
 fn changed_loss_follows_the_topic_table() {
     for t in ALL {
         let f = Frame::changed(
-            crate::wire::Changed::bare(t, Some("k".into())).expect("每个主题都有那一臂"),
+            crate::wire::bare_changed(t, Some("k".into())).expect("每个主题都有那一臂"),
         );
         assert_eq!(f.loss_is_recoverable(), t.spec().lossy, "{t:?}");
     }
@@ -884,7 +831,7 @@ fn a_long_branch_list_goes_out_in_page_sized_frames_that_add_up() {
         .step_by(7)
         .map(|s| s..(s + 7).min(off.len()))
         .collect();
-    let frames = Frame::branch_pages("s", "/p/s.jsonl", &off, &runs, 0);
+    let frames = WireFrame::branch_pages("s", "/p/s.jsonl", &off, &runs, 0);
     assert!(frames.len() > 1, "要分好几帧：{}", frames.len());
     let mut all = Vec::new();
     let mut got_runs = Vec::new();
@@ -895,7 +842,7 @@ fn a_long_branch_list_goes_out_in_page_sized_frames_that_add_up() {
             "一帧 {} 字节",
             line.len()
         );
-        let Frame::SessionBranch(crate::wire::SessionBranch {
+        let WireFrame::SessionBranch(crate::wire::SessionBranch {
             at,
             off,
             runs: rs,
@@ -925,9 +872,9 @@ fn a_long_branch_list_goes_out_in_page_sized_frames_that_add_up() {
     }
     assert_eq!(all, off);
     assert_eq!(got_runs, runs, "各帧的段拼起来不是整份的段");
-    let tail = Frame::branch_pages("s", "/p/s.jsonl", &off[..10], &[], 8);
+    let tail = WireFrame::branch_pages("s", "/p/s.jsonl", &off[..10], &[], 8);
     assert!(
-        matches!(&tail[..], [Frame::SessionBranch(crate::wire::SessionBranch { at: 8, off: o, sum, .. })] if o.len() == 2 && *sum == crate::wire::branch_sum(&off[..10]))
+        matches!(&tail[..], [WireFrame::SessionBranch(crate::wire::SessionBranch { at: 8, off: o, sum, .. })] if o.len() == 2 && *sum == crate::wire::branch_sum(&off[..10]))
     );
     // 摘要跨进程稳定：钉一个数（FNV-1a 64），换了算法 ⇒ 客户端交回的旧摘要全对不上（只是多发整份，但要有意为之）。
     assert_eq!(crate::wire::branch_sum(&[]), "cbf29ce484222325");
@@ -939,9 +886,9 @@ fn a_long_branch_list_goes_out_in_page_sized_frames_that_add_up() {
                 .wrapping_mul(0x0100_0000_01b3)
         )
     );
-    let none = Frame::branch_pages("s", "/p/s.jsonl", &off[..3], &[], 3);
+    let none = WireFrame::branch_pages("s", "/p/s.jsonl", &off[..3], &[], 3);
     assert!(
-        matches!(&none[..], [Frame::SessionBranch(crate::wire::SessionBranch { at: 3, off, .. })] if off.is_empty())
+        matches!(&none[..], [WireFrame::SessionBranch(crate::wire::SessionBranch { at: 3, off, .. })] if off.is_empty())
     );
 }
 
@@ -1170,10 +1117,30 @@ fn every_life_has_one_whole_face_and_it_matches_the_golden() {
             )
         })
         .collect();
+    // 待答请求那一颗只经状态一句换上（那一句说在等的界面答得了），光凭一生造不出来 ⇒ 照造脸那一口现造一形。
+    produced.insert(
+        "live-asks".into(),
+        serde_json::to_value(
+            <SessionFace as crate::wire::SessionFaceExt>::of(Life::Live {
+                activity: Some(A::NeedsYou),
+                host: None,
+            })
+            .saying(Some(crate::wire::StateLine {
+                text: crate::common::cells::Words(copy_core::copy_text(
+                    "beSession.needs.approve",
+                    &[],
+                )),
+                clock: None,
+                peek: None,
+                asks: true,
+            })),
+        )
+        .unwrap(),
+    );
     produced.insert(
         "unseen".into(),
         serde_json::to_value(face_core::book::unseen(crate::common::cells::Words(
-            comms_inward::chan::said::offline("gpu-01"),
+            copy_core::offline("gpu-01"),
         )))
         .unwrap(),
     );
@@ -1351,7 +1318,7 @@ fn the_fates_sort_after_every_live_session_on_one_ruler() {
 #[test]
 fn the_unseen_face_is_unknown_closes_from_the_menu_and_says_that_machines_offline_line() {
     use cmd_wire::frame::{Allow, CanClose, CanView, SessionDot};
-    let said = comms_inward::chan::said::offline("gpu-01");
+    let said = copy_core::offline("gpu-01");
     let f = face_core::book::unseen(crate::common::cells::Words(said.clone()));
     assert_eq!(f.dot, SessionDot::Unknown);
     assert_eq!(f.life, crate::wire::WireLife::Unclear);

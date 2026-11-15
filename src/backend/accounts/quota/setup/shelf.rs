@@ -11,6 +11,8 @@ use std::sync::{Arc, Mutex, OnceLock};
 pub const DIR_NAME: &str = relay_route_core::file_name_of(relay_route_core::STRATEGIES_DIR_REL);
 /// 第三版脚本挪去的子目录。
 pub(crate) const OLD_DIR: &str = "v3";
+/// 策略文件的后缀（不带点）：认目录里哪几份是策略、拼一份的文件名、盯策略目录（`uses.rs`），都照它。
+pub(crate) const EXT: &str = "rhai";
 /// 一份策略文件：状态（读不懂的也列出来、照实写原因，不覆盖；上限照声明表）。
 const SOURCE: crate::common::own_state::Doc<String> =
     crate::common::own_state::Doc::of(&relay_route_core::STRATEGY_SOURCE_FILE);
@@ -64,11 +66,7 @@ pub fn id_ok(id: &str) -> bool {
 
 /// 一段字节的摘要（十六进制的 SHA-256）。
 pub(crate) fn digest(bytes: &[u8]) -> String {
-    ring::digest::digest(&ring::digest::SHA256, bytes)
-        .as_ref()
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
+    crate::common::digest::sha256_hex(bytes)
 }
 
 /// 内容版本。
@@ -149,7 +147,7 @@ fn load(dir: &Path) -> Vec<Arc<Shelved>> {
         .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
         .filter_map(|e| {
             let p = e.path();
-            if p.extension().and_then(|x| x.to_str()) != Some("rhai") {
+            if p.extension().and_then(|x| x.to_str()) != Some(EXT) {
                 return None;
             }
             let id = p.file_stem()?.to_str()?.to_string();
@@ -201,7 +199,7 @@ pub fn old_files(dir: Option<&Path>) -> Vec<PathBuf> {
         .map(|rd| {
             rd.filter_map(Result::ok)
                 .map(|e| e.path())
-                .filter(|p| p.extension().and_then(|x| x.to_str()) == Some("rhai"))
+                .filter(|p| p.extension().and_then(|x| x.to_str()) == Some(EXT))
                 .collect()
         })
         .unwrap_or_default();
@@ -211,7 +209,12 @@ pub fn old_files(dir: Option<&Path>) -> Vec<PathBuf> {
 
 /// 一份策略在目录里的文件（id 已照 [`id_ok`] 过，拼不出目录外）。
 pub fn path_of(dir: &Path, id: &str) -> PathBuf {
-    dir.join(format!("{id}.rhai"))
+    dir.join(file_name(id))
+}
+
+/// 一份策略的文件名（`<id>.rhai`）：只此一处拼；[`path_of`] · [`write_file`] · [`remove_file`] 都照它。
+fn file_name(id: &str) -> String {
+    format!("{id}.{EXT}")
 }
 
 /// 帧面那一路写一份策略文件：`<家>/strategies/<id>.rhai`（目录只建这一层，整份原子写）。读不读得懂由调用方先判。
@@ -226,7 +229,7 @@ pub fn write_file(
     })?;
     own.ensure_dir(&dir)
         .map_err(|e| io_said(dir.as_path(), &e))?;
-    let file = dir.join(&format!("{id}.rhai"))?;
+    let file = dir.join(&file_name(id))?;
     let held = own.lock(&dir)?;
     own.write(&file, &held, source.as_bytes())?;
     let nodes = crate::accounts::quota::nodes::bus();
@@ -284,7 +287,7 @@ pub fn remove_file(
     let dir = own.path(DIR_NAME).map_err(|_| {
         crate::common::said::Said::from(copy_core::copy_text("beRotation.read.noHome", &[]))
     })?;
-    let file = dir.join(&format!("{id}.rhai"))?;
+    let file = dir.join(&file_name(id))?;
     own.delete_file(&file)
         .map_err(|e| io_said(file.as_path(), &e))?;
     let nodes = crate::accounts::quota::nodes::bus();

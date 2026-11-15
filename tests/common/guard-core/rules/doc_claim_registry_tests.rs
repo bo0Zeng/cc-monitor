@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 const INVARIANTS: &str = include_str!("../../../../src/doc/INVARIANTS.md");
 
@@ -13,22 +13,7 @@ fn repo_root() -> PathBuf {
 /// 没提交的草稿 README；它们里的地址或数字一错，判据就替一份不在仓里的文件红（或替它绿）。
 /// 工作树里删了而索引里还在的那几份也不算（没有正文可读）。
 fn tracked_files() -> Vec<String> {
-    let out = std::process::Command::new("git")
-        .args(["ls-files", "-z"])
-        .current_dir(repo_root())
-        .output()
-        .expect("跑不动 `git ls-files` —— 本族判据的人群口径就是它");
-    assert!(
-        out.status.success(),
-        "`git ls-files` 非零退出：{}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    let root = repo_root();
-    let v: Vec<String> = String::from_utf8_lossy(&out.stdout)
-        .split('\0')
-        .filter(|rel| !rel.is_empty() && root.join(rel).is_file())
-        .map(str::to_string)
-        .collect();
+    let v = tracked_files_in(&repo_root());
     // ★ 自检：口径坏了 ⇒ 下面整族会零命中地绿。正控：本文件自己在人群里。
     assert!(
         v.iter()
@@ -36,6 +21,25 @@ fn tracked_files() -> Vec<String> {
         "`git ls-files` 列出的清单里没有本文件 —— 口径坏了"
     );
     v
+}
+
+/// `root` 那个 git 仓里跟踪着的文件（[`tracked_files`] 的口径，对着哪个仓由参数给）。
+fn tracked_files_in(root: &Path) -> Vec<String> {
+    let out = std::process::Command::new("git")
+        .args(["ls-files", "-z"])
+        .current_dir(root)
+        .output()
+        .expect("跑不动 `git ls-files` —— 本族判据的人群口径就是它");
+    assert!(
+        out.status.success(),
+        "`git ls-files` 非零退出：{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    String::from_utf8_lossy(&out.stdout)
+        .split('\0')
+        .filter(|rel| !rel.is_empty() && root.join(rel).is_file())
+        .map(str::to_string)
+        .collect()
 }
 
 /// 跟踪着的、住在 `dir` 下（含子目录；按路径段比，不按字符串前缀）且后缀是 `ext` 的文件。
@@ -79,8 +83,12 @@ fn is_entry_readme(rel: &str) -> bool {
 /// ⇒ 病根与本会话反复量到的同一条：**手写清单描述人群**。
 /// 改成从跟踪着的文件里挑出来（[`tracked_files`] · [`is_entry_readme`]）。
 fn entry_readmes() -> Vec<PathBuf> {
-    let root = repo_root();
-    let mut v: Vec<PathBuf> = tracked_files()
+    entry_readmes_in(&repo_root(), tracked_files())
+}
+
+/// `root` 那个仓里的入口 `README*.md`：从 `tracked`（它跟踪着的文件）里挑。
+fn entry_readmes_in(root: &Path, tracked: Vec<String>) -> Vec<PathBuf> {
+    let mut v: Vec<PathBuf> = tracked
         .into_iter()
         .filter(|rel| is_entry_readme(rel))
         .map(|rel| root.join(rel))
@@ -89,42 +97,116 @@ fn entry_readmes() -> Vec<PathBuf> {
     v
 }
 
-/// 正控：仓根 `.scratch/` 里放一份**会命中**的 README（形状对、里面指着一个不存在的符号与路径），
-/// 本族的人群照旧不含它 —— 判据不受工作树里没入库的东西影响。
-#[test]
-fn an_untracked_scratch_file_never_enters_the_population() {
-    struct Cleanup(PathBuf);
-    impl Drop for Cleanup {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
+/// 正控用的探针仓：系统临时目录下自己 `git init` 的一个仓，里面一份跟踪着的 `README.doc-claim-probe.md`、
+/// 一份没 `git add` 的 `.scratch/doc-claim-probe/README.md`（形状是入口 README，指着不存在的符号与路径）。
+/// 真仓的工作树里一份都不写 —— 仓里的判据不论问 git 还是走目录都碰不到它。离开作用域整个删掉。
+/// 跟踪着的那份取真仓里没有的名字：`git` 要是读错了仓（钩子里导出的 `GIT_DIR` 一类），正控当场红，不会碰巧绿。
+struct ProbeRepo {
+    root: PathBuf,
+    tracked: PathBuf,
+    probe: PathBuf,
+}
+
+impl Drop for ProbeRepo {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.root);
     }
-    let dir = repo_root().join(format!(".scratch/doc-claim-probe-{}", std::process::id()));
-    let _cleanup = Cleanup(dir.clone());
+}
+
+/// 建一个探针仓；`tag` 让同一进程里的几条各用各的目录。
+fn probe_repo(tag: &str) -> ProbeRepo {
+    let root = std::env::temp_dir().join(format!("doc-claim-probe-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let dir = root.join(".scratch/doc-claim-probe");
     std::fs::create_dir_all(&dir).expect("建探针目录");
-    let probe = dir.join("README.md");
+    let repo = ProbeRepo {
+        tracked: root.join("README.doc-claim-probe.md"),
+        probe: dir.join("README.md"),
+        root,
+    };
+    // 建仓的这几下清掉指向别的仓的变量：在 git 钩子里跑时，`git add` 不许落进钩子正在跑的那个仓。
+    let git = |args: &[&str]| {
+        let out = std::process::Command::new("git")
+            .args(args)
+            .current_dir(&repo.root)
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
+            .env_remove("GIT_INDEX_FILE")
+            .env_remove("GIT_COMMON_DIR")
+            .output()
+            .unwrap_or_else(|e| panic!("起不来 `git {args:?}`：{e}"));
+        assert!(
+            out.status.success(),
+            "`git {args:?}` 失败：{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    };
+    git(&["init", "-q"]);
+    std::fs::write(&repo.tracked, "探针仓的入口。\n").expect("写跟踪着的那份");
+    git(&["add", "README.doc-claim-probe.md"]);
     // 地址运行时拼：写成字面量的话，源码这一侧的地址判据会把本文件当成指错了的那一份。
     std::fs::write(
-        &probe,
+        &repo.probe,
         format!(
             "见 `nowhere_probe.{0}::no_such_symbol_probe` 与 `src/no/such/probe.{0}`。\n",
             "rs"
         ),
     )
     .expect("写探针");
-    let rel = probe
-        .strip_prefix(repo_root())
-        .expect("探针在仓里")
-        .to_string_lossy()
-        .replace('\\', "/");
+    repo
+}
+
+/// 正控：一份**会命中**的 README（形状对、里面指着一个不存在的符号与路径）没 `git add`，
+/// 本族的人群照旧不含它 —— 判据不受工作树里没入库的东西影响；同一个仓里跟踪着的那份照收。
+#[test]
+fn an_untracked_scratch_file_never_enters_the_population() {
+    let repo = probe_repo("population");
+    let rel = |p: &Path| {
+        p.strip_prefix(&repo.root)
+            .expect("在探针仓里")
+            .to_string_lossy()
+            .replace('\\', "/")
+    };
     assert!(
-        probe.is_file() && is_entry_readme(&rel),
+        repo.probe.is_file() && is_entry_readme(&rel(&repo.probe)),
         "探针没放成一份入口 README 的形状 —— 下面的「不在人群里」是空转"
     );
-    assert!(!tracked_files().contains(&rel), "探针被当成了跟踪着的文件");
+    let tracked = tracked_files_in(&repo.root);
     assert!(
-        !entry_readmes().contains(&probe),
-        "仓根 `.scratch/` 里没入库的 README 进了入口 README 的人群"
+        tracked.contains(&rel(&repo.tracked)),
+        "探针仓里 `git add` 过的那份不在跟踪清单里 —— 口径坏了，下面的「不在」是空转"
+    );
+    assert!(
+        !tracked.contains(&rel(&repo.probe)),
+        "探针被当成了跟踪着的文件"
+    );
+    let readmes = entry_readmes_in(&repo.root, tracked);
+    assert!(
+        readmes.contains(&repo.tracked),
+        "跟踪着的那份入口 README 没进人群 —— 挑法坏了，下面的「不在」是空转"
+    );
+    assert!(
+        !readmes.contains(&repo.probe),
+        "没入库的 README 进了入口 README 的人群"
+    );
+}
+
+/// 探针不落在仓里任何判据扫得到的地方：探针仓不在仓根底下。
+/// 落在仓里又没被忽略 ⇒ 同进程并发跑的扫描（如 `structural_scan.rs::every_symbol_address_in_the_sources_still_resolves`）
+/// 会从共用快照里列进它、读时它已删掉而转红；被不被忽略看的是本机 `info/exclude`，干净克隆里不挡。
+#[test]
+fn the_untracked_probe_lives_outside_the_repo() {
+    let repo = probe_repo("where");
+    // 两边都解开符号链接再比：临时目录是一个指进仓里的链接也拦得住。
+    let real = |p: &Path| {
+        p.canonicalize()
+            .unwrap_or_else(|e| panic!("解不开 {p:?}：{e}"))
+    };
+    let root = real(&repo_root());
+    assert!(
+        !real(&repo.root).starts_with(&root),
+        "探针仓 {:?} 在仓根底下 —— 仓里的扫描碰得到它",
+        repo.root
     );
 }
 

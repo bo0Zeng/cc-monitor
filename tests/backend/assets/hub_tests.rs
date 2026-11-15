@@ -15,7 +15,7 @@ pub(crate) async fn pv(
     table: &Table,
     remote: &dyn Remote,
 ) -> Result<Value, crate::common::said::Said> {
-    ext_preview(here, args, table, remote)
+    ext_preview(crate::agents::REGISTRY, here, args, table, remote)
         .await
         .map(|c| serde_json::to_value(c).unwrap())
 }
@@ -32,9 +32,17 @@ pub(crate) async fn ap(
     let fill: Option<Fill> =
         serde_json::from_value(args.get("fill").cloned().unwrap_or(Value::Null))
             .expect("判据给的 fill");
-    ext_apply(here, args, &tokens, fill.as_ref(), table, remote)
-        .await
-        .map(|d| serde_json::to_value(d).unwrap())
+    ext_apply(
+        crate::agents::REGISTRY,
+        here,
+        args,
+        &tokens,
+        fill.as_ref(),
+        table,
+        remote,
+    )
+    .await
+    .map(|d| serde_json::to_value(d).unwrap())
 }
 
 /// 这台自己：按命令名答一份定好的成品，记下被问了什么。
@@ -490,9 +498,12 @@ fn many_places_are_the_intersection_and_the_place_is_ok_for_every_picked_machine
     let list = golden_list();
     // demo：本机那一格只能装到本机的项目（全局是来源同一处）；laptop 那一格全局与 laptop 的项目都行。
     let p = plan_many(
+        crate::agents::REGISTRY,
         &list,
+        None,
         ExtKind::Skill,
         "demo",
+        None,
         &[Some("laptop".into())],
         None,
     )
@@ -506,9 +517,12 @@ fn many_places_are_the_intersection_and_the_place_is_ok_for_every_picked_machine
     );
     assert_eq!(p.place, Some(ExtLoc::User), "建议的那一处：第一台的建议");
     let both = plan_many(
+        crate::agents::REGISTRY,
         &list,
+        None,
         ExtKind::Skill,
         "demo",
+        None,
         &[None, Some("laptop".into())],
         None,
     )
@@ -520,9 +534,12 @@ fn many_places_are_the_intersection_and_the_place_is_ok_for_every_picked_machine
     assert_eq!(both.place, None);
     // 要的那一处对哪台都不行 ⇒ 不照它，退回建议。
     let asked = plan_many(
+        crate::agents::REGISTRY,
         &list,
+        None,
         ExtKind::Skill,
         "demo",
+        None,
         &[Some("laptop".into())],
         Some(ExtLoc::Project {
             dir: "/nowhere".into(),
@@ -535,20 +552,48 @@ fn many_places_are_the_intersection_and_the_place_is_ok_for_every_picked_machine
 #[test]
 fn a_machine_without_a_bring_or_not_in_the_table_is_said_per_machine() {
     let list = golden_list();
-    let p = plan_many(&list, ExtKind::Skill, "demo", &[Some("ghost".into())], None).unwrap();
+    let p = plan_many(
+        crate::agents::REGISTRY,
+        &list,
+        None,
+        ExtKind::Skill,
+        "demo",
+        None,
+        &[Some("ghost".into())],
+        None,
+    )
+    .unwrap();
     assert!(p.picks[0].bring.is_none());
     assert_eq!(
-        plan_many(&list, ExtKind::Skill, "nope", &[None], None)
-            .unwrap_err()
-            .code
-            .as_deref(),
+        plan_many(
+            crate::agents::REGISTRY,
+            &list,
+            None,
+            ExtKind::Skill,
+            "nope",
+            None,
+            &[None],
+            None
+        )
+        .unwrap_err()
+        .code
+        .as_deref(),
         Some("missing")
     );
     assert_eq!(
-        plan_many(&list, ExtKind::Skill, "demo", &[], None)
-            .unwrap_err()
-            .code
-            .as_deref(),
+        plan_many(
+            crate::agents::REGISTRY,
+            &list,
+            None,
+            ExtKind::Skill,
+            "demo",
+            None,
+            &[],
+            None
+        )
+        .unwrap_err()
+        .code
+        .as_deref(),
         Some("bad_args")
     );
 }
@@ -664,25 +709,597 @@ async fn a_reply_with_an_extra_key_still_parses() {
     assert_eq!(card["tokens"]["source"], "t");
 }
 
-/// ★ 插件这一版只读：看卡 · 装两条都拒（`refused`，说为什么），一跳也不往外问。
+/// 没声明插件那一格的那一家（第二家替身）那一句只读。
+fn plugin_read_only_fake2() -> crate::common::said::Said {
+    let said = crate::agents::family_said_among(fams(), "fake2");
+    crate::common::said::Said::new(
+        "refused",
+        copy_text("beExt.note.pluginReadOnly", &[("family", &said)]),
+    )
+}
+
+/// ★ 没声明插件那一格的家：看卡 · 装两条都拒（`refused`，说为什么），一跳也不往外问。
 #[tokio::test]
 async fn the_hub_refuses_a_plugin_without_asking_anyone() {
     let (h, dyn_h) = here(&[]);
     let t = table_with("devbox");
     let r = remote(&[]);
-    let args = json!({ "kind": "plugin", "name": "github", "from": "devbox", "to": null,
+    let args = json!({ "kind": "plugin", "name": "github", "agent": "fake2", "from": "devbox", "to": null,
                        "tokens": { "source": "t", "target": null },
                        "scope": { "from": { "level": "user" }, "to": { "level": "user" } } });
-    let want =
-        crate::common::said::Said::new("refused", copy_text("beExt.note.pluginReadOnly", &[]));
+    let want = plugin_read_only_fake2();
     assert_eq!(
-        pv(&dyn_h, &args, &t, &r).await.expect_err("插件给看卡了"),
+        pv_in(fams(), &dyn_h, &args, &t, &r)
+            .await
+            .expect_err("插件给看卡了"),
         want
     );
+    let tokens = ExtTokens {
+        source: "t".into(),
+        target: None,
+    };
     assert_eq!(
-        ap(&dyn_h, &args, &t, &r).await.expect_err("插件给装了"),
+        ext_apply(fams(), &dyn_h, &args, &tokens, None, &t, &r)
+            .await
+            .expect_err("插件给装了"),
         want
     );
     assert!(r.calls.lock().unwrap().is_empty(), "问了来源那台");
     assert!(h.asked.lock().unwrap().is_empty(), "问了这台");
+}
+
+/// ★ 声明了插件那一格的家：卡上写被写那台要跑的那一行（来源那台目录里那一家的写法恰在里面，不是光名字），不问来源那台；
+/// 装 ⇒ 只问被写那台一跳 `plugin-install`（带那一家的写法，默认那一家不写家），它的结局原样交回；
+/// 来源那一条没有那一家的写法（旧对端）⇒ 看卡 · 装都拒、说列不出；
+/// 落点是项目那一级 ⇒ 看卡 · 装都拒（插件只到用户级，同表上那一处判），一跳不发。
+#[tokio::test]
+async fn the_hub_installs_a_declared_familys_plugin_by_asking_the_target_once() {
+    let done = json!({ "path": "fakeagent gadget fit shelf/github", "changed": ["shelf/github"], "note": null });
+    let (h, dyn_h) = here(&[("plugin-install", done.clone())]);
+    let t = table_with("devbox");
+    let r = remote(&[]);
+    let args = json!({ "kind": "plugin", "name": "github", "key": "shelf/github", "from": "devbox", "to": null,
+                       "scope": { "from": { "level": "user" }, "to": { "level": "user" } } });
+    let mut keyless = args.clone();
+    keyless.as_object_mut().unwrap().remove("key");
+    let unlisted =
+        crate::common::said::Said::new("refused", copy_text("beExt.plugin.unlisted", &[]));
+    assert_eq!(
+        pv_in(fams(), &dyn_h, &keyless, &t, &r)
+            .await
+            .expect_err("没有写法给看卡了"),
+        unlisted
+    );
+    let card = pv_in(fams(), &dyn_h, &args, &t, &r).await.expect("出卡");
+    assert_eq!(card["path"], "fakeagent gadget fit shelf/github");
+    assert_eq!(card["writes"], json!(["github"]));
+    assert!(h.asked.lock().unwrap().is_empty() && r.calls.lock().unwrap().is_empty());
+    let tokens: ExtTokens = serde_json::from_value(card["tokens"].clone()).unwrap();
+    let mut project = args.clone();
+    project["scope"]["to"] = json!({ "level": "project", "dir": "/w" });
+    let want =
+        crate::common::said::Said::new("refused", copy_text("beExt.target.pluginUserOnly", &[]));
+    assert_eq!(
+        pv_in(fams(), &dyn_h, &project, &t, &r)
+            .await
+            .expect_err("项目那一级给看卡了"),
+        want
+    );
+    assert_eq!(
+        ext_apply(fams(), &dyn_h, &project, &tokens, None, &t, &r)
+            .await
+            .expect_err("项目那一级给装了"),
+        want
+    );
+    assert_eq!(
+        ext_apply(fams(), &dyn_h, &keyless, &tokens, None, &t, &r)
+            .await
+            .expect_err("没有写法给装了"),
+        unlisted
+    );
+    assert!(h.asked.lock().unwrap().is_empty());
+    let got = ext_apply(fams(), &dyn_h, &args, &tokens, None, &t, &r)
+        .await
+        .expect("装上");
+    assert_eq!(serde_json::to_value(got).unwrap(), done);
+    assert_eq!(
+        *h.asked.lock().unwrap(),
+        vec![(
+            "plugin-install".to_string(),
+            json!({ "name": "shelf/github" })
+        )]
+    );
+    assert!(r.calls.lock().unwrap().is_empty(), "问了来源那台");
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 照请求里的家：找哪一行 · 向两头问的那几条都带上家
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// 两个替身家（`fake` 默认 · `fake2`）。
+fn fams() -> &'static [crate::agents::Adapter] {
+    crate::agents::fake::two_families()
+}
+
+/// 照给定的注册表看一台的卡（线上形）。
+async fn pv_in(
+    reg: &[crate::agents::Adapter],
+    here: &Arc<dyn Here>,
+    args: &Value,
+    table: &Table,
+    remote: &dyn Remote,
+) -> Result<Value, crate::common::said::Said> {
+    ext_preview(reg, here, args, table, remote)
+        .await
+        .map(|c| serde_json::to_value(c).unwrap())
+}
+
+/// ★ 两家同名 ⇒ 表里两行：指名第二家 ⇒ 照第二家那一行的「装到…」；不指名 · 指名默认那一家 ⇒ 默认那一家那一行；
+/// 指名了认不出的家 ⇒ `bad_args`（家先规整，不当成「表里没有这一行」）。
+#[test]
+fn many_finds_the_row_of_the_requested_family() {
+    let mut list = golden_list();
+    let demo = list
+        .rows
+        .iter()
+        .find(|r| r.kind == ExtKind::Skill && r.name == "demo" && r.agent.is_none())
+        .cloned()
+        .expect("金样里有 demo");
+    let mut second = demo.clone();
+    second.agent = Some(cmd_wire::AgentKind::from("fake2"));
+    for c in &mut second.cells {
+        c.bring = None;
+    }
+    list.rows.push(second);
+    let to = [Some("laptop".to_string())];
+    let fam2 = cmd_wire::AgentKind::from("fake2");
+    let p = plan_many(
+        fams(),
+        &list,
+        Some(&fam2),
+        ExtKind::Skill,
+        "demo",
+        None,
+        &to,
+        None,
+    )
+    .unwrap();
+    assert!(
+        p.picks[0].bring.is_none(),
+        "指名第二家却照了默认那一家那一行"
+    );
+    assert_eq!(p.agent, Some(fam2.clone()), "规整后的家没交给那几跳");
+    let p = plan_many(fams(), &list, None, ExtKind::Skill, "demo", None, &to, None).unwrap();
+    assert!(p.picks[0].bring.is_some(), "不指名没照默认那一家那一行");
+    let named = cmd_wire::AgentKind::from("fake");
+    let p = plan_many(
+        fams(),
+        &list,
+        Some(&named),
+        ExtKind::Skill,
+        "demo",
+        None,
+        &to,
+        None,
+    )
+    .expect("指名默认那一家找不到行");
+    assert!(
+        p.picks[0].bring.is_some(),
+        "指名默认那一家没照默认那一家那一行"
+    );
+    assert_eq!(p.agent, None, "指名默认那一家，交给那几跳的家不是缺");
+    let ghost = cmd_wire::AgentKind::from("ghost");
+    assert_eq!(
+        plan_many(
+            fams(),
+            &list,
+            Some(&ghost),
+            ExtKind::Skill,
+            "demo",
+            None,
+            &to,
+            None
+        )
+        .unwrap_err()
+        .code
+        .as_deref(),
+        Some("bad_args")
+    );
+}
+
+/// 一趟 skill 的看卡：来源（远端 devbox）读一次、被写那台（本机）判一次。
+fn skill_ends() -> (Value, Value) {
+    let files =
+        json!([{ "path": "SKILL.md", "text": "x\n", "exec": false, "why": null, "bytes": 2 }]);
+    let plan = json!({ "root": "/s", "dir": "/s/demo", "target": [], "base": "/s", "prefix": "demo",
+                       "rows": [{ "path": "SKILL.md", "state": "new", "suspects": [], "blocked": null }],
+                       "write": null, "ledger": null });
+    (
+        json!({ "root": "/r", "dir": "/r/demo", "files": files, "skipped": [] }),
+        plan,
+    )
+}
+
+fn skill_args(name: &str, agent: Option<&str>) -> Value {
+    let mut args = json!({ "kind": "skill", "name": name, "from": "devbox", "to": null,
+                           "scope": { "from": { "level": "user" }, "to": { "level": "user" } } });
+    if let Some(k) = agent {
+        args["agent"] = json!(k);
+    }
+    args
+}
+
+/// ★ 指名默认那一家 ⇒ 与不指名同一结果：向两头问的那几条都不写 `agent`、卡一样。
+#[tokio::test]
+async fn naming_the_default_family_is_the_same_as_naming_none() {
+    let (read, plan) = skill_ends();
+    let t = table_with("devbox");
+    let mut got = Vec::new();
+    for agent in [Some("fake"), None] {
+        let (h, dyn_h) = here(&[("skill-install-plan", plan.clone())]);
+        let r = remote(std::slice::from_ref(&read));
+        let card = pv_in(fams(), &dyn_h, &skill_args("demo", agent), &t, &r)
+            .await
+            .expect("看不了卡");
+        let (_, stdin) = r.calls.lock().unwrap()[0].clone();
+        let sent: Value = serde_json::from_str(stdin.as_deref().unwrap_or("null").trim()).unwrap();
+        let asked = h.asked.lock().unwrap()[0].1.clone();
+        got.push((
+            card,
+            sent.get("agent").cloned(),
+            asked.get("agent").cloned(),
+        ));
+    }
+    assert_eq!(got[0], got[1], "指名默认那一家与不指名结果不同");
+    assert_eq!((got[0].1.clone(), got[0].2.clone()), (None, None));
+}
+
+/// ★ 枢纽里写了认不出的家 ⇒ `bad_args`，一跳也不往外问。
+#[tokio::test]
+async fn an_unknown_family_at_the_hub_is_bad_args() {
+    let (h, dyn_h) = here(&[]);
+    let t = table_with("devbox");
+    let r = remote(&[]);
+    let e = pv_in(fams(), &dyn_h, &skill_args("demo", Some("ghost")), &t, &r)
+        .await
+        .expect_err("认不出的家也看卡了");
+    assert_eq!(e.code.as_deref(), Some("bad_args"), "{}", e.said);
+    assert!(r.calls.lock().unwrap().is_empty(), "问了来源那台");
+    assert!(h.asked.lock().unwrap().is_empty(), "问了这台");
+}
+
+/// ★ 第二家项目级 MCP 经枢纽装：来源那一跳（远端，参数一行进 stdin）· 看 · 写那几跳都带上行上的家；不指名 ⇒ 那一格不写。
+#[tokio::test]
+async fn the_hub_hands_the_rows_family_to_every_mcp_hop() {
+    let src = json!({ "path": "/r/fake2-mcp.conf", "def": { "command": "c" }, "slots": [], "token": "t-src" });
+    let preview = json!({ "path": "/l/fake2-mcp.conf", "state": "new", "def": { "command": "c" }, "slots": [], "suspects": [], "target": null });
+    let (h, dyn_h) = here(&[
+        ("mcp-sync-preview", preview),
+        (
+            "mcp-sync-apply",
+            json!({ "path": "/l/fake2-mcp.conf", "written": true, "recordFailed": null }),
+        ),
+    ]);
+    let t = table_with("devbox");
+    let r = remote(&[src.clone(), src]);
+    let mut args = mcp_args(json!("devbox"), Value::Null);
+    args["agent"] = json!("fake2");
+    pv_in(fams(), &dyn_h, &args, &t, &r)
+        .await
+        .expect("第二家的项目级 MCP 没给看卡");
+    let tokens: ExtTokens =
+        serde_json::from_value(json!({ "source": "t-src", "target": null })).unwrap();
+    let done = ext_apply(fams(), &dyn_h, &args, &tokens, None, &t, &r)
+        .await
+        .expect("第二家的项目级 MCP 没装上");
+    assert_eq!(
+        serde_json::to_value(done).unwrap()["path"],
+        "/l/fake2-mcp.conf"
+    );
+    let calls = r.calls.lock().unwrap().clone();
+    assert_eq!(calls.len(), 2, "{calls:?}");
+    for (_, stdin) in &calls {
+        assert_eq!(
+            serde_json::from_str::<Value>(stdin.as_deref().unwrap().trim()).unwrap(),
+            json!({ "name": "x", "at": { "level": "project", "dir": "/r" }, "agent": "fake2" }),
+            "来源那一跳没带家"
+        );
+    }
+    let asked = h.asked.lock().unwrap().clone();
+    assert_eq!(
+        asked.iter().map(|(c, _)| c.as_str()).collect::<Vec<_>>(),
+        vec!["mcp-sync-preview", "mcp-sync-preview", "mcp-sync-apply"]
+    );
+    for (c, a) in &asked {
+        assert_eq!(a["agent"], "fake2", "{c} 没带家");
+    }
+    // 不指名 ⇒ 那一格不写（旧对端照收）。
+    let (h, dyn_h) = here(&[(
+        "mcp-sync-preview",
+        json!({ "path": "/l/.fake-mcp.json", "state": "new", "def": { "command": "c" }, "slots": [], "suspects": [], "target": null }),
+    )]);
+    let r = remote(&[
+        json!({ "path": "/r/.fake-mcp.json", "def": { "command": "c" }, "slots": [], "token": "t" }),
+    ]);
+    pv_in(
+        fams(),
+        &dyn_h,
+        &mcp_args(json!("devbox"), Value::Null),
+        &t,
+        &r,
+    )
+    .await
+    .expect("默认那一家没给看卡");
+    let stdin = r.calls.lock().unwrap()[0].1.clone().unwrap();
+    assert!(!stdin.contains("agent"), "不指名也写了家：{stdin}");
+    assert!(h.asked.lock().unwrap()[0].1.get("agent").is_none());
+}
+
+/// ★ 第二家的 MCP 来源或落点在全局那一级 ⇒ 枢纽先拒（全局那一份只认默认那一家），看卡 · 装都一跳也不往外问。
+#[tokio::test]
+async fn the_hub_refuses_a_second_familys_user_level_mcp_without_asking_anyone() {
+    let want = crate::common::said::Said::new(
+        "refused",
+        crate::assets::ext::family_refused(ExtKind::Mcp, Some(&"fake2".into()), &ExtLoc::User)
+            .unwrap(),
+    );
+    for side in ["from", "to"] {
+        let (h, dyn_h) = here(&[]);
+        let t = table_with("devbox");
+        let r = remote(&[]);
+        let mut args = mcp_args(json!("devbox"), Value::Null);
+        args["scope"][side] = json!({ "level": "user" });
+        args["agent"] = json!("fake2");
+        assert_eq!(
+            pv_in(fams(), &dyn_h, &args, &t, &r)
+                .await
+                .expect_err("第二家的全局 MCP 给看卡了"),
+            want,
+            "{side}"
+        );
+        let tokens: ExtTokens =
+            serde_json::from_value(json!({ "source": "t", "target": null })).unwrap();
+        assert_eq!(
+            ext_apply(fams(), &dyn_h, &args, &tokens, None, &t, &r)
+                .await
+                .expect_err("第二家的全局 MCP 给装了"),
+            want,
+            "{side}"
+        );
+        assert!(r.calls.lock().unwrap().is_empty(), "{side}：问了来源那台");
+        assert!(h.asked.lock().unwrap().is_empty(), "{side}：问了这台");
+    }
+}
+
+/// ★ 自带的 · 自己发版的照带家的行认：第二家一个叫 cc-bus 的 skill ⇒ 照 skill 那条路问两头（不装自带的那一份）；
+/// 第二家一个叫 planned-build 的插件 ⇒ 插件只读、拒（自己发版的例外只属默认那一家）。
+#[tokio::test]
+async fn builtin_and_release_are_judged_on_the_familys_row() {
+    let (read, plan) = skill_ends();
+    let t = table_with("devbox");
+    let (h, dyn_h) = here(&[("skill-install-plan", plan)]);
+    let r = remote(&[read]);
+    pv_in(
+        fams(),
+        &dyn_h,
+        &skill_args(crate::assets::cc_bus_install::NAME, Some("fake2")),
+        &t,
+        &r,
+    )
+    .await
+    .expect("第二家的同名 skill 看不了卡");
+    let asked: Vec<String> = h
+        .asked
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|(c, _)| c.clone())
+        .collect();
+    assert_eq!(
+        asked,
+        vec!["skill-install-plan".to_string()],
+        "第二家的同名 skill 走了自带的那条路"
+    );
+    let (h, dyn_h) = here(&[]);
+    let r = remote(&[]);
+    let mut plugin = skill_args("planned-build", Some("fake2"));
+    plugin["kind"] = json!("plugin");
+    assert_eq!(
+        pv_in(fams(), &dyn_h, &plugin, &t, &r)
+            .await
+            .expect_err("第二家的同名插件照自己发版的那条路装了"),
+        plugin_read_only_fake2()
+    );
+    assert!(h.asked.lock().unwrap().is_empty() && r.calls.lock().unwrap().is_empty());
+}
+
+/// ★ 装那一跳带家：指名第二家装 ⇒ 交被写那台的 `skill-install-apply` 带上那一家。
+#[tokio::test]
+async fn the_apply_hop_carries_the_family() {
+    let (read, plan) = skill_ends();
+    let applied = json!({ "dir": "/s/demo", "written": ["SKILL.md"], "chmodFailed": [], "recordFailed": null });
+    let t = table_with("devbox");
+    let (h, dyn_h) = here(&[
+        ("skill-install-plan", plan),
+        ("skill-install-apply", applied),
+    ]);
+    let r = remote(&[read.clone(), read]);
+    let args = skill_args("demo", Some("fake2"));
+    let card = pv_in(fams(), &dyn_h, &args, &t, &r)
+        .await
+        .expect("看不了卡");
+    let tokens: ExtTokens = serde_json::from_value(card["tokens"].clone()).unwrap();
+    ext_apply(fams(), &dyn_h, &args, &tokens, None, &t, &r)
+        .await
+        .expect("装不了");
+    let asked = h.asked.lock().unwrap().clone();
+    let apply = asked
+        .iter()
+        .find(|(c, _)| c == "skill-install-apply")
+        .expect("没交被写那台装");
+    assert_eq!(
+        apply.1.get("agent"),
+        Some(&json!("fake2")),
+        "装那一跳没带家"
+    );
+}
+
+/// ★ 一台那一跳的参数带上规整后的家（缺 ⇒ 不写）；插件另带那一行的来源键（行上没有 ⇒ `null`）。
+#[test]
+fn the_per_machine_ask_carries_the_family() {
+    let b = ExtBring {
+        from: Some("devbox".into()),
+        scope: super::super::ext::ExtScope {
+            from: ExtLoc::User,
+            to: ExtLoc::User,
+        },
+        targets: Vec::new(),
+    };
+    let p = Pick {
+        to: None,
+        name: "here".into(),
+        bring: Some(b.clone()),
+    };
+    let fam2 = cmd_wire::AgentKind::from("fake2");
+    let v = ask_for(
+        None,
+        ExtKind::Skill,
+        "demo",
+        Some(&fam2),
+        &p,
+        &b,
+        &ExtLoc::User,
+    );
+    assert_eq!(v["agent"], json!("fake2"), "一台那一跳没带家");
+    assert_eq!(v["key"], Value::Null, "skill 带了插件的写法");
+    let v = ask_for(
+        Some("shelf/demo"),
+        ExtKind::Plugin,
+        "demo",
+        Some(&fam2),
+        &p,
+        &b,
+        &ExtLoc::User,
+    );
+    assert_eq!(v["key"], json!("shelf/demo"), "没照那一行的来源带写法");
+}
+
+/// ★ 指名第二家装一个 skill ⇒ 来源那台的 `skill-read` 与被写那台的 `skill-install-plan` 都带上那一家；
+/// 不指名 ⇒ 两条都不写 `agent`（旧对端拒多出来的键，默认那一家那一形与今天逐字相同）。
+#[tokio::test]
+async fn the_hub_asks_both_ends_for_the_requested_family() {
+    let files =
+        json!([{ "path": "SKILL.md", "text": "x\n", "exec": false, "why": null, "bytes": 2 }]);
+    let plan = json!({ "root": "/s", "dir": "/s/demo", "target": [], "base": "/s", "prefix": "demo",
+                       "rows": [{ "path": "SKILL.md", "state": "new", "suspects": [], "blocked": null }],
+                       "write": null, "ledger": null });
+    let t = table_with("devbox");
+    for agent in [Some("fake2"), None] {
+        let (h, dyn_h) = here(&[("skill-install-plan", plan.clone())]);
+        let r = remote(&[json!({ "root": "/r", "dir": "/r/demo", "files": files, "skipped": [] })]);
+        let mut args = json!({ "kind": "skill", "name": "demo", "from": "devbox", "to": null,
+                               "scope": { "from": { "level": "user" }, "to": { "level": "user" } } });
+        if let Some(k) = agent {
+            args["agent"] = json!(k);
+        }
+        pv_in(fams(), &dyn_h, &args, &t, &r)
+            .await
+            .expect("看不了卡");
+        let (_, stdin) = r.calls.lock().unwrap()[0].clone();
+        let read: Value = serde_json::from_str(stdin.as_deref().unwrap_or("null").trim()).unwrap();
+        let asked = h.asked.lock().unwrap()[0].1.clone();
+        let want = agent.map(|k| json!(k));
+        assert_eq!(
+            (read.get("agent").cloned(), asked.get("agent").cloned()),
+            (want.clone(), want),
+            "向两头问的那几条没照请求里的家（{agent:?}）"
+        );
+    }
+}
+
+/// ★ 来源那台目录里同一个光名字的插件两条（写法不同）⇒ 表上两行；装照请求带的那一行的来源走：
+/// 卡上与被写那台那一跳交的都是那一行的写法（不取第一条）；不带来源 ⇒ 认不出是哪一行（`missing`），一跳不发。
+#[tokio::test]
+async fn the_hub_installs_the_plugin_of_the_rows_source_when_a_name_has_two() {
+    let plugin = |key: &str| crate::assets::asset_catalog::Asset {
+        agent: None,
+        kind: ExtKind::Plugin,
+        name: "demo".into(),
+        project: None,
+        dir: None,
+        digest: format!("d-{key}"),
+        summary: json!({ (crate::assets::plugin_exec::KEY): key,
+                         (crate::assets::plugin_exec::BY_COMMAND): true }),
+        off: false,
+    };
+    let snap = |assets| crate::assets::asset_catalog::Snapshot {
+        label: "peer".into(),
+        gen: 1,
+        seen_at: 0,
+        project_dirs: Vec::new(),
+        notes: Default::default(),
+        shared_mcp: false,
+        assets,
+    };
+    let mut cat = crate::assets::asset_catalog::fresh("me".into());
+    cat.machines.insert("me".into(), snap(Vec::new()));
+    cat.machines.insert(
+        "peer".into(),
+        snap(vec![plugin("shelf/demo"), plugin("rack/demo")]),
+    );
+    let done = json!({ "path": "claude plugin install rack/demo", "changed": ["rack/demo"], "note": null });
+    let (h, dyn_h) = here(&[("plugin-install", done)]);
+    let t = table_with("devbox");
+    t.set_peer("devbox", "peer");
+    let r = remote(&[]);
+    let current = move |_visit: bool| Ok((cat.clone(), Vec::new()));
+    use crate::assets::hub_wire::{HubApplyReq, HubReq};
+    use crate::wire::typed::take;
+    let bare = ext_preview_many(
+        &dyn_h,
+        &take::<HubReq>(&json!({ "kind": "plugin", "name": "demo", "to": [null] })).unwrap(),
+        &t,
+        &r,
+        &current,
+    )
+    .await
+    .expect_err("不带来源却认出了一行");
+    assert_eq!(bare.code.as_deref(), Some("missing"));
+    let pre = ext_preview_many(
+        &dyn_h,
+        &take::<HubReq>(
+            &json!({ "kind": "plugin", "name": "demo", "source": "rack/demo", "to": [null] }),
+        )
+        .unwrap(),
+        &t,
+        &r,
+        &current,
+    )
+    .await
+    .expect("拼不出表");
+    let card = pre.machines[0]
+        .card
+        .clone()
+        .unwrap_or_else(|| panic!("带来源却没出卡：{:?}", pre.machines[0]));
+    assert!(
+        card.path.ends_with(" rack/demo"),
+        "卡上不是那一行的写法：{}",
+        card.path
+    );
+    let apply = take::<HubApplyReq>(
+        &json!({ "kind": "plugin", "name": "demo", "source": "rack/demo",
+        "to": [null], "place": pre.place.clone().unwrap_or(ExtLoc::User),
+        "tokens": { "": card.tokens }, "fill": {} }),
+    )
+    .unwrap();
+    let got = ext_apply_many(&dyn_h, &apply, &t, &r, &current)
+        .await
+        .expect("拼不出表");
+    assert!(got.machines[0].done.is_some(), "{:?}", got.machines[0]);
+    assert_eq!(
+        *h.asked.lock().unwrap(),
+        vec![("plugin-install".to_string(), json!({ "name": "rack/demo" }))],
+        "装的不是那一行的那一条"
+    );
+    assert!(r.calls.lock().unwrap().is_empty(), "问了来源那台");
 }

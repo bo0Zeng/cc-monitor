@@ -224,6 +224,7 @@ fn the_checkup_links_a_new_shared_item_instead_of_reporting_it_missing() {
             key: None,
             is_default: None,
             dry_run: None,
+            agent: None,
         }),
         None,
         &Vec::new,
@@ -289,4 +290,88 @@ fn the_checkup_links_a_new_shared_item_instead_of_reporting_it_missing() {
         before,
         "接好之后再核又动了盘"
     );
+}
+
+/// 两家替身：`stand-in` 是缺省起的那一家（wrapper `si`），`stand-two` 是另一家（wrapper `st`）；各有账号面与号载体。
+fn alias_families() -> [crate::agents::Adapter; 2] {
+    [
+        crate::agents::fake::family_row("stand-in", "CCM_STAND_IN_DIR", "si", true, || None),
+        crate::agents::fake::family_row("stand-two", "CCM_STAND_TWO_DIR", "st", false, || None),
+    ]
+}
+
+/// 替身注册表上一个号那几条内置别名合成的清单。
+fn alias_book(
+    reg: &[crate::agents::Adapter],
+    owner: &crate::accounts::manage::aliases::AliasOwner,
+) -> crate::assets::aliases::profile::Book {
+    crate::assets::aliases::profile::Book {
+        profiles: crate::assets::aliases::accounts::builtins(
+            reg,
+            std::slice::from_ref(owner),
+            true,
+        ),
+        ..Default::default()
+    }
+}
+
+/// 别家的号那几条内置别名起的是那一家（ccm 照那一家声明的号载体交号目录）：不基于缺省那一家的入口。
+#[test]
+fn an_account_alias_of_another_family_launches_that_family() {
+    use crate::accounts::manage::aliases::{alias_name_among, AliasOwner, IN_ORDER};
+    use crate::ccm_line::argv::flag;
+    let reg = alias_families();
+    let owner = AliasOwner {
+        name: "work".into(),
+        agent: Some("stand-two".into()),
+    };
+    let book = alias_book(&reg, &owner);
+    // 那一段自己写的那一项（`--键 值`）的值。
+    let said = |p: &crate::assets::aliases::profile::Profile, f: &str| -> Option<String> {
+        let key = f.trim_start_matches('-');
+        let g = &p.items.iter().find(|i| i.key == key)?.groups[0];
+        Some(g.get(1)?.clone())
+    };
+    for form in IN_ORDER {
+        let name = alias_name_among(&reg, "stand-two", "work", form)
+            .expect("那一家有 wrapper ⇒ 起得出名字");
+        let p = book.profiles.iter().find(|p| p.name == name).expect("在册");
+        assert_eq!(p.from, None, "{name} 基于了缺省那一家的入口");
+        let agent = said(p, flag::AGENT);
+        let picked = crate::agents::pick_kind_among(&reg, agent.as_deref()).map(|(k, _)| k);
+        assert_eq!(picked, Ok("stand-two"), "{name} 起的不是那个号那一家");
+        assert_eq!(said(p, flag::ACCOUNT).as_deref(), Some("work"), "{name}");
+    }
+}
+
+/// 反向：缺省那一家的号那几条别名照旧基于缺省那一家同一形的入口，不另写起哪一家。
+#[test]
+fn an_account_alias_of_the_default_family_still_rides_the_default_entry() {
+    use crate::accounts::manage::aliases::{alias_name_among, suffix, AliasOwner, IN_ORDER};
+    use crate::ccm_line::argv::flag;
+    let reg = alias_families();
+    let owner = AliasOwner {
+        name: "work".into(),
+        agent: None,
+    };
+    let book = alias_book(&reg, &owner);
+    for form in IN_ORDER {
+        let name = alias_name_among(&reg, "stand-in", "work", form).expect("起得出名字");
+        let p = book.profiles.iter().find(|p| p.name == name).expect("在册");
+        assert_eq!(
+            p.from.as_deref(),
+            Some(format!("si{}", suffix(form)).as_str()),
+            "{name} 基于缺省那一家同一形的入口"
+        );
+        let agent_key = flag::AGENT.trim_start_matches('-');
+        assert!(
+            !p.items.iter().any(|i| i.key == agent_key),
+            "{name} 不另写起哪一家"
+        );
+        assert_eq!(
+            crate::assets::aliases::accounts::form_of(&book, p),
+            Some(("work".to_string(), form)),
+            "{name} 合下来是那个号、那一形"
+        );
+    }
 }

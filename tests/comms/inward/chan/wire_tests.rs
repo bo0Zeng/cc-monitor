@@ -118,7 +118,6 @@ fn every_stream_item_survives_the_wire() {
 #[test]
 fn hop_facts_name_the_hop_only_for_transport_errors() {
     let f = hop(0, "write", Reach::NotSent, HopFault::Overrun).hop_facts();
-    assert!(f.not_sent);
     assert_eq!(f.hop.as_deref(), Some("0:write NotSent"));
     assert_eq!(f.code, "Overrun");
     let f = CallError::Peer {
@@ -128,7 +127,7 @@ fn hop_facts_name_the_hop_only_for_transport_errors() {
     }
     .hop_facts();
     assert_eq!(
-        (f.not_sent, f.hop, f.code.as_str()),
+        (f.unreached, f.hop, f.code.as_str()),
         (false, None, "refused")
     );
     let f = CallError::Peer {
@@ -146,6 +145,23 @@ fn hop_facts_name_the_hop_only_for_transport_errors() {
         CallError::from(OursFault::Cancelled).hop_facts().code,
         "Cancelled"
     );
+}
+
+/// 「没够着那台」（复制详情里机器名后面挂「未连接」）只认没发出去 **且** 断在路上（`Unreachable` · `Dropped`）那几形：
+/// 期限已过（`Overrun`）· 本侧在等的满了（`Full`）也没发出去，可那台不一定够不着；发了 / 拿不准的更不算。
+#[test]
+fn only_a_hop_that_never_reached_the_machine_counts_as_unreached() {
+    for (e, want) in [
+        (hop(1, "open", Reach::NotSent, HopFault::Unreachable), true),
+        (hop(0, "write", Reach::NotSent, HopFault::Dropped), true),
+        (hop(1, "write", Reach::NotSent, HopFault::Overrun), false),
+        (hop(1, "write", Reach::NotSent, HopFault::Full), false),
+        (hop(1, "read", Reach::Unknown, HopFault::Dropped), false),
+        (hop(1, "wait", Reach::Sent, HopFault::Unreachable), false),
+        (CallError::from(OursFault::Broken), false),
+    ] {
+        assert_eq!(e.hop_facts().unreached, want, "{e:?}");
+    }
 }
 
 fn call_head() -> Head {

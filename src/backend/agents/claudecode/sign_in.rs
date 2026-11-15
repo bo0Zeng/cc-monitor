@@ -21,12 +21,16 @@ pub const FACE: SignInFace = SignInFace {
         "CLAUDE_CODE_OAUTH_TOKEN",
     ],
     link_in,
-    paste_fits,
-    said_bad_paste,
     terminal: false,
-    paste: crate::agents::PasteShape::Code,
+    paste: crate::agents::PasteShape::Code(crate::agents::Paste {
+        fits: paste_fits,
+        said_bad: said_bad_paste,
+    }),
     // 实测先打印 `Opening browser to sign in…`。
     opens_browser: true,
+    // 退出 · 状态不在 app 里做（照今天）。
+    sign_out: None,
+    status: None,
 };
 
 /// 登录一个 MCP 服务器那一形（`claude mcp login <名> --no-browser`，cli-reference 有这一行；核心在最后接上服务器名）。
@@ -42,11 +46,14 @@ pub const MCP_FACE: SignInFace = SignInFace {
     dir_env: super::paths::CONFIG_DIR_ENV,
     env_remove: FACE.env_remove,
     link_in: mcp_link_in,
-    paste_fits: mcp_paste_fits,
-    said_bad_paste: mcp_said_bad_paste,
     terminal: true,
-    paste: crate::agents::PasteShape::RedirectUrl,
+    paste: crate::agents::PasteShape::RedirectUrl(crate::agents::Paste {
+        fits: mcp_paste_fits,
+        said_bad: mcp_said_bad_paste,
+    }),
     opens_browser: false,
+    sign_out: None,
+    status: None,
 };
 
 /// 一行里那条 MCP 授权链接：那台服务器自己的授权页（`https://`；`http://` 只认本机），带 `state` 与 `redirect_uri`；

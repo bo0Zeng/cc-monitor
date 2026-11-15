@@ -131,7 +131,7 @@ class NeedsSheetShotTest {
     private fun sheet(
         ask: NeedsAsk,
         picks: Map<String, NeedsPick> = emptyMap(),
-    ) = AskSheet(ask, head = if (ask.kind == AskKind.APPROVE) "等批准 · Bash" else "等回答", waitedMs = 12_000L, receivedAt = 0L, picks = picks)
+    ) = AskSheet(ask, head = if (ask.kind == AskKind.APPROVE) "等批准 · Bash" else "等回答", pageHead = if (ask.questions.isEmpty()) null else "等回答 · {i}/${ask.questions.size}", waitedMs = 12_000L, receivedAt = 0L, picks = picks)
 
     private fun choice(
         id: String,

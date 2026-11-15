@@ -1,5 +1,5 @@
 use super::*;
-use crate::control::cc_bus_wire::BusEnvelope;
+use crate::control::cc_bus::wire::BusEnvelope;
 
 const A: &str = "0f3c2a1e-1111-2222-3333-444455556666";
 const B: &str = "9a8b7c6d-aaaa-bbbb-cccc-ddddeeeeffff";
@@ -23,7 +23,7 @@ fn env(from: &str, to: &str, tier: u8, title: &str, id: &str) -> BusEnvelope {
 fn code(r: Result<bool, crate::common::said::Said>) -> String {
     match r {
         Ok(_) => "ok".to_string(),
-        Err(s) => s.code_or_fallback().to_string(),
+        Err(s) => cmd_wire::failed::Failed::code_or_fallback(s.code.clone()),
     }
 }
 

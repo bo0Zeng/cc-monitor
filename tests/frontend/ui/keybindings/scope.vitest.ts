@@ -2,31 +2,36 @@
 // 「主区」那几个只在主区；撤销只在没有输入焦点时；菜单键是 Shift+F10 的另一个固定键。
 // 期望取自设计的那张表（动作 · 默认键 · 何时生效），不取自 `ACTIONS` 里写的 scope。
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { KeybindingDispatcher, type OverlayHandle } from "../../../../src/frontend/ui/keybindings/registry";
-import type { ActionId } from "../../../../src/frontend/ui/keybindings/actions";
+import { dispatcher, KeybindingDispatcher, type OverlayHandle } from "../../../../src/frontend/ui/keybindings/registry";
+import { findAction, type ActionId } from "../../../../src/frontend/ui/keybindings/actions";
+import { KeysOverview } from "../../../../src/frontend/ui/views/keys-overview";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 let d: KeybindingDispatcher;
 let fired: string[];
 const ids: ActionId[] = ["panel.toggle-tasks", "app.open-command-bar", "app.undo", "session.to-bottom", "tab.context-menu", "session.prev-turn", "tabBar.move-up", "tabBar.rename", "tabBar.focus-cycle"];
 
-function at(where: "body" | "input" | "tabs" | "status" | "stream"): void {
+function at(where: "body" | "input" | "tabs" | "status" | "stream" | "head" | "composer"): void {
   const el = document.getElementById(`w-${where}`);
   if (where === "body") (document.activeElement as HTMLElement | null)?.blur();
   else el!.focus();
 }
-function press(code: string, mods: KeyboardEventInit = {}): void {
-  (document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent("keydown", { code, key: code, bubbles: true, cancelable: true, ...mods }));
+function press(code: string, mods: KeyboardEventInit = {}): KeyboardEvent {
+  const e = new KeyboardEvent("keydown", { code, key: code, bubbles: true, cancelable: true, ...mods });
+  (document.activeElement ?? document.body).dispatchEvent(e);
+  return e;
 }
 
 beforeEach(() => {
   document.body.innerHTML = `
     <div id="tab-bar"><button id="w-tabs">tab</button></div>
-    <main id="message-stream" tabindex="-1"><div id="w-stream" tabindex="-1"></div></main>
+    <div id="session-head"><button id="w-head">head</button></div>
+    <main id="message-stream" tabindex="-1"><div id="w-stream" tabindex="-1"></div>
+      <div data-role="composer"><textarea id="w-composer"></textarea></div></main>
     <div id="status-bar"><button id="w-status">chip</button></div>
     <input id="w-input" type="text" />`;
   // jsdom 没有布局：看不见的输入框不算「在打字」（registry 那道判），这里给它一个框。
-  const input = document.getElementById("w-input")!;
-  input.getClientRects = () => [new DOMRect(0, 0, 10, 10)] as unknown as DOMRectList;
+  for (const id of ["w-input", "w-composer"]) document.getElementById(id)!.getClientRects = () => [new DOMRect(0, 0, 10, 10)] as unknown as DOMRectList;
   d = new KeybindingDispatcher();
   fired = [];
   for (const id of ids) d.bind(id, () => fired.push(id));
@@ -76,13 +81,12 @@ describe("快捷键 · 作用范围", () => {
     expect(fired).toEqual(["app.undo", "app.undo"]);
   });
 
-  it("🔴 主区那几个（End · Alt+↑）：焦点在标签页栏 / 状态栏上不放行（栏里的 Alt+↑ 归栏）", () => {
-    for (const w of ["stream", "tabs", "status", "input"] as const) {
+  it("🔴 主区那几个（Alt+↑）：焦点在标签页栏 / 状态栏 / 输入框上不放行（栏里的 Alt+↑ 归栏）", () => {
+    for (const w of ["stream", "tabs", "status", "input", "composer"] as const) {
       at(w);
-      press("End");
       press("ArrowUp", { altKey: true });
     }
-    expect(fired).toEqual(["session.to-bottom", "session.prev-turn", "tabBar.move-up"]);
+    expect(fired).toEqual(["session.prev-turn", "tabBar.move-up"]);
   });
 
   it("🔴 右键菜单：Shift+F10 与菜单键都开；主区或标签页栏放行，输入框里不放行", () => {
@@ -92,6 +96,79 @@ describe("快捷键 · 作用范围", () => {
     at("input");
     press("ContextMenu");
     expect(fired).toEqual(["tab.context-menu", "tab.context-menu"]);
+  });
+});
+
+// 回到底部：Ctrl+End，焦点在主区（消息流 · 会话头 · 没焦点）或会话的输入框里都认；输入框里这一下被吃掉（光标不动）。
+// 别的会打字的地方（标签页改名 · 历史搜索）· 标签页栏 · 状态栏不认，也不吃掉（那里的 Ctrl+End 归那一格自己）。
+describe("快捷键 · 回到底部（Ctrl+End）", () => {
+  it("🔴 主区三处与输入框里都触发；输入框里那一下被 preventDefault", () => {
+    const eaten: boolean[] = [];
+    for (const w of ["stream", "head", "body", "composer"] as const) {
+      at(w);
+      eaten.push(press("End", { ctrlKey: true }).defaultPrevented);
+    }
+    expect(fired).toEqual(["session.to-bottom", "session.to-bottom", "session.to-bottom", "session.to-bottom"]);
+    expect(eaten).toEqual([true, true, true, true]);
+  });
+
+  it("🔴 别的输入框 · 标签页栏 · 状态栏上不触发、不吃掉；单按 End 哪里都不触发", () => {
+    const eaten: boolean[] = [];
+    for (const w of ["input", "tabs", "status"] as const) {
+      at(w);
+      eaten.push(press("End", { ctrlKey: true }).defaultPrevented);
+    }
+    for (const w of ["stream", "body", "composer"] as const) {
+      at(w);
+      press("End");
+    }
+    expect(fired).toEqual([]);
+    expect(eaten).toEqual([false, false, false]);
+  });
+
+  it("🔴 键位总览里回到底部那一行写自己那一档（输入框里也认），不与「主区」那一档共用一个名字", () => {
+    const ko = new KeysOverview({ editKeys: () => {} });
+    ko.open();
+    try {
+      const want = findAction("session.to-bottom")!.label;
+      const row = [...document.querySelectorAll<HTMLElement>('[data-role="keys-row"]')].find((r) => r.firstElementChild?.textContent === want);
+      expect(row, "总览里有回到底部那一行").toBeDefined();
+      expect(row!.lastElementChild?.textContent).toBe(copyText("keys.scope.session"));
+      expect(copyText("keys.scope.session")).not.toBe(copyText("keys.scope.main"));
+    } finally {
+      ko.toggle();
+    }
+  });
+
+  it("🔴 改成不带 Ctrl / Alt / ⌘ 的键（End）⇒ 只在主区认，输入框里那一下归输入框；键位总览那一档跟着写「主区」", () => {
+    d.setOverride("session.to-bottom", "End");
+    at("composer");
+    const inBox = press("End");
+    at("stream");
+    press("End");
+    expect(fired).toEqual(["session.to-bottom"]);
+    expect(inBox.defaultPrevented).toBe(false);
+
+    dispatcher.setOverride("session.to-bottom", "End");
+    const ko = new KeysOverview({ editKeys: () => {} });
+    ko.open();
+    try {
+      const want = findAction("session.to-bottom")!.label;
+      const row = [...document.querySelectorAll<HTMLElement>('[data-role="keys-row"]')].find((r) => r.firstElementChild?.textContent === want);
+      expect(row!.lastElementChild?.textContent).toBe(copyText("keys.scope.main"));
+    } finally {
+      ko.toggle();
+      dispatcher.setOverride("session.to-bottom", "");
+    }
+  });
+
+  it("🔴 输入框里别的几档照旧不放行：Ctrl+Z（无输入焦点）· Alt+↑（主区）· T（单键）· F2（栏）", () => {
+    at("composer");
+    press("KeyZ", { ctrlKey: true });
+    press("ArrowUp", { altKey: true });
+    press("KeyT");
+    press("F2");
+    expect(fired).toEqual([]);
   });
 });
 

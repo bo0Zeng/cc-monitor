@@ -8,12 +8,10 @@ use std::sync::{Arc, Mutex};
 type Asked = Arc<Mutex<Vec<String>>>;
 
 fn report(face: &str) -> DriftReport {
-    DriftReport {
-        faces: vec![DriftFaceReport {
-            face: face.to_string(),
-            entries: Vec::new(),
-        }],
-    }
+    DriftReport::of(vec![DriftFaceReport {
+        face: face.to_string(),
+        entries: Vec::new(),
+    }])
 }
 
 /// 假的「问那台」：`answers` 里有那台 ⇒ 答那一份，没有 ⇒ 问不到。问了谁记进 `asked`。

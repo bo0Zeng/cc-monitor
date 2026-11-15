@@ -1,8 +1,8 @@
 /**
- * 机器页「账号」栏：`{machine} 上的账号 · 新会话默认 X` ＋ 一张表（一号一行，44 高：头像 · 名 ＋ 默认 · 种类 · `5h` · `7d` · 动作 · ⋯），
+ * 机器页「账号」栏：`{machine} 上的账号 · 新会话默认 X` ＋ 一张表（一号一行，至少 44 高：头像 · 名 ＋ 默认 · 种类 · 额度（那台写好的每号几行）· 动作 · ⋯），
  * 点行展开详情（命令 · API key · 默认模型 · 账号目录 · 删除）。本机远端同一张表，差别只在「打开账号目录」是文件夹还是文件窗口。
  *
- * 判定全在那台后端：清单与登录态（`accounts-list`，号名 `label` · 用量每格 `slots` 都在那一行里）· 删了默认号之后谁接（`meta.nextDefault`）·
+ * 判定全在那台后端：清单与登录态（`accounts-list`，号名 `label` · 额度几行 `quota` 都在那一行里）· 删了默认号之后谁接（`meta.nextDefault`）·
  * 对不上的几处（`accounts-verify`，打开时顺手核一次）· 命令名（配置文件里认作这个号的那几段，`profiles-read` 的 `accountShape`）·
  * 能不能开终端窗口（壳那一处）。这里只排版、只认最后一趟回答（切机器快过读时，晚到的整份作废）。
  * 那台账号清单 / 凭据 / 用量一变，后端推一帧（`changed {accounts}` · `changed {quota}`），这一页自己重读。
@@ -12,15 +12,17 @@ import { getCurrentMachine, subscribeMachine } from "../machine-context";
 import { SETTINGS_APPLIED_EVENT, SETTINGS_GO_EVENT } from "./events";
 import { renderNewAccountForm, type NewAccountForm, type NewAccountRequest } from "./account-new-form";
 import { accountRowKind, deriveUi, defaultAccount, type Account, type AccountsState } from "../accounts";
-import { accountsAgentProfile, fetchAccounts, launchAgentId } from "../account-reads";
+import { accountsAgentProfile, fetchAccounts } from "../account-reads";
+import { displayNameOf } from "../agent-profile";
 import { readPrefs, setPrefs } from "../machine-prefs";
 import { accountAvatarEl } from "../account-color";
 import { readProfiles } from "../profiles-reads";
 import { writeApikeyKey } from "../apikey-reads";
-import { openOnMachine } from "../file-window";
+import { openFileWindow } from "../file-window";
 import { readMachineNames, readMachines } from "../machine-feed";
 import { subscribeTopics } from "../events";
 import { openLoginDrawer } from "../login-drawer";
+import { loginOut, loginStatus } from "../login-reads";
 import { accountsAdd, accountsInit, accountsRemove, accountsRepair, accountsRollback, accountsSetDefault, accountsVerify, type VerifyReport } from "../account-ops";
 import { refusalIn } from "../ipc/chan-caller";
 import { confirmDialog, type ConfirmFn } from "../kit/dialog";
@@ -36,7 +38,13 @@ import { copyText } from "../copy-table";
 import { writeClipboard } from "../clipboard";
 import { machineName } from "../control-said";
 import { isLocalOrigin, LOCAL, type Machine } from "../ipc/origin";
+import { accountAnchor } from "../settings-dest";
 import { saidOf } from "../kit/detail";
+import type { QuotaCell } from "../generated/QuotaCell";
+
+/** 那台没问到、账号页只读时各键的悬停。离线是这一端自己知道的（那台后端断着，给不出这一句），所以这一句只在这里取一次；
+ *  与核心「断着 ⇒ 写类做不了」（`copy_core::peer::write_refused`）同一把键（core-failure-said 的 ONE_MOUTH）。 */
+const readOnlyHover = (): string => copyText("link.machine.readOnly");
 
 /** 一趟读回来的那一台（都是那台后端的成品；读不到的那一格是 `null`）。 */
 interface Facts {
@@ -49,12 +57,28 @@ interface Facts {
   unknown: boolean;
 }
 
+/** 带目的地进来、要落的那个号行的锚（[`accountAnchor`]）；那台的号单还没画出来 ⇒ 留着，画完再落。 */
+let pendingAccount: string | null = null;
+
+/** 号行高亮多久（同设置窗带目的地那一下）。 */
+const ACCOUNT_HIGHLIGHT_MS = 1500;
+
+/** 目的地的锚点是账号栏里一个号那一行（`account:` 开头）⇒ 交给「账号」栏，回 `true`。 */
+export function focusAccount(anchor: string | undefined): boolean {
+  if (!anchor?.startsWith("account:")) return false;
+  pendingAccount = anchor;
+  AccountsSection.live?.landPending();
+  return true;
+}
+
 /** 注入缝（判据换掉确认框）。 */
 export interface AccountsSectionOptions {
   confirm?: ConfirmFn;
 }
 
 export class AccountsSection {
+  /** 设置窗里那一栏（一扇设置窗一份）。 */
+  static live: AccountsSection | null = null;
   readonly element: HTMLElement;
   private readonly titleEl: HTMLElement;
   private readonly subEl: HTMLElement;
@@ -76,6 +100,7 @@ export class AccountsSection {
   private loaded = false;
 
   constructor(opts: AccountsSectionOptions = {}) {
+    AccountsSection.live = this;
     this.confirm = opts.confirm ?? confirmDialog;
     const root = document.createElement("div");
     root.className = "acct-page";
@@ -164,6 +189,20 @@ export class AccountsSection {
     this.body.removeAttribute("aria-busy");
     this.facts = facts;
     this.paint(facts);
+    this.landPending();
+  }
+
+  /** 留着的那个号行画出来了 ⇒ 滚进视野、高亮 1.5 秒，不再留；还没画出来 ⇒ 接着留（下一趟画完再落）。 */
+  landPending(): void {
+    const want = pendingAccount;
+    if (want === null) return;
+    const row = [...this.body.querySelectorAll<HTMLElement>("[data-anchor]")].find((e) => e.dataset.anchor === want);
+    if (!row) return;
+    pendingAccount = null;
+    row.scrollIntoView?.({ block: "nearest" });
+    row.classList.add("settings-highlight");
+    // 调度：一次性 —— 号行高亮 1.5 秒后摘掉
+    window.setTimeout(() => row.classList.remove("settings-highlight"), ACCOUNT_HIGHLIGHT_MS);
   }
 
   private async read(origin: Machine): Promise<Facts> {
@@ -207,7 +246,7 @@ export class AccountsSection {
     const s = f.state;
     // 这一次没问到：有上次的 ⇒ 画上次的（只读）＋ 警告条；没有 ⇒ 照实说。
     if (!s.available) {
-      setDisabled(this.newBtn, copyText("acctPage.offline.hover"));
+      setDisabled(this.newBtn, readOnlyHover());
       const last = s.last ?? null;
       const retry = button({ label: copyText("front.act.retry"), size: "compact", onClick: () => void this.reload() });
       const text = last
@@ -389,11 +428,12 @@ export class AccountsSection {
     wrap.className = "acct-row-wrap";
     wrap.setAttribute("role", "listitem");
     wrap.dataset.account = a.name;
+    wrap.dataset.anchor = accountAnchor(a);
     const row = document.createElement("div");
     row.className = "acct-row";
     row.tabIndex = 0;
     row.setAttribute("aria-expanded", String(this.open.has(key)));
-    if (readonly) row.title = copyText("acctPage.offline.hover");
+    if (readonly) row.title = readOnlyHover();
 
     const who = document.createElement("div");
     who.className = "acct-row-who";
@@ -410,17 +450,17 @@ export class AccountsSection {
       t.dataset.shade = "error";
       line1.appendChild(t);
     }
+    // 那一家的 MCP 登录不在号之间同步：那一句是那台写好的（`mcpLogins`），照摆。
+    if (a.mcpLogins) line1.appendChild(tag(a.mcpLogins));
     const line2 = document.createElement("div");
     line2.className = "acct-row-kind one-line";
     // 第二行那一句是后端写好的（`name_words::kind_line`），照摆。
     line2.textContent = a.kindLine ?? "";
     who.append(line1, line2);
 
-    const u5 = document.createElement("div");
-    u5.className = "acct-row-slot";
-    const u7 = document.createElement("div");
-    u7.className = "acct-row-slot";
-    fillSlots([u5, u7], a.slots ?? []);
+    const quota = document.createElement("div");
+    quota.className = "acct-row-quota";
+    fillQuota(quota, a.quota ?? []);
 
     const act = document.createElement("div");
     act.className = "acct-row-act";
@@ -451,7 +491,7 @@ export class AccountsSection {
       },
     });
 
-    row.append(accountAvatarEl(a.name, { size: 24, origin }), who, u5, u7, act, more);
+    row.append(accountAvatarEl(a.name, { size: 24, origin }), who, quota, act, more);
     wrap.appendChild(row);
     const toggle = (): void => {
       if (this.open.has(key)) this.open.delete(key);
@@ -471,7 +511,7 @@ export class AccountsSection {
 
   private menu(f: Facts, a: Account, readonly: boolean): MenuItem[] {
     const origin = f.origin;
-    const off = readonly ? { enabled: false, title: copyText("acctPage.offline.hover") } : {};
+    const off = readonly ? { enabled: false, title: readOnlyHover() } : {};
     const items: MenuItem[] = [];
     if (a.name !== f.state.meta?.effectiveDefault) items.push({ label: copyText("acctPage.row.setDefault"), onClick: () => void this.setDefault(origin, a), ...off });
     if (accountRowKind(a) === "apikey") items.push({ label: copyText("acctPage.menu.changeKey"), onClick: () => this.openDetail(a.name), ...off });
@@ -479,11 +519,17 @@ export class AccountsSection {
       // 在终端窗口里登录只在登录抽屉里：抽屉那一趟起不来、后端说那条路在时才亮。
       items.push({ label: copyText("acctPage.menu.relogin"), onClick: () => this.signIn(origin, a), ...off });
     }
+    // 退出 · 状态：那一家声明了那一条才给（后端写在这一行的 `signOut` · `status`，这里不认哪一家）。
+    const declared: [boolean | undefined, MenuItem][] = [
+      [a.signOut, { label: copyText("acctPage.menu.signOut"), onClick: () => void this.signOut(origin, a), ...off }],
+      [a.status, { label: copyText("acctPage.menu.status"), onClick: () => void this.readStatus(origin, a), ...off }],
+    ];
+    items.push(...declared.filter(([given]) => given === true).map(([, item]) => item));
     const cmds = f.commands.get(a.name) ?? [];
     if (cmds.length > 0) items.push({ label: copyText("acctPage.menu.copyCommands"), onClick: () => copyCmds(cmds) });
     if (a.configDir !== null) {
       const dir = a.configDir;
-      items.push({ label: revealLabel(origin), onClick: () => void this.reveal(origin, dir) });
+      items.push({ label: copyText("data.item.reveal"), onClick: () => void openFileWindow(origin, { dir }) });
       items.push({ divider: true, label: "" });
       items.push({ label: copyText("acctPage.menu.remove", { name: a.name }), danger: true, onClick: () => void this.remove(f, a), ...off });
     }
@@ -531,7 +577,7 @@ export class AccountsSection {
         o.textContent = label;
         return o;
       };
-      model.replaceChildren(opt("", copyText("acctPage.detail.modelDefault", { agent: profile?.displayName ?? "" })), ...names.map((n) => opt(n, n)));
+      model.replaceChildren(opt("", copyText("acctPage.detail.modelDefault", { agent: displayNameOf(profile.agent) })), ...names.map((n) => opt(n, n)));
       model.value = saved ?? "";
     };
     fill(undefined);
@@ -556,9 +602,9 @@ export class AccountsSection {
     line(copyText("acctPage.detail.model"), model, scope, modelErr);
     if (a.configDir !== null) {
       const dir = a.configDir;
-      line(copyText("acctPage.detail.dir"), mono(a.configDirShown ?? dir), button({ label: revealLabel(origin), kind: "ghost", size: "compact", onClick: () => void this.reveal(origin, dir) }));
+      line(copyText("acctPage.detail.dir"), mono(a.configDirShown ?? dir), button({ label: copyText("data.item.reveal"), kind: "ghost", size: "compact", onClick: () => void openFileWindow(origin, { dir }) }));
       const del = button({ label: copyText("acctPage.menu.remove", { name: a.name }), kind: "danger-text", size: "compact", onClick: () => void this.remove(f, a) });
-      if (readonly) setDisabled(del, copyText("acctPage.offline.hover"));
+      if (readonly) setDisabled(del, readOnlyHover());
       const foot = document.createElement("div");
       foot.className = "acct-detail-foot";
       foot.appendChild(del);
@@ -577,7 +623,7 @@ export class AccountsSection {
     host.textContent = a.endpointHost ?? "";
     host.hidden = !a.endpointHost;
     const change = button({ label: copyText("acctPage.detail.keyChange"), size: "compact" });
-    if (readonly) setDisabled(change, copyText("acctPage.offline.hover"));
+    if (readonly) setDisabled(change, readOnlyHover());
     const form = document.createElement("div");
     form.className = "acct-key-form";
     form.hidden = true;
@@ -669,17 +715,28 @@ export class AccountsSection {
     await this.reload(true);
   }
 
-  /** ［登录…］·「⋯ 重新登录…」：开登录抽屉（目标照这一行拼：那一家 ＋ 号名）。登成了那一行随推送自己变。 */
-  private signIn(origin: Machine, a: Account): void {
-    openLoginDrawer({ origin, target: { kind: "account", agent: launchAgentId(), account: a.name }, onDone: () => void this.reload(true) });
+  /** 「⋯ 退出登录」：跑那一家的退出那一条（令牌那一家自己删），之后那一行随重读变成需登录。 */
+  private async signOut(origin: Machine, a: Account): Promise<void> {
+    try {
+      toast(await loginOut(origin, a.name), "", { level: "info" });
+    } catch (e) {
+      failToast(saidOf(e), e, { level: "error" });
+    }
+    await this.reload(true);
   }
 
-  private async reveal(origin: Machine, dir: string): Promise<void> {
+  /** 「⋯ 登录状态」：问那一家这个号登没登，照它的答说一句。 */
+  private async readStatus(origin: Machine, a: Account): Promise<void> {
     try {
-      await openOnMachine(origin, { dir });
+      toast(await loginStatus(origin, a.name), "", { level: "info" });
     } catch (e) {
-      failToast(copyText("acctPage.reveal.failed"), e, { level: "error" });
+      failToast(saidOf(e), e, { level: "error" });
     }
+  }
+
+  /** ［登录…］·「⋯ 重新登录…」：开登录抽屉（目标只交号名：家由那台照号表认）。登成了那一行随推送自己变。 */
+  private signIn(origin: Machine, a: Account): void {
+    openLoginDrawer({ origin, target: { kind: "account", account: a.name }, onDone: () => void this.reload(true) });
   }
 
   // ───────────────────────────── 新建 ─────────────────────────────
@@ -722,7 +779,7 @@ export class AccountsSection {
     if (req.kind !== "api-key" && !req.credFile) {
       // 下一行照后端回的那几句（如「已开的终端要重读别名」），界面不另拼。
       toast(copyText("acctPage.new.done", { name: req.name, machine }), change.notes.join("\n"));
-      openLoginDrawer({ origin, target: { kind: "account", agent: launchAgentId(), account: req.name }, onDone: () => void this.reload(true) });
+      openLoginDrawer({ origin, target: { kind: "account", account: req.name }, onDone: () => void this.reload(true) });
     } else {
       toast(copyText("acctPage.new.done", { name: req.name, machine }), [change.keyProblem, ...change.notes].filter((x): x is string => !!x).join("\n"), change.keyProblem ? { level: "error" } : {});
       if (change.keyProblem) this.open.add(key);
@@ -746,17 +803,18 @@ function mono(t: string): HTMLElement {
   return e;
 }
 
-function revealLabel(origin: Machine): string {
-  return isLocalOrigin(origin) ? copyText("data.item.reveal") : copyText("acctPage.menu.revealRemote");
-}
-
-/** 那一行写好的额度格照先后摆进几列（字与语气都是那台写的：`5h 63% ↻18:30` · `7d 41%` · `按量`）；语气 fail ⇒ 红 · warn ⇒ 黄。 */
-function fillSlots(cols: readonly HTMLElement[], slots: readonly { text: string; tone: string }[]): void {
-  cols.forEach((col, i) => {
-    const s = slots[i];
-    if (!s) return;
-    col.textContent = s.text;
-    if (s.tone === "fail") col.dataset.shade = "refused";
-    else if (s.tone === "warn") col.dataset.shade = "warn";
-  });
+/** 那一号在额度账上那几行照摆，一行一条（那台写好的：收到几窗列几行 `5h 63% ↻18:30 +1h`，被拒那一句在最前）；每格的语气 fail ⇒ 红 · warn ⇒ 黄。 */
+function fillQuota(el: HTMLElement, rows: readonly (readonly QuotaCell[])[]): void {
+  for (const r of rows) {
+    const line = document.createElement("div");
+    line.className = "acct-row-quota-line";
+    for (const c of r) {
+      const s = document.createElement("span");
+      s.textContent = c.text;
+      if (c.tone === "fail") s.dataset.shade = "refused";
+      else if (c.tone === "warn") s.dataset.shade = "warn";
+      line.appendChild(s);
+    }
+    el.appendChild(line);
+  }
 }

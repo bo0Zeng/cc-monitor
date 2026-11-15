@@ -21,6 +21,8 @@ pub struct Account {
     pub auth_kind: Option<String>,
     /// 号色那一格（令牌表 `--acct-c<格>` 的第几格）：加号时分（[`Manifest::with_colors`]），存在盘上 `color`；旧清单没有 ⇒ `None`，常驻那一个补一次。
     pub color: Option<u8>,
+    /// 这个号是哪一家的号（盘上 `agent` 那一格，线上 `agent_kind`）；缺席 ⇒ `None`，归缺省那一家（`agents::account_kind`）。建号时照请求里的家写上。
+    pub agent: Option<String>,
     /// 这个号上本模块不认得的键（原样写回）。
     pub extra: Map<String, Value>,
 }
@@ -85,6 +87,7 @@ fn book_row_of(item: &Value) -> Option<acct_core::ManifestAccount> {
         },
         mode: text("mode")?,
         auth_kind: text("authKind")?,
+        agent: text("agent")?,
     })
 }
 
@@ -99,6 +102,7 @@ const ACCOUNT_KEYS: &[&str] = &[
     "mode",
     "authKind",
     "color",
+    "agent",
 ];
 
 /// 号色几格：照令牌表现数 `--acct-c<格>:` 那几行（号色只在 `tokens.css` 写一次，界面 · 手机都照它）。
@@ -241,6 +245,9 @@ impl Manifest {
                     }
                     if let Some(c) = a.color {
                         kv.push(("color".into(), Value::from(c)));
+                    }
+                    if let Some(k) = &a.agent {
+                        kv.push(("agent".into(), Value::from(k.as_str())));
                     }
                     kv.extend(a.extra.iter().map(|(k, v)| (k.clone(), v.clone())));
                     inline_object(&kv)
@@ -405,6 +412,11 @@ fn account_of(v: &Value) -> Option<Account> {
         Some(Value::String(s)) => Some(s.clone()),
         Some(_) => return None,
     };
+    let agent = match o.get("agent") {
+        None => None,
+        Some(Value::String(s)) => Some(s.clone()),
+        Some(_) => return None,
+    };
     let extra = o
         .iter()
         .filter(|(k, _)| !ACCOUNT_KEYS.contains(&k.as_str()))
@@ -417,6 +429,7 @@ fn account_of(v: &Value) -> Option<Account> {
         is_default,
         auth_kind,
         color: color_of(v),
+        agent,
         extra,
     })
 }

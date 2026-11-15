@@ -72,13 +72,14 @@ import com.ccmonitor.mobile.ui.chat.attach.rememberAttachPick
 data class ChatInputActions(
     val send: (String) -> Unit = {},
     val stop: () -> Unit = {},
-    val switchModel: (AgentPick) -> Unit = {},
+    /** 换模型；第二个是选的推理档原值（那个模型没档 ⇒ `null`）。 */
+    val switchModel: (AgentPick, String?) -> Unit = { _, _ -> },
     val switchPermission: (AgentPick) -> Unit = {},
     val loadPicks: () -> Unit = {},
     val loadCommands: () -> Unit = {},
     val say: (String) -> Unit = {},
     /** 撤待发里还没回执的一句（按编号）。 */
-    val cancel: (String) -> Unit = {},
+    val withdraw: (String) -> Unit = {},
     /** 撤输入队名单里一条（按编号，哪一端投的都行）。 */
     val cancelQueued: (String) -> Unit = {},
     /** 输入框里的字变了（本地存草稿）。 */
@@ -206,7 +207,8 @@ private fun QueueRow(
     ) {
         Text(row.state, style = MaterialTheme.typography.bodySmall, color = if (row.error) tokens.errorText else MaterialTheme.colorScheme.onSurface, maxLines = 1)
         Text(row.head, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = faint, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        SecondaryButton(onClick = { if (row.listed) actions.cancelQueued(row.id) else actions.cancel(row.id) }) { Text(copyText("mobChat.outbox.cancel")) }
+        // 撤不回（新建会话随起交着的头一句）⇒ 不摆［撤回］。
+        if (row.withdrawable) SecondaryButton(onClick = { if (row.listed) actions.cancelQueued(row.id) else actions.withdraw(row.id) }) { Text(copyText("kit.act.revert")) }
     }
 }
 
@@ -290,8 +292,10 @@ private fun InputSheets(
     when (sheet) {
         InputSheet.Models ->
             PickSheet(copyText("session.model.title"), state.picks, { listOfNotNull(it.modelDefault) + it.models }, state.model.value, { it.modelNote }, { set(null) }) {
-                actions.switchModel(it)
+                val next = afterModelPick(it)
+                if (next != null) set(next) else actions.switchModel(it, null)
             }
+        is InputSheet.Efforts -> EffortSheet(sheet.model, { set(null) }) { actions.switchModel(sheet.model, it) }
         InputSheet.Modes -> PickSheet(copyText("session.permission.title"), state.picks, { it.modes }, state.permission.value, { null }, { set(null) }) { actions.switchPermission(it) }
         InputSheet.Plus, InputSheet.Commands, InputSheet.Skills ->
             PlusSheet(
@@ -344,6 +348,41 @@ internal sealed interface InputSheet {
     data class Clear(
         val text: String,
     ) : InputSheet
+
+    /** 换到 [model] 之前选推理档那一屏（那个模型有档才升起，见 [afterModelPick]）。 */
+    data class Efforts(
+        val model: AgentPick,
+    ) : InputSheet
+}
+
+/** 点了一个模型之后：它有推理档 ⇒ 升起选档那一屏；没有 ⇒ `null`（当场换、不带档）。 */
+internal fun afterModelPick(model: AgentPick): InputSheet.Efforts? = if (model.efforts.isNullOrEmpty()) null else InputSheet.Efforts(model)
+
+/** 选档那一屏列的：各档照那台的先后与字，`true` ＝ 那一家的缺省档（勾上）。 */
+internal fun effortRows(model: AgentPick): List<Pair<AgentPick, Boolean>> = model.efforts.orEmpty().map { it to (it.value == model.defaultEffort) }
+
+/**
+ * 换到 [model] 之前选推理档：标题「推理档」，各档照 [effortRows]；点一档 ⇒ 收起、[pick] 那一档的原值。
+ * 聊天输入区与终端屏面板共用这一个。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun EffortSheet(
+    model: AgentPick,
+    close: () -> Unit,
+    pick: (String) -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = close, modifier = Modifier.testTag(ChatTestTags.PICK_SHEET)) {
+        Column(Modifier.navigationBarsPadding().padding(bottom = LocalAppTokens.current.spacing.lg)) {
+            SheetTitle(copyText("session.effort.title"))
+            effortRows(model).forEach { (e, on) ->
+                SheetRow(e.text, end = if (on) CHECK_GLYPH else null) {
+                    close()
+                    pick(e.value)
+                }
+            }
+        }
+    }
 }
 
 /**

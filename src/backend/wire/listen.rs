@@ -52,8 +52,8 @@ pub struct ResidentCall {
     pub args: serde_json::Value,
 }
 
-/// `--resident-call` 的码：这台没有常驻在听 ⇒ 照实失败（不在这台起一个冷进程顶上）。
-pub const CALL_ABSENT: &str = "resident_absent";
+/// `--resident-call` 的码：这台没有常驻在听 ⇒ 照实失败（不在这台起一个冷进程顶上）。住线上那一份。
+pub use cmd_wire::phone::CALL_ABSENT;
 /// `--resident-call` 的码：等到期限，常驻还没回。
 pub const CALL_TIMED_OUT: &str = "timed_out";
 
@@ -111,11 +111,13 @@ pub fn refusal_line(reason: &'static str) -> String {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Admit {
     /// 交出流：看的那一台的时区（原样，认不得 ⇒ UTC 由读的那一处定）· 回话里那一格（这台相对 attach 行的 `mine`；没带 ⇒ 缺）·
-    /// 在看名单（这条流从第一帧起照它发；没带 ⇒ 全发）。
+    /// 在看名单（这条流从第一帧起照它发；没带 ⇒ 全发）· 要不要折好的成品。
     Stream {
         tz: Option<String>,
         reply: AttachReply,
         watch: Option<crate::wire::WatchAsk>,
+        /// 要折好的成品（桌面壳，`AttachLine.folded`）：会话帧后紧跟 `session_seats`、活卡交 `live_now`。
+        folded: bool,
     },
     /// 拒绝，并把理由写回去（**出声**，不是静默 FIN —— 照 `relay::serve` 那条 503 的形状）。
     Refuse(&'static str),
@@ -136,6 +138,7 @@ pub fn admit(line: &str, own: &str) -> Admit {
             },
             tz: l.tz,
             watch: l.watch,
+            folded: l.folded,
         },
         Err(_) => Admit::Refuse(REFUSE_MALFORMED),
     }

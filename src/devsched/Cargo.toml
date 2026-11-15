@@ -1,0 +1,29 @@
+# 开发调度：自己一棵 cargo 工作区，不进后端（src/backend）与壳（src/frontend/shell）那两棵、不动它们的 Cargo.lock。
+# 成员：wire（两端之间的帧与连接）· policy（排除清单 · 送出清单 · 信任）· sched（调度端）· node（编译节点）· e2e（端到端）。
+# 第三方依赖只用 serde · serde_json · libc · regex 四样（离线缓存里有、远端编得过）；要加别的先改架构节点。
+[workspace]
+resolver = "2"
+members = ["wire", "policy", "sched", "node", "e2e"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+libc = "0.2"
+regex = "1"
+devsched-wire = { path = "wire" }
+devsched-policy = { path = "policy" }
+devsched-sched = { path = "sched" }
+devsched-node = { path = "node" }
+
+# 编译节点发布成 musl 静态单文件（`--target x86_64-unknown-linux-musl`），要小。
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

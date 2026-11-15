@@ -10,7 +10,9 @@ import { statusDot } from "../kit/status-dot";
 import { banner } from "../kit/banner";
 import { copyText } from "../copy-table";
 import { isLive } from "../face-can";
+import { WAITING_DOTS } from "../generated/judgment-rules";
 import { isLocalOrigin, type Machine } from "../ipc/origin";
+import { machineName } from "../ipc/chan-caller";
 import type { HistoryGroup, HistoryRow } from "../history-list-reads";
 import type { Hit, SessionHits } from "./history-search";
 import { plainSnippet } from "../find-strip";
@@ -34,7 +36,7 @@ export interface RowHooks {
 /** 机器标签（与主窗口标签页上的同一个样子：图标 ＋ 名字）；本机不画。 */
 export function machineTag(origin: Machine): HTMLElement | null {
   if (isLocalOrigin(origin)) return null;
-  const t = tag(origin);
+  const t = tag(machineName(origin));
   t.classList.add(s.hvMachine);
   t.prepend(icon("machine", "compact"));
   return t;
@@ -53,7 +55,7 @@ function dotOf(r: HistoryRow): HTMLElement | null {
 }
 
 /**
- * 文字徽标：那一家（Codex …）· 分身 · 已隐藏 · 需手动（那一行的脸说的）／ 在跑。
+ * 文字徽标：那一家（Codex …）· 分身 · 已隐藏 · 在等人（待答请求 · 需手动，那一行的脸说的）／ 在跑。
  * `live` ＝ 在跑也画成徽标（按项目那一形与内容头；按时间那一形的在跑由状态点说）。
  */
 export function rowBadges(r: HistoryRow, live = true): HTMLElement[] {
@@ -61,7 +63,7 @@ export function rowBadges(r: HistoryRow, live = true): HTMLElement[] {
   if (r.agentTag) badges.push(badge(r.agentTag));
   if (r.isBg) badges.push(badge(copyText("history.row.bg")));
   if (r.hidden) badges.push(badge(copyText("history.row.hidden")));
-  if (isLive(r.face) && r.face.dot === "needs-you") badges.push(badge(r.face.name, "need"));
+  if (isLive(r.face) && WAITING_DOTS.some((d) => d === r.face.dot)) badges.push(badge(r.face.name, "need"));
   else if (live && isLive(r.face)) badges.push(badge(copyText("runs.state.running"), "live"));
   return badges;
 }
@@ -85,7 +87,8 @@ function actions(r: HistoryRow, h: RowHooks): HTMLElement {
       h.resume(r);
     },
   });
-  if (r.can.resume === "bg") setDisabled(go, copyText("history.row.bgHint"));
+  // 恢复不给（分身 · 认不出是哪一家的）⇒ 灰着照摆那台写好的那一句。
+  setDisabled(go, r.can.resumeWhy ?? null);
   const more = button({
     label: copyText("history.row.more"),
     kind: "icon",
@@ -103,12 +106,12 @@ function actions(r: HistoryRow, h: RowHooks): HTMLElement {
 
 /**
  * 会话行。`compact` ＝ 按项目那一形（一层：标题 · 徽标 · 时间）；否则按时间那一形（两层）。
- * `forks` = 它下面挂着几个分叉（收着 / 展开）；`orphan` = 它是分叉、父会话不在清单里。
+ * `forksText` = 它下面挂着分叉时那颗的字（后端写好；没有分叉 ⇒ `null`）；`orphan` = 它是分叉、父会话不在清单里。
  */
 export function sessionRow(
   r: HistoryRow,
   h: RowHooks,
-  o: { compact: boolean; forks: number; forksOpen: boolean; child: boolean; orphan: boolean },
+  o: { compact: boolean; forksOpen: boolean; child: boolean; orphan: boolean; forksText: string | null },
 ): HTMLElement {
   const el = document.createElement("div");
   el.className = s.hvRow;
@@ -151,15 +154,15 @@ export function sessionRow(
     const m = machineTag(r.origin);
     if (m) l2.appendChild(m);
     l2.append(...badges);
-    if (o.forks > 0) l2.appendChild(forkToggle(r, h, o.forks, o.forksOpen));
+    if (o.forksText !== null) l2.appendChild(forkToggle(r, h, o.forksText, o.forksOpen));
     if (o.orphan) {
       const f = document.createElement("span");
       f.textContent = copyText("history.row.orphan");
       l2.appendChild(f);
     }
     el.appendChild(l2);
-  } else if (o.forks > 0) {
-    l1.insertBefore(forkToggle(r, h, o.forks, o.forksOpen), tm);
+  } else if (o.forksText !== null) {
+    l1.insertBefore(forkToggle(r, h, o.forksText, o.forksOpen), tm);
   }
   el.addEventListener("click", () => h.select(r));
   el.addEventListener("dblclick", () => h.openWindow(r));
@@ -174,11 +177,11 @@ export function sessionRow(
   return el;
 }
 
-function forkToggle(r: HistoryRow, h: RowHooks, n: number, open: boolean): HTMLElement {
+function forkToggle(r: HistoryRow, h: RowHooks, said: string, open: boolean): HTMLElement {
   const b = document.createElement("button");
   b.type = "button";
   b.className = s.hvForks;
-  b.textContent = copyText("history.row.forks", { n });
+  b.textContent = said;
   b.setAttribute("aria-expanded", String(open));
   b.addEventListener("click", (ev) => {
     ev.stopPropagation();
@@ -236,7 +239,7 @@ export function groupHead(
   } else {
     const c = document.createElement("span");
     c.className = s.hvGroupCount;
-    c.textContent = copyText("history.group.count", { n: g.count });
+    c.textContent = g.countText;
     el.appendChild(c);
     if (g.hasLive) el.appendChild(statusDot("running", copyText("runs.state.running"), "compact"));
     const add = button({
@@ -254,12 +257,12 @@ export function groupHead(
   return el;
 }
 
-/** 内容搜索的一处命中：谁说的一颗小徽标 ＋ 一行原文（命中词加底色）。 */
+/** 内容搜索的一处命中：谁说的一颗小徽标（那台写好的 `who`）＋ 一行原文（命中词加底色）。 */
 function hitLine(hit: Hit, onOpen: () => void): HTMLElement {
   const el = document.createElement("div");
   el.className = s.hvHit;
   el.tabIndex = -1;
-  const w = badge(whoOf(hit.kind));
+  const w = badge(hit.who);
   el.appendChild(w);
   const x = document.createElement("span");
   x.className = s.hvHitText;
@@ -277,31 +280,17 @@ function hitLine(hit: Hit, onOpen: () => void): HTMLElement {
   return el;
 }
 
-/** 命中种类 ⇒ 谁说的（`user` 你 · `assistant` 那一家 · `tool` 工具 · `report` agent 回报）。 */
-function whoOf(kind: string): string {
-  switch (kind) {
-    case "user":
-      return copyText("machineForm.field.user");
-    case "tool":
-      return copyText("sessionFind.who.tool");
-    case "report":
-      return copyText("sessionFind.who.report");
-    default:
-      return copyText("history.searchHit.agent");
-  }
-}
-
 /** 内容搜索的一块：会话行 ＋ 后端给的那几处命中 ＋「+N 处 ▸」（点了右边打开这个会话）。 */
 export function hitsBlock(row: HTMLElement, sh: SessionHits, open: (hit: Hit | null) => void): HTMLElement {
   const el = document.createElement("div");
   el.className = s.hvHits;
   el.appendChild(row);
   for (const hit of sh.hits) el.appendChild(hitLine(hit, () => open(hit)));
-  if (sh.moreHits > 0) {
+  if (sh.moreText) {
     const m = document.createElement("button");
     m.type = "button";
     m.className = s.hvMore;
-    m.textContent = copyText("history.searchSession.more", { n: sh.moreHits });
+    m.textContent = sh.moreText;
     m.addEventListener("click", () => open(null));
     el.appendChild(m);
   }

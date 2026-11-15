@@ -11,7 +11,7 @@ import { confirmDialog } from "./kit/dialog";
 import { copyText } from "./copy-table";
 import { isLocalOrigin, LOCAL } from "./ipc/origin";
 import { resolveRemoteConfigByOrigin } from "./remote-config";
-import { askInterrupts, interruptRows } from "./settings/interrupts";
+import { askInterruptRows } from "./settings/interrupts";
 
 /** 期限（值归发起方，DL1）：问几次那台 ＋ 推一份 MB 级的字节 ＋ 读回。 */
 const INSTALL_BUDGET_MS = 600_000;
@@ -22,7 +22,7 @@ const INSTALL_BUDGET_MS = 600_000;
  * 本机：停口上那一位（`backend_stop`）、再起这一版（`backend_start`）⇒ 空串（结局由本机那一行的状态说）；停没停成就不起。
  */
 export async function updateBackend(origin: string, machine: string, onStart?: () => void): Promise<string | null> {
-  const rows = interruptRows(await askInterrupts(origin), machine, "update");
+  const rows = await askInterruptRows(origin, "update");
   if (
     rows.length > 0 &&
     !(await confirmDialog({ title: copyText("interrupts.update.title", { machine }), action: copyText("front.act.update"), rows }))

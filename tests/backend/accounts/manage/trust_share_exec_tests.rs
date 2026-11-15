@@ -26,6 +26,7 @@ fn library(rows: &[(&str, String)]) -> crate::accounts::manage::model::Manifest 
                     is_default: false,
                     auth_kind: None,
                     color: None,
+                    agent: None,
                     extra: Default::default(),
                 })
             })
@@ -273,28 +274,44 @@ fn the_same_pass_runs_on_the_fake_adapters_format() {
     let cells = crate::agents::fake::TRUST_CELLS;
     t.write("fake-config.json", "{\"trusted\": {\"/h\": true}}\n");
     t.write(
-        "a/fake-config.json",
+        ".cc-monitor/accounts/a/fake-config.json",
         "{\n  \"keep\": [1],\n  \"trusted\": {\n    \"/a\": true\n  }\n}\n",
     );
-    t.write("b/fake-config.json", "{\"keep\": 2}\n");
+    t.write(".cc-monitor/accounts/b/fake-config.json", "{\"keep\": 2}\n");
     let list = library(&[
-        ("a", format!("{}/a", t.home())),
-        ("b", format!("{}/b", t.home())),
+        ("a", format!("{}/.cc-monitor/accounts/a", t.home())),
+        ("b", format!("{}/.cc-monitor/accounts/b", t.home())),
     ]);
     let home_before = sha(&t, "fake-config.json");
-    let mut changed = sync_with(&t.door(), &t.home(), &cells, "fake-config.json", &list);
+    let zero = format!("{}/fake-config.json", t.home());
+    let mut changed = sync_with(
+        &t.door(),
+        &t.home(),
+        &cells,
+        "fake-config.json",
+        &zero,
+        &list,
+    );
     changed.sort();
     assert_eq!(changed, ["a", "b"]);
     assert_eq!(
-        t.value("a/fake-config.json"),
+        t.value(".cc-monitor/accounts/a/fake-config.json"),
         json!({ "keep": [1], "trusted": { "/a": true, "/h": true } })
     );
     assert_eq!(
-        t.value("b/fake-config.json"),
+        t.value(".cc-monitor/accounts/b/fake-config.json"),
         json!({ "keep": 2, "trusted": { "/a": true, "/h": true } })
     );
     assert_eq!(sha(&t, "fake-config.json"), home_before);
-    assert!(sync_with(&t.door(), &t.home(), &cells, "fake-config.json", &list).is_empty());
+    assert!(sync_with(
+        &t.door(),
+        &t.home(),
+        &cells,
+        "fake-config.json",
+        &zero,
+        &list
+    )
+    .is_empty());
 
     assert_eq!(
         pretrust_with(
@@ -303,13 +320,16 @@ fn the_same_pass_runs_on_the_fake_adapters_format() {
             &cells,
             "fake-config.json",
             &list,
-            &format!("{}/b", t.home()),
+            &format!("{}/.cc-monitor/accounts/b", t.home()),
             "/p"
         )
         .unwrap(),
         Marked::Wrote
     );
-    assert_eq!(t.value("b/fake-config.json")["trusted"]["/p"], json!(true));
+    assert_eq!(
+        t.value(".cc-monitor/accounts/b/fake-config.json")["trusted"]["/p"],
+        json!(true)
+    );
     assert_eq!(
         pretrust_with(
             &t.door(),
@@ -317,11 +337,115 @@ fn the_same_pass_runs_on_the_fake_adapters_format() {
             &cells,
             "fake-config.json",
             &list,
-            &format!("{}/c", t.home()),
+            &format!("{}/.cc-monitor/accounts/c", t.home()),
             "/p"
         )
         .unwrap(),
         Marked::NotListed
+    );
+}
+
+/// 两个替身家各两个号：`fa` 记 JSON（`fake-config.json`，账号 0 那一份照身份表缺席住它的配置目录 `shared/`）·
+/// `fb` 记行式（`fake.conf`，身份表说它的原生根是家目录 ⇒ 账号 0 那一份住 `$HOME`）。同步一趟：各家只在自家号之间并、
+/// 只补自家号缺的（别家信任过的目录不进、别家的文件不在自家号目录里冒出来），两家的账号 0 那一份一字不变。
+#[test]
+fn each_family_syncs_only_among_its_own_accounts_and_never_writes_account_zero() {
+    use crate::accounts::manage::model::{Account, Entry, Manifest};
+    let t = tmp("families");
+    let fa = crate::agents::fake::family_row("fa", "CCM_FA_DIR", "fa", true, || None);
+    let fb_face = crate::agents::AccountsFace {
+        identity: &[(
+            "fake.conf",
+            crate::agents::IdentityRoot::Home,
+            crate::agents::IdentityClass::State,
+        )],
+        config_file: "fake.conf",
+        trust: Some(crate::agents::fake::LINE_TRUST_CELLS),
+        ..fa.accounts.expect("替身家有账号面")
+    };
+    let fb = crate::agents::Adapter {
+        accounts: Some(fb_face),
+        ..crate::agents::fake::family_row("fb", "CCM_FB_DIR", "fb", false, || None)
+    };
+    let registry = [fa, fb];
+    t.write(
+        "shared/fake-config.json",
+        "{\"trusted\": {\"/a0\": true}}\n",
+    );
+    t.write("fake.conf", "trust /b0\n");
+    t.write(
+        ".cc-monitor/accounts/a1/fake-config.json",
+        "{\"trusted\": {\"/a1\": true}}\n",
+    );
+    t.write(".cc-monitor/accounts/a2/fake-config.json", "{}\n");
+    t.write(".cc-monitor/accounts/b1/fake.conf", "trust /b1\n");
+    t.write(".cc-monitor/accounts/b2/fake.conf", "color = red\n");
+    let row = |name: &str, kind: &str| {
+        Entry::Managed(Account {
+            name: name.to_string(),
+            email: String::new(),
+            config_dir: format!("{}/.cc-monitor/accounts/{name}", t.home()),
+            is_default: false,
+            auth_kind: None,
+            color: None,
+            agent: Some(kind.to_string()),
+            extra: Default::default(),
+        })
+    };
+    let m = Manifest {
+        entries: vec![
+            row("a1", "fa"),
+            row("b1", "fb"),
+            row("a2", "fa"),
+            row("b2", "fb"),
+        ],
+        ..Manifest::default()
+    };
+    let zero_a = sha(&t, "shared/fake-config.json");
+    let zero_b = sha(&t, "fake.conf");
+
+    let mut changed = sync_among(&t.door(), &t.home(), &registry, &m);
+    changed.sort();
+    assert_eq!(changed, ["a1", "a2", "b1", "b2"]);
+    assert_eq!(
+        t.value(".cc-monitor/accounts/a1/fake-config.json"),
+        json!({ "trusted": { "/a0": true, "/a1": true } })
+    );
+    assert_eq!(
+        t.value(".cc-monitor/accounts/a2/fake-config.json"),
+        json!({ "trusted": { "/a0": true, "/a1": true } })
+    );
+    assert_eq!(
+        t.read(".cc-monitor/accounts/b1/fake.conf"),
+        "trust /b1\ntrust /b0\n"
+    );
+    assert_eq!(
+        t.read(".cc-monitor/accounts/b2/fake.conf"),
+        "color = red\ntrust /b0\ntrust /b1\n"
+    );
+    for (a, other) in [
+        ("a1", "fake.conf"),
+        ("a2", "fake.conf"),
+        ("b1", "fake-config.json"),
+        ("b2", "fake-config.json"),
+    ] {
+        assert!(
+            !t.0.join(".cc-monitor/accounts")
+                .join(a)
+                .join(other)
+                .exists(),
+            "{a} 号目录里冒出了别家的 {other}"
+        );
+    }
+    assert_eq!(
+        sha(&t, "shared/fake-config.json"),
+        zero_a,
+        "fa 的账号 0 被写了"
+    );
+    assert_eq!(sha(&t, "fake.conf"), zero_b, "fb 的账号 0 被写了");
+    assert!(
+        sync_among(&t.door(), &t.home(), &registry, &m).is_empty(),
+        "第二趟还在写"
     );
 }
 
@@ -366,8 +490,8 @@ fn the_generic_layer_does_not_know_about_git() {
     let cells = crate::agents::fake::TRUST_CELLS;
     t.write("repo/.git/HEAD", "x\n");
     std::fs::create_dir_all(t.0.join("repo/sub")).unwrap();
-    t.write("a/fake-config.json", "{}\n");
-    let list = library(&[("a", format!("{}/a", t.home()))]);
+    t.write(".cc-monitor/accounts/a/fake-config.json", "{}\n");
+    let list = library(&[("a", format!("{}/.cc-monitor/accounts/a", t.home()))]);
     let sub = format!("{}/repo/sub", t.home());
     assert_eq!(
         pretrust_with(
@@ -376,14 +500,244 @@ fn the_generic_layer_does_not_know_about_git() {
             &cells,
             "fake-config.json",
             &list,
-            &format!("{}/a", t.home()),
+            &format!("{}/.cc-monitor/accounts/a", t.home()),
             &sub
         )
         .unwrap(),
         Marked::Wrote
     );
     assert_eq!(
-        t.value("a/fake-config.json"),
+        t.value(".cc-monitor/accounts/a/fake-config.json"),
         json!({ "trusted": { sub: true } })
+    );
+}
+
+/// 一家自己声明的改法（假 agent 的行式配置，不是 JSON）：同步只补每个号缺的那几行、本来就有的不重写；
+/// 预标只多那一行，别的字节逐字不变；家目录下那一份一个字节不写。
+#[test]
+fn a_familys_own_trust_edit_is_used_instead_of_json() {
+    let t = tmp("lines");
+    let cells = crate::agents::fake::LINE_TRUST_CELLS;
+    let file = "fake.conf";
+    t.write(file, "# 家目录那一份\ntrust /h\n");
+    let a_body = "# 号 a\ncolor = blue\ntrust /a\n  spaced = 1\n";
+    t.write(&format!(".cc-monitor/accounts/a/{file}"), a_body);
+    t.write(&format!(".cc-monitor/accounts/b/{file}"), "color = red");
+    let list = library(&[
+        ("a", format!("{}/.cc-monitor/accounts/a", t.home())),
+        ("b", format!("{}/.cc-monitor/accounts/b", t.home())),
+    ]);
+    let home_before = sha(&t, file);
+    let zero = format!("{}/{file}", t.home());
+    let mut changed = sync_with(&t.door(), &t.home(), &cells, file, &zero, &list);
+    changed.sort();
+    assert_eq!(changed, ["a", "b"]);
+    assert_eq!(
+        t.read(&format!(".cc-monitor/accounts/a/{file}")),
+        format!("{a_body}trust /h\n")
+    );
+    assert_eq!(
+        t.read(&format!(".cc-monitor/accounts/b/{file}")),
+        "color = red\ntrust /a\ntrust /h\n"
+    );
+    assert_eq!(sha(&t, file), home_before, "家目录下那一份一个字节不写");
+    assert!(
+        sync_with(&t.door(), &t.home(), &cells, file, &zero, &list).is_empty(),
+        "都已标上 ⇒ 不重写"
+    );
+    let b_before = t.read(&format!(".cc-monitor/accounts/b/{file}"));
+    assert_eq!(
+        pretrust_with(
+            &t.door(),
+            &t.home(),
+            &cells,
+            file,
+            &list,
+            &format!("{}/.cc-monitor/accounts/b", t.home()),
+            "/p"
+        )
+        .unwrap(),
+        Marked::Wrote
+    );
+    assert_eq!(
+        t.read(&format!(".cc-monitor/accounts/b/{file}")),
+        format!("{b_before}trust /p\n")
+    );
+    // 读不懂的那一份不写。
+    let bad = "!! 不是这一家的写法\n";
+    t.write(&format!(".cc-monitor/accounts/b/{file}"), bad);
+    assert!(pretrust_with(
+        &t.door(),
+        &t.home(),
+        &cells,
+        file,
+        &list,
+        &format!("{}/.cc-monitor/accounts/b", t.home()),
+        "/q"
+    )
+    .is_err());
+    assert_eq!(t.read(&format!(".cc-monitor/accounts/b/{file}")), bad);
+}
+
+/// 清单里某个号的号目录指到账号库外（用户自己的配置目录，手改清单就能写成这样）：预标不写它、照实交「不在账号库里」；
+/// 同步一趟也不写它（库里的号照常补），那一份一个字节不变。
+#[test]
+fn a_config_dir_outside_the_library_is_never_written() {
+    let t = tmp("outside");
+    let cells = crate::agents::fake::TRUST_CELLS;
+    let file = "fake-config.json";
+    let inside = format!("{}/.cc-monitor/accounts/in", t.home());
+    let own = format!("{}/.own-agent", t.home());
+    t.write(
+        ".cc-monitor/accounts/in/fake-config.json",
+        "{\"trusted\": {\"/i\": true}}\n",
+    );
+    t.write(
+        ".own-agent/fake-config.json",
+        "{\"trusted\": {\"/o\": true}}\n",
+    );
+    let list = library(&[("in", inside.clone()), ("out", own.clone())]);
+    let own_before = sha(&t, ".own-agent/fake-config.json");
+
+    assert_eq!(
+        pretrust_with(&t.door(), &t.home(), &cells, file, &list, &own, "/p").unwrap(),
+        Marked::Outside
+    );
+    assert_eq!(
+        sha(&t, ".own-agent/fake-config.json"),
+        own_before,
+        "预标写了库外那一份"
+    );
+    // 库外那一份读不出来（那个位置是个目录）也照样交「不在账号库里」（判在读之前，不读它）。
+    let unread = format!("{}/.own-unreadable", t.home());
+    std::fs::create_dir_all(t.0.join(".own-unreadable/fake-config.json")).unwrap();
+    let odd = library(&[("odd", unread.clone())]);
+    assert_eq!(
+        pretrust_with(&t.door(), &t.home(), &cells, file, &odd, &unread, "/p").unwrap(),
+        Marked::Outside
+    );
+
+    // 账号 0 信任过 /z ⇒ 库里的号照常补上；库外那一份连读也不读：它信任过的 /o 不并进库里。
+    t.write(file, "{\"trusted\": {\"/z\": true}}\n");
+    let zero = format!("{}/{file}", t.home());
+    let changed = sync_with(&t.door(), &t.home(), &cells, file, &zero, &list);
+    assert_eq!(changed, ["in"], "库外那个号不在改写之列");
+    assert_eq!(
+        sha(&t, ".own-agent/fake-config.json"),
+        own_before,
+        "同步写了库外那一份"
+    );
+    let got = t.read(".cc-monitor/accounts/in/fake-config.json");
+    assert!(got.contains("/z") && !got.contains("/o"), "{got}");
+    assert_eq!(
+        pretrust_with(&t.door(), &t.home(), &cells, file, &list, &inside, "/p").unwrap(),
+        Marked::Wrote,
+        "库里的号照常预标"
+    );
+
+    // 需手动那一件只出库外那个号；库根本身 · 只是名字前缀相同的目录都算库外。
+    let fa = [crate::agents::fake::family_row(
+        "fa",
+        "CCM_FA_DIR",
+        "fa",
+        true,
+        || None,
+    )];
+    let accts = format!("{}/.cc-monitor/accounts", t.home());
+    let names = |m| -> Vec<String> {
+        outside_library_among(&t.home(), &fa, m)
+            .into_iter()
+            .map(|o| o.name)
+            .collect()
+    };
+    assert_eq!(names(&list), ["out"]);
+    let edge = library(&[
+        ("root", format!("{accts}/")),
+        ("twin", format!("{accts}-x/a")),
+        ("in", inside.clone()),
+    ]);
+    assert_eq!(names(&edge), ["root", "twin"]);
+    let o = &outside_library_among(&t.home(), &fa, &list)[0];
+    assert_eq!(
+        (o.dir.as_str(), o.manifest.clone(), o.accts.as_str()),
+        (
+            own.as_str(),
+            format!("{accts}/accounts.json"),
+            accts.as_str()
+        )
+    );
+}
+
+/// 库里那个号目录本身是个符号链接、指到库外（用户自己的配置目录）：字面上在库里，落盘却是用户那一份 ⇒ 照库外办：
+/// 预标交「不在账号库里」、同步不写它，那一份一个字节不变；需手动那一件也出它。
+#[test]
+fn a_library_dir_that_links_outside_counts_as_outside() {
+    let t = tmp("outside-link");
+    let cells = crate::agents::fake::TRUST_CELLS;
+    let file = "fake-config.json";
+    let inside = format!("{}/.cc-monitor/accounts/in", t.home());
+    let linked = format!("{}/.cc-monitor/accounts/lnk", t.home());
+    t.write(
+        ".cc-monitor/accounts/in/fake-config.json",
+        "{\"trusted\": {\"/i\": true}}\n",
+    );
+    t.write(
+        ".own-agent/fake-config.json",
+        "{\"trusted\": {\"/o\": true}}\n",
+    );
+    std::os::unix::fs::symlink(t.0.join(".own-agent"), &linked).unwrap();
+    let list = library(&[("in", inside.clone()), ("lnk", linked.clone())]);
+    let own_before = sha(&t, ".own-agent/fake-config.json");
+
+    assert_eq!(
+        pretrust_with(&t.door(), &t.home(), &cells, file, &list, &linked, "/p").unwrap(),
+        Marked::Outside
+    );
+    t.write(file, "{\"trusted\": {\"/z\": true}}\n");
+    let zero = format!("{}/{file}", t.home());
+    let changed = sync_with(&t.door(), &t.home(), &cells, file, &zero, &list);
+    assert_eq!(changed, ["in"], "链到库外的那个号不在改写之列");
+    assert_eq!(
+        sha(&t, ".own-agent/fake-config.json"),
+        own_before,
+        "写了链到库外的那一份"
+    );
+    let fa = [crate::agents::fake::family_row(
+        "fa",
+        "CCM_FA_DIR",
+        "fa",
+        true,
+        || None,
+    )];
+    let names: Vec<String> = outside_library_among(&t.home(), &fa, &list)
+        .into_iter()
+        .map(|o| o.name)
+        .collect();
+    assert_eq!(names, ["lnk"]);
+}
+
+/// 「哪几家要同步信任 · 账号 0 那份在哪」只判一处（[`trust_families`]）：后端生产源码里取账号 0 那份配置路径
+/// （`base_config_of(`，定义不算）只在它那一处；监看要盯的目录也照它（`trust_zero_dirs`），不另判一遍。
+#[test]
+fn which_families_sync_trust_and_where_account_zero_lives_is_judged_once() {
+    let root = guard_core::addr::backend_src_root();
+    let mut hits: Vec<(String, usize)> = Vec::new();
+    for (p, src) in guard_core::scan_tree!(&root, &["rs"]) {
+        let prod = guard_core::production_code(&src);
+        let n =
+            prod.matches("base_config_of(").count() - prod.matches("fn base_config_of(").count();
+        if n > 0 {
+            let rel = p
+                .strip_prefix(&root)
+                .unwrap_or(&p)
+                .to_string_lossy()
+                .replace('\\', "/");
+            hits.push((rel, n));
+        }
+    }
+    assert_eq!(
+        hits,
+        vec![("accounts/manage/trust_share_exec.rs".to_string(), 1)],
+        "取账号 0 那份配置路径的不止 `trust_families` 一处 —— 改调它"
     );
 }

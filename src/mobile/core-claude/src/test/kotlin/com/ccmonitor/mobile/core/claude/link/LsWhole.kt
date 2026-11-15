@@ -9,7 +9,10 @@ internal fun lsWhole(
     head: Map<String, Any?>,
 ): Map<String, Any?> {
     val entries = rows.map { e -> if ("shown" in e || "path" !in e) e else e + ("shown" to e["path"]) }
-    val info = if ("shown" in head) head else head + ("shown" to "/")
+    val shownInfo = if ("shown" in head) head else head + ("shown" to "/")
+    val homeInfo = if ("at_home" in shownInfo) shownInfo else shownInfo + ("at_home" to false)
+    val byInfo = if ("by" in homeInfo) homeInfo else homeInfo + ("by" to "name")
+    val info = if ("descending" in byInfo) byInfo else byInfo + ("descending" to false)
     val keys =
         entries.mapIndexed { i, e ->
             when (val n = e["name"]) {

@@ -44,8 +44,7 @@ vi.mock("../../../src/frontend/ui/ipc/commands", () => ({
 }));
 vi.mock("../../../src/frontend/ui/account-reads", async () => {
   const { copyText } = await import("../../../src/frontend/ui/copy-table");
-  return {
-    fetchAccounts: vi.fn(async () => ({
+  const fetchAccounts = vi.fn(async (_origin: string, _agent?: string) => ({
       available: true,
       meta: { effectiveDefault: "work" },
       accounts: [
@@ -54,8 +53,14 @@ vi.mock("../../../src/frontend/ui/account-reads", async () => {
         // 那台说不进选号表的号（有目录、隔离也不列）：列不列只照 `newSession`，界面不另判。
         { name: "elsewhere", email: "", configDir: "/h/.cc/elsewhere", isDefault: false, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true, selectable: true, newSession: false },
       ],
-    })),
-  };
+    }));
+  // 新会话框那一问（带框里那一家）与别处那一问同一份替身：改一处两处都跟着。
+  return { fetchAccounts, fetchAccountsOf: fetchAccounts };
+});
+// 替身家 `fake`：有账号这一维（号表照它问）；别的照真表。
+vi.mock("../../../src/frontend/ui/agent-profile", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../../../src/frontend/ui/agent-profile")>();
+  return { ...real, agentHasAccounts: (a: string) => a === "fake" || real.agentHasAccounts(a) };
 });
 vi.mock("../../../src/frontend/ui/acct-center", () => ({ refreshQuota: vi.fn(async () => {}) }));
 vi.mock("../../../src/frontend/ui/behavior", () => ({ getBehavior: vi.fn(async () => ({ resumeCommand: "" })) }));
@@ -139,7 +144,7 @@ beforeEach(() => {
   vi.mocked(commands.backend_start).mockClear();
   replies.set("machine-read", MACHINES);
   replies.set("session-open-facts", FACTS);
-  replies.set("session-open-dir", { exists: true, tmuxName: "orders-cc" });
+  replies.set("session-open-dir", { said: null, tmuxName: "orders-cc" });
   replies.set("session-open", OK);
   replies.set("session-arrive", { kind: "arrived", sid: "new-sid" });
   setLaunchSlots(null);
@@ -209,7 +214,7 @@ describe("起新会话框：预填与几行出不出（都照那台说的）", (
     choose(acct, "personal");
     [...rowOf(acct).querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("newSession.account.login"))!.click();
     await flush();
-    expect(login.openLoginDrawer).toHaveBeenCalledWith(expect.objectContaining({ origin: "devbox", target: { kind: "account", agent: "claude", account: "personal" } }));
+    expect(login.openLoginDrawer).toHaveBeenCalledWith(expect.objectContaining({ origin: "devbox", target: { kind: "account", account: "personal" } }));
     expect(settings.openSettingsWindow).not.toHaveBeenCalled();
     expect(document.querySelector('[role="dialog"]'), "框还开着").not.toBeNull();
   });
@@ -223,6 +228,67 @@ describe("起新会话框：预填与几行出不出（都照那台说的）", (
     choose(acct, "personal");
     expect(rowOf(acct).textContent).toContain(copyText("accounts.row.loginElsewhere"));
     expect(rowOf(acct).textContent).not.toContain(copyText("newSession.account.login"));
+  });
+});
+
+describe("框里那一家：号表照它问 · ［登录…］照那台给", () => {
+  it("★ 框里换成非默认那一家 ⇒ 号表照那一家重问（不拿默认那一家的号表）", async () => {
+    replies.set("session-open-facts", { ...FACTS, agents: [agentOf("claude"), { ...agentOf("fake"), text: "替身家" }] });
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    vi.mocked(fetchAccounts).mockClear();
+    choose(sel(copyText("beProfile.slot.agent")), "替身家");
+    await flush();
+    expect(vi.mocked(fetchAccounts).mock.calls.at(-1), "号表问的是框里那一家").toEqual(["devbox", "fake"]);
+  });
+
+  it("快换两家、先问的那家后答 ⇒ 号表留后选那家的（旧答不盖新答）", async () => {
+    replies.set("session-open-facts", { ...FACTS, agents: [agentOf("claude"), { ...agentOf("fake"), text: "替身家" }] });
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    const st = await fetchAccounts("devbox");
+    let answerFake!: () => void;
+    const fakeOnly = { ...st, accounts: [{ ...st.accounts[1], name: "fake-only", label: "fake-only" }] };
+    vi.mocked(fetchAccounts).mockImplementationOnce(() => new Promise((r) => (answerFake = () => r(fakeOnly))));
+    choose(sel(copyText("beProfile.slot.agent")), "替身家");
+    await flush();
+    choose(sel(copyText("beProfile.slot.agent")), "Claude Code");
+    await flush();
+    answerFake();
+    await flush();
+    const labels = optionsOf(sel(copyText("beProfile.slot.account"))).join("|");
+    expect(labels, "后选那家的号还在").toContain("work");
+    expect(labels, "先问那家的晚到答复没盖上来").not.toContain("fake-only");
+  });
+
+  const refuseWith = (login: boolean): void => {
+    refusal = {
+      op: "session-open",
+      code: "account_unavailable",
+      said: "那台说 work 选不了",
+      data: { field: "account", unavailable: { requested: "work", pinned: false, listKnown: true, alternative: null, login } },
+    };
+  };
+  const loginIn = (): HTMLButtonElement | undefined =>
+    [...rowOf(sel(copyText("beProfile.slot.account"))).querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("newSession.account.login"));
+
+  it("★ 号选不了、那台说不给登录（`login: false`）⇒ 只写那一句、不给［登录…］", async () => {
+    refuseWith(false);
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    createBtn().click();
+    await flush();
+    expect(rowOf(sel(copyText("beProfile.slot.account"))).textContent).toContain("那台说 work 选不了");
+    expect(loginIn()).toBeUndefined();
+  });
+
+  it("号选不了、那台说给登录（`login: true`）⇒ 那一句 ＋［登录…］", async () => {
+    refuseWith(true);
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    createBtn().click();
+    await flush();
+    expect(loginIn()).toBeTruthy();
   });
 });
 
@@ -333,7 +399,7 @@ describe("单个 · 一组：页签与别名那一格", () => {
     expect(dialog().querySelector<HTMLElement>('[data-role="set-page"]')!.hidden).toBe(false);
     expect(createBtn()).toBeUndefined();
     document.body.replaceChildren();
-    void openNewSession({ origin: "devbox", fork: { sid: "s", uuid: "u", title: "源" } });
+    void openNewSession({ origin: "devbox", fork: { sid: "s", uuid: "u" } });
     await flush();
     expect(dialog().querySelector('[role="tab"]')).toBeNull();
   });
@@ -408,7 +474,7 @@ describe("点［新建］：交那台的那一份", () => {
     createBtn().click();
     await flush();
     expect(dialog(), "框不关").toBeTruthy();
-    expect(rowOf(input(copyText("newSession.label.cwd"))).textContent).toContain(copyText("launch.dir.missing", { machine: "devbox" }));
+    expect(rowOf(input(copyText("newSession.label.cwd"))).textContent, "格下照抄那台写好的那一句").toContain(copyText("beSessionNew.cwd.missing", { cwd: "/nope" }));
     expect(arriveAsks()).toEqual([]);
   });
 
@@ -526,12 +592,13 @@ describe("分叉那一形", () => {
         launch: { cwd: { kind: "known", value: "/home/u/work/orders", from: "record" }, account: { kind: "unknown", why: "exited" }, terminal: { kind: "unknown", why: "exited" } },
         turn: 9,
         startText: "02:05",
+        fromText: "核心·分叉自那一轮",
       },
     });
-    void openNewSession({ origin: "devbox", fork: { sid: "src-1", uuid: "msg-9", title: "给订单服务加重试" } });
+    void openNewSession({ origin: "devbox", fork: { sid: "src-1", uuid: "msg-9" } });
     await flush();
     expect(sent.find((s) => s.op === "session-open-facts")!.body).toEqual({ forkOf: "src-1", at: "msg-9" });
-    expect(dialog().textContent, "那一轮的钟面照抄后端写好的字").toContain(copyText("newSession.fork.from", { title: "给订单服务加重试", n: 9, time: "02:05" }));
+    expect(dialog().textContent, "框顶那一句照抄后端写好的整句").toContain("核心·分叉自那一轮");
     expect(dialog().querySelector(`input[aria-label="${copyText("newSession.label.tmuxName")}"]`), "分叉不给终端名那一格").toBeNull();
     expect(input(copyText("newSession.label.cwd")).value).toBe("/home/u/work/orders");
     expect(sel(copyText("detail.label.machine")).disabled).toBe(true);
@@ -659,13 +726,13 @@ describe("目录格 · 最近的 · 更多那几格", () => {
   it("离开目录格 ⇒ 问那台在不在：不在 ⇒ 那一格下黄字；终端名占位跟着那台铸的名字", async () => {
     void openNewSession({ origin: "devbox" });
     await flush();
-    replies.set("session-open-dir", { exists: false, tmuxName: "nope-cc" });
+    replies.set("session-open-dir", { said: "那台写的：/nope 不在", tmuxName: "nope-cc" });
     const cwd = input(copyText("newSession.label.cwd"));
     cwd.value = "/nope";
     cwd.dispatchEvent(new Event("blur"));
     await flush();
     expect(sent.filter((x) => x.op === "session-open-dir").at(-1)!.body).toEqual({ cwd: "/nope" });
-    expect(rowOf(cwd).textContent).toContain(copyText("launch.dir.missing", { machine: "devbox" }));
+    expect(rowOf(cwd).textContent, "目录格下照抄那台写好的那一句").toContain("那台写的：/nope 不在");
     expect(input(copyText("newSession.label.tmuxName")).placeholder).toBe("nope-cc");
   });
 
@@ -805,7 +872,7 @@ describe("那台说不行的其余几形", () => {
     await flush();
     expect(moreHead().getAttribute("aria-expanded"), "报错那一格在折起处没展开").toBe("true");
     const tmuxRow = rowOf(input(copyText("newSession.label.tmuxName")));
-    expect(tmuxRow.textContent).toContain(copyText("launch.tmux.taken"));
+    expect(tmuxRow.textContent, "格下照抄那台写好的那一句").toContain("原话");
     expect(tmuxRow.closest("[hidden]"), "那一格还在藏着的地方").toBeNull();
   });
 
@@ -815,12 +882,12 @@ describe("那台说不行的其余几形", () => {
     await flush();
     createBtn().click();
     await flush();
-    expect(rowOf(input(copyText("newSession.label.tmuxName"))).textContent).toContain(copyText("launch.tmux.taken"));
+    expect(rowOf(input(copyText("newSession.label.tmuxName"))).textContent).toContain("原话");
     refusal = { op: "session-open", code: "bad_cmd", said: "命令不行", data: { field: "command", unavailable: null } };
     createBtn().click();
     await flush();
     expect(rowOf(input(copyText("newSession.label.command"))).textContent).toContain("命令不行");
-    expect(rowOf(input(copyText("newSession.label.tmuxName"))).textContent, "再交一次先清掉上一次的话").not.toContain(copyText("launch.tmux.taken"));
+    expect(rowOf(input(copyText("newSession.label.tmuxName"))).textContent, "再交一次先清掉上一次的话").not.toContain("原话");
     refusal = { op: "session-open", code: "bad_agent", said: "这一家不行", data: { field: "agent", unavailable: null }, detail: "码：bad_agent" };
     createBtn().click();
     await flush();
@@ -831,7 +898,7 @@ describe("那台说不行的其余几形", () => {
     expect([...fail.querySelectorAll("button")].map((x) => x.textContent)).toContain(copyText("detail.act.copy"));
   });
 
-  it("通道不通 ⇒ 按钮行上方说那一句；号被钉住（没有替代）⇒ 那一格下是那台那一句、只给［登录…］", async () => {
+  it("通道不通 ⇒ 按钮行上方说那一句；号被钉住（没有替代、那台说给登录）⇒ 那一格下是那台那一句、只给［登录…］", async () => {
     boom = new Error("线断了");
     void openNewSession({ origin: "devbox" });
     await flush();
@@ -843,7 +910,7 @@ describe("那台说不行的其余几形", () => {
       op: "session-open",
       code: "account_unavailable",
       said: "work 被钉住了-甲",
-      data: { field: "account", unavailable: { requested: "work", pinned: true, listKnown: true, alternative: null } },
+      data: { field: "account", unavailable: { requested: "work", pinned: true, listKnown: true, alternative: null, login: true } },
     };
     createBtn().click();
     await flush();
@@ -864,17 +931,31 @@ describe("分叉：那台说得出源会话的号与终端", () => {
         launch: { cwd: { kind: "unknown", why: "exited" }, account: { kind: "known", value: "personal", from: "record" }, terminal: { kind: "known", value: { host: "none" }, from: "record" } },
         turn: null,
         startText: null,
+        fromText: "核心·分叉自源会话",
       },
     });
-    void openNewSession({ origin: "devbox", fork: { sid: "src-1", uuid: "msg-9", title: "t" } });
+    void openNewSession({ origin: "devbox", fork: { sid: "src-1", uuid: "msg-9" } });
     await flush();
-    expect(dialog().textContent).toContain(copyText("newSession.fork.fromBare", { title: "t" }));
+    expect(dialog().textContent).toContain("核心·分叉自源会话");
     expect(input(copyText("newSession.label.cwd")).value, "源会话目录说不出 ⇒ 用最近的").toBe("/home/u/srv/orders");
     expect(dialog().querySelector<HTMLInputElement>('input[value="window"]')!.checked).toBe(true);
     expect(sel(copyText("beProfile.slot.agent")).dataset.value).toBe("claude");
     const acct = sel(copyText("beProfile.slot.account"));
     expect(acct.dataset.value).toBe("personal");
     expect(optionsOf(acct).some((o) => o.includes(copyText("newSession.account.follow")))).toBe(false);
+  });
+
+  it("分叉框顶：那台问不到 · 那台没说分叉的那一格 ⇒ 写前端自己那一侧没读到，不空着", async () => {
+    refusal = { op: "session-open-facts", code: "boom", said: "读不出", data: null };
+    void openNewSession({ origin: "devbox", fork: { sid: "src-1", uuid: "msg-9" } });
+    await flush();
+    expect(dialog().textContent).toContain(copyText("newSession.fork.unread"));
+    document.body.replaceChildren();
+    refusal = null;
+    replies.set("session-open-facts", { ...FACTS, fork: null });
+    void openNewSession({ origin: "devbox", fork: { sid: "src-1", uuid: "msg-9" } });
+    await flush();
+    expect(dialog().textContent).toContain(copyText("newSession.fork.unread"));
   });
 });
 
@@ -910,5 +991,59 @@ describe("问图框：三格 ＋ 那台写的起在哪", () => {
     await flush();
     expect(rowOf(textarea()).textContent).toContain("R-dev");
     expect(rowOf(textarea()).textContent).not.toContain(copyText("newSession.ask.runsNone"));
+  });
+});
+
+describe("模型 · 推理档：照那一家的清单（字与先后都是那台写的）", () => {
+  const MODELS = [
+    { value: "m-alpha", text: "Alpha 模型", efforts: [{ value: "lo", text: "推理 lo" }, { value: "hi", text: "推理 hi" }], defaultEffort: "hi" },
+    { value: "m-beta", text: "Beta 模型" },
+  ];
+  const withModels = (models: unknown[]) => ({ ...FACTS, agents: [{ ...agentOf("claude"), models }] });
+  const effortRow = (): HTMLElement => rowOf(sel(copyText("session.effort.title")));
+
+  it("★ 选了有推理档的模型 ⇒ 出推理档那一行、预选 defaultEffort（项照 efforts 的先后与字）、交出带 model · effort", async () => {
+    replies.set("session-open-facts", withModels(MODELS));
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    const model = sel(copyText("session.model.title"));
+    expect(rowOf(model).hidden).toBe(false);
+    expect(optionsOf(model)).toEqual([copyText("mobAccounts.model.follow"), "Alpha 模型", "Beta 模型"]);
+    expect(effortRow().hidden, "跟随 ⇒ 不出推理档").toBe(true);
+    choose(model, "Alpha 模型");
+    expect(effortRow().hidden).toBe(false);
+    const effort = sel(copyText("session.effort.title"));
+    expect(effort.dataset.value).toBe("hi");
+    expect(optionsOf(effort)).toEqual(["推理 lo", "推理 hi"]);
+    createBtn().click();
+    await flush();
+    expect(whatOf(newRequests()[0])).toMatchObject({ model: "m-alpha", effort: "hi" });
+  });
+
+  it("★ 选的模型没有推理档 ⇒ 不出那一行、只交 model；跟随 ⇒ 两格都不交", async () => {
+    replies.set("session-open-facts", withModels(MODELS));
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    choose(sel(copyText("session.model.title")), "Beta 模型");
+    expect(effortRow().hidden).toBe(true);
+    createBtn().click();
+    await flush();
+    expect(whatOf(newRequests()[0]).model).toBe("m-beta");
+    expect(whatOf(newRequests()[0])).not.toHaveProperty("effort");
+    document.body.replaceChildren();
+    sent.length = 0;
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    createBtn().click();
+    await flush();
+    expect(whatOf(newRequests()[0])).not.toHaveProperty("model");
+    expect(whatOf(newRequests()[0])).not.toHaveProperty("effort");
+  });
+
+  it("那一家没列模型 ⇒ 模型 · 推理档两行都不出", async () => {
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    expect(rowOf(sel(copyText("session.model.title"))).hidden).toBe(true);
+    expect(effortRow().hidden).toBe(true);
   });
 });

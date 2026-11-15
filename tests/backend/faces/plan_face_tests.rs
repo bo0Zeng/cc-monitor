@@ -48,6 +48,14 @@ fn an_unfresh_list_runs_pb_once_per_dir_whatever_it_said() {
         );
         list_in(&b, vec!["/d".into()], true, &read, &tz);
         assert_eq!(runs.get(), 2, "{name}：fresh ⇒ 重起");
+        if name == "不认得" {
+            // 那一句（要更新）与为什么（pb 说的那一半）分两格，同 `plan-new` 那一份。
+            assert_eq!(
+                first.pb,
+                crate::plan::locate::pb_unsupported("老 pb".into())
+            );
+            assert_eq!(first.pb.hint.as_deref(), Some("老 pb"));
+        }
     }
 }
 
@@ -78,13 +86,174 @@ fn a_read_takes_the_watched_copy_unless_asked_to_read_now() {
     let kept = read_in(&b, ws, Fresh::Kept, &watched, &read, &tz).unwrap();
     assert_eq!(runs.get(), 1, "已在盯又没动静：不该再起 pb");
     assert_eq!(kept.workspace, "/w");
-    assert!(kept.read_at_text.is_some(), "本子那一份也照常标时刻的字");
+    assert!(
+        kept.slices.iter().all(|sl| sl.said.read_at.is_some()),
+        "本子那一份也照常标时刻的字"
+    );
     // 没在盯 ⇒ 起 pb。
     read_in(&b, ws, Fresh::Kept, &unwatched, &read, &tz).unwrap();
     assert_eq!(runs.get(), 2);
     // 现读 ⇒ 盯着也起 pb。
     read_in(&b, ws, Fresh::Now, &watched, &read, &tz).unwrap();
     assert_eq!(runs.get(), 3, "送退回要此刻的接手：一定现读");
+}
+
+/// ★ 手加的目录住这台的偏好：`prefs-set {planDirs:[X]}` 打上之后，`plan-list` 与需手动的计划那一截问的那一组（[`ask_dirs`]）都含 X，
+/// 活会话的工作目录照旧在。
+#[test]
+fn hand_added_dirs_live_in_this_machines_prefs() {
+    use crate::control::machine_prefs::{patched, PrefsSet};
+    let set: PrefsSet =
+        serde_json::from_value(json!({ "planDirs": ["/hand/x"] })).expect("prefs-set 认 planDirs");
+    let p = patched(crate::common::machine_prefs::Prefs::default(), &set);
+    let dirs = ask_dirs(vec!["/live/a".into()], &p);
+    assert!(dirs.iter().any(|d| d == "/hand/x"), "{dirs:?}");
+    assert!(dirs.iter().any(|d| d == "/live/a"), "{dirs:?}");
+}
+
+/// 「谁」那一步认一个 id 的判法（[`whose_in`]）：喂假名单 · 假的活会话表与记录树。
+mod whose {
+    use super::*;
+    use crate::agents::SessionActivity;
+    use crate::host::{Housing, Input, TermRow};
+    use crate::observe::accounts_query::Doing;
+    use crate::wire::{SessionContainer, TerminalHost};
+
+    fn row(sid: &str, handle: &str) -> TermRow {
+        TermRow {
+            host: TerminalHost::Managed,
+            id: handle.into(),
+            pane: None,
+            shared: false,
+            name: format!("n-{handle}"),
+            windows: 1,
+            activity: 0,
+            sid: sid.into(),
+            agent: "fake".into(),
+            client: String::new(),
+            program: "fakeagent".into(),
+            cwd: "/".into(),
+            title: String::new(),
+            input: Input::Held(None),
+        }
+    }
+
+    fn at(handle: &str) -> Option<SessionContainer> {
+        Some(SessionContainer::Managed {
+            terminal: Some(handle.into()),
+        })
+    }
+
+    /// 活着的只有 `s-live`；`agent-1` 是它底下的子 agent（名单里另挂一行，认错 id 就住到 `h-child`）；`s-old` 有记录、不活。
+    fn ask(id: &str, list: &dyn Fn() -> Vec<TermRow>) -> Whose {
+        let doing = BTreeMap::from([(
+            "s-live".to_string(),
+            Doing {
+                activity: Some(SessionActivity::Working),
+                needs: None,
+            },
+        )]);
+        let recorded = |sid: &str| sid == "s-live" || sid == "s-old";
+        let parent = |child: &str| (child == "agent-1").then(|| "s-live".to_string());
+        let title = |sid: &str| format!("t-{sid}");
+        let facts = WhoFacts {
+            doing: &doing,
+            recorded: &recorded,
+            parent: &parent,
+            title: &title,
+        };
+        whose_in(id, &facts, &Housing::with(list))
+    }
+
+    fn list() -> Vec<TermRow> {
+        vec![
+            row("s-other", "h-other"),
+            row("s-live", "h-live"),
+            row("agent-1", "h-child"),
+        ]
+    }
+
+    fn live_at(handle: &str) -> Option<Live> {
+        Some(Live {
+            activity: Some(SessionActivity::Working),
+            needs: None,
+            housed: at(handle),
+        })
+    }
+
+    /// ★ 活会话住哪照名单里挂着它的那一行；名单里不挂 ⇒ 不知道。
+    #[test]
+    fn a_live_session_is_housed_where_the_list_carries_it() {
+        assert_eq!(
+            ask("s-live", &list),
+            Whose::Session {
+                sid: "s-live".into(),
+                title: "t-s-live".into(),
+                live: live_at("h-live"),
+            }
+        );
+        let elsewhere = || vec![row("s-other", "h-other")];
+        assert_eq!(
+            ask("s-live", &elsewhere),
+            Whose::Session {
+                sid: "s-live".into(),
+                title: "t-s-live".into(),
+                live: Some(Live {
+                    activity: Some(SessionActivity::Working),
+                    needs: None,
+                    housed: None,
+                }),
+            }
+        );
+    }
+
+    /// ★ 子 agent 活不活 · 住哪都照父会话问（不拿它自己的 id 去查名单）。
+    #[test]
+    fn a_subagent_is_housed_where_its_parent_is() {
+        assert_eq!(
+            ask("agent-1", &list),
+            Whose::Subagent {
+                parent: "s-live".into(),
+                parent_title: "t-s-live".into(),
+                live: live_at("h-live"),
+            }
+        );
+    }
+
+    /// 有记录、不活 ⇒ 会话，不问住哪（名单一次都不列）；都不中 ⇒ 认不出。
+    #[test]
+    fn a_dead_session_never_lists_and_a_stranger_is_unknown() {
+        let calls = std::cell::Cell::new(0u32);
+        let counted = || {
+            calls.set(calls.get() + 1);
+            list()
+        };
+        assert_eq!(
+            ask("s-old", &counted),
+            Whose::Session {
+                sid: "s-old".into(),
+                title: "t-s-old".into(),
+                live: None,
+            }
+        );
+        assert_eq!(ask("nobody", &counted), Whose::Unknown);
+        assert_eq!(calls.get(), 0, "没有活会话要问 ⇒ 不列名单");
+    }
+}
+
+/// 手加的目录照其它几张表的值域：相对路径 · 空串 · 超过上限条数都不收（`prefs-set` 回 `bad_args`，盘上的当读不懂）。
+#[test]
+fn hand_added_dirs_must_be_absolute_and_bounded() {
+    use crate::common::machine_prefs::{check, Prefs, PREFS_ROWS_MAX};
+    let with = |dirs: Vec<String>| Prefs {
+        plan_dirs: dirs,
+        ..Prefs::default()
+    };
+    assert!(check(&with(vec!["/a".into()])).is_ok());
+    assert!(check(&with(vec!["rel/a".into()])).is_err());
+    assert!(check(&with(vec![" ".into()])).is_err());
+    let many = (0..=PREFS_ROWS_MAX).map(|i| format!("/d{i}")).collect();
+    assert!(check(&with(many)).is_err());
 }
 
 /// 交出去的那一份：随数据变的那几句后端照文案表写好（`said`），两端不再拼。
@@ -100,7 +269,6 @@ mod said {
                 said: Some("pb 那一句".into()),
                 raw: None,
                 since: 0,
-                since_text: None,
             });
         }
         annotated(doc, &Default::default())
@@ -128,7 +296,12 @@ mod said {
             sl.said.root.as_deref(),
             Some(t("plan.outline.rootProgress", &[("done", &d), ("of", &o)]).as_str())
         );
-        let at = doc.read_at_text.clone().expect("时刻的字");
+        // 读到的时刻（夹具读在 0 那一刻）照这台此刻写成字，与成品那一句同一把钟。
+        let at = crate::common::time::fmt_at(
+            0,
+            i64::try_from(crate::common::time::now_ms() / 1000).unwrap_or(i64::MAX),
+            &Default::default(),
+        );
         assert_eq!(
             sl.said.read_at.as_deref(),
             Some(t("plan.overview.readAt", &[("time", &at)]).as_str())
@@ -140,11 +313,12 @@ mod said {
     #[test]
     fn a_stale_read_says_unreadable_then_since_when_in_one_line() {
         let doc = out(&dump("/w"), true);
-        let since = doc
-            .stale
-            .as_ref()
-            .and_then(|s| s.since_text.clone())
-            .expect("时刻的字");
+        // 读不成那一份在 1970 年读到：照别的年那一形写（带年），与此刻几点无关。
+        let since = crate::common::time::fmt_at(
+            0,
+            crate::common::time::now_secs() as i64,
+            &Default::default(),
+        );
         let want = [
             t("plan.strip.sliceUnreadable", &[("reason", "pb 那一句")]),
             t("plan.strip.stale", &[("time", &since)]),
@@ -187,9 +361,10 @@ mod said {
             t("plan.head.top", &[]),
             "最上面那一块"
         );
-        assert_eq!(
-            cell("A2").said.block_root.as_deref(),
-            Some(t("plan.cell.blockRoot", &[("block", &sl.labels["A2"])]).as_str()),
+        assert!(
+            cell("A2").said.block_root.as_deref().is_some_and(
+                |l| l.starts_with(&t("plan.cell.blockRoot", &[("block", &sl.labels["A2"])]))
+            ),
             "插的是「编号 标题」"
         );
         assert_eq!(cell("A2").said.trail, None, "顶层没有上面几层");
@@ -215,10 +390,7 @@ mod said {
         d["repos"][0]["scopes"][0]["assignee"] = json!(STRANGER);
         let doc = out(&d, false);
         let owner = doc.slices[0].blocks[0].owner.as_ref().expect("负责人");
-        assert_eq!(
-            owner.label.as_deref(),
-            Some(t("plan.who.unknown", &[("id", "999999…0000")]).as_str())
-        );
+        assert_eq!(owner.label, t("plan.who.unknown", &[("id", "999999…0000")]));
     }
 
     /// 列表那一行的 `said` 照抄那一片成品上的那一份（不另写一遍）。
@@ -229,4 +401,58 @@ mod said {
         assert_eq!(row.slices[0].said, doc.slices[0].said);
         assert_eq!(row.by_session[MAIN].said, doc.by_session[MAIN].said);
     }
+}
+
+/// ★ 新计划框提交（`plan-command repo`）前照 `plan-new` 那一份拦：pb 太旧与读面同一个码 `pb_unsupported`、同一行；
+/// 起 pb 没成 ⇒ `failed` 带那一句；都好 ⇒ 不拦。
+#[test]
+fn a_repo_is_refused_with_the_same_code_as_every_other_plan_command() {
+    let form = |pb: wire::PlanPb, failed: Option<&str>| wire::PlanNewForm {
+        pb,
+        workspace: None,
+        root: "/w".into(),
+        slice: None,
+        domains: Vec::new(),
+        existing: None,
+        repo_dir: None,
+        note: None,
+        line: None,
+        failed: failed.map(str::to_string),
+    };
+    let old = repo_refused(&form(locate::pb_unsupported("缺 dump".into()), None)).unwrap();
+    assert_eq!(old, locate::too_old("缺 dump".into()));
+    assert_eq!(old.code.as_deref(), Some("pb_unsupported"));
+    let failed = repo_refused(&form(locate::pb_ok(), Some("读计划失败"))).unwrap();
+    assert_eq!(
+        (failed.code.as_deref(), failed.said.as_str()),
+        (Some("failed"), "读计划失败")
+    );
+    assert_eq!(repo_refused(&form(locate::pb_ok(), None)), None);
+    let gone = locate::pb_missing(&locate::Missing::SetDir("/synthetic/pb".into()));
+    let none = repo_refused(&form(gone.clone(), None)).unwrap();
+    assert_eq!(none.code.as_deref(), Some("no_pb"));
+    assert_eq!(
+        none.said,
+        format!(
+            "{}{}{}",
+            gone.said.unwrap(),
+            copy_text("kit.text.sep", &[]),
+            gone.hint.unwrap()
+        )
+    );
+}
+
+/// ★ 读面（`plan-read` · `plan-cell-view` …）遇上 pb 太旧交的那一条：码 `pb_unsupported`，那一行 ＝「要更新」＋ 分隔 ＋ pb 那一半。
+#[test]
+fn a_read_on_an_old_pb_says_update_then_why_in_one_line() {
+    let got = miss(book::Miss::Unsupported("缺 dump".into()));
+    assert_eq!(got.code.as_deref(), Some("pb_unsupported"));
+    assert_eq!(
+        got.said,
+        format!(
+            "{}{}缺 dump",
+            copy_text("bePlan.dump.tooOld", &[]),
+            copy_text("kit.text.sep", &[])
+        )
+    );
 }

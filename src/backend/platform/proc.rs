@@ -170,13 +170,29 @@ pub fn parent_of(pid: u32) -> Option<u32> {
     }
 }
 
-/// 这个进程**此刻**有没有控制终端（`/proc/<pid>/stat` 第 7 栏 `tty_nr` 非零）。`None` = 读不到 / 这个平台不知道。
-///
-/// 会话首领退出、终端被挂断时内核把整组进程的控制终端清掉 ⇒ 这一格从此是 0。
-pub fn has_controlling_tty(pid: u32) -> Option<bool> {
+/// 一个进程此刻跟控制终端的关系（`/proc/<pid>/stat` 第 5 · 6 · 7 · 8 栏）：只交事实，判什么是调用方的事。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TtyOf {
+    /// 控制终端（0 ＝ 没有）。
+    pub tty_nr: i64,
+    /// 它自己的进程组。
+    pub pgrp: i64,
+    /// 它所在的会话的首领（控制终端就是首领开的那一个）。
+    pub session: i64,
+    /// 那个控制终端此刻的前台进程组（没有控制终端 ⇒ -1）。
+    pub tpgid: i64,
+}
+
+/// 读 `pid` 跟控制终端的关系；读不到 · 这个平台不知道 ⇒ `None`。
+pub fn tty_of(pid: u32) -> Option<TtyOf> {
     #[cfg(target_os = "linux")]
     {
-        stat_of(pid).map(|s| s.tty_nr != 0)
+        stat_of(pid).map(|s| TtyOf {
+            tty_nr: s.tty_nr,
+            pgrp: s.pgrp,
+            session: s.session,
+            tpgid: s.tpgid,
+        })
     }
     #[cfg(not(target_os = "linux"))]
     {

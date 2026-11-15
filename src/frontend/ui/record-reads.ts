@@ -31,7 +31,6 @@ import type { HistoryLines } from "./generated/HistoryLines";
 import type { HistoryPage } from "./generated/HistoryPage";
 import type { HistoryRun } from "./generated/HistoryRun";
 import type { RecordLine } from "./generated/RecordLine";
-import type { DriftFaceReport } from "./generated/DriftFaceReport";
 import { copyText } from "./copy-table";
 import FOLDED from "../../shared/views/folded-record.json";
 
@@ -49,8 +48,6 @@ export interface SessionLinesPage {
 /** 主线外清单（后端 `history-branch`，各页拼成整份）：回退掉的那几条记录的 `id`（文件序）· 分好的段 · 读到哪个字节（之后的由实时帧接着说）。 */
 export type BranchOff = Branch;
 
-/** 那台后端漂移账的一个面（各家的面并在一起；面名 · 后果那一句都是那一家写好的）。 */
-export type RecordDriftFace = DriftFaceReport;
 
 /** 按偏移取一段 · 子 agent 那一份：同它上一个住址（一次性远端那一趟的天花板，120 秒）。 */
 const PIECE_BUDGET_MS = 120_000;
@@ -168,9 +165,9 @@ export async function readBranch(origin: Machine, jsonlPath: string): Promise<Br
   return { off, runs, end, next: null };
 }
 
-/** **那台后端的漂移账**（看不懂的记录类型）。 */
-export async function readRecordDrift(origin: Machine): Promise<RecordDriftFace[]> {
+/** **那台后端的漂移账**（看不懂的记录类型）：机器页那一格照抄那台写好的那一句（`DriftReport.said`）。 */
+export async function readRecordDrift(origin: Machine): Promise<string> {
   const budget = budgetWithin(DRIFT_BUDGET_MS);
-  const { faces } = await callTyped(origin, "drift-report", {}, budget);
-  return faces;
+  const { said } = await callTyped(origin, "drift-report", {}, budget);
+  return said;
 }

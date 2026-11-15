@@ -9,13 +9,14 @@ use serde::de::IgnoredAny;
 use serde::Deserialize;
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct Probe {
     #[serde(rename = "type", default)]
     kind: Option<String>,
     #[serde(default)]
     uuid: Option<String>,
-    #[serde(rename = "parentUuid", default)]
-    parent: Option<String>,
+    #[serde(default)]
+    parent_uuid: Option<String>,
     #[serde(default)]
     timestamp: Option<String>,
     #[serde(default)]
@@ -57,7 +58,7 @@ pub fn chain_fact(line: &crate::agents::Line<'_>) -> Option<ChainFact> {
     let (Some(id), Some(at)) = (p.uuid.filter(|u| !u.is_empty()), p.timestamp) else {
         return None;
     };
-    let parent = p.parent.filter(|q| !q.is_empty());
+    let parent = p.parent_uuid.filter(|q| !q.is_empty());
     // 一轮中途人插进来的那一句（`attachment queued_command`）：人说的、进界面，原文是它的 `prompt`（判定同「谁说的」那一份）。
     if kind == "attachment" && raw.contains(MID_TURN_NEEDLE) {
         let v = line.value()?;
@@ -94,7 +95,7 @@ pub fn chain_fact(line: &crate::agents::Line<'_>) -> Option<ChainFact> {
             .and_then(|m| m.get("content"))
             .unwrap_or(&serde_json::Value::Null);
         let interrupt = super::text::user_text_of_record(v)
-            .is_some_and(|t| matches!(t.speaker, crate::agents::Speaker::Interrupt));
+            .is_some_and(|t| matches!(t.who.speaker, crate::agents::Speaker::Interrupt));
         (interrupt, Some(Words::of(first_text(content))))
     } else {
         (false, None)

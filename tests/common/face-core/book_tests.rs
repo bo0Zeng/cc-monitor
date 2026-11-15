@@ -115,3 +115,88 @@ fn the_record_file_frames_leave_their_written_sentence_on_the_session() {
     b.forget("d");
     assert!(!b.file_said.contains_key("d"), "关掉的那一条不再记");
 }
+
+/// ★ 折一帧回该推的那一格（各处推成品只调它）：改整条的那几种 ⇒ 那一条此刻整条；清单报完了 ⇒ 只带 `listed`；别的会话帧折进簿、不推。
+#[test]
+fn a_step_hands_back_the_seat_it_changed_and_the_whole_is_the_book() {
+    use cmd_wire::frame::{SessionSeat, SessionSeats};
+    let mut b = SessionBook::default();
+    let mut lines = FRAMES.lines().filter(|l| !l.trim().is_empty());
+    let first = decode::<serde_json::Value>(lines.next().unwrap()).unwrap();
+    let got = b.step(&first).expect("宣告改整条");
+    assert_eq!(
+        got,
+        SessionSeats {
+            seats: vec![SessionSeat::of("a", b.live.get("a"), None, None, None)],
+            listed: false,
+            whole: false,
+        }
+    );
+    assert!(b.live.contains_key("a"), "step 也折进簿");
+    let gone = r#"{"kind":"session_file_gone","session_id":"a","path":"/p/a.jsonl","said":"甲句"}"#;
+    assert_eq!(b.step(&decode::<serde_json::Value>(gone).unwrap()), None);
+    assert_eq!(b.file_said.get("a").map(|w| w.0.as_str()), Some("甲句"));
+    let replayed = b
+        .step(&decode::<serde_json::Value>(r#"{"kind":"sessions_replayed"}"#).unwrap())
+        .expect("清单报完了推一格");
+    assert!(replayed.seats.is_empty() && replayed.listed && !replayed.whole);
+    let changed = r#"{"kind":"changed","topic":"tasks"}"#;
+    if let Ok(f) = decode::<serde_json::Value>(changed) {
+        assert_eq!(b.step(&f), None, "不是会话帧 ⇒ 不推");
+    }
+    let all = folded(FRAMES);
+    let whole = all.whole();
+    assert!(whole.whole);
+    assert_eq!(whole.listed, all.listed);
+    let want: Vec<SessionSeat> = all.seats().map(|(sid, _)| all.seat_now(sid)).collect();
+    assert_eq!(whole.seats, want);
+    assert_eq!(
+        whole
+            .seats
+            .iter()
+            .map(|s| s.sid.as_str())
+            .collect::<Vec<_>>(),
+        ["a", "b", "c", "d"]
+    );
+    assert!(whole.seats.iter().all(|s| s.seat.is_some()));
+}
+
+/// ★ 未读：`session_unread` 折进簿、那一条此刻整条带写好的字（只剩未读的那一条整本里也有）；不带字的那一帧摘掉；
+/// 连接断的那一刻整份作废（说不清不留数）；关掉的那一条不再记。
+#[test]
+fn unread_folds_into_the_seat_and_goes_with_the_connection() {
+    let mut b = folded(FRAMES);
+    let unread = |sid: &str, said: Option<&str>| {
+        let mut v = serde_json::json!({"kind": "session_unread", "sid": sid});
+        if let Some(s) = said {
+            v["said"] = s.into();
+        }
+        decode::<serde_json::Value>(&v.to_string()).expect("一帧")
+    };
+    let got = b.step(&unread("a", Some("3"))).expect("未读变了推那一条");
+    assert_eq!(got.seats.len(), 1);
+    assert_eq!(
+        got.seats[0].unread.as_ref().map(|w| w.0.as_str()),
+        Some("3")
+    );
+    assert!(got.seats[0].seat.is_some(), "整条照带");
+    b.step(&unread("zz", Some("99+")));
+    let whole = b.whole();
+    assert_eq!(
+        whole
+            .seats
+            .iter()
+            .filter_map(|s| s.unread.as_ref().map(|w| (s.sid.as_str(), w.0.as_str())))
+            .collect::<Vec<_>>(),
+        [("a", "3"), ("zz", "99+")],
+        "只剩未读的那一条整本里也有"
+    );
+    let cleared = b.step(&unread("a", None)).expect("推那一条");
+    assert_eq!(cleared.seats[0].unread, None);
+    b.step(&unread("a", Some("1")));
+    b.unseen_now(cmd_wire::cells::Words("断了".into()));
+    assert!(b.unread.is_empty(), "连接断了 ⇒ 未读整份作废");
+    b.step(&unread("b", Some("2")));
+    b.forget("b");
+    assert!(!b.unread.contains_key("b"), "关掉的那一条不再记");
+}

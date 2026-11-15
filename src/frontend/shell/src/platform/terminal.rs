@@ -339,7 +339,7 @@ pub(crate) fn open_window_via(
     }
 }
 
-/// [`launch_local_posix_via`] 没成的两种：命令过不了校验（那一句已写好）· 起进程那一下没成（系统那个错原样，判据按种类认 `ETXTBSY`）。
+/// [`launch_local_posix_via`] 没成的两种：命令过不了校验（那一句已写好）· 起进程那一下没成（系统那个错原样）。
 #[cfg(not(windows))]
 #[derive(Debug)]
 pub(crate) enum LaunchErr {

@@ -194,7 +194,7 @@ fn every_target_has_the_same_commands_except_the_registered_gaps() {
 //   多出来的进登记表逐条写理由；值经别的线程的通道送过去（watcher 那一类）、经文件级引用图之外的路注入的调用看不见。
 // - 帧面硬臂那一档（`typed::frame::<…>`）本体在分派的硬臂里，起点退成那个类型住的那份文件里的全部函数。
 // - ccm 面判的是「落在哪条路上」与「直路上有没有效果」，**不是**「在 Windows 上真跑得起来」（真机维一格没有）；
-//   平台原语那一层（读别的进程的环境）计划里看不见 —— `ccm-sid` 正是这一形，登记在例外表里。
+//   平台原语那一层（读别的进程的环境）计划里看不见，这一形的能力要登记在例外表里。
 
 /// 一棵源码树：相对路径 → 生产段（剥注释与测试段）。纯数据，判据与合成正控共用下面那几个函数。
 type Tree = std::collections::BTreeMap<String, String>;
@@ -269,113 +269,18 @@ fn expand_use(u: &str) -> Vec<String> {
         .collect()
 }
 
-/// `use` 那一段里每个 ` as 名字`（前后是空白 · 逗号 · 花括号）摘掉：`crate::g::calm as c` → `crate::g::calm`。
-fn drop_use_aliases(u: &str) -> String {
-    let toks: Vec<&str> = u
-        .split_inclusive(|c: char| c.is_whitespace() || c == ',' || c == '{' || c == '}')
-        .collect();
-    let mut out = String::new();
-    let mut i = 0;
-    while i < toks.len() {
-        let t = toks[i];
-        if t.trim_end() == "as" && t.ends_with(char::is_whitespace) {
-            // 跳过 `as` 与它后面那个名字（空白 token 一并跳过），保留名字后面的分隔符。
-            i += 1;
-            while i < toks.len() && toks[i].trim().is_empty() {
-                i += 1;
-            }
-            if let Some(name) = toks.get(i) {
-                let sep: String = name
-                    .chars()
-                    .rev()
-                    .take_while(|c| *c == ',' || *c == '{' || *c == '}')
-                    .collect();
-                out.push_str(&sep);
-            }
-            i += 1;
-            continue;
-        }
-        out.push_str(t);
-        i += 1;
-    }
-    out
-}
-
 /// 一份文件的生产段里提到的路径（`crate::…` / `super::…` / `self::…` / 本文件 `mod x;` 声明的子模块 `x::…`），
 /// 以及 `use` 语句展开后的每一条。返回解析成绝对模块路径之后的段列表。
+/// 文件级这一把不分内联模块那一层（`super::` 一律从文件那一层算）：多判那一侧，函数级（[`fn_graph`]）才分。
 fn paths_in(me: &[String], src: &str) -> Vec<Vec<String>> {
-    let children: std::collections::BTreeSet<String> = src
-        .split("mod ")
-        .skip(1)
-        .filter_map(|t| {
-            let name: String = t
-                .chars()
-                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
-                .collect();
-            t[name.len()..]
-                .trim_start()
-                .starts_with(';')
-                .then_some(name)
-        })
-        .collect();
-    let absolutize = |segs: Vec<String>| -> Option<Vec<String>> {
-        let first = segs.first()?.as_str();
-        match first {
-            "crate" => Some(segs[1..].to_vec()),
-            "super" | "self" => {
-                let mut base = me.to_vec();
-                let mut i = 0;
-                while i < segs.len() && (segs[i] == "super" || segs[i] == "self") {
-                    if segs[i] == "super" {
-                        base.pop();
-                    }
-                    i += 1;
-                }
-                base.extend(segs[i..].iter().cloned());
-                Some(base)
-            }
-            c if children.contains(c) => {
-                let mut base = me.to_vec();
-                base.extend(segs.iter().cloned());
-                Some(base)
-            }
-            _ => None,
-        }
-    };
+    let children = declared_children(src);
+    let absolutize = |segs: Vec<String>| absolutize_in(me, &children, &segs);
     let mut out = Vec::new();
-    // ① `use …;` 展开（花括号分组）。只认语句开头的 `use`（前一个字符是空白 / `;` / `{` / `}` / `)`），
-    //    而且 `;` 之前只许是路径字符 —— 字符串里一句 `… use …` 的散文不算。
-    let bytes = src.as_bytes();
-    let mut from = 0;
-    while let Some(off) = src[from..].find("use ") {
-        let at = from + off;
-        from = at + 4;
-        if at > 0
-            && !matches!(
-                bytes[at - 1],
-                b' ' | b'\n' | b'\t' | b';' | b'{' | b'}' | b')'
-            )
-        {
-            continue;
-        }
-        let Some(end) = src[at + 4..].find(';') else {
-            break;
-        };
-        // `a::b as c`：别名不改指向 ⇒ 先把 ` as 名字` 摘掉再去空白（不然拼成 `bas c`，指到父模块或指不到）。
-        let u: String = drop_use_aliases(&src[at + 4..at + 4 + end])
-            .chars()
-            .filter(|c| !c.is_whitespace())
-            .collect();
-        if u.is_empty()
-            || !u.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
-            || !u
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || "_:{},*".contains(c))
-        {
-            continue;
-        }
-        for e in expand_use(&u) {
-            let segs: Vec<String> = e
+    // ① `use …;` 展开（花括号分组；别名不改指向，只取 `@` 前那一截）。
+    for (_, _, joined) in use_statements(src) {
+        for e in expand_use(&joined) {
+            let path = e.split('@').next().unwrap_or_default();
+            let segs: Vec<String> = path
                 .split("::")
                 .filter(|s| !s.is_empty() && *s != "*")
                 .map(String::from)
@@ -601,18 +506,21 @@ fn owner_of(header: &str, is_impl: bool) -> String {
     path.rsplit("::").next().unwrap_or("").to_string()
 }
 
-/// 一份文件里的函数（住址名 · 原文 · 抹过字面量的那一份）与 `impl` 头（类型名 · 头那一段），按出现先后。
+/// 一份文件里的函数（住址名 · 它在哪个文件内联模块里 · 原文 · 抹过字面量的那一份）与 `impl` 头（类型名 · 头那一段），按出现先后；
+/// 以及每一层模块（文件那一层 ＝ 空，`mod x { … }` ＝ `["x"]`）自己的字：函数体与更里层的内联模块抹成空白，认 `use` 与 `mod x;` 用。
 #[derive(Default)]
 struct FileFns {
-    fns: Vec<(String, String, String)>,
+    fns: Vec<(String, Vec<String>, String, String)>,
     impls: Vec<(String, String)>,
+    scopes: std::collections::BTreeMap<Vec<String>, String>,
 }
 
 fn fns_in(src: &str) -> FileFns {
     let r: Vec<char> = src.chars().collect();
     let m = masked(&r);
     let mut out = FileFns::default();
-    scan_items(&r, &m, 0, m.len(), None, &mut out);
+    out.scopes.insert(Vec::new(), String::new());
+    scan_items(&r, &m, 0, m.len(), None, &[], &mut out);
     out
 }
 
@@ -622,10 +530,37 @@ fn scan_items(
     from: usize,
     to: usize,
     owner: Option<&str>,
+    inline: &[String],
     out: &mut FileFns,
 ) {
+    let put = |out: &mut FileFns, c: char| {
+        out.scopes.entry(inline.to_vec()).or_default().push(c);
+    };
     let mut i = from;
     while i < to {
+        if word_at(m, i, "mod") {
+            let mut j = i + 3;
+            while j < to && m[j].is_whitespace() {
+                j += 1;
+            }
+            let s = j;
+            while j < to && is_ident(m[j]) {
+                j += 1;
+            }
+            let name: String = m[s..j].iter().collect();
+            while j < to && m[j].is_whitespace() {
+                j += 1;
+            }
+            if !name.is_empty() && j < to && m[j] == '{' {
+                let close = match_brace(m, j);
+                let inner: Vec<String> = inline.iter().cloned().chain([name]).collect();
+                out.scopes.entry(inner.clone()).or_default();
+                scan_items(r, m, j + 1, close, None, &inner, out);
+                i = close + 1;
+                put(out, ' ');
+                continue;
+            }
+        }
         let is_impl = word_at(m, i, "impl");
         if is_impl || word_at(m, i, "trait") {
             let kw = if is_impl { 4 } else { 5 };
@@ -638,11 +573,12 @@ fn scan_items(
                 let ty = owner_of(&header, is_impl);
                 let close = match_brace(m, j);
                 out.impls.push((ty.clone(), header));
-                scan_items(r, m, j + 1, close, Some(&ty), out);
+                scan_items(r, m, j + 1, close, Some(&ty), inline, out);
                 i = close + 1;
             } else {
                 i = j + 1;
             }
+            put(out, ' ');
             continue;
         }
         if word_at(m, i, "fn") {
@@ -672,6 +608,7 @@ fn scan_items(
                     let key = owner.map_or(name.clone(), |t| format!("{t}::{name}"));
                     out.fns.push((
                         key,
+                        inline.to_vec(),
                         r[k..=close].iter().collect(),
                         m[k..=close].iter().collect(),
                     ));
@@ -679,28 +616,36 @@ fn scan_items(
                 } else {
                     i = k + 1;
                 }
+                put(out, ' ');
                 continue;
             }
         }
+        put(out, m[i]);
         i += 1;
     }
 }
 
 /// 函数级调用图：每个函数 → 它体里叫到 / 点名的函数。
-/// - `a::b::f` 路径（`crate::` · `super::` · `self::` · 本文件声明的子模块 · `use` 进来的名字打头）⇒ 那份文件里的 `f` / `T::f`；
-///   那份文件里没有（再导出）⇒ 它引用到的文件里的同名函数。
+/// - `a::b::f` 路径（`crate::` · `super::` · `self::` · 本层的子模块（`mod x;` 与内联 `mod x { … }`）· `use` 进来的名字打头）⇒
+///   末段之前最长的模块前缀那份文件里的 `T::f`（末段前是内联模块 ⇒ 自由函数 `f`）；那份文件里没有 ⇒ 照路径落进的那一层
+///   （文件那一层或那个内联模块）自己的 `use` / `use …::*`（再导出）接着走，不按名字去别的文件捞同名的。
+/// - `use` 照它所在的那一层认：函数体里的只管那个函数（先认），文件内联模块里的与 `super::` · `self::` 从那个内联模块算起。
 /// - 光一个名字 `f` ⇒ 本文件的自由函数 `f`，或 `use …::*` 进来的那一个；`T::f`（`T` 不是模块）⇒ 本文件与它引用到的文件里的 `T::f`。
-/// - 方法 `.f(` 与泛型参数 `C::f(` ⇒ 本文件与它引用到的文件里任一 `…::f`。
+///
+/// 仍按名字、不认路径的（多判那一侧，买不到）：
+/// - 方法 `.f(` 与泛型参数 `C::f(` ⇒ 本文件与它引用到的文件里任一 `…::f`（不认类型）；`Self::f` ⇒ 本文件任一类型的 `f`。
+/// - 被叫的那一侧住址只到「文件 · 名字」：同一份文件里各层同名的（顶层与内联模块里的、cfg 两份的）并成一个，
+///   内联模块里的光名字 `f` 也连到这一个。
 /// - 读一张常量 / 静态表不算叫了表里的闭包。
 ///
-/// 每条边都落在本文件或它在文件级引用图（[`file_edges`]）上引用到的文件里：够得着的只会比文件级少。
+/// 够得着的只会比文件级（[`file_edges`]）少。
 struct FnGraph {
     bodies: std::collections::BTreeMap<FnAt, String>,
     edges: std::collections::BTreeMap<FnAt, std::collections::BTreeSet<FnAt>>,
     impls: std::collections::BTreeMap<String, Vec<(String, String)>>,
 }
 
-/// 一份文件的模块住址 · 本文件声明的子模块 · `use` 进来的名字（别名照别名）→ 绝对路径 · `use …::*` 的那几个模块。
+/// 一层模块（文件那一层 · 一个内联模块 · 一个函数体）的模块住址 · 那一层的子模块 · `use` 进来的名字（别名照别名）→ 绝对路径 · `use …::*` 的那几个模块。
 struct UseContext {
     me: Vec<String>,
     children: std::collections::BTreeSet<String>,
@@ -708,7 +653,7 @@ struct UseContext {
     globs: Vec<Vec<String>>,
 }
 
-/// `crate::` · `super::` · `self::` · 本文件声明的子模块打头的路径 ⇒ 绝对模块路径。
+/// `crate::` · `super::` · `self::` · 本层的子模块打头的路径 ⇒ 绝对模块路径（`me` 是那一层的住址）。
 fn absolutize_in(
     me: &[String],
     children: &std::collections::BTreeSet<String>,
@@ -733,10 +678,9 @@ fn absolutize_in(
     }
 }
 
-fn use_context(rel: &str, src: &str) -> UseContext {
-    let me = module_of(rel);
-    let children: std::collections::BTreeSet<String> = src
-        .split("mod ")
+/// 一段字里 `mod x;` 声明的子模块。
+fn declared_children(src: &str) -> std::collections::BTreeSet<String> {
+    src.split("mod ")
         .skip(1)
         .filter_map(|t| {
             let name: String = t.chars().take_while(|c| is_ident(*c)).collect();
@@ -745,9 +689,12 @@ fn use_context(rel: &str, src: &str) -> UseContext {
                 .starts_with(';')
                 .then_some(name)
         })
-        .collect();
-    let mut uses = std::collections::BTreeMap::new();
-    let mut globs = Vec::new();
+        .collect()
+}
+
+/// 一段字里语句开头的 `use …;`：`(起点, 收尾 `;` 之后, 去空白、` as ` 写成 `@` 的那一段)`，按出现先后。
+fn use_statements(src: &str) -> Vec<(usize, usize, String)> {
+    let mut out = Vec::new();
     let bytes = src.as_bytes();
     let mut from = 0;
     while let Some(off) = src[from..].find("use ") {
@@ -772,12 +719,27 @@ fn use_context(rel: &str, src: &str) -> UseContext {
             .chars()
             .filter(|c| !c.is_whitespace())
             .collect();
-        if !joined
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || "_:{},*@".contains(c))
+        // `;` 之前只许是路径字符、头一个是字母 —— 字符串里一句 `… use …` 的散文不算。
+        if joined.starts_with(|c: char| c.is_ascii_alphabetic())
+            && joined
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || "_:{},*@".contains(c))
         {
-            continue;
+            out.push((at, at + 4 + end + 1, joined));
         }
+    }
+    out
+}
+
+/// 一层模块（或一个函数体）的 `use` 表：`me` 是那一层的模块住址，`children` 是那一层 `mod x;` 声明的子模块。
+fn use_context(
+    me: Vec<String>,
+    children: std::collections::BTreeSet<String>,
+    src: &str,
+) -> UseContext {
+    let mut uses = std::collections::BTreeMap::new();
+    let mut globs = Vec::new();
+    for (_, _, joined) in use_statements(src) {
         for e in expand_use(&joined) {
             let (path, alias) = match e.split_once('@') {
                 Some((p, a)) => (p.to_string(), Some(a.to_string())),
@@ -824,9 +786,10 @@ fn fn_graph(tree: &Tree) -> FnGraph {
     // 文件 → 类型名 → 它 `impl` 块里的函数（点名一个类型 ⇒ 它的方法都可能被叫：经 trait 注入的那一形）。
     let mut by_owner: BTreeMap<String, BTreeMap<String, Vec<FnAt>>> = BTreeMap::new();
     let mut bodies: BTreeMap<FnAt, String> = BTreeMap::new();
-    let mut masked_bodies: BTreeMap<FnAt, String> = BTreeMap::new();
+    // 每一个函数体各算一遍（同一住址的几个——内联模块里同名的、cfg 两份的——各照自己那一层的 `use` 认路，边并起来）。
+    let mut instances: Vec<(FnAt, &Vec<String>, &String)> = Vec::new();
     for (rel, f) in &per_file {
-        for (key, raw, mk) in &f.fns {
+        for (key, inline, raw, mk) in &f.fns {
             let at: FnAt = (rel.clone(), key.clone());
             let last = key.rsplit("::").next().unwrap_or(key).to_string();
             let slot = by_name
@@ -848,9 +811,30 @@ fn fn_graph(tree: &Tree) -> FnGraph {
                 }
             }
             bodies.entry(at.clone()).or_default().push_str(raw);
-            masked_bodies.entry(at).or_default().push_str(mk);
+            instances.push((at, inline, mk));
         }
     }
+    // 文件 → 那份文件里每一层模块的 `use` 表；那一层的子模块 ＝ 它声明的 `mod x;` ＋ 直接写在它里面的内联模块 `mod x { … }`。
+    let scopes: BTreeMap<&String, BTreeMap<&Vec<String>, UseContext>> = per_file
+        .iter()
+        .map(|(rel, f)| {
+            let me = module_of(rel);
+            let per_scope = f
+                .scopes
+                .iter()
+                .map(|(inline, text)| {
+                    let at: Vec<String> = me.iter().chain(inline).cloned().collect();
+                    let mut children = declared_children(text);
+                    children.extend(f.scopes.keys().filter_map(|k| {
+                        (k.len() == inline.len() + 1 && k.starts_with(inline))
+                            .then(|| k[inline.len()].clone())
+                    }));
+                    (inline, use_context(at, children, text))
+                })
+                .collect();
+            (rel, per_scope)
+        })
+        .collect();
     let empty = BTreeSet::new();
     // 在这几份文件里按末段名找：`owned` ⇒ 只要 `T::f`（给了 `T` 就只要那一个类型的）；否则只要自由函数。
     let find = |files: &[String], name: &str, owner: Option<&str>, owned: bool| -> Vec<FnAt> {
@@ -880,51 +864,74 @@ fn fn_graph(tree: &Tree) -> FnGraph {
             .cloned()
             .collect()
     };
-    // 绝对路径 ⇒ 函数：最长的模块前缀定文件，剩下的是 `f` 或 `T::f`。
+    // 绝对路径 ⇒ 函数：最末一段是函数或类型（不是模块），它前面最长的模块前缀定文件，剩下的是 `f` 或 `T::f`。
+    // 那份文件里没有 ⇒ 照那份文件自己的 `use`（再导出）接着找，不按名字去它引用到的别的文件里捞。
     let resolve = |p: &[String]| -> Vec<FnAt> {
-        let Some((n, g)) = (0..=p.len())
-            .rev()
-            .find_map(|n| mods.get(&p[..n]).map(|g| (n, g.clone())))
-        else {
-            return Vec::new();
-        };
-        let here = vec![g.clone()];
-        let hop: Vec<String> = file_edges
-            .get(&g)
-            .unwrap_or(&empty)
-            .iter()
-            .cloned()
-            .collect();
-        match &p[n..] {
-            [] => Vec::new(),
-            [f] => {
-                let mut hit = find(&here, f, None, false);
-                hit.extend(owned_by(&here, f));
-                if hit.is_empty() {
-                    hit = find(&hop, f, None, false);
-                    hit.extend(owned_by(&hop, f));
-                }
-                hit
+        let mut hit = Vec::new();
+        let mut seen: BTreeSet<Vec<String>> = BTreeSet::new();
+        let mut todo = vec![p.to_vec()];
+        while let Some(p) = todo.pop() {
+            if p.is_empty() || !seen.insert(p.clone()) {
+                continue;
             }
-            [.., t, f] => {
-                let mut hit = find(&here, f, Some(t), true);
-                hit.extend(find(&here, f, None, false));
-                if hit.is_empty() {
-                    find(&hop, f, Some(t), true)
-                } else {
-                    hit
+            let Some((n, g)) = (0..p.len())
+                .rev()
+                .find_map(|n| mods.get(&p[..n]).map(|g| (n, g.clone())))
+            else {
+                continue;
+            };
+            let here = vec![g.clone()];
+            let rest = &p[n..];
+            let found = match rest {
+                [f] => {
+                    let mut h = find(&here, f, None, false);
+                    h.extend(owned_by(&here, f));
+                    h
                 }
+                [.., t, f] => {
+                    let mut h = find(&here, f, Some(t), true);
+                    // `t` 是那份文件里的内联模块 ⇒ 它里面的自由函数（同一份文件里各层同名的并成一个住址）。
+                    if scopes[&g].contains_key(&rest[..rest.len() - 1].to_vec()) {
+                        h.extend(find(&here, f, None, false));
+                    }
+                    h
+                }
+                [] => Vec::new(),
+            };
+            // 路径落进的那一层：文件那一层，或最深的那个内联模块。
+            let depth = (0..rest.len())
+                .rev()
+                .find(|d| scopes[&g].contains_key(&rest[..*d].to_vec()))
+                .unwrap_or(0);
+            // 落在文件那一层、找到了 ⇒ 就是它；落在内联模块里 ⇒ 找到的是各层并起来的同名住址，那一层的 `use` 照样走（不让并起来的挡住再导出）。
+            if !found.is_empty() && depth == 0 {
+                hit.extend(found);
+                continue;
+            }
+            hit.extend(found);
+            let cx = &scopes[&g][&rest[..depth].to_vec()];
+            let tail = &rest[depth..];
+            if let Some(u) = cx.uses.get(&tail[0]) {
+                todo.push(u.iter().chain(&tail[1..]).cloned().collect());
+            }
+            for glob in &cx.globs {
+                todo.push(glob.iter().chain(tail).cloned().collect());
             }
         }
+        hit
     };
-    let ctx: BTreeMap<&String, UseContext> = tree
-        .iter()
-        .map(|(rel, src)| (rel, use_context(rel, src)))
-        .collect();
     let mut edges: BTreeMap<FnAt, BTreeSet<FnAt>> = BTreeMap::new();
-    for (at, body) in &masked_bodies {
+    for (at, inline, body) in &instances {
         let rel = &at.0;
-        let cx = &ctx[rel];
+        let sc = &scopes[rel][inline];
+        // 函数体自己的 `use` 只管它自己，先认；`use` 语句本身不算提到了谁。
+        let local = use_context(sc.me.clone(), sc.children.clone(), body);
+        let mut body = body.to_string();
+        for (s, e, _) in use_statements(&body.clone()) {
+            body.replace_range(s..e, &" ".repeat(e - s));
+        }
+        let uses = |name: &String| local.uses.get(name).or_else(|| sc.uses.get(name));
+        let globs: Vec<&Vec<String>> = local.globs.iter().chain(&sc.globs).collect();
         let here = vec![rel.clone()];
         let near: Vec<String> = here
             .iter()
@@ -971,10 +978,8 @@ fn fn_graph(tree: &Tree) -> FnGraph {
                 }
                 continue;
             }
-            let abs = absolutize_in(&cx.me, &cx.children, &segs).or_else(|| {
-                cx.uses
-                    .get(&segs[0])
-                    .map(|u| u.iter().chain(segs[1..].iter()).cloned().collect())
+            let abs = absolutize_in(&sc.me, &sc.children, &segs).or_else(|| {
+                uses(&segs[0]).map(|u| u.iter().chain(segs[1..].iter()).cloned().collect())
             });
             if let Some(p) = abs {
                 to.extend(resolve(&p));
@@ -984,7 +989,7 @@ fn fn_graph(tree: &Tree) -> FnGraph {
                 [f] => {
                     to.extend(find(&here, f, None, false));
                     to.extend(owned_by(&near, f));
-                    for g in &cx.globs {
+                    for g in &globs {
                         let p: Vec<String> = g.iter().chain(std::iter::once(f)).cloned().collect();
                         to.extend(resolve(&p));
                     }
@@ -995,7 +1000,7 @@ fn fn_graph(tree: &Tree) -> FnGraph {
                 }
                 [.., t, f] if call => {
                     to.extend(find(&near, f, Some(t), true));
-                    for g in &cx.globs {
+                    for g in &globs {
                         let p: Vec<String> = g.iter().chain(segs.iter()).cloned().collect();
                         to.extend(resolve(&p));
                     }
@@ -1004,7 +1009,7 @@ fn fn_graph(tree: &Tree) -> FnGraph {
             }
         }
         to.remove(at);
-        edges.insert(at.clone(), to);
+        edges.entry(at.clone()).or_default().extend(to);
     }
     let impls = per_file
         .into_iter()
@@ -1127,6 +1132,43 @@ fn handler_fns(
 
 /// 够得着 tmux、却**不**声明 `no_tmux` 的命令 —— 逐条写理由（tmux 在它那里是可选的：问不到就降级，命令本身照做）。
 const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
+    (
+        "plan-command",
+        "计划 · 需手动那几问造「谁」的脸要问住处，住处经 host::Housing 问 tmux；tmux 不在 ⇒ 那一格写无法确定所在终端，其余照答",
+    ),
+    ("plan-list", "同上（计划那几问）"),
+    ("plan-new", "同上（计划那几问）"),
+    ("plan-read", "同上（计划那几问）"),
+    ("plan-return", "同上（计划那几问）"),
+    ("sessions-needs", "同上（需手动那几问）"),
+    ("sessions-needs-merge", "同上（需手动那几问）"),
+    (
+        "needs-answer",
+        "挡着终端的那一条经读屏按；托管终端不经 tmux，tmux 不在 ⇒ 这一条回失败，其余照答",
+    ),
+    (
+        "history-list",
+        "清单里活会话住哪照这台名单认（`host::Housing`，一趟至多列一次、没有活会话不列）：没 tmux · 列不出 ⇒ 只剩托管那几行，\
+         住 tmux 里的那几条成「不知道」，清单照答",
+    ),
+    ("history-listing", "同上（这台那一份清单）"),
+    ("history-browse", "同上（几台的清单并成一列）"),
+    ("history-facts", "同上（会话事实里主会话 · 子会话那几张脸）"),
+    (
+        "status-line-preview",
+        "同上（预览照最近起的托管终端现取会话事实那两格；没 tmux ⇒ 那几张脸照托管认，预览照答）",
+    ),
+    (
+        "session-rewind-options",
+        "判主 agent 在不在出字要读那一屏（会话住 tmux 那一形经 tmux 取屏）：没 tmux · 读不了屏 ⇒ 回退那一串退不了：选项只写为什么、一项不给，\
+         命令照答",
+    ),
+    ("history-search", "同上（命中的活会话那张脸）"),
+    ("history-search-merge", "同上（几台的搜索并成一列）"),
+    ("groups-here", "同上（分组里清单外的那几条活会话）"),
+    ("groups-read", "同上（几台的分组并成一份）"),
+    ("bus-send", "同上（引用图里经清单那几处够到；发消息本身不看宿主）"),
+    ("session-self", "同上（引用图里经清单那几处够到；认自己是哪条不看宿主）"),
     (
         "terminal-end",
         "按名单里的句柄结束：名单两种宿主合一份，没 tmux ⇒ 只剩托管那几行，托管的照结束（托管口挂断子进程组，不碰 tmux）；\
@@ -1300,11 +1342,18 @@ fn every_frame_command_that_can_reach_tmux_declares_no_tmux() {
 }
 
 /// 够得着托管口、却整条要 tmux 的命令（不算托管那一臂）：`(命令, 为什么)`。
-const REACHES_HOSTED_BUT_NEEDS_TMUX: &[(&str, &str)] = &[(
-    "set-launch",
-    "开头先问 tmux（`faces/session_set_face.rs::no_tmux`），确证没有就整条不做（一组只起在 tmux 里）；\
-     够得着托管口是起会话 · 读活会话那一段顺带的",
-)];
+const REACHES_HOSTED_BUT_NEEDS_TMUX: &[(&str, &str)] = &[
+    (
+        "set-launch",
+        "开头先问 tmux（`faces/session_set_face.rs::no_tmux`），确证没有就整条不做（一组只起在 tmux 里）；\
+         够得着托管口是起会话 · 读活会话那一段顺带的",
+    ),
+    (
+        "plan-ask",
+        "开头先问 tmux（`faces/plan_ask_face.rs`：开口那句只跟 tmux），确证没有就不开框；\
+         够得着托管口是读计划时造「谁」那张脸问住处（`host::Housing` 列托管终端）顺带的",
+    ),
+];
 
 /// 🔴 帧面：声明了 `no_tmux`、处理器又够得着托管口（`host/managed/client.rs` 里的函数）的命令，除去 [`REACHES_HOSTED_BUT_NEEDS_TMUX`]，== `inbound::HOSTED_ARM`。
 /// 少一条 ⇒ 托管终端做得到的那条在没 tmux 的机器上被整机拒（Windows 本机「终端」面板报做不到）；多一条 ⇒ 只在 tmux 里做的被说成做得到。
@@ -1533,6 +1582,127 @@ fn the_function_level_ruler_works_on_a_synthetic_tree() {
     assert!(reachable(&file_edges(&tree), &from).contains("t.rs"));
 }
 
+/// 🔴 同名、不同模块：函数级调用图照路径连，不照裸名字连。几份文件里各有一个 `hop`，只有 `managed::client::hop` 起 tmux：
+/// 再导出照 `pub use` 走（不连那份文件引用到的别处同名函数）· 函数体里的 `use` 只管那个函数 ·
+/// 文件内联模块里的 `super::` 从那个内联模块算起、同层写 `inner::f()` 认得出、它里面的 `pub use` 照走 ·
+/// 路径末段是函数或类型、不当模块（`asks::answer()` 不读成子模块 `answer`）· `m::Foo::new` 只认类型 `Foo` 的，不落到 `m` 里同名的自由函数。
+#[test]
+fn the_function_level_ruler_links_by_path_not_by_bare_name() {
+    let tree: Tree = [
+        (
+            "lib.rs",
+            "pub mod t; pub mod relay; pub mod managed; pub mod re; pub mod asks; pub mod k; pub mod h;\n\
+             pub fn hop() { crate::t::spawn(); }",
+        ),
+        ("t.rs", "pub fn spawn() { let _ = Child::new(\"tmux\"); }"),
+        ("relay.rs", "pub fn hop() {}"),
+        ("managed/mod.rs", "pub mod client;"),
+        ("managed/client.rs", "pub fn hop() { crate::t::spawn(); }"),
+        (
+            "re/mod.rs",
+            "mod inner;\npub use self::inner::hop;\npub fn touch() { crate::managed::client::hop(); }",
+        ),
+        ("re/inner.rs", "pub fn hop() {}"),
+        ("asks/mod.rs", "mod answer;\npub use answer::answer;"),
+        ("asks/answer.rs", "pub fn answer() { crate::t::spawn(); }"),
+        (
+            "k/mod.rs",
+            "pub fn hop() {}\n\
+             mod inner { pub fn run() { super::hop(); } pub fn loud() { crate::t::spawn(); } }\n\
+             pub fn bare_inline() { inner::loud(); }\n\
+             mod shelf { pub use crate::managed::client::hop as lent; }\n\
+             pub fn via_inline_reexport() { self::shelf::lent(); }\n\
+             mod rack { pub use crate::managed::client::hop; }\n\
+             pub fn via_inline_same_name() { self::rack::hop(); }",
+        ),
+        ("ty/mod.rs", "mod imp;\npub use self::imp::Foo;\npub fn new() {}"),
+        (
+            "ty/imp.rs",
+            "pub struct Foo;\nimpl Foo { pub fn new() { crate::t::spawn(); } }",
+        ),
+        (
+            "h.rs",
+            "pub fn via_reexport() { crate::re::hop(); }\n\
+             pub fn local_quiet() { use crate::relay::hop; hop(); }\n\
+             pub fn local_loud() { use crate::managed::client::hop; hop(); }\n\
+             pub fn same_named_module() { crate::asks::answer(); }\n\
+             pub fn via_reexported_type() { crate::ty::Foo::new(); }",
+        ),
+    ]
+    .into_iter()
+    .map(|(k, v)| (k.to_string(), v.to_string()))
+    .collect();
+    let g = fn_graph(&tree);
+    let spawn: std::collections::BTreeSet<FnAt> = [("t.rs".to_string(), "spawn".to_string())]
+        .into_iter()
+        .collect();
+    let reaches = |file: &str, f: &str| {
+        let from = std::iter::once((file.to_string(), f.to_string())).collect();
+        !reachable_fns(&g, &from).is_disjoint(&spawn)
+    };
+    let wrong: Vec<String> = [
+        (
+            "h.rs",
+            "via_reexport",
+            false,
+            "再导出连到了那份文件引用到的别处同名 `hop`",
+        ),
+        (
+            "h.rs",
+            "local_quiet",
+            false,
+            "函数体里 `use relay::hop` 被别的函数的 `use` 盖掉",
+        ),
+        (
+            "h.rs",
+            "local_loud",
+            true,
+            "函数体里 `use managed::client::hop` 没连上",
+        ),
+        (
+            "h.rs",
+            "same_named_module",
+            true,
+            "`asks::answer()` 被读成子模块 `answer`、函数没连上",
+        ),
+        (
+            "k/mod.rs",
+            "run",
+            false,
+            "内联模块里的 `super::hop` 从文件那一层算、连到了顶层的 `hop`",
+        ),
+        (
+            "k/mod.rs",
+            "bare_inline",
+            true,
+            "同层不带 `self::` 的内联模块路径 `inner::loud()` 没认出来",
+        ),
+        (
+            "k/mod.rs",
+            "via_inline_reexport",
+            true,
+            "内联模块里的 `pub use … as lent` 没跟着走",
+        ),
+        (
+            "k/mod.rs",
+            "via_inline_same_name",
+            true,
+            "内联模块里同名的 `pub use …::hop` 被文件顶层的 `hop` 挡住",
+        ),
+        (
+            "h.rs",
+            "via_reexported_type",
+            true,
+            "`ty::Foo::new` 落到 `ty` 里同名的自由函数 `new`、再导出的类型没跟",
+        ),
+    ]
+    .into_iter()
+    .filter(|(file, f, want, _)| reaches(file, f) != *want)
+    .map(|(file, f, _, why)| format!("{file} {f}：{why}"))
+    .collect();
+    assert!(wrong.is_empty(), "{wrong:#?}\n{:?}", g.edges);
+}
+
 /// ccm 面每条能力的最小探针（位置动作 ＋ 旗标；`carriers` = 探针里为了让它起得来而**必须**带上的 tmux 载体旗标）。
 const CCM_PROBES: &[(&str, &[&str], &[&str])] = &[
     ("account", &["--account", "acct-x"], &[]),
@@ -1572,11 +1742,6 @@ const CCM_TMUX_EXCEPTIONS: &[(&str, bool, &str)] = &[
         "base-url-across-tmux",
         true,
         "不是一个旗标，是容器路的一条性质（`plan.rs` 容器分支把 `ANTHROPIC_BASE_URL` 显式带进载荷内侧）—— 名字就是跨 tmux 的边界，探针非带 `--tmux` 不可、带了就恒判「靠 tmux」，判了等于没判",
-    ),
-    (
-        "ccm-sid",
-        true,
-        "直路上**有**效果（启动期令牌，计划与基线不同 ⇒ 计划层判它「不靠 tmux」），但 Windows 上后端读不到别的进程的环境 ⇒ 认不回 agent 进程 —— 平台原语那一层计划里看不见，归 tmux 档（`control/ccm/mod.rs::CCM_TMUX_CARRIED` 那一行的依据）",
     ),
     ("new", false, "默认动作本身：探针与基线同形是定义使然（「直路上有没有效果」对它不成立）"),
     ("print", false, "渲染方式（吐出计划还是执行它），不进计划 —— 计划与基线同形是定义使然"),

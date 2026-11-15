@@ -75,7 +75,8 @@ const TREE_MASK: u32 = libc::IN_CREATE
     | libc::IN_CLOSE_NOWRITE
     | libc::IN_MOVED_TO;
 /// 根还不在时，在它最近一个已在的祖先上订的那几种（等路上那一层出现）。
-const WAIT_MASK: u32 = libc::IN_CREATE | libc::IN_MOVED_TO | libc::IN_ONLYDIR;
+/// 那个祖先自己被挪走也要知道（那一道跟着挪走的目录走，原路径上再长出来的听不到）。
+const WAIT_MASK: u32 = libc::IN_CREATE | libc::IN_MOVED_TO | libc::IN_MOVE_SELF | libc::IN_ONLYDIR;
 
 /// 一道活着的耳朵。一丢 ⇒ 收的线程跟着退出（经停机那根管子叫醒它，不靠超时）。
 pub struct OpenEar {
@@ -122,7 +123,7 @@ pub fn watch_opens(
     let (stop_rx, stop_tx) =
         unsafe { (OwnedFd::from_raw_fd(pipe[0]), OwnedFd::from_raw_fd(pipe[1])) };
     let mut tree = Tree::new(ino, absolute(root));
-    let first = tree.arm();
+    let first = tree.arm()?;
     let spawned = std::thread::Builder::new()
         .name("writers-ear".to_string())
         .spawn(move || {
@@ -270,41 +271,65 @@ impl Tree {
         }
     }
 
+    /// 挂一道；挂不上（没有读权限 · watch 名额满 …）⇒ 记一行警告、`None`。
     fn add(&self, dir: &Path, mask: u32) -> Option<i32> {
         use std::os::unix::ffi::OsStrExt;
         let c = std::ffi::CString::new(dir.as_os_str().as_bytes()).ok()?;
         // SAFETY：`c` 是以 NUL 收尾的合法 C 串，活过这次调用；`ino` 是本结构独占的 inotify fd。
         let wd = unsafe { libc::inotify_add_watch(self.ino.as_raw_fd(), c.as_ptr(), mask) };
-        (wd >= 0).then_some(wd)
+        if wd < 0 {
+            tracing::warn!(
+                "writers-ear 挂不上 {}: {}",
+                dir.display(),
+                std::io::Error::last_os_error()
+            );
+            return None;
+        }
+        Some(wd)
+    }
+
+    fn rm(&self, wd: i32) {
+        // SAFETY：同 `add`；卸一个本 fd 上挂过的 wd，卸不掉（已随目录没了）无妨。
+        unsafe { libc::inotify_rm_watch(self.ino.as_raw_fd(), wd) };
     }
 
     /// 按盘上此刻的样子挂：根在 ⇒ 整棵挂上（交回里面已有的文件）；不在 ⇒ 在最近一个已在的祖先上等。
-    fn arm(&mut self) -> Vec<PathBuf> {
-        if self.root.is_dir() {
-            if let Some(wd) = self.waiting.take() {
-                // SAFETY：同 `add`；卸一个本 fd 上挂过的 wd，卸不掉（已随目录没了）无妨。
-                unsafe { libc::inotify_rm_watch(self.ino.as_raw_fd(), wd) };
-            }
-            let root = self.root.clone();
-            return self.add_tree(&root);
+    /// 等的那一道挂上之后再看一眼它底下通往根的那一层：看过不在、挂上之前长出来的，它的新建不会再有事件 ⇒ 卸掉照此刻重挂。
+    /// 根那一道或等的那一道挂不上 ⇒ `None`。
+    fn arm(&mut self) -> Option<Vec<PathBuf>> {
+        if let Some(wd) = self.waiting.take() {
+            self.rm(wd);
         }
-        let mut at = self.root.parent();
-        while let Some(a) = at {
-            if a.is_dir() {
-                if let Some(wd) = self.add(a, WAIT_MASK) {
-                    self.waiting = Some(wd);
+        loop {
+            if self.root.is_dir() {
+                let root = self.root.clone();
+                return self.add_tree(&root);
+            }
+            let mut next = self.root.clone();
+            let at = loop {
+                let a = next.parent()?.to_path_buf();
+                if a.is_dir() {
+                    break a;
                 }
-                break;
+                next = a;
+            };
+            let wd = self.add(&at, WAIT_MASK)?;
+            if next.is_dir() {
+                self.rm(wd);
+                continue;
             }
-            at = a.parent();
+            self.waiting = Some(wd);
+            return Some(Vec::new());
         }
-        Vec::new()
     }
 
-    /// 挂上 `top` 和它底下每一层目录，交回里面已有的文件。
-    fn add_tree(&mut self, top: &Path) -> Vec<PathBuf> {
+    /// 挂上 `top` 和它底下每一层目录（每一层先挂再列），交回里面已有的文件。`top` 自己挂不上 ⇒ `None`。
+    fn add_tree(&mut self, top: &Path) -> Option<Vec<PathBuf>> {
+        let wd = self.add(top, TREE_MASK)?;
+        self.dirs.insert(wd, top.to_path_buf());
         let mut files = Vec::new();
         for e in walkdir::WalkDir::new(top)
+            .min_depth(1)
             .into_iter()
             .filter_map(Result::ok)
         {
@@ -317,7 +342,7 @@ impl Tree {
                 files.push(p.to_path_buf());
             }
         }
-        files
+        Some(files)
     }
 
     /// 把此刻排着的事件全读出来折进 `fold`；交回这一趟新挂上的目录里已有的文件。
@@ -362,12 +387,11 @@ impl Tree {
             return;
         }
         if Some(wd) == self.waiting {
-            // 祖先上那一道：路上那一层出现了 ⇒ 按盘上此刻的样子重挂（根整棵出现了就交回里面已有的文件）。
-            if mask & (libc::IN_CREATE | libc::IN_MOVED_TO) != 0 {
-                self.waiting = None;
-                // SAFETY：同 `arm`。
-                unsafe { libc::inotify_rm_watch(self.ino.as_raw_fd(), wd) };
-                found.extend(self.arm());
+            // 祖先上那一道：路上那一层出现了、或这个祖先自己没了 · 被挪走 ⇒ 按盘上此刻的样子重挂（根整棵出现了就交回里面已有的文件）。
+            if mask & (libc::IN_CREATE | libc::IN_MOVED_TO | libc::IN_MOVE_SELF | libc::IN_IGNORED)
+                != 0
+            {
+                found.extend(self.arm().unwrap_or_default());
             }
             return;
         }
@@ -375,7 +399,7 @@ impl Tree {
             // 这一道随目录没了：是根 ⇒ 回去等它再出现。
             if self.dirs.remove(&wd).as_deref() == Some(self.root.as_path()) {
                 self.dirs.clear();
-                found.extend(self.arm());
+                found.extend(self.arm().unwrap_or_default());
             }
             return;
         }
@@ -388,7 +412,7 @@ impl Tree {
         let p = dir.join(std::ffi::OsStr::from_bytes(name));
         if mask & libc::IN_ISDIR != 0 {
             if mask & (libc::IN_CREATE | libc::IN_MOVED_TO) != 0 {
-                found.extend(self.add_tree(&p));
+                found.extend(self.add_tree(&p).unwrap_or_default());
             }
             return;
         }

@@ -160,12 +160,6 @@ internal fun rowMenu(
     )
 }
 
-/** 删除确认的正文：哪台上的记录 · 不可恢复；那台说不准在不在跑 ⇒ 多一句。 */
-internal fun deleteBody(
-    machine: String,
-    can: CanDelete,
-): List<String> = listOfNotNull(copyText("history.delete.bodyRemote", "machine" to machine), copyText("history.delete.unsure").takeIf { can == CanDelete.UNSURE })
-
 @Composable
 internal fun RowMenu(
     row: ChatRow,
@@ -207,17 +201,16 @@ internal fun RenameDialog(
     )
 }
 
-/** 删除先问一次：正文照 [deleteBody]，删除键红、焦点在取消上（[DangerConfirmDialog]）。 */
+/** 删除先问一次：正文照那一行的 [ChatRow.deleteAsk]（核心照那台的称呼写好的），删除键红、焦点在取消上（[DangerConfirmDialog]）。 */
 @Composable
 internal fun DeleteDialog(
     row: ChatRow,
-    machine: String,
     onDismiss: () -> Unit,
     onDelete: () -> Unit,
 ) {
     DangerConfirmDialog(
         title = { Text(copyText("history.delete.title", "label" to row.label), maxLines = 2, overflow = TextOverflow.Ellipsis) },
-        text = { Column { deleteBody(machine, row.canDelete).forEach { Text(it, style = MaterialTheme.typography.bodyMedium) } } },
+        text = { Text(row.deleteAsk, style = MaterialTheme.typography.bodyMedium) },
         confirm = copyText("rsFilewinWriteops.label.delete"),
         onConfirm = {
             onDelete()

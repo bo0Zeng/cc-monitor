@@ -1,6 +1,6 @@
 /// 一份 `ccm` 模块源码里吃一个 agent 名、回那一家那一份的函数（行首 `pub(crate) fn <名>(agent: &str)`）。
 ///
-/// 人群只到 `control/ccm/mod.rs` 为止，`agents/mod.rs::account_env_of` 不算 —— 那是 ccm 问适配层的口，不是 ccm 自己的表。
+/// 人群只到 `control/ccm/mod.rs` 为止，`agents/accounts_face.rs::account_env_of` 不算 —— 那是 ccm 问适配层的口，不是 ccm 自己的表。
 fn per_agent_fns(src: &str) -> Vec<String> {
     let prod = guard_core::production_code(src);
     let mut out: Vec<String> = Vec::new();

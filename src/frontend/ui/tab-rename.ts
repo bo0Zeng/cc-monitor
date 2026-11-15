@@ -62,19 +62,24 @@ export async function commitRename(who: Renamed, next: string): Promise<void> {
 
 /**
  * 在 `over` 那一格上浮出一个输入框（挂在 body 上、按那一格此刻的位置摆：标签页是一颗按钮，里面不放输入框）。
- * Enter 定 · 失焦定 · 外面一滚 / 窗口一缩 ⇒ 定；Esc 取消（走浮层栈：只取消改名，不连带关别的）。`done(值)`：定 ⇒ 框里的值，取消 ⇒ `null`；只调一次。
+ * Enter 定 · 失焦定 · 窗口一缩 ⇒ 定；Esc 取消（走浮层栈：只取消改名，不连带关别的）。`done(值)`：定 ⇒ 框里的值，取消 ⇒ `null`；只调一次。
+ * 滚：只认包着 `over` 的那一串滚动容器（含整页），滚了 ⇒ 框跟着那一格重摆、不收；别处滚（会话流贴底每帧都滚）不碰它；那一格已被重画掉（历史页虚拟滚动）⇒ 那一串再滚就定，不留跟丢的框。
+ * 框还有焦点时收起（Enter · Esc · 窗口一缩 · 那一格没了再滚）⇒ 焦点回开框前那一处（那一处是 body 或已不在 ⇒ 包着那一格、还在页上、离它最近的可聚焦那个），后续按键不落到 body 上。
  */
 export function editOver(over: HTMLElement, initial: string, done: (next: string | null) => void): void {
-  const at = over.getBoundingClientRect();
   const input = document.createElement("input");
   input.type = "text";
   input.className = `${rs.input} ${rs.floating}`;
   input.value = initial;
   input.placeholder = copyText("history.rename.prompt");
   input.setAttribute("aria-label", copyText("history.rename.label"));
-  input.style.left = `${at.left}px`;
-  input.style.top = `${at.top}px`;
-  input.style.width = `${Math.max(at.width, 120)}px`;
+  const place = (): void => {
+    const at = over.getBoundingClientRect();
+    input.style.left = `${at.left}px`;
+    input.style.top = `${at.top}px`;
+    input.style.width = `${Math.max(at.width, 120)}px`;
+  };
+  place();
   let finished = false;
   const overlay: OverlayHandle = {
     handleEsc: () => {
@@ -82,15 +87,32 @@ export function editOver(over: HTMLElement, initial: string, done: (next: string
       return true;
     },
   };
-  const moved = (): void => finish(true);
+  // 包着那一格的那一串（开框时记下：那一格被重画掉以后照样认得出是它们在滚）。
+  const chain: Node[] = [];
+  for (let n: Node | null = over; n !== null; n = n.parentNode) chain.push(n);
+  const scrolled = (ev: Event): void => {
+    if (!(ev.target instanceof Node) || !chain.includes(ev.target)) return;
+    if (over.isConnected) place();
+    else finish(true);
+  };
+  const resized = (): void => finish(true);
+  // 收框后焦点回哪：开框前那一处；那一处是 body 或已不在页上 ⇒ 那一串里离那一格最近、还在页上、可聚焦的那个。
+  const prior = document.activeElement;
+  const back = (): HTMLElement | null => {
+    if (prior instanceof HTMLElement && prior !== document.body && prior.isConnected) return prior;
+    const own = chain.find((n): n is HTMLElement => n instanceof HTMLElement && n.isConnected && n.matches("button, a[href], [tabindex]"));
+    return own ?? null;
+  };
   const finish = (commit: boolean): void => {
     if (finished) return;
     finished = true;
     dispatcher.popOverlay(overlay);
-    window.removeEventListener("scroll", moved, true);
-    window.removeEventListener("resize", moved);
+    window.removeEventListener("scroll", scrolled, true);
+    window.removeEventListener("resize", resized);
     const value = input.value;
+    const focused = document.activeElement === input;
     input.remove();
+    if (focused) back()?.focus();
     done(commit ? value : null);
   };
   input.addEventListener("keydown", (ev) => {
@@ -104,8 +126,8 @@ export function editOver(over: HTMLElement, initial: string, done: (next: string
   });
   input.addEventListener("blur", () => finish(true));
   document.body.append(input);
-  window.addEventListener("scroll", moved, true);
-  window.addEventListener("resize", moved);
+  window.addEventListener("scroll", scrolled, true);
+  window.addEventListener("resize", resized);
   dispatcher.pushOverlay(overlay);
   input.focus();
   input.select();

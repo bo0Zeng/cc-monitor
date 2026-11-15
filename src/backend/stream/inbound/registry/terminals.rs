@@ -93,7 +93,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         "切权限档（开着 ⇒ 按那一家的循环键、等重画、读回到了为止，最多一圈；在等人不按；终端没了 ⇒ 记下、下次恢复照它起）",
     ),
     // 终端实时预览三条（`control/terminal_follow.rs`）：订阅名单里一个终端的画面，有变化就推一整屏（`terminal_screen` 帧），
-    //   一帧在途、客户端回执之后才推下一帧；停了推 `terminal_follow_end`。都是 `Run::Builtin`：要碰本连接的票表与应答通道 ⇒ **只在帧面**。
+    //   一帧在途、客户端回执之后才推下一帧；停了推 `terminal_follow_end`。都是帧面硬臂（`How::Frame`，同 `cancel` · `stream-watch`）：要碰本连接的票表与应答通道 ⇒ **只在帧面**。
     super::typed::frame::<crate::control::terminal_follow::TerminalFollow>(
         "订阅一个终端的画面（有变化推一整屏，一帧在途等回执；tmux 那一形订着时那台多一个只读客户端，用户自己配的 client-attached / client-detached 钩子会被它触发）",
     ),

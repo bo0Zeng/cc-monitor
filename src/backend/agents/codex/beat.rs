@@ -4,16 +4,17 @@
 //! |---|---|
 //! | `payload.id` · 信封 `timestamp` | `id` · `at` |
 //! | `response_item.message`：「谁说的」答得出（user / developer / 别家来信）⇒ 用户那侧 `Said`；答不出 ⇒ 代理那侧 | `side`；系统注入 ⇒ `injected` |
-//! | message 的 `content` 拍平 | `Text`；`input_image` 那几项 ⇒ `Image` |
+//! | message 的 `content` 拍平 | `Text`；画得出的图（[`super::record::inline_images`]）各一个 `Image` |
 //! | assistant 的 `phase == "final_answer"` | `Stop(Done)` |
 //! | `reasoning` | `Thinking`（代理那侧） |
 //! | 工具调用（`call_id` · `name`） | `Call`（代理那侧）；主参数 · 写了哪个文件：这一家的工具词表没考据 ⇒ 不答 |
 //! | 工具输出（`call_id`） | `Result`（用户那侧）；失败与否记录里看不出 ⇒ 不算失败 |
 //! | `agent_message` · `inter_agent_communication` | 用户那侧 `Said`（来信） |
 //! | 顶层 `token_usage_record` 的 `usage` ＋ `response_id` | 代理那侧，只带 `usage`：新输入 ＝ `input_tokens − cached_input_tokens`（输入含读缓存：`total ＝ input ＋ output`），读缓存 ＝ `cached_input_tokens`；写缓存是否含在输入里看不出 ⇒ 不答 |
-//! | 别的（元记录 · 事件） | 簿记 |
+//! | `session_meta` 的 `forked_from_id` | `forked_from`（随簿记带出，[`super::record::thread_of`]） |
+//! | 别的（元记录 · 事件：`item_completed` 是同一件事的另一份投影 · `token_count` 一发会写几次，拿它算用量会重算） | 簿记 |
 //!
-//! 型号（`turn_context.model`）不在带用量的那一条上 ⇒ 不答；许可档 · 分叉今天不答。
+//! 型号（`turn_context.model`）不在带用量的那一条上 ⇒ 不答；许可档今天不答。
 
 use std::borrow::Cow;
 
@@ -45,13 +46,7 @@ fn content_acts(content: Option<&Value>, acts: &mut Vec<Act<'_>>) {
     if !text.is_empty() {
         acts.push(Act::Text(Cow::Owned(text)));
     }
-    if let Some(items) = content.as_array() {
-        for it in items {
-            if str_of(it, "type") == Some("input_image") {
-                acts.push(Act::Image);
-            }
-        }
-    }
+    acts.extend(super::record::inline_images(content).map(|_| Act::Image));
 }
 
 /// 一条已解析的记录 ⇒ 一拍（恒有：不说话的记录就是簿记）。
@@ -64,7 +59,7 @@ pub(crate) fn beat_of(v: &Value) -> Option<Beat<'_>> {
             content_acts(payload.get("content"), &mut acts);
             match message_said(payload) {
                 Some(who) => {
-                    acts.push(Act::Said(who));
+                    acts.push(Act::Said(who.who));
                     Side::Input
                 }
                 None => {
@@ -77,7 +72,7 @@ pub(crate) fn beat_of(v: &Value) -> Option<Beat<'_>> {
         }
         K::AgentMail => {
             content_acts(payload.get("content"), &mut acts);
-            acts.push(Act::Said(super::record::agent_mail_said(payload)));
+            acts.push(Act::Said(super::record::agent_mail_said(payload).who));
             Side::Input
         }
         K::Reasoning => {
@@ -125,7 +120,9 @@ pub(crate) fn beat_of(v: &Value) -> Option<Beat<'_>> {
         usage,
         model: None,
         mode: None,
-        forked_from: None,
+        forked_from: super::record::thread_of(v)
+            .and_then(|t| t.forked_from)
+            .map(str::to_string),
     })
 }
 
@@ -145,12 +142,14 @@ fn usage_of<'a>(u: &Value, payload: &'a Value) -> Usage<'a> {
 }
 
 /// 这一行有没有可能改动会话事实（快路，`BeatFace.hint`）。**只许放过、不许误拦**：
-/// 不是簿记的那几类一拍只出自这三种顶层类型（Codex 写 JSON 不转义 ASCII 字母）；这一家不说 MCP。
+/// 不是簿记的那几类一拍只出自这三种顶层类型，叉自哪一条只出自带 `forked_from_id` 的那条 `session_meta`
+/// （Codex 写 JSON 不转义 ASCII 字母）；这一家不说 MCP。
 fn could_matter(line: &[u8], w: &Watch) -> bool {
     !w.mcp_only
         && (contains(line, b"\"response_item\"")
             || contains(line, b"\"token_usage_record\"")
-            || contains(line, b"\"inter_agent_communication\""))
+            || contains(line, b"\"inter_agent_communication\"")
+            || contains(line, b"\"forked_from_id\""))
 }
 
 #[cfg(test)]

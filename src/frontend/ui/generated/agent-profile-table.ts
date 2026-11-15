@@ -18,8 +18,6 @@ export type AgentProfileRow = {
   nestedEnvVars: string[];
   /** 这一家有没有账号这一维（选号 · 跟随上次的号只对有的那一家）。 */
   hasAccounts: boolean;
-  /** 这一家对用户的叫法（产品全称：「{名} 默认」·「{名} 会话还不能选账号」这类话里用）。 */
-  displayName: string;
   /** 这一家认得的模型名（账号页「默认模型」下拉的选项）；`null` ＝ 没考据过。 */
   models: string[] | null;
   /** 消息流里说话的那一方叫什么（卡头 · 刻度悬停）：短名。 */
@@ -35,19 +33,17 @@ export const AGENT_PROFILE_TABLE: readonly AgentProfileRow[] = [
     resumeToken: "--resume",
     nestedEnvVars: ["CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_CHILD_SESSION"],
     hasAccounts: true,
-    displayName: "Claude Code",
     models: ["sonnet", "opus", "haiku", "sonnet[1m]", "opusplan"],
     speakerName: "Claude",
   },
   {
     agent: "codex",
     defaultLauncher: "codex",
-    launcherAlias: null,
+    launcherAlias: "cx",
     resumeKind: "subcommand",
     resumeToken: "resume",
-    nestedEnvVars: [],
-    hasAccounts: false,
-    displayName: "Codex",
+    nestedEnvVars: ["CODEX_THREAD_ID", "CODEX_SESSION_ID", "CODEX_TOOL_CALL_ID", "CODEX_VERSION"],
+    hasAccounts: true,
     models: null,
     speakerName: "Codex",
   },
@@ -55,3 +51,12 @@ export const AGENT_PROFILE_TABLE: readonly AgentProfileRow[] = [
 
 /** 不说是哪一家时起的那一家（注册表里声明默认的那一家）：不给 agent 名字 ⇒ 就是它；给了表里没有的名字 ⇒ 拒。 */
 export const DEFAULT_AGENT: string = "claude";
+
+/** 注册表每一家对人的叫法（行头那一格，没有起会话面的家也在；没声明 ⇒ 照实的那一句）：键是线上的 kind。 */
+export const FAMILY_SAID: Readonly<Record<string, string>> = {
+  "claude": "Claude Code",
+  "codex": "Codex",
+};
+
+/** 注册表里没有的家（别的版本那台报上来的）对人说的那一句。 */
+export const FAMILY_UNSAID: string = "名称未声明";

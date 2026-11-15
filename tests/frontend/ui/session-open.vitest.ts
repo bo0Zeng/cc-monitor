@@ -156,10 +156,10 @@ describe("照 landed 开不开 · 报到交那台等", () => {
     expect(opens).toEqual({ window: true, started: false, in_place: false, running: false, idle: false });
   });
 
-  it("★ 那台说没见到 ⇒ 那一句原样上屏（标题 ＋ 正文）；界面不认、不计时：起了之后零个定时器", async () => {
+  it("★ 那台说没见到 ⇒ 照格上屏（标题 · 那一句 · 末几行进复制详情）；界面不认、不计时：起了之后零个定时器", async () => {
     vi.useFakeTimers();
     try {
-      arriveReply = { kind: "missed", said: "命令已发出\n已等 45s 未报到 · 末几行\nError: x", terminal: "h-1" };
+      arriveReply = { kind: "missed", title: "命令已发出", said: "已等 45s 未报到 · 末几行", words: "Error: x", terminal: "h-1" };
       reply = opened("started");
       const done = openSession("devbox", RESUME);
       await vi.advanceTimersByTimeAsync(0);
@@ -167,7 +167,7 @@ describe("照 landed 开不开 · 报到交那台等", () => {
       expect(vi.getTimerCount()).toBe(0);
       await vi.advanceTimersByTimeAsync(0);
       const t = toasts.toast.mock.calls.at(-1)!;
-      expect([t[0], t[1], t[2]?.level]).toEqual(["命令已发出", "已等 45s 未报到 · 末几行\nError: x", "error"]);
+      expect([t[0], t[1], t[2]?.level, t[2]?.detail]).toEqual(["命令已发出", "已等 45s 未报到 · 末几行", "error", "Error: x"]);
     } finally {
       vi.useRealTimers();
     }
@@ -243,13 +243,20 @@ describe("失败按码挑按钮，那一句是那台的原话", () => {
     }
   });
 
-  it("★ 选不了号 ⇒ 那一条上另有［登录…］：开那台那个号的登录抽屉（同新建会话框那一颗，A2-17-11-1）", async () => {
-    refusal = { code: "account_unavailable", said: "z 需登录", data: { field: null, unavailable: { requested: "z", pinned: true, listKnown: true, alternative: "b" } } };
+  it("★ 选不了号、那台说给登录 ⇒ 那一条上另有［登录…］：开那台那个号的登录抽屉（同新建会话框那一颗，A2-17-11-1）", async () => {
+    refusal = { code: "account_unavailable", said: "z 需登录", data: { field: null, unavailable: { requested: "z", pinned: true, listKnown: true, alternative: "b", login: true } } };
     await openSession("devbox", RESUME);
     const acts = toasts.toast.mock.calls[0][2].action as { label: string; run: () => void }[];
     expect(acts.map((a) => a.label)).toEqual([copyText("newSession.account.useAlt", { alt: "b" }), copyText("newSession.account.login")]);
     acts[1].run();
-    expect(drawer.openLoginDrawer).toHaveBeenCalledWith(expect.objectContaining({ origin: "devbox", target: { kind: "account", agent: "claude", account: "z" } }));
+    expect(drawer.openLoginDrawer).toHaveBeenCalledWith(expect.objectContaining({ origin: "devbox", target: { kind: "account", account: "z" } }));
+  });
+
+  it("★ 选不了号、那台说不给登录（别家的号 · 登不了）⇒ 只有［改用 {替代}］、没有［登录…］", async () => {
+    refusal = { code: "account_unavailable", said: "z 选不了", data: { field: null, unavailable: { requested: "z", pinned: false, listKnown: true, alternative: "b", login: false } } };
+    await openSession("devbox", RESUME);
+    const acts = toasts.toast.mock.calls[0][2].action as { label: string; run: () => void }[];
+    expect(acts.map((a) => a.label)).toEqual([copyText("newSession.account.useAlt", { alt: "b" })]);
   });
 
   it("记录已不在 ⇒ 零次开窗（标签页的「记录已不在」由那台账本重发一帧脸）", async () => {

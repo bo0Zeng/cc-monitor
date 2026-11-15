@@ -53,7 +53,7 @@ async function mount(lines: RigPayload[], over: Partial<ViewerOptions> = {}): Pr
   viewerRig.chunk = lines;
   const v = new SessionViewer();
   document.body.appendChild(v.element);
-  await v.load({ jsonlPath: "/p/s1.jsonl", displayTitle: "T", origin: LOCAL, suppressBranch: true, ...over });
+  await v.load({ jsonlPath: "/p/s1.jsonl", sessionId: "s1", displayTitle: "T", origin: LOCAL, suppressBranch: true, ...over });
   return v;
 }
 
@@ -98,7 +98,7 @@ describe("查看器跟着长", () => {
     viewerRig.chunk = [userLine(1, "u1", "a")];
     const v = new SessionViewer();
     document.body.appendChild(v.element);
-    const done = v.load({ jsonlPath: "/p/s1.jsonl", displayTitle: "T", origin: LOCAL, suppressBranch: true, follow: { sid: "s1", live: true } });
+    const done = v.load({ jsonlPath: "/p/s1.jsonl", sessionId: "s1", displayTitle: "T", origin: LOCAL, suppressBranch: true, follow: { sid: "s1", live: true } });
     await vi.waitFor(() => expect(follow.sink).not.toBeNull(), UNTIL_CEILING);
     emit({ t: "lines", lines: [userLine(1, "u1", "a"), assistantLine(2, "a2", "b")] });
     expect(cards(v)).toEqual([]);
@@ -144,7 +144,7 @@ describe("查看器跟着长", () => {
   it("换会话 / 收起 ⇒ 撤掉那一条订阅；换了之后迟到的行不认", async () => {
     const v = await mount([userLine(1, "u1", "a")], { follow: { sid: "s1", live: true } });
     const old = follow.sink!;
-    await v.load({ jsonlPath: "/p/s2.jsonl", displayTitle: "T2", origin: LOCAL, suppressBranch: true });
+    await v.load({ jsonlPath: "/p/s2.jsonl", sessionId: "s2", displayTitle: "T2", origin: LOCAL, suppressBranch: true });
     expect(follow.stopped).toBe(1);
     old({ t: "lines", lines: [assistantLine(9, "late", "x")] });
     expect(cards(v)).not.toContain("late");

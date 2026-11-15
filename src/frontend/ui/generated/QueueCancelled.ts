@@ -6,6 +6,10 @@ import type { QueueList } from "./QueueList";
  */
 export type QueueCancelled = { 
 /**
- * `false` ⇒ 那一条已不在队里（送过 · 撤过 · 没有这一条），什么都没动。
+ * `true` ⇒ 这一句不会送进会话了（撤了 · 早撤过 · 先撤后到记作撤过）；`false` ⇒ 已送进会话或正在送，撤不回，什么都没动。
  */
-cancelled: boolean, queue: QueueList, };
+cancelled: boolean, 
+/**
+ * 会话那台写好的那一句（撤了 · 正在送 · 已送进会话各一句），两端照原样画。
+ */
+said: string, queue: QueueList, };

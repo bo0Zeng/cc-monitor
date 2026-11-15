@@ -25,4 +25,20 @@ class ChatsNeedsEntryTest {
         assertTrue("会话列表那一颗点了进需手动屏", chatsRoute.contains("onOpenOverview = { nav.navigate(Screen.Overview.of(hostId)) }"))
         assertTrue("会话列表里不另写一颗（只有 NeedsEntry 那一份画它）", !chats.contains("NeedsEntryView("))
     }
+
+    @Test
+    fun `入口只数需手动那一列；待答请求那一列只有聊天屏那一块读（这一版不另设待答请求的跨会话入口）`() {
+        val entry = code("ui/needs/OverviewScreen.kt").substringAfter("fun NeedsEntry(").substringBefore("\n}\n")
+        assertTrue("入口照合好那一份的需手动那一列", entry.contains("merged?.manual"))
+        assertTrue("入口不读待答请求那一列", !entry.contains(".asks"))
+        val main = File(root, "app/src/main/kotlin")
+        val readers =
+            main
+                .walkTopDown()
+                .filter { it.isFile && it.extension == "kt" }
+                .filter { Regex("""merged\??\.asks\b""").containsMatchIn(KotlinSourceScanner.codeOnlyKeepingLiterals(it.readText())) }
+                .map { it.relativeTo(main).invariantSeparatorsPath }
+                .toList()
+        assertTrue("读待答请求那一列的只有钉条那一份：$readers", readers == listOf("com/ccmonitor/mobile/ui/chat/needs/NeedsDesk.kt"))
+    }
 }

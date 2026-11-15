@@ -54,9 +54,9 @@ pub struct SessionOpenErr(pub Said);
 impl crate::wire::typed::Codes for SessionOpenErr {
     const ALL: &'static [&'static str] = OPEN_CODES;
     fn into_said(self) -> Said {
-        let code = self.0.code_or_fallback();
+        let code = cmd_wire::failed::Failed::code_or_fallback(self.0.code.clone());
         debug_assert!(
-            OPEN_CODES.contains(&code),
+            OPEN_CODES.contains(&code.as_str()),
             "session-open 回了码表里没有的码 `{code}`"
         );
         self.0
@@ -109,7 +109,7 @@ pub fn malformed(m: &str) -> Said {
 /// 下层（列名单 · 铸名 · 起 ccm · 就地键入）交上来的失败 ⇒ 码表里的那一个：认得的照码，下层原话照带；
 /// 别的收成 `start_failed`，原码与那一句进复制详情。
 fn lower(f: Said) -> Said {
-    let code = f.code_or_fallback();
+    let code = cmd_wire::failed::Failed::code_or_fallback(f.code.clone());
     match OPEN_CODES.iter().find(|c| **c == code) {
         Some(c) => fail(c, f.said, None).and_raw(f.raw.as_deref()),
         None => fail(
@@ -245,8 +245,28 @@ pub fn answer(
     )
 }
 
-/// 起了一家 ⇒ 带上等它报到那一问：有 sid（恢复 · 先定好的新起）按 sid，否则按目录。在跑 · 只剩空 shell · 没起 agent 的 ⇒ 不等。
-pub fn with_arrival(o: Opened, since: u64) -> Opened {
+/// 落成的样子，后端自己用的那一份：线上那一份 ＋ `session` 那个终端住在哪种宿主里（`window` ⇒ 缺）。
+/// 宿主只给等报到那一问照抄（[`with_arrival`] 写进 `arrival.host`），不上线。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Opening {
+    pub opened: Opened,
+    pub host: Option<TerminalHost>,
+}
+
+impl Opening {
+    /// 改线上那一份的几格（宿主照旧）。
+    pub fn map(self, f: impl FnOnce(Opened) -> Opened) -> Opening {
+        Opening {
+            opened: f(self.opened),
+            host: self.host,
+        }
+    }
+}
+
+/// 出口那一下：起了一家 ⇒ 带上等它报到那一问（宿主照 [`Opening::host`] 抄）：有 sid（恢复 · 先定好的新起）按 sid，否则按目录。
+/// 在跑 · 只剩空 shell · 没起 agent 的 ⇒ 不等。回线上那一份。
+pub fn with_arrival(o: Opening, since: u64) -> Opened {
+    let Opening { opened: o, host } = o;
     let starts =
         matches!(o.landed, Landed::Started | Landed::InPlace | Landed::Window) && o.agent.is_some();
     let by = match (&o.sid, &o.cwd) {
@@ -258,7 +278,7 @@ pub fn with_arrival(o: Opened, since: u64) -> Opened {
         by,
         since,
         session: o.session.clone(),
-        host: o.host,
+        host,
     });
     Opened { arrival, ..o }
 }
@@ -270,7 +290,7 @@ fn dispatch(
     fork: ForkWrite,
     pre: &PreRotation,
     home: Option<&std::path::Path>,
-) -> Result<Opened, Said> {
+) -> Result<Opening, Said> {
     let here = here_of(req.local, deps);
     let account = req.account.clone().unwrap_or(AccountAsk::Follow);
     match req.what {
@@ -383,7 +403,7 @@ fn start_in_hosted(
     here: Here,
     live: &[u32],
     deps: &Deps,
-) -> Result<Opened, Said> {
+) -> Result<Opening, Said> {
     let (landed, (name, host), note) = match carriers(rows, &it.sid) {
         Standing::Running(e) => (Landed::Running, (e.name.clone(), e.host), None),
         Standing::Ambiguous(es) => {
@@ -402,10 +422,7 @@ fn start_in_hosted(
         }
     };
     let line = attach_line(&name, here, deps)?;
-    Ok(Opened {
-        note,
-        ..opened(landed, Some((name, host)), Some(line))
-    })
+    Ok(opened(landed, Some((name, host)), Some(line)).map(|o| Opened { note, ..o }))
 }
 
 /// 这台的名单；没 tmux ⇒ `place_unavailable`（给了 tmux 不悄悄改直路）。
@@ -429,7 +446,6 @@ fn attach_line(name: &str, here: Here, deps: &Deps) -> Result<String, Said> {
         act: Act::Attach(name.to_string()),
         tmux: Some(name.to_string()),
         cwd: None,
-        ccm_sid: None,
         model: None,
         launcher: String::new(),
         default_launcher: String::new(),
@@ -442,7 +458,7 @@ fn attach_line(name: &str, here: Here, deps: &Deps) -> Result<String, Said> {
 
 /// 落成的样子：`at` ＝ 落在的那个终端（名字 ＋ 住在哪种宿主里；`window` ⇒ `None`）。
 /// 接上的那个终端照宿主写成的那一截（[`Opened::at`]，出口照摆）。
-pub fn opened(landed: Landed, at: Option<(String, TerminalHost)>, line: Option<String>) -> Opened {
+pub fn opened(landed: Landed, at: Option<(String, TerminalHost)>, line: Option<String>) -> Opening {
     let said = at.as_ref().map(|(n, h)| {
         cmd_wire::cells::Words(match h {
             TerminalHost::Tmux => copy_core::copy_text("sessionOpen.at.tmux", &[("name", n)]),
@@ -450,25 +466,32 @@ pub fn opened(landed: Landed, at: Option<(String, TerminalHost)>, line: Option<S
         })
     });
     let (session, host) = at.map_or((None, None), |(n, h)| (Some(n), Some(h)));
-    Opened {
-        landed,
-        session,
+    Opening {
+        opened: Opened {
+            landed,
+            session,
+            at: said,
+            line,
+            sid: None,
+            agent: None,
+            cwd: None,
+            account: None,
+            note: None,
+            prompt: None,
+            arrival: None,
+        },
         host,
-        at: said,
-        line,
-        sid: None,
-        agent: None,
-        cwd: None,
-        account: None,
-        note: None,
-        prompt: None,
-        arrival: None,
     }
 }
 
 /// 接回：按会话（挂着它的那个；命中多个接第一个、`note` 说一句）或按终端名。两种宿主都认（名单是入口交的那一份）：
 /// tmux 那一行接会话名，托管那一行接句柄（瘦客户端 `--attach <句柄>`）。一个都没认到、这台又没 tmux ⇒ `place_unavailable`。
-fn look(sid: Option<&str>, session: Option<&str>, here: Here, deps: &Deps) -> Result<Opened, Said> {
+fn look(
+    sid: Option<&str>,
+    session: Option<&str>,
+    here: Here,
+    deps: &Deps,
+) -> Result<Opening, Said> {
     let listed = listed(deps).map_err(lower)?;
     let rows = &listed.rows;
     // 没认到：那一句由调用处取好（这台没 tmux ⇒ 改说放不了）。
@@ -531,11 +554,13 @@ fn look(sid: Option<&str>, session: Option<&str>, here: Here, deps: &Deps) -> Re
     };
     let name = at.name.clone();
     let line = attach_line(target, here, deps)?;
-    Ok(Opened {
-        sid: sid.map(str::to_string),
-        note,
-        ..opened(landed, Some((name, at.host)), Some(line))
-    })
+    Ok(
+        opened(landed, Some((name, at.host)), Some(line)).map(|o| Opened {
+            sid: sid.map(str::to_string),
+            note,
+            ..o
+        }),
+    )
 }
 
 /// 开一个 shell：给了名字 ⇒ 不在（两种宿主的名单都查）就在 `cwd` 里建一个空的（`idle`；宿主同新起照 [`default_run`]：
@@ -547,14 +572,14 @@ fn shell(
     here: Here,
     deps: &Deps,
     home: Option<&std::path::Path>,
-) -> Result<Opened, Said> {
+) -> Result<Opening, Said> {
     let dir = match cwd.map(str::trim) {
         None => None,
         Some(raw) if !shell_quote_core::free_text_ok(raw) => {
             return Err(malformed("`cwd` must not hold NUL, CR or LF"))
         }
         Some(raw) => {
-            let d = expand_home(raw, home);
+            let d = expand_home(raw, home).map_err(|why| fail("no_dir", why, Some(Field::Cwd)))?;
             if d.is_empty() || !(deps.host.is_dir)(&d) {
                 return Err(fail(
                     "no_dir",
@@ -570,10 +595,7 @@ fn shell(
             return Err(malformed("`shell` needs `session` or `cwd`"));
         };
         let line = crate::platform::shell::enter_dir_line(&d);
-        return Ok(Opened {
-            cwd: Some(d),
-            ..opened(Landed::Window, None, Some(line))
-        });
+        return Ok(opened(Landed::Window, None, Some(line)).map(|o| Opened { cwd: Some(d), ..o }));
     };
     let listed = listed(deps).map_err(lower)?;
     let (landed, cwd, target, host) = match listed.rows.iter().find(|r| r.name == name) {
@@ -624,23 +646,65 @@ fn shell(
         }
     };
     let line = attach_line(&target, here, deps)?;
-    Ok(Opened {
-        cwd,
-        ..opened(landed, Some((name.to_string(), host)), Some(line))
-    })
+    Ok(opened(landed, Some((name.to_string(), host)), Some(line)).map(|o| Opened { cwd, ..o }))
 }
 
-/// 这一项交给那一家的那一半末尾：权限档旗标 ＋ `--` ＋ 那一句。权限档只认那一家声明可选的那几档 ⇒ 别的不给、跟随。
-fn tail_args(it: &Item, b: &Batch) -> Vec<String> {
+/// 起在 `mode` 这一档 · 用 `model` 这个模型（＋ `effort` 这一档推理，只跟模型）交给那一家的那几个参数，照那一家的表出
+/// （权限档「档名 ⇒ 一组参数」· 模型与推理档 `model_args`），不认哪一家。推理档不是档名 ⇒ 不带。
+/// 恢复那一形照记录起：那一家不认的档（只认不选的也算）· 起会话选不了模型 · 不是模型名 ⇒ 那一样不带、跟随那一家自己的默认。
+/// crate 里各家起会话那一串的集成判据也走它（不在测试里照表自拼）。
+pub(crate) fn launch_args(
+    face: Option<&crate::agents::LaunchFace>,
+    mode: Option<&str>,
+    model: Option<&str>,
+    effort: Option<&str>,
+) -> Vec<String> {
     let mut out = Vec::new();
-    if let (Some(m), Some(p)) = (
-        it.permission_mode.as_deref(),
-        b.face.and_then(|f| f.permission),
-    ) {
-        if p.modes.iter().any(|c| c.value == m) {
-            out.extend([p.flag.to_string(), m.to_string()]);
-        }
+    if let (Some(m), Some(p)) = (mode, face.and_then(|f| f.permission)) {
+        out.extend(p.args_of(m).unwrap_or_default());
     }
+    if let (Some(m), Some(args)) = (
+        model.filter(|m| shell_quote_core::model_name_ok(m)),
+        face.and_then(|f| f.model_args),
+    ) {
+        out.extend(args(
+            m,
+            effort.filter(|e| shell_quote_core::model_name_ok(e)),
+        ));
+    }
+    out
+}
+
+/// 起新会话那一形：人选的（或这台偏好里的）权限档那一家不给选 ⇒ 拒，说清是哪一格（参数照旧由 [`launch_args`] 出）。
+fn new_mode_ok(face: &crate::agents::LaunchFace, mode: Option<&str>) -> Result<(), Said> {
+    match (mode, face.permission) {
+        (None, _) => Ok(()),
+        (Some(m), Some(p)) if p.offered(m).is_some() => Ok(()),
+        (Some(_), Some(_)) => Err(malformed("`permissionMode` is not one this agent offers")),
+        (Some(_), None) => Err(malformed("this agent has no permission modes")),
+    }
+}
+
+/// 判好的号拆成「交给渲染那一步的号」（不带这个号的偏好模型）与那个偏好模型：模型参数只由 [`launch_args`] 照那一家的表出，同一样不出两遍。
+fn model_apart(account: &Settled) -> (Settled, Option<String>) {
+    match account {
+        Settled::Account(a) => {
+            let mut a = a.clone();
+            let model = a.model.take();
+            (Settled::Account(a), model)
+        }
+        other => (other.clone(), None),
+    }
+}
+
+/// 这一项交给那一家的那一半末尾：权限档 · 模型的参数（[`launch_args`]）＋ `--` ＋ 那一句。
+fn tail_args(it: &Item, b: &Batch) -> Vec<String> {
+    let mut out = launch_args(
+        b.face.as_ref(),
+        it.permission_mode.as_deref(),
+        it.model.as_deref(),
+        None,
+    );
     if let Some(text) = it.say.as_ref().filter(|_| b.takes_first_say()) {
         out.extend([crate::ccm_line::argv::flag::END.to_string(), text.clone()]);
     }
@@ -654,11 +718,8 @@ fn resume_launch(it: &Item, b: &Batch, tmux: Option<&str>) -> lr::Launch {
         act: Act::Resume(it.sid.clone()),
         tmux: tmux.map(str::to_string),
         cwd: Some(it.cwd.clone()),
-        ccm_sid: tmux.map(|_| it.sid.clone()),
-        model: it
-            .model
-            .clone()
-            .filter(|m| shell_quote_core::model_name_ok(m)),
+        // 模型照那一家的 `model_args` 在 [`tail_args`] 里出。
+        model: None,
         launcher: b.launcher.clone(),
         default_launcher: b.default_launcher.clone(),
         preset_args: tail_args(it, b),
@@ -690,9 +751,19 @@ fn unavailable(u: la::AccountUnavailable) -> Said {
 }
 
 /// **恢复一个**：先判号（选不了 ⇒ 不起），再问记录在不在（查这个号那棵树），已有进程在写 ⇒ 不起（直路也一样），再按放在哪做。
-fn start_one(it: &Item, b: &Batch, run: Launch, here: Here, deps: &Deps) -> Result<Opened, Said> {
-    let account =
+fn start_one(it: &Item, b: &Batch, run: Launch, here: Here, deps: &Deps) -> Result<Opening, Said> {
+    let settled =
         la::settle(&it.account, Some(&it.sid), &b.models, deps.accounts).map_err(unavailable)?;
+    // 记录里的模型 ⇒ 没有就这个号的偏好模型：都照那一家的 `model_args` 出（[`tail_args`]）。
+    let (account, picked) = model_apart(&settled);
+    let it = &Item {
+        sid: it.sid.clone(),
+        cwd: it.cwd.clone(),
+        account: it.account.clone(),
+        say: it.say.clone(),
+        model: it.model.clone().or(picked),
+        permission_mode: it.permission_mode.clone(),
+    };
     let root = match &account {
         Settled::Account(a) => Some(a.config_dir.as_str()),
         Settled::Base | Settled::Unsaid => None,
@@ -734,13 +805,13 @@ fn start_one(it: &Item, b: &Batch, run: Launch, here: Here, deps: &Deps) -> Resu
             opened(Landed::Window, None, Some(line))
         }
     };
-    Ok(Opened {
+    Ok(out.map(|o| Opened {
         sid: Some(it.sid.clone()),
         agent: Some(crate::agents::AgentKind::new(b.agent.as_str())),
         cwd: Some(it.cwd.clone()),
-        account: launched(&account).filter(|_| out.landed != Landed::Running),
-        ..out
-    })
+        account: launched(&settled).filter(|_| o.landed != Landed::Running),
+        ..o
+    }))
 }
 
 /// 已有活进程在写 ⇒ 不起（再起一个就是两个进程同写一份记录）；`raw` 是那几个 pid。
@@ -767,7 +838,7 @@ fn start_in_tmux(
     here: Here,
     live: &[u32],
     deps: &Deps,
-) -> Result<Opened, Said> {
+) -> Result<Opening, Said> {
     let (landed, (name, host), note) = match carriers(rows, &it.sid) {
         Standing::Running(e) => (Landed::Running, (e.name.clone(), e.host), None),
         Standing::Ambiguous(es) => {
@@ -799,10 +870,7 @@ fn start_in_tmux(
         }
     };
     let line = attach_line(&name, here, deps)?;
-    Ok(Opened {
-        note,
-        ..opened(landed, Some((name, host)), Some(line))
-    })
+    Ok(opened(landed, Some((name, host)), Some(line)).map(|o| Opened { note, ..o }))
 }
 
 /// 必铸新终端名：问这台铸，再核一遍不落在名单里任何一个上（父会话那个名字绝不复用）。落上了 ⇒ `tmux_taken`，不起。
@@ -857,11 +925,11 @@ fn start_named(
     run_ccm(&argv, name, deps)
 }
 
-/// 交那一行 ccm：退出码 3 ＝ 会话名被占（ccm 响亮失败，不接回别人的会话）；别的非零 ⇒ `start_failed`，退出码与 stderr 进复制详情。
+/// 交那一行 ccm：退出码 `ccm::NAME_TAKEN_EXIT` ＝ 会话名被占（ccm 响亮失败，不接回别人的会话）；别的非零 ⇒ `start_failed`，退出码与 stderr 进复制详情。
 fn run_ccm(argv: &[String], name: &str, deps: &Deps) -> Result<(), Said> {
     match (deps.run_ccm)(argv) {
         Ok((0, _, _)) => Ok(()),
-        Ok((3, _, _)) => Err(taken(name)),
+        Ok((rc, _, _)) if rc == crate::control::ccm::NAME_TAKEN_EXIT => Err(taken(name)),
         Ok((rc, _, err)) => Err(fail(
             "start_failed",
             copy_core::copy_text("beSessionNew.start.failed", &[]),
@@ -902,7 +970,7 @@ pub fn run_self_as_ccm(argv: &[String]) -> Result<(i32, String, String), Said> {
 pub const NO_FIRST_PROMPT: &str = "no_first_prompt";
 
 /// **恢复再送**（`session-say` 送的时候终端已经没了）：在 tmux 里恢复一项，那一句随行交给那一家；那一家不收第一句 ⇒ 不起。
-/// 起法用远端那一行（这台后端自己当 ccm 跑，工作目录随行）。
+/// 起法用远端那一行（这台后端自己当 ccm 跑，工作目录随行）。回线上那一份（送一句那一道不等报到，宿主用不上）。
 pub fn resume_saying(it: &Item, agent: &str, deps: &Deps) -> Result<Opened, Said> {
     let b = Batch::of(agent, deps.prefs);
     if it.say.is_some() && !b.takes_first_say() {
@@ -913,10 +981,10 @@ pub fn resume_saying(it: &Item, agent: &str, deps: &Deps) -> Result<Opened, Said
         Launch::Direct => Launch::Tmux,
         r => r,
     };
-    start_one(it, &b, run, Here::Remote, deps)
+    start_one(it, &b, run, Here::Remote, deps).map(|o| o.opened)
 }
 
-/// 新起：认那一家 · 启动命令 · 目录 · 号 · 放在哪 · 终端名 · 分叉（前面几格全过了才写分支记录）· 起。
+/// 新起：认那一家 · 启动命令 · 目录 · 号 · 放在哪 · 终端名 · 分叉（前面几格全过了才叉：照源会话那一家的分叉面，自己叉 ⇒ 它交回 sid；改写 ⇒ 写一份新记录）· 起。
 #[expect(
     clippy::too_many_arguments,
     reason = "新起一个会话那几格（请求 · 号 · 启动命令 · 放在哪 · 终端 · 依赖 · 分叉 · 换号前置 · 家目录）由开会话的入口逐样判好递下来"
@@ -931,7 +999,7 @@ fn start_new(
     fork: ForkWrite,
     pre: &PreRotation,
     home: Option<&std::path::Path>,
-) -> Result<Opened, Said> {
+) -> Result<Opening, Said> {
     if req.agent.as_str().trim().is_empty() {
         return Err(fail(
             "unknown_agent",
@@ -942,7 +1010,7 @@ fn start_new(
     let (kind, face) = crate::agents::pick_kind(Some(req.agent.as_str()))
         .map_err(|m| fail("unknown_agent", m, Some(Field::Agent)))?;
     let rule = strategy_of(req.rotation.as_ref())?;
-    // 新起的要先定 sid 才能起之前写好打开哪一份：那一家不认 ⇒ 不收（分叉的 sid 由分支记录定）。
+    // 新起的要先定 sid 才能起之前写好打开哪一份：那一家不认 ⇒ 不收（分叉的 sid 由叉那一下定）。
     if rule.is_some() && req.fork.is_none() && face.preset_sid.is_none() {
         return Err(malformed(
             "this agent cannot take a rotation strategy at launch",
@@ -985,6 +1053,18 @@ fn start_new(
     {
         return Err(malformed("`model` is not a model name"));
     }
+    if req.model.is_some() && face.model_args.is_none() {
+        return Err(malformed("this agent cannot take a model at launch"));
+    }
+    // 推理档只跟模型（是那个模型 `efforts` 里的一档；参数照那一家的 `model_args` 出）。
+    match (req.effort.as_deref(), req.model.is_some()) {
+        (None, _) => {}
+        (Some(_), false) => return Err(malformed("`effort` goes only with `model`")),
+        (Some(e), true) if !shell_quote_core::model_name_ok(e) => {
+            return Err(malformed("`effort` is not an effort name"))
+        }
+        (Some(_), true) => {}
+    }
     let alias = match req.alias.as_deref().map(str::trim) {
         None => None,
         Some(a) if crate::assets::aliases::profile::name_ok(a).is_ok() => Some(a.to_string()),
@@ -995,16 +1075,8 @@ fn start_new(
         .permission_mode
         .clone()
         .or_else(|| crate::control::machine_prefs::permission_mode_for(deps.prefs, kind));
-    let permission_args: Vec<String> = match asked_mode.as_deref() {
-        None => Vec::new(),
-        Some(m) => match face.permission {
-            Some(p) if p.modes.iter().any(|c| c.value == m) => {
-                vec![p.flag.to_string(), m.to_string()]
-            }
-            Some(_) => return Err(malformed("`permissionMode` is not one this agent offers")),
-            None => return Err(malformed("this agent has no permission modes")),
-        },
-    };
+    // 先核过（不认 ⇒ 不起）；参数与模型的一起在判好号之后出（[`launch_args`]）。
+    new_mode_ok(&face, asked_mode.as_deref())?;
     let command = req
         .command
         .as_deref()
@@ -1029,7 +1101,8 @@ fn start_new(
         || deps.prefs.launcher_for(kind, face.default_launcher),
         str::to_string,
     );
-    let cwd = expand_home(req.cwd.trim(), home);
+    let cwd =
+        expand_home(req.cwd.trim(), home).map_err(|why| fail("no_dir", why, Some(Field::Cwd)))?;
     if cwd.is_empty() || !(deps.host.is_dir)(&cwd) {
         return Err(fail(
             "no_dir",
@@ -1051,8 +1124,11 @@ fn start_new(
         }
     }
     let source = req.fork.as_ref().map(|f| f.sid.as_str());
-    let account =
+    let settled =
         la::settle(asked, source, &deps.prefs.models, deps.accounts).map_err(unavailable)?;
+    // 人选的模型 ⇒ 没选就这个号的偏好模型：都照那一家的 `model_args` 出（[`launch_args`]）。
+    let (account, picked) = model_apart(&settled);
+    let model = req.model.clone().or(picked);
     // tmux 那一形这台先铸名；托管那一形名字由 ccm 铸（起好之后读回）。
     let name = match run {
         Launch::Direct | Launch::Managed => None,
@@ -1070,7 +1146,7 @@ fn start_new(
             Some(new_tmux_name(&req, &cwd, &rows, deps)?)
         }
     };
-    // 前面几格全过了才写分支记录（某格不行都不留东西）。
+    // 前面几格全过了才叉（某格不行都不叫那一家叉、不留东西）。
     let forked = match &req.fork {
         Some(f) => Some(fork(&f.sid, &f.uuid).map_err(whole)?),
         None => None,
@@ -1084,7 +1160,12 @@ fn start_new(
         (Some(s), Some(flag)) => vec![flag.to_string(), s.clone()],
         _ => Vec::new(),
     };
-    preset_args.extend(permission_args);
+    preset_args.extend(launch_args(
+        Some(&face),
+        asked_mode.as_deref(),
+        model.as_deref(),
+        req.effort.as_deref(),
+    ));
     if let Some(text) = &prompt {
         preset_args.extend([crate::ccm_line::argv::flag::END.to_string(), text.clone()]);
     }
@@ -1110,16 +1191,15 @@ fn start_new(
         },
         tmux: name.clone(),
         cwd: Some(cwd.clone()),
-        // 身份标记打在建出来的 tmux 会话上（resume · 先定好 sid 的新起才说得出 sid）。
-        ccm_sid: sid.clone().filter(|_| name.is_some()),
-        model: req.model.clone(),
+        // 模型照那一家的 `model_args` 在 `preset_args` 里出。
+        model: None,
         launcher,
         default_launcher: face.default_launcher.to_string(),
         preset_args,
         alias,
     };
     pretrust(&account, &cwd, deps);
-    let launch = || -> Result<Opened, Said> {
+    let launch = || -> Result<Opening, Said> {
         let entry = own_entry(deps).map_err(|m| fail("refused", m, None))?;
         Ok(match &name {
             Some(name) => {
@@ -1150,11 +1230,11 @@ fn start_new(
         })
     };
     let out = launch().map_err(undo)?;
-    Ok(Opened {
+    Ok(out.map(|o| Opened {
         sid,
         agent: Some(crate::agents::AgentKind::new(kind)),
         cwd: Some(cwd),
-        account: launched(&account),
+        account: launched(&settled),
         // 第一句起的时候已经交给那一家了 ⇒ 交到了。
         prompt: prompt.map(|_| {
             crate::control::terminals::input_reply(
@@ -1163,8 +1243,8 @@ fn start_new(
                 None,
             )
         }),
-        ..out
-    })
+        ..o
+    }))
 }
 
 /// `rotation` 那一格：缺 ⇒ `None`（新会话用的那份）；`{strategy: id}` ⇒ 那一份；`{strategy: null}` ⇒ `Some("")`（不轮换）。
@@ -1208,3 +1288,7 @@ fn new_tmux_name(
     };
     fresh_name(base, rows, deps)
 }
+
+#[cfg(test)]
+#[path = "../../../../tests/backend/control/session_open/launch_args_tests.rs"]
+mod launch_args_tests;

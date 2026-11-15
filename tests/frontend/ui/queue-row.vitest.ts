@@ -23,8 +23,8 @@ const flush = async (): Promise<void> => {
 const item = (n: number): QueueItem => ({ seq: n, id: `q-${n}`, end: "mobile", text: `text ${n}`, state: "queued", said: `said-${n}` });
 const five = (): QueueList => ({ items: [1, 2, 3, 4, 5].map(item), sent: [] });
 const head = (root: HTMLElement): string | null => root.querySelector<HTMLElement>('[data-role="queue-head"]')?.textContent ?? null;
-const noHost = { cancel: () => {}, cancelPending: () => {} };
-const machine = (offline: boolean) => ({ offline, offlineSaid: "devbox 离线", heldSaid: "devbox held-said" });
+const noHost = { cancel: () => {}, withdraw: () => {} };
+const machine = (offline: boolean) => ({ offline, offlineSaid: "devbox 离线", heldSaid: "devbox held-said", withdrawHeld: "devbox withdraw-held" });
 
 beforeEach(() => localStorage.clear());
 
@@ -72,14 +72,14 @@ describe("输入框上方那一排输入队", () => {
 
   it("［撤回］交回那一句的字（字回到输入框由宿主做）", () => {
     const cancel = vi.fn();
-    const cancelPending = vi.fn();
-    const row = new QueueRow({ cancel, cancelPending });
+    const withdraw = vi.fn();
+    const row = new QueueRow({ cancel, withdraw });
     row.paint({ items: [item(1)], sent: [] }, [{ id: "p-1", text: "mine", said: "s", held: false, refused: false }], false);
     const buttons = row.el.querySelectorAll<HTMLButtonElement>('[data-role="queue-line"] button');
     buttons[0]?.click();
     buttons[1]?.click();
     expect(cancel).toHaveBeenCalledWith("q-1", "text 1");
-    expect(cancelPending).toHaveBeenCalledWith("p-1", "mine");
+    expect(withdraw).toHaveBeenCalledWith("p-1");
   });
 
   it("输入框照机器成品切：那台离线 ⇒ 那一排出排头那一行；接上 ⇒ 拿掉；别台离线不碰这一条", async () => {
@@ -87,7 +87,7 @@ describe("输入框上方那一排输入队", () => {
     const reads: ComposerReads = {
       io: () => ({}) as AttachIo,
       read: vi.fn(async () => five()),
-      cancel: vi.fn(async () => ({ cancelled: true, queue: five() })),
+      cancel: vi.fn(async () => ({ cancelled: true, said: copyText("beQueue.cancel.done"), queue: five() })),
       watch: vi.fn(() => () => {}),
     };
     const c = new Composer({ active: () => tab, resume: async () => true, focusStream: () => {} }, new Outbox(vi.fn()), reads);

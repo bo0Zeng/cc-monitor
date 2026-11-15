@@ -7,10 +7,22 @@
 
 use super::client;
 use super::wire::{Ctl, Frame, WhoKind};
-use cmd_wire::session::HolderWho;
 use copy_core::copy_text;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard};
+
+/// 持有输入的是哪一端（后端认人用；线上只给那一句与 `mine`）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HolderWho {
+    /// 一个真终端（用户的终端窗口 · ssh 进来的终端 · 手机的 SSH 终端）。
+    TerminalWindow,
+    /// 桌面经后端持有。
+    Desktop,
+    /// 手机经后端持有。
+    Mobile,
+    /// 此刻没人持有。
+    None,
+}
 
 struct Held {
     conn: Arc<own_chan::BlockingStream>,

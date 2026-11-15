@@ -1,5 +1,5 @@
 //! Claude 的进程状态文件（`<家>/sessions/<PID>.json`）怎么读：一份 ⇒ 一行 [`ProcFact`]（[`proc_of`]，注册表 `LocalFace.proc_of`）。
-//! 字段名与那几格的词只住这里；通用层只拿翻好的那一行（`agents::proc_fact`），不认 Claude 的词。
+//! 字段名与那几格的词只住这里；通用层只拿翻好的那一行（`agents::AgentHome::proc_fact`），不认 Claude 的词。
 
 use super::drift::{record, DriftFace};
 use crate::agents::{ProcFact, SessionActivity, WaitOn};
@@ -19,7 +19,6 @@ pub(crate) fn proc_of(v: &Value) -> ProcFact {
         activity: activity_of(v),
         status_word: s("status"),
         wait: wait_of(v),
-        waiting_word: s("waitingFor"),
         attachable: v.get("attachable").and_then(Value::as_bool),
         status_since_ms: v.get("statusUpdatedAt").and_then(Value::as_u64),
         started_ms: v.get("startedAt").and_then(Value::as_u64),

@@ -11,7 +11,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use crate::connect::{self, Linked};
 use crate::{
     pool, write_line, write_stages_then_ack, CaptureOpts, Captured, DialAck, DialFail, DialRequest,
-    Endpoint, StageSink, Use,
+    StageSink, Use,
 };
 
 /// `channel.exec(true, cmd)` 装进一个显式 `Send` 的盒子：russh 的 `Channel::exec` 是借 `&self` 的 `async fn`，放进要 `tokio::spawn`
@@ -514,15 +514,9 @@ impl Opened {
         self.lease.linked.fingerprint.as_deref()
     }
 
-    /// 竞速胜出的地址（结构化）。
-    pub fn winner(&self) -> &Endpoint {
-        &self.lease.linked.winner
-    }
-
     /// 线上那一行成功的 ack（只给真过进程的那一处写：[`run_with`]）。
     pub fn ack(&self) -> DialAck {
-        let l = &self.lease.linked;
-        DialAck::opened(l.fingerprint.clone(), l.endpoint.clone(), l.winner.clone())
+        crate::opened_ack(self.lease.linked.fingerprint.clone())
     }
 
     /// 按用法对拷字节，直到一头走了：stream / shell 原样字节 · capture 一行 [`Captured`] · forward 每接进一条一行 `{"accepted":n}` ·
@@ -875,7 +869,7 @@ where
         };
         match moving(out, &mut steps, opening(req, &live, listener)).await {
             Err(f) => {
-                write_stages_then_ack(out, &live, &DialAck::of_fail(f))
+                write_stages_then_ack(out, &live, &crate::failed_ack(f))
                     .await
                     .discard(Why::DeadLink);
             }

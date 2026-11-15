@@ -4,8 +4,9 @@
 //!
 //! - **怎么发**：本二进制当 ccm 跑 `ccm <适配层那几个参数> -- --account <号> --cwd <家里不出会话的目录> --no-rotation`
 //!   （参数住适配层 [`crate::agents::warm_of`]）⇒ 走本机中转（额度账由中转记下）· 这一发不轮换 · 不进历史页与会话列表。
-//! - **同一个号 15 分钟内只发一次**（[`AGAIN`]，判与命令共用常驻进程里这一本 [`book`]；命令因此列在 `stream::cli::STREAM_ONLY`）：认下就记「发出的时刻」，
-//!   发完再记「回来的重置时刻」（额度账里那个号 5 小时窗的重置时刻；没读到 ⇒ 空）。
+//! - **同一个号 15 分钟内只发成一次**（[`AGAIN`]，判与命令共用常驻进程里这一本 [`book`]；命令因此列在 `stream::cli::STREAM_ONLY`）：认下就记「发出的时刻」，
+//!   发完再记「回来的重置时刻」（额度账里那个号 5 小时窗的重置时刻；没读到 ⇒ 空）。**成了才占**：那一发没成 ⇒ 当场放开、记下几点 · 为什么
+//!   （命令回包的 `failed` 照它说），不自动重发，下一次谁叫谁发。
 //! - 收哪几个号（订阅号 · 发得出去 · 5 小时窗没在计时）由判那一侧定（[`crate::accounts::quota::rules::decide::warm_verdict`]）；
 //!   命令那一形不判这一条：人或 AI 点名要发就发（15 分钟那一条照样管）。
 
@@ -23,57 +24,83 @@ const SEND_WITHIN: Deadline = Deadline::secs(120);
 /// 命令那一形的总期限（分派那一层装；略长于那一发）。
 pub const WARM_CAP: Deadline = Deadline::secs(125);
 
-/// 一个号最近一次开窗：发出的时刻 · 回来的重置时刻（还没回来 · 没读到 ⇒ 空）。
+/// 一个号最近一次开窗：发出的时刻 · 回来的重置时刻（还没回来 · 没读到 ⇒ 空）。正在发的与发成了的记在这里、都占 [`AGAIN`]；没成的不记在这里。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Sent {
     pub(crate) at: u64,
     pub(crate) resets_at: Option<u64>,
 }
 
-/// 开窗那一本：(哪一家的路由名, 号) ⇒ 最近一次。
+/// 一个号在那一本里的一行：正在发 · 发成了的那一次（占着）· 这之后最近一次没成的那一发（不占；成了一次就清掉）。
+#[derive(Debug, Clone, Default)]
+struct WarmMark {
+    sent: Option<Sent>,
+    failed: Option<WarmFailed>,
+}
+
+/// 开窗那一本：(哪一家的路由名, 号) ⇒ 那一行。
 #[derive(Default)]
 pub(crate) struct Warm {
-    sent: Mutex<HashMap<(String, String), Sent>>,
+    sent: Mutex<HashMap<(String, String), WarmMark>>,
 }
 
 impl Warm {
-    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<(String, String), Sent>> {
+    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<(String, String), WarmMark>> {
         self.sent.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    /// 认下这几个号此刻开窗：[`AGAIN`] 之内发过的跳过；回认下的（照交的先后、同一个号一次），认下即记发出的时刻。
+    /// 认下这几个号此刻开窗：正在发的 · [`AGAIN`] 之内发成过的跳过（没成的不挡）；回认下的（照交的先后、同一个号一次），认下即记发出的时刻。
     pub(crate) fn claim(&self, agent: &str, accts: &[String], now: u64) -> Vec<String> {
         let mut g = self.lock();
         let mut out: Vec<String> = Vec::new();
         for a in accts {
-            let key = (agent.to_string(), a.clone());
-            if out.contains(a) || g.get(&key).is_some_and(|s| now < s.at + AGAIN) {
+            let e = g.entry((agent.to_string(), a.clone())).or_default();
+            if out.contains(a) || e.sent.is_some_and(|s| now < s.at + AGAIN) {
                 continue;
             }
-            g.insert(
-                key,
-                Sent {
-                    at: now,
-                    resets_at: None,
-                },
-            );
+            e.sent = Some(Sent {
+                at: now,
+                resets_at: None,
+            });
             out.push(a.clone());
         }
         out
     }
 
-    /// 那一发回来了：记下额度账里那个号此刻的 5 小时窗重置时刻。
+    /// 那一发回来了：记下额度账里那个号此刻的 5 小时窗重置时刻；之前没成的那一条不再说。
     pub(crate) fn landed(&self, agent: &str, acct: &str, resets_at: Option<u64>) {
-        if let Some(s) = self.lock().get_mut(&(agent.to_string(), acct.to_string())) {
-            s.resets_at = resets_at;
+        if let Some(e) = self.lock().get_mut(&(agent.to_string(), acct.to_string())) {
+            if let Some(s) = e.sent.as_mut() {
+                s.resets_at = resets_at;
+            }
+            e.failed = None;
         }
     }
 
-    /// 那个号最近一次开窗。
+    /// 那一发没成：当场放开（不占 [`AGAIN`]），记下几点 · 为什么；不自动重发，下一次谁叫谁发。
+    pub(crate) fn failed(&self, agent: &str, acct: &str, at: u64, why: &Said) {
+        let mut g = self.lock();
+        let e = g.entry((agent.to_string(), acct.to_string())).or_default();
+        e.sent = None;
+        e.failed = Some(WarmFailed {
+            at,
+            why: crate::common::cells::Words(why.said.clone()),
+            raw: why.raw.clone(),
+        });
+    }
+
+    /// 那个号最近一次没成的那一发（之后发成过 ⇒ 缺）。
+    pub(crate) fn last_failed(&self, agent: &str, acct: &str) -> Option<WarmFailed> {
+        self.lock()
+            .get(&(agent.to_string(), acct.to_string()))
+            .and_then(|e| e.failed.clone())
+    }
+
+    /// 那个号最近一次开窗（正在发 · 发成了的；没成的不算）。
     pub(crate) fn sent(&self, agent: &str, acct: &str) -> Option<Sent> {
         self.lock()
             .get(&(agent.to_string(), acct.to_string()))
-            .copied()
+            .and_then(|e| e.sent)
     }
 }
 
@@ -86,19 +113,21 @@ pub(crate) fn book() -> &'static Warm {
 /// ★ 判完交来的 `warm`（已照事实收过）：认下的各另起一条线程发一句，不等。
 pub(crate) fn kick(agent: &str, accts: &[String], own: &Own, now: u64) {
     for a in book().claim(agent, accts, now) {
-        let (agent, own) = (agent.to_string(), own.clone());
-        let spawned =
-            std::thread::Builder::new()
-                .name("quota-warm".into())
-                .spawn(move || match send(&agent, &a, &own) {
-                    Ok(at) => {
-                        book().landed(&agent, &a, at);
-                        tracing::info!("[warm] {agent}/{a} 开窗一发已回 · 重置 {at:?}");
-                    }
-                    Err(e) => tracing::warn!("[warm] {agent}/{a} 开窗一发未成：{}", e.logged()),
-                });
+        let (route, acct, own) = (agent.to_string(), a.clone(), own.clone());
+        let spawned = std::thread::Builder::new()
+            .name("quota-warm".into())
+            .spawn(move || match send_booked(&route, &acct, &own) {
+                Ok(at) => tracing::info!("[warm] {route}/{acct} 开窗一发已回 · 重置 {at:?}"),
+                Err(e) => tracing::warn!(
+                    "[warm] {route}/{acct} 开窗一发未成（已放开，不自动重发）：{}",
+                    e.logged()
+                ),
+            });
         if let Err(e) = spawned {
-            tracing::warn!("[warm] 开窗线程起不来：{e}");
+            // 线程起不来 ＝ 这一发没成：照样经 `booked` 放开、记下。
+            if let Err(said) = booked(agent, &a, Err(run_failed(&e))) {
+                tracing::warn!("[warm] 开窗线程起不来：{}", said.logged());
+            }
         }
     }
 }
@@ -120,29 +149,65 @@ pub(crate) fn line(
     v
 }
 
-/// ★ 用 `account` 发那一句、等它说完；回额度账里那个号此刻的 5 小时窗重置时刻（没读到 ⇒ 空）。
+/// 路由 `route` 那一家没有开窗那一形时的那一句：路由名先照 `registry` 认回那一家、说它的叫法（认不出 ⇒ 照实那一句，不露路由名）。
+pub(crate) fn unsupported_among(registry: &[crate::agents::Adapter], route: &str) -> Said {
+    crate::wire::spec::fail(
+        "unsupported",
+        copy_core::copy_text(
+            "beQuotaWarm.agent.unsupported",
+            &[(
+                "agent",
+                &crate::agents::family_said_among(
+                    registry,
+                    crate::agents::kind_of_route_among(registry, route),
+                ),
+            )],
+        ),
+    )
+}
+
+/// 认下之后发那一句、记账（`kick` 的线程与命令都经它）。
+pub(crate) fn send_booked(agent: &str, account: &str, own: &Own) -> Result<Option<u64>, Said> {
+    booked(agent, account, send(agent, account, own))
+}
+
+/// ★ 认下的那一发怎么收场，记进那一本（唯一一处）：成了 ⇒ 记回来的重置时刻（占着）；没成 ⇒ 当场放开、记下几点 · 为什么，错照原样回。
+fn booked(agent: &str, account: &str, r: Result<Option<u64>, Said>) -> Result<Option<u64>, Said> {
+    match &r {
+        Ok(at) => book().landed(agent, account, *at),
+        Err(e) => book().failed(agent, account, crate::common::time::now_secs(), e),
+    }
+    r
+}
+
+/// 开窗起不来那一句的字：`beQuotaWarm.run.failed` 带原因词。
+fn run_failed_text(why: &str) -> String {
+    copy_core::copy_text("beQuotaWarm.run.failed", &[("why", why)])
+}
+
+/// 本程序路径取不到 · 开窗线程起不来那一句：原因词与原话同子进程起不来那一句，都经 [`crate::platform::child::spawn_said`]。
+fn run_failed(e: &std::io::Error) -> Said {
+    crate::wire::spec::fail(
+        "failed",
+        crate::platform::child::spawn_said(e, run_failed_text),
+    )
+}
+
+/// 那一发的子进程起不来 · 超时那一句：超时照原语那句；其余同 [`run_failed`]（经 `into_cmd_said`）。
+fn child_failed(e: crate::platform::child::ChildFail) -> Said {
+    let (code, said) = e.into_cmd_said("failed", run_failed_text);
+    crate::wire::spec::fail(code, said)
+}
+
+/// 用 `account` 发那一句、等它说完；回额度账里那个号此刻的 5 小时窗重置时刻（没读到 ⇒ 空）。
 /// `agent` ＝ 路由名（`claude-code` 一类）。这一家没有开窗那一形 ⇒ 不发；号不在账号库里 ⇒ ccm 自己拒（照它的原话报）。
 pub(crate) fn send(agent: &str, account: &str, own: &Own) -> Result<Option<u64>, Said> {
     use copy_core::copy_text;
     let face = crate::agents::route_named(agent)
         .and_then(crate::agents::warm_of)
-        .ok_or_else(|| {
-            crate::wire::spec::fail(
-                "unsupported",
-                copy_text("beQuotaWarm.agent.unsupported", &[("agent", agent)]),
-            )
-        })?;
+        .ok_or_else(|| unsupported_among(crate::agents::REGISTRY, agent))?;
     let cwd = super::probe::hidden_work_dir(own)?;
-    let me = std::env::current_exe().map_err(|e| {
-        crate::wire::spec::fail(
-            "failed",
-            copy_text(
-                "beQuotaWarm.run.failed",
-                &[("why", &copy_core::io_reason(e.kind()))],
-            ),
-        )
-        .and_raw(Some(&e.to_string()))
-    })?;
+    let me = std::env::current_exe().map_err(|e| run_failed(&e))?;
     #[expect(
         clippy::disallowed_methods,
         reason = "开窗：起本二进制自己当 ccm 跑一发适配层登记的那一句（`--account` 点名、不轮换、期限 120 秒），被起的那一趟照样归本仓的守法管；不许加第二种用途"
@@ -155,12 +220,7 @@ pub(crate) fn send(agent: &str, account: &str, own: &Own) -> Result<Option<u64>,
     for (k, v) in face.env_set {
         child = child.env(k, v);
     }
-    let out = child.run(SEND_WITHIN).map_err(|e| {
-        let (code, said) = e.into_cmd_said("failed", |why| {
-            copy_text("beQuotaWarm.run.failed", &[("why", why)])
-        });
-        crate::wire::spec::fail(code, said)
-    })?;
+    let out = child.run(SEND_WITHIN).map_err(child_failed)?;
     if !out.status.success() {
         let code = out
             .status
@@ -185,19 +245,20 @@ pub(crate) fn send(agent: &str, account: &str, own: &Own) -> Result<Option<u64>,
     }
     let quota =
         super::ledger::Ledger::at(own.root().map(|d| super::ledger::path_under(d.as_path())));
-    Ok(resets_5h(&quota, agent, account))
+    Ok(resets_5h(
+        &quota,
+        agent,
+        account,
+        crate::common::time::now_secs(),
+    ))
 }
 
-/// 额度账里那个号 5 小时窗的重置时刻（窗口名 → 语义位照适配层）。
-fn resets_5h(quota: &super::ledger::Ledger, agent: &str, account: &str) -> Option<u64> {
+/// 额度账里那个号 5 小时窗的重置时刻：窗口照轮换事实那一处取（[`super::facts::current`] ＋ [`super::facts::pick`]；
+/// 窗口名 → 语义位照适配层）。
+fn resets_5h(quota: &super::ledger::Ledger, agent: &str, account: &str, now: u64) -> Option<u64> {
     let slot = crate::agents::route_named(agent).and_then(crate::agents::window_slot_of)?;
-    quota
-        .entry(agent, account)?
-        .reading
-        .windows
-        .iter()
-        .find(|w| slot(&w.name) == Some(cmd_wire::quota::SLOT_5H))?
-        .resets_at
+    let o = super::facts::current(&quota.entry(agent, account)?, now);
+    super::facts::pick(&o.reading, cmd_wire::quota::SLOT_5H, now, &slot)?.resets_at
 }
 
 /// `quota-warm` 的入参。
@@ -221,7 +282,7 @@ pub struct Warmed {
     pub(crate) agent: crate::agents::AgentKind,
     /// 号（同入参）。
     pub(crate) account: String,
-    /// 这一趟真发了（`false` ＝ 15 分钟内发过，照那一次答）。
+    /// 这一趟真发了（`false` ＝ 15 分钟内发成过 · 正在发，照那一次答；没成的那一发不算，不挡这一趟）。
     pub(crate) sent: bool,
     /// 那一发发出的时刻（unix 秒）。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
@@ -229,6 +290,22 @@ pub struct Warmed {
     /// 回来的重置时刻（额度账里那个号的 5 小时窗；没读到 ⇒ `null`）。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number | null"))]
     pub(crate) resets_at: Option<u64>,
+    /// 这一趟之前最近那一发没成（几点 · 为什么）；之后发成过 · 从没没成过 ⇒ `null`。没成的那一发不占 15 分钟。
+    pub(crate) failed: Option<WarmFailed>,
+}
+
+/// 没成的那一发：几点 · 为什么（那一句只带原因词）· 下层原话。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct WarmFailed {
+    /// 没成的那一刻（unix 秒）。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub(crate) at: u64,
+    /// 为什么没成（给人看的那一句）。
+    pub(crate) why: crate::common::cells::Words,
+    /// 下层原话（起不来 · 退出码与它那一行；没有 ⇒ `null`）。
+    pub(crate) raw: Option<String>,
 }
 
 crate::wire::typed::codes! {
@@ -240,8 +317,6 @@ crate::wire::typed::codes! {
         NotSent = "failed",
         /// 工作目录建不了。
         IoFailed = "io_failed",
-        /// 账号库里没有这个号。
-        NotFound = "not_found",
         /// 这一家没有开窗那一形。
         Unsupported = "unsupported",
     }
@@ -268,7 +343,7 @@ impl crate::wire::typed::Handle for QuotaWarm {
     }
 }
 
-/// `quota-warm` 本体：15 分钟内发过 ⇒ 照那一次答、不发；否则发、等它说完。
+/// `quota-warm` 本体：15 分钟内发成过 · 正在发 ⇒ 照那一次答、不发；否则发、等它说完（没成的那一发不挡）。
 fn answer(req: &QuotaWarmReq, own: &Own, now: u64) -> Result<Warmed, Said> {
     let route = crate::agents::pick_route(Some(&req.agent)).map_err(|_| {
         crate::wire::spec::fail(
@@ -283,12 +358,15 @@ fn answer(req: &QuotaWarmReq, own: &Own, now: u64) -> Result<Warmed, Said> {
             crate::common::contract::malformed("`account` must be an account id"),
         ));
     }
+    // 这一趟之前最近那一发没成的那一条（成了一次就清掉），照实带上。
+    let failed = book().last_failed(agent, &req.account);
     let reply = |sent, s: Sent| Warmed {
         agent: req.agent.clone(),
         account: req.account.clone(),
         sent,
         at: s.at,
         resets_at: s.resets_at,
+        failed: failed.clone(),
     };
     if book()
         .claim(agent, std::slice::from_ref(&req.account), now)
@@ -300,8 +378,8 @@ fn answer(req: &QuotaWarmReq, own: &Own, now: u64) -> Result<Warmed, Said> {
         });
         return Ok(reply(false, s));
     }
-    let at = send(agent, &req.account, own)?;
-    book().landed(agent, &req.account, at);
+    // 这一趟自己没成 ⇒ 照旧回错（原因原样带上）；那一本由 `send_booked` 放开、记下。
+    let at = send_booked(agent, &req.account, own)?;
     Ok(reply(
         true,
         Sent {

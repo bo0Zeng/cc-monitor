@@ -1,4 +1,4 @@
-//! 枢纽问的那 8 条内层命令（`HUB_INNER`）是两台后端之间的线上形：远端那台可能是更旧或更新的版本，回包字节换形前后不许变。
+//! 枢纽问的那 9 条内层命令（`HUB_INNER`）是两台后端之间的线上形：远端那台可能是更旧或更新的版本，回包字节换形前后不许变。
 //!
 //! 换形之前用旧代码跑出来，钉成字面量；换形之后逐字节比（经 `serde_json::Value` 那一跳，同帧面）。临时目录换成 `<D>`。
 //! 换形之后入参照旧用 JSON 写、经 `typed::take` 解成入参类型（同帧面那一跳）。
@@ -76,7 +76,13 @@ fn the_skill_trio_keeps_its_wire_bytes() {
     put(&src, "demo/bin/x.sh", "#!/usr/bin/env zz-missing\n");
     put(&dst, "demo/SKILL.md", "old\n");
     let read = via(&json!({ "name": "demo" }), |r| {
-        crate::assets::skill_install::answer_read_at(Some(&src), r)
+        crate::assets::skill_install::answer_read_at(
+            crate::assets::skill_install::Roots {
+                registry: crate::agents::REGISTRY,
+                user: Some(&src),
+            },
+            r,
+        )
     })
     .unwrap();
     pin("READ", wire(&read, &d), READ);
@@ -88,7 +94,14 @@ fn the_skill_trio_keeps_its_wire_bytes() {
         .collect();
     let look = json!({ "name": "demo", "source": source, "project": null });
     let plan = via(&look, |r| {
-        crate::assets::skill_install::answer_plan_with(&NoFacts, Some(&dst), r)
+        crate::assets::skill_install::answer_plan_with(
+            &NoFacts,
+            crate::assets::skill_install::Roots {
+                registry: crate::agents::REGISTRY,
+                user: Some(&dst),
+            },
+            r,
+        )
     })
     .unwrap();
     pin("PLAN", wire(&plan, &d), PLAN);
@@ -96,19 +109,38 @@ fn the_skill_trio_keeps_its_wire_bytes() {
     take["take"] = json!(["SKILL.md", "bin/x.sh"]);
     take["overwrite"] = json!(["SKILL.md"]);
     let taken = via(&take, |r| {
-        crate::assets::skill_install::answer_plan_with(&NoFacts, Some(&dst), r)
+        crate::assets::skill_install::answer_plan_with(
+            &NoFacts,
+            crate::assets::skill_install::Roots {
+                registry: crate::agents::REGISTRY,
+                user: Some(&dst),
+            },
+            r,
+        )
     })
     .unwrap();
     pin("PLAN_TAKEN", wire(&taken, &d), PLAN_TAKEN);
     let mut apply = take.clone();
     apply["target"] = plan["target"].clone();
     let done = via(&apply, |r| {
-        crate::assets::skill_flow::answer_install(&FilesHere, &NoFacts, Some(&dst), &ok_record, r)
+        crate::assets::skill_flow::answer_install(
+            &FilesHere,
+            &NoFacts,
+            crate::assets::skill_install::Roots::here_with(Some(&dst)),
+            &ok_record,
+            r,
+        )
     })
     .unwrap();
     pin("APPLY", wire(&done, &d), APPLY);
     let again = via(&apply, |r| {
-        crate::assets::skill_flow::answer_install(&FilesHere, &NoFacts, Some(&dst), &ok_record, r)
+        crate::assets::skill_flow::answer_install(
+            &FilesHere,
+            &NoFacts,
+            crate::assets::skill_install::Roots::here_with(Some(&dst)),
+            &ok_record,
+            r,
+        )
     });
     pin(
         "APPLY_AGAIN",
@@ -196,6 +228,47 @@ fn the_cc_bus_pair_keeps_its_wire_bytes() {
     assert_eq!(
         wire(&st2, &d).replace(&digest, "<V>"),
         r#"{"dest":"<D>/skills/cc-bus","existing":true,"version":"<V>","writes":[]}"#
+    );
+}
+
+/// 装插件那一条：入参只收 `name`（＋可缺的 `agent`），多一格 ⇒ 拒；回包是装完那一份（照替身家那一行跑、替身跑法）。
+#[test]
+fn the_plugin_install_keeps_its_wire_bytes() {
+    let req: crate::assets::hub_wire::PluginInstallReq =
+        crate::wire::typed::take(&json!({ "name": "shelf/widget" })).unwrap();
+    assert_eq!(
+        serde_json::to_string(&req).unwrap(),
+        r#"{"name":"shelf/widget"}"#
+    );
+    assert!(
+        crate::wire::typed::take::<crate::assets::hub_wire::PluginInstallReq>(
+            &json!({ "name": "widget", "extra": 1 })
+        )
+        .is_err()
+    );
+    let run =
+        |argv: &[String]| -> Result<crate::assets::plugin_exec::Ran, crate::common::said::Said> {
+            Ok(crate::assets::plugin_exec::Ran {
+                code: Some(0),
+                stdout: if argv.last().map(String::as_str) == Some("roster") {
+                    "shelf/widget 1 on\n".into()
+                } else {
+                    String::new()
+                },
+                stderr: String::new(),
+            })
+        };
+    let done = crate::assets::plugin_exec::install(
+        crate::agents::fake::two_families(),
+        req.agent.as_ref(),
+        &req.name,
+        &run,
+    )
+    .unwrap();
+    pin(
+        "plugin-install",
+        serde_json::to_string(&serde_json::to_value(done).unwrap()).unwrap(),
+        r#"{"changed":["shelf/widget"],"note":null,"path":"fakeagent gadget fit shelf/widget"}"#,
     );
 }
 

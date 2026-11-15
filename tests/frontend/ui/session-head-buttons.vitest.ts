@@ -27,7 +27,8 @@ vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn(), undoToast
 
 import { SessionHead, type SessionHeadHost } from "../../../src/frontend/ui/session-head";
 import { CONFIG_KEY_OWNERS } from "../../../src/frontend/ui/config";
-import { DEFAULT_HEAD_BUTTONS, dropHeadButton, headButtonsThatFit, headEditRows, nudgeHeadButton, sanitizeHeadButtons, toggleHeadButton } from "../../../src/frontend/ui/session-head-buttons";
+import { DEFAULT_HEAD_BUTTONS, HEAD_BUTTONS, headButtonsThatFit, sanitizeHeadButtons } from "../../../src/frontend/ui/session-head-buttons";
+import { dropRow, nudgeRow, rowEditRows, toggleRow } from "../../../src/frontend/ui/button-row";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
 import { applyFacts } from "../../../src/frontend/ui/tab-session-facts";
 import type { SessionFacts } from "../../../src/frontend/ui/session-reads";
@@ -46,7 +47,7 @@ dispatcher.start(); // Esc 走弹层栈（window 上那一个监听）
 function tab(sid: string, over: Partial<Tab> = {}): Tab {
   return {
     sessionId: sid, title: sid, background: false, bgName: null, label: null, projectDir: `/w/${sid}`, face: liveFace("working"), pinned: false, group: null,
-    origin: LOCAL, activity: null, forkedLine: null, whereLine: null, unread: 0, needs: null, backgroundWork: null, pending: [], lastSay: null, ...over,
+    origin: LOCAL, activity: null, forkedLine: null, whereLine: null, unreadSaid: null, needs: null, backgroundWork: null, pending: [], lastSay: null, ...over,
   } as unknown as Tab;
 }
 
@@ -122,7 +123,7 @@ describe("纯函数：读盘 · 清单 · 勾 · 挪 · 拖 · 放不下", () =>
 
   it("默认照 5.1.1 拉前 · 看它的终端各一颗，加「在会话里找」；「结束会话」与「更多」都不在全集里；「显示 ▾」删了（存过的读时跳过）", () => {
     expect(DEFAULT_HEAD_BUTTONS).toEqual(["front", "terminal", "find"]);
-    const ids = headEditRows([]).map((r) => r.id);
+    const ids = rowEditRows([], HEAD_BUTTONS).map((r) => r.id);
     expect(ids).not.toContain("kill");
     expect(ids).not.toContain("more");
     expect(ids).toContain("front");
@@ -132,20 +133,20 @@ describe("纯函数：读盘 · 清单 · 勾 · 挪 · 拖 · 放不下", () =>
   });
 
   it("清单：上段按顺序勾着，下段按全集顺序；勾上放末尾、取消回下段；Alt+↑↓ 挪一格到头不动", () => {
-    expect(headEditRows(["find", "cwd"]).slice(0, 3)).toEqual([{ id: "find", on: true }, { id: "cwd", on: true }, { id: "front", on: false }]);
-    expect(toggleHeadButton(["find"], "pin")).toEqual(["find", "pin"]);
-    expect(toggleHeadButton(["find", "pin"], "find")).toEqual(["pin"]);
-    expect(nudgeHeadButton(["a", "b", "c"] as never, "b" as never, -1)).toEqual(["b", "a", "c"]);
-    expect(nudgeHeadButton(["a", "b"] as never, "a" as never, -1)).toEqual(["a", "b"]);
-    expect(nudgeHeadButton(["a"] as never, "x" as never, 1)).toEqual(["a"]);
+    expect(rowEditRows(["find", "cwd"], HEAD_BUTTONS).slice(0, 3)).toEqual([{ id: "find", on: true }, { id: "cwd", on: true }, { id: "front", on: false }]);
+    expect(toggleRow(["find"], "pin")).toEqual(["find", "pin"]);
+    expect(toggleRow(["find", "pin"], "find")).toEqual(["pin"]);
+    expect(nudgeRow(["a", "b", "c"] as never, "b" as never, -1)).toEqual(["b", "a", "c"]);
+    expect(nudgeRow(["a", "b"] as never, "a" as never, -1)).toEqual(["a", "b"]);
+    expect(nudgeRow(["a"] as never, "x" as never, 1)).toEqual(["a"]);
   });
 
   it("拖：上段之间换位；没勾的拖进上段 ＝ 勾上；勾着的拖进下段 ＝ 取消", () => {
     // 行：find cwd | terminal popOut account pin group resume close
-    expect(dropHeadButton(["find", "cwd"], "cwd", 0)).toEqual(["cwd", "find"]);
-    expect(dropHeadButton(["find", "cwd"], "pin", 1)).toEqual(["find", "pin", "cwd"]);
-    expect(dropHeadButton(["find", "cwd"], "find", 2), "紧跟上段最后一颗 ⇒ 还在会话头上").toEqual(["cwd", "find"]);
-    expect(dropHeadButton(["find", "cwd"], "find", 6)).toEqual(["cwd"]);
+    expect(dropRow(["find", "cwd"], "cwd", 0, HEAD_BUTTONS)).toEqual(["cwd", "find"]);
+    expect(dropRow(["find", "cwd"], "pin", 1, HEAD_BUTTONS)).toEqual(["find", "pin", "cwd"]);
+    expect(dropRow(["find", "cwd"], "find", 2, HEAD_BUTTONS), "紧跟上段最后一颗 ⇒ 还在会话头上").toEqual(["cwd", "find"]);
+    expect(dropRow(["find", "cwd"], "find", 6, HEAD_BUTTONS)).toEqual(["cwd"]);
   });
 
   it("放不下：从最后一颗起收，直到标题够 160（标题本来就短 ⇒ 够它的全长即可）", () => {
@@ -365,9 +366,10 @@ describe("登记", () => {
 
 describe("会话头按钮编辑浮层：重画不丢焦点（kit morph）", () => {
   it("★ 焦点在某一行，那一排变了重画 ⇒ 焦点还在同一个按钮那一行", async () => {
-    const { HeadEditor } = await import("../../../src/frontend/ui/session-head-edit");
+    const { HEAD_BUTTON_FACE, RowEditor } = await import("../../../src/frontend/ui/session-head-edit");
     let cur = [...DEFAULT_HEAD_BUTTONS];
-    const ed = new HeadEditor({ buttons: () => cur, set: (n: typeof cur) => void (cur = n), reset: () => {} } as never);
+    const spec = { all: HEAD_BUTTONS, face: HEAD_BUTTON_FACE, title: "", hint: "", overflow: "" };
+    const ed = new RowEditor(spec, { buttons: () => cur, set: (n: typeof cur) => void (cur = n), reset: () => {} });
     document.body.replaceChildren(ed.el);
     const id = cur[1];
     ed.el.querySelector<HTMLElement>(`[data-row="${id}"]`)!.focus();

@@ -13,6 +13,7 @@ import com.ccmonitor.mobile.core.claude.link.seen
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.wire.gen.AccountRow
 import com.ccmonitor.mobile.core.wire.gen.AgentFacts
+import com.ccmonitor.mobile.core.wire.gen.AgentPick
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.RotStrategyItem
 import com.ccmonitor.mobile.link.problem
@@ -30,12 +31,12 @@ import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/** 最近用过的一个目录（那台给的；[shown] 是它按自己的家目录写好的 `~/…`）：[missing] ＝ 点过、那台说不在。 */
+/** 最近用过的一个目录（那台给的；[shown] 是它按自己的家目录写好的 `~/…`）：[said] ＝ 点过、那台说不在时它写好的那一句（照抄）。 */
 data class RecentRow(
     val cwd: String,
     val shown: String,
     val lastText: String,
-    val missing: Boolean = false,
+    val said: String? = null,
 )
 
 /** 新建会话那一屏此刻的选项（全是那台的事实 ＋ 这张草稿上点过的）。 */
@@ -65,7 +66,28 @@ data class NewSessionUi(
     val rotationFailed: String? = null,
     /** 设为默认没成那一句。 */
     val note: String? = null,
+    /** 这一张用哪个模型（那一家 `models` 里一项的原值）；`null` ＝ 跟随（不交）。 */
+    val model: String? = null,
+    /** 这一张用哪一档推理（选的模型 `efforts` 里一项的原值）；那个模型不分档 ⇒ `null`。 */
+    val effort: String? = null,
 ) {
+    /** 那一家列的模型（那台写的字与先后）。 */
+    val models: List<AgentPick> get() = agents.firstOrNull { it.kind == agent }?.models.orEmpty()
+
+    /** 那一家没列模型 ⇒ 不画那一颗。 */
+    val showModelChip: Boolean get() = models.isNotEmpty()
+
+    /** 那颗 chip 上的字：选的那个模型那台写的字；跟随 ⇒「跟随」。 */
+    val modelText: String get() = models.firstOrNull { it.value == model }?.text ?: copyText("mobAccounts.model.follow")
+
+    /** 选的模型能选的推理档（那台排的先后）；跟随 · 不分档 ⇒ 空。 */
+    val efforts: List<AgentPick> get() = models.firstOrNull { it.value == model }?.efforts.orEmpty()
+
+    /** 选的模型不分档 ⇒ 不画推理档那一颗。 */
+    val showEffortChip: Boolean get() = efforts.isNotEmpty()
+
+    val effortText: String? get() = efforts.firstOrNull { it.value == effort }?.text
+
     /** 只有一家 agent 时不画那一颗。 */
     val showAgentChip: Boolean get() = agents.size > 1
 
@@ -81,6 +103,10 @@ data class Chosen(
     val agent: String,
     val account: String?,
     val rotation: SessionOpen.Rotation?,
+    /** 选了模型才有（跟随 ⇒ `null`、不交）。 */
+    val model: String? = null,
+    /** 选的模型分档才有。 */
+    val effort: String? = null,
 )
 
 /**
@@ -192,9 +218,21 @@ class NewSessionPicker(
 
     fun pickAgent(kind: String) {
         if (kind == _state.value.agent) return
-        _state.update { it.copy(agent = kind, account = null, accounts = emptyList()) }
+        _state.update { it.copy(agent = kind, account = null, accounts = emptyList(), model = null, effort = null) }
         scope.launch { loadAccounts() }
     }
+
+    /** 选模型（`null` ＝ 跟随）：那个模型分档 ⇒ 推理档预选它的 `defaultEffort`（那台没说 ⇒ 第一档）；不分档 ⇒ 不选。 */
+    fun pickModel(value: String?) =
+        _state.update { s ->
+            val m = s.models.firstOrNull { it.value == value }
+            val efforts = m?.efforts.orEmpty()
+            val def = efforts.firstOrNull { it.value == m?.defaultEffort } ?: efforts.firstOrNull()
+            s.copy(model = value, effort = def?.value)
+        }
+
+    /** 选推理档：只认选的模型列着的那几档。 */
+    fun pickEffort(value: String) = _state.update { s -> if (s.efforts.any { it.value == value }) s.copy(effort = value) else s }
 
     /** 选不了的号（那台说 `selectable: false`）点了不选上。 */
     fun pickAccount(name: String) {
@@ -213,14 +251,14 @@ class NewSessionPicker(
             val got = (link.call(SessionOpenDir.COMMAND, SessionOpenDir.args(cwd), READ_MS) as? Reply.Ok)?.let { SessionOpenDir.of(it.data) }
             _state.update { s ->
                 val shown = s.recent.firstOrNull { it.cwd == cwd }?.shown ?: got?.shown ?: cwd
-                when (got?.exists) {
-                    true -> s.copy(cwd = cwd, cwdShown = shown, recent = s.recent.map { if (it.cwd == cwd) it.copy(missing = false) else it })
-                    false -> s.copy(recent = s.recent.map { if (it.cwd == cwd) it.copy(missing = true) else it })
+                when {
                     // 问不到 ⇒ 照选：起的时候那台再核（`no_dir` 那一句）。
-                    null -> s.copy(cwd = cwd, cwdShown = shown)
+                    got == null -> s.copy(cwd = cwd, cwdShown = shown)
+                    got.said == null -> s.copy(cwd = cwd, cwdShown = shown, recent = s.recent.map { if (it.cwd == cwd) it.copy(said = null) else it })
+                    else -> s.copy(recent = s.recent.map { if (it.cwd == cwd) it.copy(said = got.said) else it })
                 }
             }
-            done(got?.exists != false)
+            done(got?.said == null)
         }
     }
 
@@ -245,7 +283,9 @@ class NewSessionPicker(
         val s = _state.value
         val account = s.account?.takeIf { it != s.defaultAccount }
         val rotation = s.strategies?.let { if (s.rotation != s.forNew) SessionOpen.Rotation(s.rotation) else null }
-        return Chosen(s.cwd, s.agent.orEmpty(), account, rotation)
+        val model = s.models.firstOrNull { it.value == s.model }?.value
+        val effort = s.effort?.takeIf { e -> s.efforts.any { it.value == e } }
+        return Chosen(s.cwd, s.agent.orEmpty(), account, rotation, model, effort)
     }
 
     private fun a(

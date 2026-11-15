@@ -324,7 +324,11 @@ fn oneshot_lines_land_in_the_backend_log() {
     assert_eq!(given, Some(PathBuf::from("/x/given.log")));
     let blank = oneshot_log_path(&|k| (k == STDERR_LOG).then(|| "  ".to_string()));
     if let Some(p) = blank {
-        assert!(p.ends_with(super::STDERR_LOG_REL), "{}", p.display());
+        assert!(
+            p.ends_with(super::BACKEND_STDERR_LOG_REL),
+            "{}",
+            p.display()
+        );
     }
     // 追加一整行、不截断；目录不在 ⇒ Err、不替它建。
     let d = test_home::scratch("oneshot");

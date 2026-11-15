@@ -4,6 +4,10 @@
 #[cfg(unix)]
 #[path = "../accounts/manage/mcp_share_exec_tests.rs"]
 mod mcp_share_exec_tests;
+// 各号之间同步 MCP 登录照那一家的 MCP 登录文件那一格（替身家两把锁：一条一份的文件锁 ＋ 整份一把文件锁，文件经 `HomeDoor`）。
+#[cfg(unix)]
+#[path = "../accounts/manage/mcp_logins_exec_tests.rs"]
+mod mcp_logins_exec_tests;
 // 账号库之间同步信任过的目录（同上，经帧面真建库 · 加号）。
 #[cfg(unix)]
 #[path = "../accounts/manage/trust_share_exec_tests.rs"]

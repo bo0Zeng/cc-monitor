@@ -512,9 +512,9 @@ async fn a_password_from_the_host_logs_in_and_a_wrong_one_is_refused() {
     );
     assert!(log.lock().unwrap().iter().any(|l| l == "exec echo"));
 
-    let (ack, ..) = open(req("pw-bad"), crate::uses::Control::none()).await;
+    let (ack, why) = refused(req("pw-bad")).await;
     assert_eq!(ack["ok"], false, "错的密码居然登上了：{ack}");
-    assert_eq!(ack["reason"], "auth", "{ack}");
+    assert_eq!(why, Some(cmd_wire::machine::Why::Auth), "{ack}");
 }
 
 /// 一个替我们签名的外部签名器（同手机 Keystore：私钥不出它、回 DER）。这里拿 `ring` 现生成一把 P-256。
@@ -693,7 +693,6 @@ async fn a_shell_gets_its_pty_and_follows_resizes() {
     );
     assert!(log.contains(&"shell".to_string()), "{log:?}");
     assert!(log.contains(&"resize 120x40".to_string()), "{log:?}");
-    assert!(crate::USES.contains(&"shell"));
 }
 
 /// ★ **登录过了、开会话被拒**（共用登录机进程数到上限：sshd 认证照过，exec / shell 回 CHANNEL_FAILURE）：
@@ -703,18 +702,23 @@ async fn a_shell_gets_its_pty_and_follows_resizes() {
 async fn a_login_that_passes_but_refuses_the_session_says_so() {
     let port = door_answering("p", Answer::No).await;
     register("refusing-pw", TestCred::Password("p".into()));
-    let refused = copy_core::copy_text("beUses.session.denied", &[]);
+    let refused_said = copy_core::copy_text("beUses.session.denied", &[]);
     for use_ in ["stream", "capture", "shell"] {
         let req = request(serde_json::json!({
             "host": "127.0.0.1", "port": port, "user": "u", "key_path": "refusing-pw",
             "use": use_, "command": "ccm", "capture": {"max_bytes": 1024}
         }));
-        let (ack, ..) = open(req, crate::uses::Control::none()).await;
+        let (ack, why) = refused(req).await;
         assert_eq!(ack["ok"], false, "{use_}：开会话被拒却回了 ok：{ack}");
-        assert_eq!(ack["said"], refused.as_str(), "{use_}：{ack}");
-        assert_ne!(ack["reason"], "auth", "{use_}：登录是过了的：{ack}");
+        assert_eq!(ack["said"], refused_said.as_str(), "{use_}：{ack}");
+        assert_ne!(
+            why,
+            Some(cmd_wire::machine::Why::Auth),
+            "{use_}：登录是过了的：{ack}"
+        );
         assert_eq!(
-            ack["reason"], "session_denied",
+            why,
+            Some(cmd_wire::machine::Why::SessionDenied),
             "{use_}：要带上拒开会话那个码：{ack}"
         );
         assert!(
@@ -867,7 +871,6 @@ async fn a_held_connection_is_reused_and_its_link_ends_when_the_peer_goes() {
         .await
         .expect("那一趟没收场")
         .unwrap();
-    assert!(crate::USES.contains(&"hold"));
 }
 
 /// 一把 host key 的 OpenSSH 那一行前两段（算法 ＋ base64）。
@@ -893,6 +896,30 @@ fn ed25519_key(seed: u8) -> russh::keys::PrivateKey {
     russh::keys::PrivateKey::from(russh::keys::ssh_key::private::Ed25519Keypair::from_seed(
         &[seed; 32],
     ))
+}
+
+/// 进程内开一条、必须没开成：线上那一行 ack（同 `run_with` 写的那一份）＋ 原因码（只在进程内，不上线）。
+async fn refused(req: DialRequest) -> (serde_json::Value, Option<cmd_wire::machine::Why>) {
+    match crate::uses::open(&req, &StageSink::new(false), |_| {}).await {
+        Ok(_) => panic!("该没开成却开成了"),
+        Err(f) => {
+            let why = f.reason;
+            (
+                serde_json::to_value(crate::failed_ack(f)).expect("ack 序列化"),
+                why,
+            )
+        }
+    }
+}
+
+/// 同 [`dial_with_known`]，必须没开成：ack ＋ 原因码。
+async fn refused_with_known(port: u16) -> (serde_json::Value, Option<cmd_wire::machine::Why>) {
+    register("known-pw", TestCred::Password("k".into()));
+    refused(request(serde_json::json!({
+        "host": "127.0.0.1", "port": port, "user": "u", "key_path": "known-pw",
+        "use": "capture", "command": "echo", "capture": {"max_bytes": 64}
+    })))
+    .await
 }
 
 /// 库里这台记着 `known` 那几把时拨一次（每次换一个口的服务端：各判据的库行按口分开，不串）。
@@ -929,9 +956,9 @@ async fn an_unstored_key_type_or_another_key_is_refused() {
     let other = ecdsa_key();
     let (port, _l, _s) = door_keyed(Some("k"), None, Some(vec![host.clone()])).await;
     seed(port, &key_line(&other));
-    let ack = dial_with_known(port).await;
+    let (ack, why) = refused_with_known(port).await;
     assert_eq!(ack["ok"], false, "{ack}");
-    assert_eq!(ack["reason"], "host_key", "{ack}");
+    assert_eq!(why, Some(cmd_wire::machine::Why::HostKey), "{ack}");
     assert_eq!(ack["key_type"], "ssh-ed25519", "{ack}");
     assert_eq!(
         ack["expected_fingerprint"], "",
@@ -940,9 +967,9 @@ async fn an_unstored_key_type_or_another_key_is_refused() {
     let (port, _l, _s) = door_keyed(Some("k"), None, Some(vec![host.clone()])).await;
     let wrong = ed25519_key(12);
     seed(port, &key_line(&wrong));
-    let ack = dial_with_known(port).await;
+    let (ack, why) = refused_with_known(port).await;
     assert_eq!(ack["ok"], false, "{ack}");
-    assert_eq!(ack["reason"], "host_key", "{ack}");
+    assert_eq!(why, Some(cmd_wire::machine::Why::HostKey), "{ack}");
     assert_eq!(
         ack["expected_fingerprint"],
         crate::known_hosts::fingerprint(wrong.public_key()),
@@ -1000,13 +1027,9 @@ async fn a_first_seen_key_is_remembered_only_after_login() {
             "use": "capture", "command": "echo", "capture": {"max_bytes": 64}
         }))
     };
-    let (ack, ..) = open(req("tofu-bad"), crate::uses::Control::none()).await;
+    let (ack, why) = refused(req("tofu-bad")).await;
     assert_eq!(ack["ok"], false, "{ack}");
-    assert_eq!(
-        ack["reason"],
-        serde_json::json!(cmd_wire::machine::Why::Auth),
-        "{ack}"
-    );
+    assert_eq!(why, Some(cmd_wire::machine::Why::Auth), "{ack}");
     assert!(
         ack["fingerprint"].is_string(),
         "握手要先过核钥匙那一步：{ack}"

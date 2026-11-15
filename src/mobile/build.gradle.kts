@@ -21,7 +21,7 @@ allprojects {
     layout.buildDirectory.set(buildRoot.resolve(if (this == rootProject) "_root" else name))
 }
 
-// 文案 · 大小 · 时长经 JNI 调手机那份核心（`core-copy` 的 `CopyCore`）：JVM 单测先编同一个 crate 的宿主版，每个模块的单测从那里加载。
+// 文案 · 时长 · 几台并一份那几样经 JNI 调手机那份核心（core-rs 的 `Core`）：JVM 单测先编同一个 crate 的宿主版，每个模块的单测从那里加载。
 // cargo 自己按源码增量，本任务每趟都跑；产物登记成单测的输入，核心改了单测跟着重跑。
 val hostCoreDir = buildRoot.parentFile.resolve("backend/mobile-dev")
 val cargoBuildHost =

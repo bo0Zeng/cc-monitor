@@ -36,25 +36,154 @@ fn listed(o: &str) -> In {
     )
 }
 
-/// ★ 同一串帧喂桌面与手机，两端拿到的会话簿逐格相同、出自同一个函数：壳这一侧照分派那一路（会话帧原样交 `In::Told`）喂夹具那一串，
-/// 那台那一本就是共享核心对着的那一份 golden（手机核心那一侧的判据对着同一份，`mobcore::resident`）。
-#[test]
-fn the_shared_frames_fold_into_the_same_book_the_phone_gets() {
-    let mut b = Book::default();
-    for line in include_str!("../../common/face-core/book-frames.jsonl").lines() {
-        let frame: crate::stream_source::Frame =
-            cmd_wire::frame::decode(line).expect("夹具每一行是一帧");
-        b.step(told("pi", frame));
+/// 本机后端那一侧的替身：每台（连本机）的一帧会话帧原样交进来，紧跟那台那一本折好的那一格（与生产同一个 `SessionBook::step`：
+/// 改整条的那几种只带那一条、不带 `whole`；本机那一台 `observe/watcher.rs`，别台 `control/feeds.rs`）。
+#[derive(Default)]
+struct Peer {
+    books: std::collections::HashMap<String, face_core::book::SessionBook>,
+}
+
+impl Peer {
+    fn step(&mut self, b: &mut Book, ev: In) -> Vec<Out> {
+        let seats = match &ev {
+            In::Told { origin, frame } => {
+                let book = self.books.entry(origin.clone()).or_default();
+                book.step(frame).map(|s| (origin.clone(), s))
+            }
+            In::Closed { origin } => {
+                if let Some(book) = self.books.get_mut(origin) {
+                    book.listed = false;
+                }
+                None
+            }
+            _ => None,
+        };
+        let out = b.step(ev);
+        if let Some((origin, seats)) = seats {
+            assert!(
+                b.step(In::Seats { origin, seats }).is_empty(),
+                "成品不交界面"
+            );
+        }
+        out
     }
-    let got = serde_json::to_value(b.of("pi").expect("那台那一本")).unwrap();
-    let want: serde_json::Value =
-        serde_json::from_str(include_str!("../../common/face-core/book.golden.json")).unwrap();
-    assert_eq!(got, want);
+}
+
+/// ★ 先红的那一条：别台的会话帧原样交界面、壳不折 —— 没跟着 `seats` 的不进缓存（F5 不重放、不算活）；
+/// 跟着了照 `seats` 那一条重放（整条以它为准，不是壳从会话帧里拼的）。
+#[test]
+fn a_machines_seats_are_the_only_thing_replayed_for_it() {
+    let mut b = Book::default();
+    let out = b.step(live("pi", "a"));
+    assert!(
+        matches!(&out[..], [Out::Live { sid, .. }] if sid == "a"),
+        "会话帧原样交界面：{out:?}"
+    );
+    let pi = crate::origin::Origin::named("pi");
+    assert!(!b.is_live(&pi, "a"), "壳自己折了别台的会话帧");
+    assert!(b.replay(&[]).before.is_empty(), "没有成品也重放了");
+    let mut m = meta("/from-seats");
+    m.sid = "a".into();
+    b.step(In::Seats {
+        origin: "pi".into(),
+        seats: cmd_wire::frame::SessionSeats {
+            seats: vec![cmd_wire::frame::SessionSeat::of(
+                "a",
+                Some(&m),
+                None,
+                None,
+                None,
+            )],
+            listed: true,
+            whole: false,
+        },
+    });
+    assert!(b.is_live(&pi, "a"));
+    // 一条不带 `seat` ⇒ 那一本里不再有它（别的照留）。
+    let mut m2 = meta("/w");
+    m2.sid = "b".into();
+    let one = |seat: cmd_wire::frame::SessionSeat| In::Seats {
+        origin: "pi".into(),
+        seats: cmd_wire::frame::SessionSeats {
+            seats: vec![seat],
+            listed: true,
+            whole: false,
+        },
+    };
+    b.step(one(cmd_wire::frame::SessionSeat::of(
+        "b",
+        Some(&m2),
+        None,
+        None,
+        None,
+    )));
+    assert!(b.is_live(&pi, "b"));
+    b.step(one(cmd_wire::frame::SessionSeat::of(
+        "b", None, None, None, None,
+    )));
+    assert!(!b.is_live(&pi, "b"), "不带 seat 的那一条还在");
+    assert!(b.is_live(&pi, "a"), "不带 seat 的那一条摘错了别的");
+    let r = b.replay(&[]);
+    assert!(
+        matches!(&r.before[..], [Out::Live { meta, .. }] if meta.cwd == m.cwd),
+        "{:?}",
+        r.before
+    );
+    assert!(matches!(&r.after[..], [Out::Listed { origin }] if origin == "pi"));
+    // 整本换：不在里面的就是不在了。
+    b.step(In::Seats {
+        origin: "pi".into(),
+        seats: cmd_wire::frame::SessionSeats {
+            seats: Vec::new(),
+            listed: false,
+            whole: true,
+        },
+    });
+    assert!(!b.is_live(&pi, "a"));
+}
+
+/// ★ 先红的那一条：本机那一台也不折 —— 本机的会话帧原样交界面，不带成品的不进缓存（F5 不重放、不算活）；
+/// 本机后端紧跟的 `session_seats`（[`In::Seats`]，`<local>`）照它换那一格。
+#[test]
+fn the_local_machine_is_cached_only_from_its_seats_too() {
+    let mut b = Book::default();
+    let local = crate::origin::Origin::local();
+    let out = b.step(live("<local>", "x"));
+    assert!(
+        matches!(&out[..], [Out::Live { sid, .. }] if sid == "x"),
+        "会话帧原样交界面：{out:?}"
+    );
+    assert!(!b.is_live(&local, "x"), "壳自己折了本机的会话帧");
+    assert!(b.replay(&[]).before.is_empty(), "没有成品也重放了");
+    let mut m = meta("/from-seats");
+    m.sid = "x".into();
+    b.step(In::Seats {
+        origin: "<local>".into(),
+        seats: cmd_wire::frame::SessionSeats {
+            seats: vec![cmd_wire::frame::SessionSeat::of(
+                "x",
+                Some(&m),
+                None,
+                None,
+                None,
+            )],
+            listed: true,
+            whole: false,
+        },
+    });
+    assert!(b.is_live(&local, "x"));
+    let r = b.replay(&[]);
+    assert!(
+        matches!(&r.before[..], [Out::Live { meta, .. }] if meta.cwd == m.cwd),
+        "{:?}",
+        r.before
+    );
 }
 
 #[test]
 fn products_pass_through_in_order_and_a_closed_link_adds_nothing() {
     let mut b = Book::default();
+    let mut p = Peer::default();
     let mut out = Vec::new();
     for ev in [
         live("pi", "a"),
@@ -71,7 +200,7 @@ fn products_pass_through_in_order_and_a_closed_link_adds_nothing() {
             origin: "nowhere".into(),
         },
     ] {
-        out.extend(b.step(ev));
+        out.extend(p.step(&mut b, ev));
     }
     let kinds: Vec<String> = out
         .iter()
@@ -82,6 +211,7 @@ fn products_pass_through_in_order_and_a_closed_link_adds_nothing() {
             Out::Listed { origin } => format!("listed {origin}"),
             Out::Runs { runs, .. } => format!("runs {}", runs.sid),
             Out::Branch { sid, .. } => format!("branch {sid}"),
+            Out::Unread { unread, .. } => format!("unread {}", unread.sid),
         })
         .collect();
     assert_eq!(
@@ -102,6 +232,7 @@ fn products_pass_through_in_order_and_a_closed_link_adds_nothing() {
 #[test]
 fn the_f5_plan_puts_skeletons_first_and_judges_bufferless_nothing() {
     let mut b = Book::default();
+    let mut p = Peer::default();
     for ev in [
         live("pi", "a"),
         left("pi", "r", "reconnectable"),
@@ -110,7 +241,7 @@ fn the_f5_plan_puts_skeletons_first_and_judges_bufferless_nothing() {
         listed("pi"),
         live("mu", "m"),
     ] {
-        b.step(ev);
+        p.step(&mut b, ev);
     }
     let buffered: Vec<(String, String)> = [
         ("a", "pi"),
@@ -136,6 +267,7 @@ fn the_f5_plan_puts_skeletons_first_and_judges_bufferless_nothing() {
                 Out::Status { status, .. } => format!("status {}", status.sid),
                 Out::Runs { origin, runs } => format!("runs {origin}/{}", runs.sid),
                 Out::Branch { origin, sid, .. } => format!("branch {origin}/{sid}"),
+                Out::Unread { origin, unread } => format!("unread {origin}/{}", unread.sid),
             })
             .collect()
     };
@@ -157,8 +289,9 @@ fn the_f5_plan_puts_skeletons_first_and_judges_bufferless_nothing() {
 #[test]
 fn the_backends_unclear_left_passes_through_and_a_closed_link_adds_nothing() {
     let mut b = Book::default();
-    b.step(live("pi", "a"));
-    let said = b.step(left("pi", "a", "unclear"));
+    let mut p = Peer::default();
+    p.step(&mut b, live("pi", "a"));
+    let said = p.step(&mut b, left("pi", "a", "unclear"));
     let frames: Vec<serde_json::Value> = said
         .iter()
         .map(|o| serde_json::to_value(o.frame()).unwrap())
@@ -174,7 +307,11 @@ fn the_backends_unclear_left_passes_through_and_a_closed_link_adds_nothing() {
         })
         .is_empty());
     assert_eq!(
-        b.of("pi").map(|p| p.left.len()),
+        b.of("pi").map(|p| p
+            .seats
+            .values()
+            .filter(|s| matches!(s, Seat::Left { .. }))
+            .count()),
         Some(1),
         "账照留：F5 重放照它再说"
     );
@@ -243,10 +380,11 @@ fn a_sessions_branch_list_passes_through_and_replays_after_its_announcement() {
         sum: format!("s{at}+{}", ids.len()),
     };
     let mut b = Book::default();
-    b.step(live("pi", "a"));
-    b.step(live("pi", "b"));
+    let mut p = Peer::default();
+    p.step(&mut b, live("pi", "a"));
+    p.step(&mut b, live("pi", "b"));
     assert_eq!(
-        b.step(branch("a", "/a.jsonl", 0, &["u1"])),
+        p.step(&mut b, branch("a", "/a.jsonl", 0, &["u1"])),
         vec![Out::Branch {
             origin: crate::origin::Origin::named("pi"),
             sid: "a".into(),
@@ -256,7 +394,7 @@ fn a_sessions_branch_list_passes_through_and_replays_after_its_announcement() {
     );
     // 只来变了的那一截 ⇒ 交出去的是拼好的整份。
     assert_eq!(
-        b.step(branch("a", "/a.jsonl", 1, &["u2", "u3"])),
+        p.step(&mut b, branch("a", "/a.jsonl", 1, &["u2", "u3"])),
         vec![Out::Branch {
             origin: crate::origin::Origin::named("pi"),
             sid: "a".into(),
@@ -265,18 +403,18 @@ fn a_sessions_branch_list_passes_through_and_replays_after_its_announcement() {
         }]
     );
     // 前 2 条照旧、其后没有了 ⇒ 截短。
-    b.step(branch("a", "/a.jsonl", 2, &[]));
+    p.step(&mut b, branch("a", "/a.jsonl", 2, &[]));
     // 另一份记录 ⇒ 从空的起拼（不接在上一份后面）。
-    let got = b.step(branch("b", "/b1.jsonl", 0, &["x"]));
+    let got = p.step(&mut b, branch("b", "/b1.jsonl", 0, &["x"]));
     assert!(matches!(&got[..], [Out::Branch { off: o, .. }] if o == &off(&["x"])));
-    let got = b.step(branch("b", "/b2.jsonl", 1, &["y"]));
+    let got = p.step(&mut b, branch("b", "/b2.jsonl", 1, &["y"]));
     assert!(
         matches!(&got[..], [Out::Branch { off: o, .. }] if o == &off(&["y"])),
         "{got:?}"
     );
-    b.step(left("pi", "b", "ended"));
+    p.step(&mut b, left("pi", "b", "ended"));
     // 同一个 sid 又活了（续接）：它离开前那份清单不算数，等那台再说。
-    b.step(live("pi", "b"));
+    p.step(&mut b, live("pi", "b"));
     let r = b.replay(&[]);
     let got: Vec<String> = r
         .before
@@ -312,10 +450,14 @@ fn branch_runs_are_spliced_at_the_frames_head_and_replayed() {
         other => panic!("{other:?}"),
     };
     let mut b = Book::default();
-    b.step(live("pi", "a"));
-    b.step(branch(0, &["u1", "u2", "u3"], vec![run(0, 2), run(2, 1)]));
+    let mut p = Peer::default();
+    p.step(&mut b, live("pi", "a"));
+    p.step(
+        &mut b,
+        branch(0, &["u1", "u2", "u3"], vec![run(0, 2), run(2, 1)]),
+    );
     // 第 2 条起那一段长了一条 ⇒ 那台从它的段首起整段重发。
-    let out = b.step(branch(2, &["u3", "u4"], vec![run(2, 2)]));
+    let out = p.step(&mut b, branch(2, &["u3", "u4"], vec![run(2, 2)]));
     assert_eq!(runs_of(&out), [run(0, 2), run(2, 2)]);
     let r = b.replay(&[]);
     let replayed: Vec<_> = r
@@ -354,18 +496,22 @@ fn the_branch_list_on_hand_is_handed_back_across_a_lost_link_said_unclear() {
             .collect::<std::collections::BTreeSet<_>>()
     };
     let mut b = Book::default();
-    b.step(live("pi", "a"));
-    b.step(live("pi", "b"));
-    b.step(branch("a", 0, &["u1", "u2"], "s2"));
-    b.step(branch("a", 2, &["u3"], "s3"));
-    b.step(branch("b", 0, &["x"], "sx"));
-    b.step(branch("b", 5, &["y"], "sy")); // 前 5 条照旧，手上只有 1 条 ⇒ 中间缺过
-                                          // 断的那一刻本机后端先说两条说不清，再收这一条连接。
-    b.step(left("pi", "a", "unclear"));
-    b.step(left("pi", "b", "unclear"));
-    b.step(In::Closed {
-        origin: "pi".into(),
-    });
+    let mut p = Peer::default();
+    p.step(&mut b, live("pi", "a"));
+    p.step(&mut b, live("pi", "b"));
+    p.step(&mut b, branch("a", 0, &["u1", "u2"], "s2"));
+    p.step(&mut b, branch("a", 2, &["u3"], "s3"));
+    p.step(&mut b, branch("b", 0, &["x"], "sx"));
+    p.step(&mut b, branch("b", 5, &["y"], "sy")); // 前 5 条照旧，手上只有 1 条 ⇒ 中间缺过
+                                                  // 断的那一刻本机后端先说两条说不清，再收这一条连接。
+    p.step(&mut b, left("pi", "a", "unclear"));
+    p.step(&mut b, left("pi", "b", "unclear"));
+    p.step(
+        &mut b,
+        In::Closed {
+            origin: "pi".into(),
+        },
+    );
     assert_eq!(
         b.branch_held(&pi, &sids(&["a", "b", "c"])),
         vec![
@@ -381,8 +527,8 @@ fn the_branch_list_on_hand_is_handed_back_across_a_lost_link_said_unclear() {
         "断线之后交回的手上那份不对"
     );
     // 重接：那台报完清单时 a 不在了 ⇒ 摘。
-    b.step(live("pi", "b"));
-    b.step(listed("pi"));
+    p.step(&mut b, live("pi", "b"));
+    p.step(&mut b, listed("pi"));
     assert_eq!(b.branch_held(&pi, &sids(&["a"])), vec![nothing("a")]);
 }
 
@@ -404,8 +550,9 @@ fn a_branch_list_read_before_the_old_links_last_frame_still_ends_where_the_peer_
     };
     let only_a: std::collections::BTreeSet<String> = ["a".to_string()].into();
     let mut b = Book::default();
-    b.step(live("pi", "a"));
-    b.step(branch(0, &["u1", "u2"], "s2"));
+    let mut p = Peer::default();
+    p.step(&mut b, live("pi", "a"));
+    p.step(&mut b, branch(0, &["u1", "u2"], "s2"));
     // 写 attach 行那一刻读的：旧连接那一帧（前 2 条照旧，其后 u3）还压在队列里。
     let read_early = b.branch_held(&pi, &only_a);
     assert_eq!(
@@ -417,9 +564,9 @@ fn a_branch_list_read_before_the_old_links_last_frame_still_ends_where_the_peer_
             sum: Some("s2".into()),
         }]
     );
-    b.step(branch(2, &["u3"], "s3"));
+    p.step(&mut b, branch(2, &["u3"], "s3"));
     // 新连接上那台照读早的那份补：此刻它的清单是 u1..u4，从第 2 条起补。
-    let out = b.step(branch(2, &["u3", "u4"], "s4"));
+    let out = p.step(&mut b, branch(2, &["u3", "u4"], "s4"));
     let Some(Out::Branch { off, .. }) = out.last() else {
         panic!("{out:?}");
     };
@@ -442,4 +589,68 @@ fn went(l: &cmd_wire::frame::SessionLeft) -> &'static str {
         cmd_wire::frame::Life::Unclear => "Unclear",
         _ => "Ended",
     }
+}
+
+/// 交出去的那几格里未读那几格（会话 · 写好的字）。
+fn unread_outs(outs: &[Out]) -> Vec<(String, Option<String>)> {
+    outs.iter()
+        .filter_map(|o| match o {
+            Out::Unread { unread, .. } => Some((
+                unread.sid.clone(),
+                unread.said.as_ref().map(|w| w.0.clone()),
+            )),
+            _ => None,
+        })
+        .collect()
+}
+
+fn un(sid: &str, said: Option<&str>) -> (String, Option<String>) {
+    (sid.to_string(), said.map(str::to_string))
+}
+
+/// ★ 未读：整条里那一格变了才交界面一格（照整条换，这一侧不数）；整本换掉、手上有而整本里没有的交「没有了」；
+/// 那条连接收了 ⇒ 那台的未读整份作废、各交一格「没有了」（说不清不留数）；F5 重放末尾再说一次手上的。
+#[test]
+fn unread_moves_with_the_seats_and_goes_with_the_connection() {
+    use cmd_wire::cells::Words;
+    use cmd_wire::frame::{SessionSeat, SessionSeats};
+    let mut b = Book::default();
+    let seat = |sid: &str, said: Option<&str>| {
+        SessionSeat::of(
+            sid,
+            None,
+            None,
+            None,
+            said.map(|s| Words(s.into())).as_ref(),
+        )
+    };
+    let seats = |v: Vec<SessionSeat>, whole: bool| In::Seats {
+        origin: "pi".into(),
+        seats: SessionSeats {
+            seats: v,
+            listed: false,
+            whole,
+        },
+    };
+    assert_eq!(
+        unread_outs(&b.step(seats(vec![seat("a", Some("2"))], false))),
+        [un("a", Some("2"))]
+    );
+    assert!(
+        unread_outs(&b.step(seats(vec![seat("a", Some("2"))], false))).is_empty(),
+        "没变不交"
+    );
+    b.step(seats(vec![seat("b", Some("1"))], false));
+    assert_eq!(
+        unread_outs(&b.step(seats(vec![seat("b", Some("3"))], true))),
+        [un("a", None), un("b", Some("3"))]
+    );
+    assert_eq!(unread_outs(&b.replay(&[]).after), [un("b", Some("3"))]);
+    assert_eq!(
+        unread_outs(&b.step(In::Closed {
+            origin: "pi".into()
+        })),
+        [un("b", None)]
+    );
+    assert!(unread_outs(&b.replay(&[]).after).is_empty());
 }

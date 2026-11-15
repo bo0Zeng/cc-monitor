@@ -392,3 +392,15 @@ fn our_own_alias_links_on_path_are_not_a_name_clash() {
         "真程序没查出来（尺子坏了）：{said}"
     );
 }
+
+/// 一个 POSIX 词要不要加引号只判一处（[`posix_word`]）：只由安全字符组成的原样，空的与别的一律单引号。
+/// 待办复制那一行 · 交出去的 `ccm …` 那一行 · 别名文件那几行都经它。
+#[test]
+fn a_posix_word_is_bare_only_when_every_char_is_safe() {
+    for w in ["claude", "a_b-c.d/e:f@g%h+i=j,k", "/usr/bin/ccm", "X9"] {
+        assert_eq!(posix_word(w), w, "{w}");
+    }
+    for w in ["", "a b", "it's", "$HOME", "照片", "a*b", "~x"] {
+        assert_eq!(posix_word(w), shell_quote_core::posix_quote(w), "{w:?}");
+    }
+}

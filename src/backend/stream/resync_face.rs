@@ -34,10 +34,40 @@ impl crate::wire::typed::Handle for ResyncCmd {
         Ok(Resynced {
             added: d.added,
             removed: d.removed,
-            retagged: d.retagged,
-            caught_up: d.caught_up,
-            watchers,
+            said: said(d.added, d.removed, d.retagged, d.caught_up, watchers),
             unavailable: crate::stream::inbound::unavailable_here(),
         })
     }
+}
+
+/// 对齐的结果 ⇒ 一句话：补读了几条（0 ⇒「无遗漏」）接差异（全 0 ⇒「与实际一致」）；没有一份 watcher 在看 ⇒ 只那一句。
+pub(crate) fn said(
+    added: usize,
+    removed: usize,
+    retagged: usize,
+    caught_up: usize,
+    watchers: usize,
+) -> String {
+    use copy_core::copy_text;
+    if watchers == 0 {
+        return copy_text("resync.done.nobody", &[]);
+    }
+    let diff = if added + removed + retagged == 0 {
+        copy_text("resync.done.same", &[])
+    } else {
+        copy_text(
+            "resync.done.diff",
+            &[
+                ("added", &added.to_string()),
+                ("removed", &removed.to_string()),
+                ("retagged", &retagged.to_string()),
+            ],
+        )
+    };
+    let caught = if caught_up == 0 {
+        copy_text("resync.done.caughtNone", &[])
+    } else {
+        copy_text("resync.done.caughtUp", &[("n", &caught_up.to_string())])
+    };
+    format!("{caught}{diff}")
 }

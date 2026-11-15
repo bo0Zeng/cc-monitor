@@ -145,7 +145,7 @@ describe("清单与交的那条命令", () => {
     await flush();
     expect(menuItems()).toEqual([copyText("session.model.title"), "核心·默认", "核心·Sonnet", "核心·Opus", "核心·换模型也改此号以后新会话的默认"]);
     choose("核心·Sonnet");
-    expect(host.send).toHaveBeenCalledWith(expect.objectContaining({ sessionId: "s1" }), "model", "sonnet");
+    expect(host.send).toHaveBeenCalledWith(expect.objectContaining({ sessionId: "s1" }), "model", "sonnet", undefined);
   });
 
   it("★ 模型：没在这里换过 ⇒ 勾会话事实说的那一项（modelPick）；认不出 ⇒ 一项都不勾", async () => {
@@ -163,7 +163,7 @@ describe("清单与交的那条命令", () => {
     await flush();
     expect(menuItems()).toEqual([copyText("session.permission.title"), "核心·逐个确认", "✓核心·自动接受编辑", "核心·规划模式"]);
     choose("核心·规划模式");
-    expect(host.send).toHaveBeenCalledWith(expect.anything(), "permission", "plan");
+    expect(host.send).toHaveBeenCalledWith(expect.anything(), "permission", "plan", undefined);
   });
 
   it("按会话事实的 agent 认那一家；清单问不到 ⇒ 菜单里一行灰项写那一句", async () => {
@@ -181,6 +181,67 @@ describe("清单与交的那条命令", () => {
     expect(sent).toEqual([
       { op: "session-model", body: { sid: "s1", model: "sonnet" } },
       { op: "session-permission", body: { sid: "s1", mode: "plan" } },
+    ]);
+  });
+});
+
+describe("推理档：照那个模型的 efforts（字照后端 · 先后照后端 · 勾 defaultEffort）", () => {
+  /** 同 [`FACTS`]，只 Opus 带三档（先后故意不按字母，界面不该重排）。 */
+  const EFFORT_FACTS = {
+    ...FACTS,
+    agents: [
+      {
+        ...FACTS.agents[0],
+        models: [
+          { value: "sonnet", text: "核心·Sonnet" },
+          { value: "haiku", text: "核心·Haiku", efforts: [] },
+          {
+            value: "opus",
+            text: "核心·Opus",
+            efforts: [
+              { value: "medium", text: "核心·中" },
+              { value: "high", text: "核心·高" },
+              { value: "low", text: "核心·低" },
+            ],
+            defaultEffort: "high",
+          },
+        ],
+      },
+    ],
+  } as unknown as OpenFacts;
+
+  it("★ 有 efforts ⇒ 那个模型多一步：组名「推理档」＋ 各档照后端的字与先后、勾 defaultEffort；选一档 ⇒ 送那个模型 ＋ 那一档的原值", async () => {
+    const { chip, host } = rig(tab(), { facts: Promise.resolve(EFFORT_FACTS) });
+    await flush();
+    chip("model").click();
+    await flush();
+    expect(menuItems()).toEqual([copyText("session.model.title"), "核心·默认", "核心·Sonnet", "核心·Haiku", "核心·Opus", copyText("session.effort.title"), "核心·中", "✓核心·高", "核心·低", "核心·换模型也改此号以后新会话的默认"]);
+    const opus = [...document.querySelectorAll<HTMLElement>('[role="menu"] [role^="menuitem"]')].find((i) => i.textContent === "核心·Opus")!;
+    expect(opus.getAttribute("aria-haspopup"), "有档的那一项只负责展开").toBe("menu");
+    choose("核心·低");
+    expect(host.send).toHaveBeenCalledWith(expect.objectContaining({ sessionId: "s1" }), "model", "opus", "low");
+  });
+
+  it("★ efforts 不在 · 是空的 ⇒ 不出那一步、点了就送，不带推理档", async () => {
+    const { chip, host } = rig(tab(), { facts: Promise.resolve(EFFORT_FACTS) });
+    await flush();
+    chip("model").click();
+    await flush();
+    const sonnet = [...document.querySelectorAll<HTMLElement>('[role="menu"] [role^="menuitem"]')].find((i) => i.textContent === "核心·Sonnet")!;
+    expect(sonnet.hasAttribute("aria-haspopup")).toBe(false);
+    const haiku = [...document.querySelectorAll<HTMLElement>('[role="menu"] [role^="menuitem"]')].find((i) => i.textContent === "核心·Haiku")!;
+    expect(haiku.hasAttribute("aria-haspopup"), "空的 efforts 也不出那一步").toBe(false);
+    choose("核心·Sonnet");
+    expect(host.send).toHaveBeenCalledWith(expect.anything(), "model", "sonnet", undefined);
+  });
+
+  it("★ 入参：选了档 ⇒ session-model {sid, model, effort}；没选 ⇒ 不带 effort 这一格", async () => {
+    answer = () => ({ result: "done", model: "Opus" });
+    await switchModel("devbox", "s1", "opus", "low");
+    await switchModel("devbox", "s1", "sonnet");
+    expect(sent).toEqual([
+      { op: "session-model", body: { sid: "s1", model: "opus", effort: "low" } },
+      { op: "session-model", body: { sid: "s1", model: "sonnet" } },
     ]);
   });
 });

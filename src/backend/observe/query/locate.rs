@@ -1,9 +1,10 @@
 //! 找记录与过围栏：路径限在记录树 `projects/` 之内（canonicalize 后前缀校验，防 `../` 穿越）· 按 sid 找记录 · 子运行的记录住哪 ·
 //! 冷开那几问要的扫描图（过同一道围栏再问 [`crate::observe::record_scan`]）。只读：只 read_dir / read。
 
+use crate::agents::AgentHome;
 use crate::common::fence::Fence;
 use crate::common::said::Said;
-use crate::history::listing::{fence_under_projects, records_root, NO_TREE};
+use crate::history::listing::NO_TREE;
 use crate::platform::fs::{Ro, RoFile};
 use copy_core::copy_text;
 use std::path::Path;
@@ -14,11 +15,13 @@ use std::path::Path;
 /// 给的是工具调用 id ⇒ 先问子运行记录那一侧派出那一刻落盘的对上（`ChildFace::spawned`，前台派出的在跑时只有它），
 /// 再在父记录里找那次调用的派出链接（只解析含这个 id 的行）；都对不上 ⇒ `not_found`。
 pub fn run_source(
-    agent_home: &Path,
+    agent_home: impl crate::agents::IntoHomes,
     parent: &str,
     run: Option<&str>,
     tool: Option<&str>,
 ) -> Result<(std::path::PathBuf, String), Said> {
+    let agent_home_v = crate::agents::IntoHomes::into_homes(agent_home);
+    let agent_home: &[crate::agents::AgentHome] = &agent_home_v;
     let parent_path =
         validate_session_path(agent_home, parent).map_err(|e| Said::new("path_refused", e))?;
     let faces = crate::agents::record_face_of(&parent_path)
@@ -92,123 +95,218 @@ fn first_run_of(path: &Path, faces: &crate::agents::RunFaces) -> Option<String> 
         .map(|m| m.run)
 }
 
-/// 按路径读一份会话之前的围栏：Claude 的 `projects/` ∪ 注册表里各家合成历史面给的记录根。
+/// 按路径读一份会话之前的围栏：家目录记录树的 `projects/` ∪ 根表上各家合成历史面的那几个根（[`crate::agents::history_roots_among`]）。
 pub(crate) fn validate_session_path(
-    agent_home: &Path,
+    agent_home: impl crate::agents::IntoHomes,
     jsonl_path: &str,
 ) -> Result<std::path::PathBuf, String> {
-    validate_session_path_among(agent_home, &crate::agents::history_roots(), jsonl_path)
+    let agent_home_v = crate::agents::IntoHomes::into_homes(agent_home);
+    let agent_home: &[crate::agents::AgentHome] = &agent_home_v;
+    validate_session_path_among(crate::agents::REGISTRY, agent_home, jsonl_path)
 }
 
-/// [`validate_session_path`] 的本体，「另外认哪几个根」是参数（判据喂临时目录，不去动进程环境）。
+/// [`validate_session_path`] 的可喂夹具那一半：另外认哪几个根 · 认不认是一份会话记录都照 `registry` 问。
 ///
-/// 历史浏览器本机远端都会列出 Codex 会话（C4d 起后端合成），而本机冷读也改走后端之后，
-/// 这道围栏只认 `projects/` ⇒ 列得出、打不开。根由适配层给（`HistoryFace.root`），这里不写死路径。
-/// 另外那几个根**只收绝对路径**（相对路径的意思只在 `projects/` 下有定义）；
+/// 历史清单列得出的合成历史那几家的会话（各号的家 · 日期树与归档根都算）要经同一道围栏打得开。根由适配层照各号的家给
+/// （`HistoryFace.roots`，经根表），这里不写死路径。另外那几个根**只收绝对路径**（相对路径的意思只在 `projects/` 下有定义）；
 /// 都不在 ⇒ 回 `projects/` 那一句拒绝（它是今天所有调用方认得的那一句）。
 fn validate_session_path_among(
-    agent_home: &Path,
-    extra_roots: &[std::path::PathBuf],
+    registry: &[crate::agents::Adapter],
+    agent_home: impl crate::agents::IntoHomes,
     jsonl_path: &str,
 ) -> Result<std::path::PathBuf, String> {
+    admitted_among(registry, agent_home, jsonl_path).map(|(_, p)| p)
+}
+
+/// [`validate_session_path_among`] 的本体：连放行它的那一根那一家一起交回（家目录记录树 ⇒ 那个家那一家；合成历史的根 ⇒ 根表上那一根那一家）。
+fn admitted_among(
+    registry: &[crate::agents::Adapter],
+    agent_home: impl crate::agents::IntoHomes,
+    jsonl_path: &str,
+) -> Result<(&'static str, std::path::PathBuf), String> {
+    let agent_home_v = crate::agents::IntoHomes::into_homes(agent_home);
+    let agent_home: &[crate::agents::AgentHome] = &agent_home_v;
     let candidate = Path::new(jsonl_path);
-    let target = match fence_under_projects(agent_home, candidate) {
-        Ok(t) => t,
-        Err(refused) if candidate.is_absolute() => extra_roots
+    let (kind, target) = match crate::history::listing::fenced(agent_home, candidate) {
+        Ok((home, t)) => (home.kind, t),
+        Err(refused) if candidate.is_absolute() => crate::agents::history_roots_among(registry)
             .iter()
-            .find_map(|r| Fence::at(r).and_then(|f| f.admit(candidate)).ok())
+            .find_map(|(kind, r)| {
+                Fence::at(r)
+                    .and_then(|f| f.admit(candidate))
+                    .ok()
+                    .map(|t| (*kind, t))
+            })
             .ok_or(refused)?,
         Err(refused) => return Err(refused),
     };
-    if !crate::agents::is_own_session_file(&target) {
+    if !crate::agents::record_face_among(registry, &target)
+        .is_some_and(|r| (r.is_session_file)(&target))
+    {
         return Err("refusing to read non-jsonl file".into());
     }
-    Ok(target)
+    Ok((kind, target))
+}
+
+/// 过围栏的那一份与它归的那一家（放行它的那一根上取的，扫描图照它读，[`super::super::record_scan::Family`]）。
+fn scan_target(
+    agent_home: &[AgentHome],
+    jsonl_path: &str,
+) -> Result<
+    (
+        std::path::PathBuf,
+        Option<super::super::record_scan::Family>,
+    ),
+    String,
+> {
+    let (kind, target) = admitted_among(crate::agents::REGISTRY, agent_home, jsonl_path)?;
+    Ok((target, super::super::record_scan::Family::of(kind)))
 }
 
 /// 冷开那几问共用的扫描图（过读会话那同一道围栏；没变就是留着的那张，见 [`super::super::record_scan`]）。
 pub fn cold_scan(
-    agent_home: &Path,
+    agent_home: impl crate::agents::IntoHomes,
     jsonl_path: &str,
 ) -> Result<std::sync::Arc<super::super::record_scan::ScanMap>, String> {
-    let target = validate_session_path(agent_home, jsonl_path)?;
+    let agent_home_v = crate::agents::IntoHomes::into_homes(agent_home);
+    let agent_home: &[crate::agents::AgentHome] = &agent_home_v;
+    let (target, family) = scan_target(agent_home, jsonl_path)?;
     super::super::record_scan::global()
-        .get(&target)
+        .get(&target, family)
         .map_err(|e| format!("open failed: {e}"))
+}
+
+/// 按行号取正文的起点：过围栏的那一份（围栏只在这里校一次，读的一方照它交回的路径开）与第 `want` 个可计行的前一行从哪开始、
+/// 它是第几行（[`super::super::record_scan::RecordScans::seek_line`]）。围栏拒 ⇒ `Err(Refused)`；图取不到 ⇒ `Err(Failed)`。
+pub fn line_seek(
+    agent_home: impl crate::agents::IntoHomes,
+    jsonl_path: &str,
+    want: u64,
+) -> Result<(std::path::PathBuf, (u64, u64)), SeekError> {
+    let agent_home_v = crate::agents::IntoHomes::into_homes(agent_home);
+    let (target, family) = scan_target(&agent_home_v, jsonl_path).map_err(SeekError::Refused)?;
+    let at = super::super::record_scan::global()
+        .seek_line(&target, family, want)
+        .map_err(|e| SeekError::Failed(format!("open failed: {e}")))?;
+    Ok((target, at))
+}
+
+/// [`line_seek`] 拒在哪一步：围栏不放行 · 放行了但读不了。
+#[derive(Debug)]
+pub enum SeekError {
+    Refused(String),
+    Failed(String),
 }
 
 /// 会话事实（同一道围栏）：图在 ⇒ 照图；图被挤掉 ⇒ 接着它留下的事实尾巴读；都没有 ⇒ 现扫（见 [`super::super::record_scan::RecordScans::facts`]）。
 pub fn facts(
-    agent_home: &Path,
+    agent_home: impl crate::agents::IntoHomes,
     jsonl_path: &str,
     limits: &super::super::recognize::facts::ContextLimits,
     relay: Option<bool>,
 ) -> Result<super::super::recognize::facts::SessionFacts, String> {
-    let target = validate_session_path(agent_home, jsonl_path)?;
+    let agent_home_v = crate::agents::IntoHomes::into_homes(agent_home);
+    let agent_home: &[crate::agents::AgentHome] = &agent_home_v;
+    let (target, family) = scan_target(agent_home, jsonl_path)?;
     super::super::record_scan::global()
-        .facts(&target, limits, relay)
+        .facts(&target, family, limits, relay)
         .map_err(|e| format!("open failed: {e}"))
 }
 
-/// 会话事实里照这台活会话表配的那两格（`facts_in` 与 [`live_line`] 共用这一处）：pidfile 此刻说在等 ⇒ 配上记录里没结果的那一步判种类
-/// （`needs`，还没配待答请求）；说一轮停了、后台命令还在跑 ⇒ 后台那一句（`background`）。都不累加，每次现查。
+/// 会话事实照这台活会话表配的那两样（`facts_in` 与 [`live_line`] 共用这一处）：pidfile 此刻说在等 ⇒ 配上记录里没结果的那一步判种类，
+/// 交回那一份需手动与何时起等（[`Needs`](super::super::recognize::facts::Needs)，还没配待答请求；调用方写进 `needs` 或交给状态一句）；
+/// 说一轮停了、后台命令还在跑 ⇒ 写好后台那一句（`background`）。都不累加，每次现查。
 pub fn dress_live(
     facts: &mut super::super::recognize::facts::SessionFacts,
     live: &crate::history::live_table::LiveTable,
     sid: &str,
     path: &Path,
     now_ms: u64,
-) {
+) -> Option<super::super::recognize::facts::Needs> {
     use super::super::recognize::facts;
-    facts.needs = facts::needs_of(
-        crate::agents::record_kind_of(path).unwrap_or_default(),
-        &facts.pending,
-        live.wait_of(sid).as_ref(),
-    );
     facts.background = live
         .background_since(sid)
         .map(|born| facts::background_of(&facts.bg_tasks, born, now_ms));
+    facts::needs_of(
+        crate::agents::record_kind_of(path),
+        &facts.pending,
+        live.wait_of(sid).as_ref(),
+    )
 }
 
 /// **一条活会话此刻的状态一句**（定格的字 · 会走的那一截 · 悬停句；句子只由 [`super::super::recognize::facts::line_of`] 写）：
 /// `activity` ＝ 造脸那一处判好的那一态（不活 ⇒ `None` ⇒ 没有这一句，不读记录）；记录照 `history-facts` 读的同一份扫描图（[`facts`]，过同一道围栏）；
 /// 需手动的种类与后台那一句照调用方给的活会话表配（[`dress_live`]）。记录读不了 ⇒ `None`。读者：watcher 造脸那一处。
 pub(crate) fn live_line(
-    agent_home: &Path,
+    agent_home: impl crate::agents::IntoHomes,
     sid: &str,
     jsonl_path: &str,
     activity: Option<crate::agents::SessionActivity>,
     live: &crate::history::live_table::LiveTable,
 ) -> Option<crate::wire::StateLine> {
+    let agent_home_v = crate::agents::IntoHomes::into_homes(agent_home);
+    let agent_home: &[crate::agents::AgentHome] = &agent_home_v;
     let activity = activity?;
     let limits = super::super::recognize::facts::ContextLimits::default();
     let mut f = facts(agent_home, jsonl_path, &limits, None).ok()?;
-    dress_live(
+    let hung = crate::history::needs_changed::pending_of(sid)
+        .into_iter()
+        .next();
+    line_with(
+        activity,
         &mut f,
         live,
         sid,
         Path::new(jsonl_path),
+        hung,
         crate::common::time::now_ms(),
-    );
-    super::super::recognize::facts::line_of(Some(activity), &f)
+    )
+}
+
+/// [`live_line`] 读完记录之后那一截：照活动表配好在等的那一份，再配上挂着的那一条请求（[`dress_ask_with`](super::super::recognize::facts::dress_ask_with)，
+/// 同会话事实那一处），状态一句照配好的那一份写（脸上的点分不分待答请求只看它交没交 `ask`）。`hung` ＝ 这条会话最早挂上的那一条。
+pub(crate) fn line_with(
+    activity: crate::agents::SessionActivity,
+    f: &mut super::super::recognize::facts::SessionFacts,
+    live: &crate::history::live_table::LiveTable,
+    sid: &str,
+    path: &Path,
+    hung: Option<crate::agents::asks::Asked>,
+    now_ms: u64,
+) -> Option<crate::wire::StateLine> {
+    use super::super::recognize::facts;
+    let needs = facts::dress_ask_with(dress_live(f, live, sid, path, now_ms), hung, now_ms);
+    facts::line_of(Some(activity), f, needs.as_ref())
 }
 
 /// 续取用（同一道围栏）：从 `from` 起问的那一张扫描图（同 [`cold_scan`]：留着且没变 ⇒ 那一张；变长了 ⇒ 接着扫追加的那一截；
 /// 不在了 ⇒ 照骨架起步或整份重扫）。`from` 越过文件尾 ⇒ 报错（截断 / 重写过，调用方从 0 重要）。
 pub(crate) fn scan_from(
-    agent_home: &Path,
+    agent_home: impl crate::agents::IntoHomes,
     jsonl_path: &str,
     from: u64,
 ) -> Result<std::sync::Arc<super::super::record_scan::ScanMap>, String> {
-    let target = within(agent_home, jsonl_path, from)?;
+    let agent_home_v = crate::agents::IntoHomes::into_homes(agent_home);
+    let agent_home: &[crate::agents::AgentHome] = &agent_home_v;
+    let (target, family) = within(agent_home, jsonl_path, from)?;
     super::super::record_scan::global()
-        .get(&target)
+        .get(&target, family)
         .map_err(|e| format!("open failed: {e}"))
 }
 
 /// 续取的那两条（[`scan_from`] · [`index_rows`]）共用：过围栏、`from` 不越过文件尾。
-fn within(agent_home: &Path, jsonl_path: &str, from: u64) -> Result<std::path::PathBuf, String> {
-    let target = validate_session_path(agent_home, jsonl_path)?;
+fn within(
+    agent_home: &[AgentHome],
+    jsonl_path: &str,
+    from: u64,
+) -> Result<
+    (
+        std::path::PathBuf,
+        Option<super::super::record_scan::Family>,
+    ),
+    String,
+> {
+    let (target, family) = scan_target(agent_home, jsonl_path)?;
     let len = Ro::metadata(&target)
         .map_err(|e| format!("stat failed: {e}"))?
         .len();
@@ -217,53 +315,76 @@ fn within(agent_home: &Path, jsonl_path: &str, from: u64) -> Result<std::path::P
             "`from` {from} is past EOF ({len} bytes): file was truncated or rewritten"
         ));
     }
-    Ok(target)
+    Ok((target, family))
 }
 
 /// 骨架索引从字节 `from` 起的行（同一道围栏；照图切还是只读那一截见 [`super::super::record_scan::RecordScans::index_rows`]）。
 /// `from` 越过文件尾 ⇒ 报错（截断 / 重写过，调用方从 0 重要）。
 pub(crate) fn index_rows(
-    agent_home: &Path,
+    agent_home: impl crate::agents::IntoHomes,
     jsonl_path: &str,
     from: u64,
     take: impl FnMut(&super::super::recognize::index_row::IndexRow) -> bool,
 ) -> Result<u64, String> {
-    let target = within(agent_home, jsonl_path, from)?;
+    let agent_home_v = crate::agents::IntoHomes::into_homes(agent_home);
+    let agent_home: &[crate::agents::AgentHome] = &agent_home_v;
+    let (target, family) = within(agent_home, jsonl_path, from)?;
     super::super::record_scan::global()
-        .index_rows(&target, from, take)
+        .index_rows(&target, family, from, take)
         .map_err(|e| format!("open failed: {e}"))
 }
 
 /// `history-facts` 的项目目录那一格：过读会话那同一道围栏，再问记录归属的那一家（只读开头）。
-pub fn facts_project_dir(agent_home: &Path, jsonl_path: &str) -> Option<String> {
-    let target = validate_session_path(agent_home, jsonl_path).ok()?;
-    crate::agents::project_dir_of(&target)
+pub fn facts_project_dir(
+    agent_home: impl crate::agents::IntoHomes,
+    jsonl_path: &str,
+) -> Option<String> {
+    // 围栏与归属同一份注册表（生产那一份只在这里取）。
+    let registry = crate::agents::REGISTRY;
+    let agent_home_v = crate::agents::IntoHomes::into_homes_among(agent_home, registry);
+    let agent_home: &[crate::agents::AgentHome] = &agent_home_v;
+    let target = validate_session_path_among(registry, agent_home, jsonl_path).ok()?;
+    crate::agents::project_dir_among(registry, &target)
 }
 
 /// `history-facts` 的 `agent`：这份记录是哪一家的（适配层按记录认）。
-pub fn facts_agent(agent_home: &Path, jsonl_path: &str) -> Option<String> {
+pub fn facts_agent(agent_home: impl crate::agents::IntoHomes, jsonl_path: &str) -> Option<String> {
+    let agent_home_v = crate::agents::IntoHomes::into_homes(agent_home);
+    let agent_home: &[crate::agents::AgentHome] = &agent_home_v;
     let target = validate_session_path(agent_home, jsonl_path).ok()?;
     crate::agents::record_kind_of(&target).map(str::to_string)
 }
 
 /// 这条会话此刻谁持着它（[`super::super::accounts_query::session_holders`]，先过同一道围栏）；过不了围栏 / 判不了 ⇒ `None`。
-pub fn facts_holders(agent_home: &Path, jsonl_path: &str) -> Option<Vec<u32>> {
+pub fn facts_holders(
+    agent_home: impl crate::agents::IntoHomes,
+    jsonl_path: &str,
+) -> Option<Vec<u32>> {
+    let agent_home_v = crate::agents::IntoHomes::into_homes(agent_home);
+    let agent_home: &[crate::agents::AgentHome] = &agent_home_v;
     let target = validate_session_path(agent_home, jsonl_path).ok()?;
     super::super::accounts_query::session_holders(agent_home, &target)
 }
 
 /// 过了围栏的会话文件路径（`history-find` 先拿它问常驻索引）。
-pub fn session_path_at(agent_home: &Path, jsonl_path: &str) -> Result<std::path::PathBuf, String> {
+pub fn session_path_at(
+    agent_home: impl crate::agents::IntoHomes,
+    jsonl_path: &str,
+) -> Result<std::path::PathBuf, String> {
+    let agent_home_v = crate::agents::IntoHomes::into_homes(agent_home);
+    let agent_home: &[crate::agents::AgentHome] = &agent_home_v;
     validate_session_path(agent_home, jsonl_path)
 }
 
 /// 过围栏、打开、定位到 `offset` —— 骨架索引与会话内查找共用这一处
 /// （帧面那一臂出成品，不经 `out`，见 `read_face.rs`）。
 pub fn open_session_at(
-    agent_home: &Path,
+    agent_home: impl crate::agents::IntoHomes,
     jsonl_path: &str,
     offset: u64,
 ) -> Result<std::io::BufReader<RoFile>, String> {
+    let agent_home_v = crate::agents::IntoHomes::into_homes(agent_home);
+    let agent_home: &[crate::agents::AgentHome] = &agent_home_v;
     use std::io::{Seek, SeekFrom};
     let target = validate_session_path(agent_home, jsonl_path)?;
     let mut f = Ro::open(&target).map_err(|e| format!("open failed: {e}"))?;
@@ -282,28 +403,53 @@ pub fn open_session_at(
 /// - sid 形状不合法 ⇒ `Err`，**先于任何 IO**；找不到 ⇒ `Ok(present = false)` —— 这是一个答案，不是错误。
 /// - 回 `root`：找到 ⇒ 那份所在的记录根；找不到 ⇒ 记录树的根（报错时要说清查了什么）。
 ///
-/// ⚠ **射程如实写**：记录树那一家查的是**这台后端**的记录树（`agent_home()/projects`）。会话若起在另一个
+/// ⚠ **射程如实写**：记录树那几家查的是**这台后端**上各自的记录树（`agent_home` 交来的那几家的家）。会话若起在另一个
 /// 账号的配置根下（`CLAUDE_CONFIG_DIR` 指向别处），这里答「不在」而那边其实有 —— 调用方拿到「不在」
 /// 时报的话要说清是「这棵树里没有」，不是「世上没有」。
-pub(crate) fn record_in(agent_home: &Path, sid: &str) -> Result<RecordProbe, String> {
+pub(crate) fn record_in(
+    agent_home: impl crate::agents::IntoHomes,
+    sid: &str,
+) -> Result<RecordProbe, String> {
+    let agent_home_v = crate::agents::IntoHomes::into_homes(agent_home);
+    let agent_home: &[crate::agents::AgentHome] = &agent_home_v;
     if !shell_quote_core::session_id_ok(sid) {
         return Err(crate::common::contract::malformed(&format!(
             "bad session id shape (letters, digits, hyphen; 1..=64): {sid:?}"
         )));
     }
-    let (present, root) = match crate::agents::find_session(agent_home, sid) {
-        Ok(at) => (true, at.root),
-        Err(_) => (false, records_root(agent_home).ok_or(NO_TREE)?),
+    let (present, root) = match crate::agents::find_session_in(agent_home, sid) {
+        Ok(at) => (true, at.root.to_string_lossy().into_owned()),
+        Err(_) => {
+            let roots: Vec<String> = agent_home
+                .iter()
+                .filter_map(AgentHome::records_root)
+                .map(|r| r.to_string_lossy().into_owned())
+                .collect();
+            if roots.is_empty() {
+                return Err(NO_TREE.to_string());
+            }
+            (false, roots.join(", "))
+        }
     };
-    Ok(RecordProbe {
-        present,
-        root: root.to_string_lossy().into_owned(),
-    })
+    Ok(RecordProbe { present, root })
 }
 
 /// 这台那条会话的记录文件（同 [`record_in`] 那一找，哪一家的都算）。
-pub fn session_record(agent_home: &Path, sid: &str) -> Result<std::path::PathBuf, String> {
-    crate::agents::find_session(agent_home, sid).map(|at| at.file)
+pub fn session_record(
+    agent_home: impl crate::agents::IntoHomes,
+    sid: &str,
+) -> Result<std::path::PathBuf, String> {
+    session_at(agent_home, sid).map(|at| at.file)
+}
+
+/// 按 sid 找到的那一条（[`crate::agents::SessionAt`]：哪一家 · 那个号的家 · 记录根 · 文件）。认家照这一下找到它的那一家，不照路径另猜。
+pub fn session_at(
+    agent_home: impl crate::agents::IntoHomes,
+    sid: &str,
+) -> Result<crate::agents::SessionAt, String> {
+    let agent_home_v = crate::agents::IntoHomes::into_homes(agent_home);
+    let agent_home: &[crate::agents::AgentHome] = &agent_home_v;
+    crate::agents::find_session_in(agent_home, sid)
 }
 
 /// [`record_in`] 按**这次 resume 要用的那个账号配置目录**查（`history-record` 的 `configDir`）。
@@ -318,15 +464,23 @@ pub fn session_record(agent_home: &Path, sid: &str) -> Result<std::path::PathBuf
 /// 只答在不在、查的是哪棵树 —— 不回内容，不收别的路径。答了的「在 / 不在」交这台的会话账本（[`super::super::record_hook::seen`]：
 /// 说过已结束的那条随之在「已结束 ⇄ 记录已不在」之间翻）。
 pub fn record_for(
-    agent_home: &Path,
+    agent_home: impl crate::agents::IntoHomes,
     config_dir: Option<&str>,
     sid: &str,
 ) -> Result<RecordProbe, String> {
-    let tree = match config_dir {
-        None => agent_home.to_path_buf(),
-        Some(d) if super::super::accounts_query::is_safe_config_dir(d) => {
-            std::path::PathBuf::from(d)
-        }
+    let agent_home_v = crate::agents::IntoHomes::into_homes(agent_home);
+    let agent_home: &[crate::agents::AgentHome] = &agent_home_v;
+    let tree: Vec<AgentHome> = match config_dir {
+        None => agent_home.to_vec(),
+        Some(d) if super::super::accounts_query::is_safe_config_dir(d) => agent_home
+            .iter()
+            .filter_map(|h| {
+                Some(AgentHome {
+                    kind: h.kind,
+                    home: crate::agents::home_of(h.kind, Some(Path::new(d)), false)?,
+                })
+            })
+            .collect(),
         Some(d) => {
             return Err(crate::common::contract::malformed(&format!(
                 "configDir is not a queryable account config dir \

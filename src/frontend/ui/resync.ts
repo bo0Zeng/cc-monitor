@@ -10,17 +10,12 @@
 import { copyText } from "./copy-table";
 import { resync, type Resynced } from "./control-said";
 import { toast, failToast } from "./kit/toast";
-import { isLocalOrigin, type Machine } from "./ipc/origin";
+import { machineName } from "./ipc/chan-caller";
+import type { Machine } from "./ipc/origin";
 
-/** 对齐的结果 ⇒ 一句话：对齐差异 ＋补读了几条（0 ⇒「没有漏的」）。 */
+/** 对齐的结果 ⇒ 一句话：后端写好的那一句（补读了几条 ＋ 差异），照抄。 */
 export function resyncSaid(r: Resynced): string {
-  if (r.watchers === 0) return copyText("resync.done.nobody");
-  const diff =
-    r.added + r.removed + r.retagged === 0
-      ? copyText("resync.done.same")
-      : copyText("resync.done.diff", { added: r.added, removed: r.removed, retagged: r.retagged });
-  const caught = r.caughtUp === 0 ? copyText("resync.done.caughtNone") : copyText("resync.done.caughtUp", { n: r.caughtUp });
-  return `${caught}${diff}`;
+  return r.said;
 }
 
 /** 一台的结果：对上了（差异），或没问到（原因）。 */
@@ -45,7 +40,7 @@ export function resyncMachines(origins: Iterable<Machine>): Promise<MachineResyn
 export function resyncMachinesSaid(rs: readonly MachineResynced[]): string {
   return rs
     .map((m) => {
-      const machine = isLocalOrigin(m.origin) ? copyText("detail.label.local") : m.origin;
+      const machine = machineName(m.origin);
       return "r" in m
         ? copyText("kit.text.machineSaid", { machine, said: resyncSaid(m.r) })
         : copyText("resync.machines.failed", { machine, why: m.why });

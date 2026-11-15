@@ -152,3 +152,94 @@ fn the_generic_layer_names_no_agent() {
         }
     }
 }
+
+/// 只有这几个具名号的清单（名字 ⇒ 号目录）。
+fn library(rows: &[(&str, String)]) -> crate::accounts::manage::model::Manifest {
+    use crate::accounts::manage::model::{Account, Entry, Manifest};
+    Manifest {
+        entries: rows
+            .iter()
+            .map(|(name, dir)| {
+                Entry::Managed(Account {
+                    name: (*name).to_string(),
+                    email: String::new(),
+                    config_dir: dir.clone(),
+                    is_default: false,
+                    auth_kind: None,
+                    color: None,
+                    agent: None,
+                    extra: Default::default(),
+                })
+            })
+            .collect(),
+        ..Manifest::default()
+    }
+}
+
+/// 信任照号那一家认：预标取那个号那一家的信任格与配置文件名；同步照家分组（`trust_share_exec::of_family`
+/// 只挑出那一家的号），一家那一趟不带别家的号（不拿这一家的格写进别家的号目录）。
+#[test]
+fn trust_follows_the_family_of_each_account() {
+    use crate::accounts::manage::model::Entry;
+    let stand_in = "stand-in";
+    let reg = [
+        crate::agents::fake::family_row(stand_in, "CCM_STAND_IN_DIR", "si", true, || None),
+        crate::agents::fake::full_row(|| None),
+    ];
+    let mut m = library(&[
+        ("d", "/h/.cc-monitor/accounts/d".to_string()),
+        ("f", "/h/.cc-monitor/accounts/f".to_string()),
+    ]);
+    if let Some(Entry::Managed(a)) = m.entries.get_mut(1) {
+        a.agent = Some(crate::agents::fake::AGENT_KIND.to_string());
+    }
+    let names = |m: &crate::accounts::manage::model::Manifest| -> Vec<String> {
+        m.managed().map(|a| a.name.clone()).collect()
+    };
+    assert_eq!(
+        names(&crate::accounts::manage::trust_share_exec::of_family(
+            &reg, &m, stand_in
+        )),
+        ["d"],
+        "缺席 ⇒ 缺省那一家"
+    );
+    assert_eq!(
+        names(&crate::accounts::manage::trust_share_exec::of_family(
+            &reg,
+            &m,
+            crate::agents::fake::AGENT_KIND
+        )),
+        ["f"]
+    );
+    let (cells, file) = crate::accounts::manage::trust_share_exec::trust_of_account(
+        &reg,
+        &m,
+        "/h/.cc-monitor/accounts/f",
+    )
+    .expect("那一家有信任格");
+    assert_eq!((cells.table, file), ("trusted", "fake-config.json"));
+    assert!(
+        crate::accounts::manage::trust_share_exec::trust_of_account(
+            &reg,
+            &m,
+            "/h/.cc-monitor/accounts/x"
+        )
+        .is_none(),
+        "不在清单里"
+    );
+    let no_trust = [crate::agents::Adapter {
+        accounts: reg[1]
+            .accounts
+            .map(|f| crate::agents::AccountsFace { trust: None, ..f }),
+        ..crate::agents::fake::full_row(|| None)
+    }];
+    assert!(
+        crate::accounts::manage::trust_share_exec::trust_of_account(
+            &no_trust,
+            &m,
+            "/h/.cc-monitor/accounts/f"
+        )
+        .is_none(),
+        "那一家没有「信任」这件事"
+    );
+}

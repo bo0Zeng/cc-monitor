@@ -87,7 +87,7 @@
 - **超时归客户端**：后端零定时器，不替客户端掐表；客户端的期限覆盖「写入 ＋ 等应答」两段，到点就撤单（`cancel`）。
 - **取消是一条普通命令**。撤一个不存在的 `id` 也回 `ok`。阻塞档的命令开跑之后打不断，`cancel` 回 `not_cancellable`（去等它自己的应答），不会回一条假的 `cancelled`。
 - **应答走独立的小通道**（256 条），与出方向的实时帧（每条连接按字节封顶）分开：丢一条内容帧可恢复，丢一条应答客户端会永远等下去。writer 有界地优先应答。
-  同走这条通道的还有几种「丢了就停住」的帧：传输进度（`transfer`）· 测试连接进度（`probe`）· 装后端那一趟的进度（`deploy`）· 终端实时预览的画面与收尾（`terminal_screen` / `terminal_follow_end`）。
+  同走这条通道的还有几种「丢了就停住」的帧：一组一条的进度（`files_batch`：同一台上的复制 · 删 · 改权限与两台之间 `transfer-copy`）· 测试连接进度（`probe`）· 装后端那一趟的进度（`deploy`）· 终端实时预览的画面与收尾（`terminal_screen` / `terminal_follow_end`）。
   终端画面每条订阅至多一帧在途（客户端回执才推下一帧）、每条连接至多 8 条订阅，单帧至多 512 KiB，所以占不满这条通道。
 - **信任边界**：单行上限 1 MiB（超了整行丢、回 `line_too_long`，`id` 从行首至多 4 KiB 里尽力抠）· 坏 JSON 回 `bad_request` 并继续读 · 任何失败都不结束读循环、不结束进程。
 - **码分两层**：协议级码（闭集，见 IPC-COMMANDS.md 第 3 节）与命令无关、只有入方向那一层发得出；命令自己的码列在各命令下面。客户端拿到协议级码 ＝ 客户端代码写错了，别重试。
@@ -117,7 +117,7 @@
 4. 离开：只一帧 `session_left {sid, face}`，去向在 `face.life`（`reconnectable` 容器还在、接得回去 · `ended` 只能 resume，同一个 pidfile 原地换了 sid ⇒ `ended {by}` 带顶替它的那条 · `gone` 记录也不在了）。这台后端自己裁：宣告时就知道不在 tmux 里 ⇒ 当场发；在 tmux 里 · 判不了 ⇒ 等摘除之后那份 tmux 观测回来再发。
 5. 记录文件被动过：`session_file_gone`（不见了，不误判结束）· `session_file_reread`（被截短 / 改写过、已从头重读；重读的行不逐行上流，帧带读完的行数，客户端照宣告那样从尾段取）。两帧都带后端写好的那一句 `said`，两端照摆、不照 `why` 自己映。
 6. 背压：实时通道满时丢帧，排空后发一帧 `overflow`，只带那台写好的一句 `said`（丢了约几行 · 会话状态已重新对齐 · 两样都有）。`line` 丢了可以从记录文件补；会话状态那一类（`session_added` / `session_status` / `session_left`）与不可丢主题的 `changed` 丢了，那台紧跟着在同一条连接上把此刻的样子整份重报一次（`changed` 再发一帧、不带体，客户端重问），客户端不判、不重接。
-7. 别台：各台的常驻流归本机后端（`control/feeds.rs`），那台流上的事原样转给连着本机后端的每条流连接，一种帧 `relayed`：`machine` 说是哪一台，`what` 分三形 ——`line`（那台流上的一行原样，字符串；每条连接先来它的 hello）· `gap`（那台流上超长丢了一行，或这一端挤丢了一行）· `ended`（那台这一条连接断了，下一条从 hello 起）。不进 `overflow`：挤丢了 ⇒ 这条连接在那台下一帧之前先收那台一格 `gap`（断了的那一帧挤丢 ⇒ 补 `ended`）。
+7. 别台：各台的常驻流归本机后端（`control/feeds.rs`），那台流上的事原样转给连着本机后端的每条流连接，一种帧 `relayed`：`machine` 说是哪一台，`what` 分五形 ——`line`（那台流上的一行原样，字符串；每条连接先来它的 hello）· `gap`（那台流上超长丢了一行，或这一端挤丢了一行；补完紧跟那台此刻的整本 `seats`）· `ended`（那台这一条连接断了，下一条从 hello 起）· `seats`（本机后端照那台的会话簿折好的，紧跟折进它的那一行；新连上来的流在那台 hello 之后收一格整本）· `live`（本机后端照那台的活卡板折好的一处，顶替那台流上原样的 `live_card`）。本机这一台同理：attach 行带 `folded` 的连接（壳的那一条）会话帧后紧跟 `session_seats`（挤丢了下一帧之前补一份整本），活卡交 `live_now`、不交 `live_card`；不带 `folded` 的（手机 · 各台常驻流）照旧收原始帧。不进 `overflow`：挤丢了 ⇒ 这条连接在那台下一帧之前先收那台一格 `gap`（断了的那一帧挤丢 ⇒ 补 `ended`）。
 
 ### `changed` 主题表
 
@@ -145,6 +145,7 @@
 | `history_list` | 是 | — | — | — | `history-list` |
 | `groups` | 否 | — | — | — | `groups-read` |
 | `session_queue` | 否 | 带 | — | 带（≤ 16384 B） | `session-queue-read` |
+| `attach` | 是 | 带 | — | 带（≤ 16384 B） | `attach-draft-view` |
 <!-- topic-table:end -->
 
 `key`：`rotation` · `tasks` · `needs` 是会话 id，`plan` 是工作区根。`needs`：需手动可能变了，进程里只一个铃（`history/needs_changed.rs`），从 watcher 的出方向发、不可丢。带 `key` ＝ 那个会话（挂着的请求挂上 · 撤掉 · 答掉 · 「没人答时自动答」改了 · 那台说进出等人 · 离开「活」），重问 `sessions-needs` 与那个会话的 `history-facts`；不带 `key` ＝ 会话外那几项（账号清单动了 · 某个号记「MCP 要登录」的那份文件翻了 · 一份登录作业收了 · 续令牌没成）或计划要人看的数变了，重问 `sessions-needs`（会外那一截在它的整份里）。`rev`：`plan` 是新的输出摘要（同 `plan-read` 的 `rev`），与手上那一份相同 ⇒ 不用问。
@@ -156,6 +157,7 @@
 `history_list`：这台的会话清单可能动了（会话来去 · 名字 / 状态变 · 记录长了 · 注解 · 隐藏规则）；同一个会话在这台答下一份清单之前只说一次（记录每长一行不是每行一帧），连着几下没取走也只一帧。正看着清单的那一屏带着手上的记号（`held`）重问 `history-list`，回包只带变了的那几行；看的是远端那台的，本机后端带 `fresh` 先去同步副本。
 `groups`：这台的组那一半动了（这台那几片的组建 · 改名 · 解散，这台的会话进出组 · 固定变了；注解文件重读时由 watcher 判，只改名字 · 星标不推；本机后端那几条常驻流里哪台接上 · 断开也推一声）；看着组的那一屏重问本机后端 `groups-read`（它自己问到各台再并）。
 `session_queue`：这台某条会话的输入队动了（投进 · 撤 · 送进 · 标未送达，哪一端、哪个进程写的都算；watcher 盯 `~/.cc-monitor/session-queue/`，一批里动过的每条会话各推一次）；`key` 是会话 id，`body` 是整份名单（同 `session-queue-read` 问这条会话的应答，由那条命令在这台那一半现算）；各端只照这一份画队、不各自记，超了上限或读不出就不带、重问 `session-queue-read`。
+`attach`：桌面一条草稿那一排附件变了（加 · 撤 · 问收不收答了 · 送了一块 · 落好 · 断了 · 那台连上之后接着传；那一圈由本机后端照 `attach-draft-put` 交的名单编排，`control/attach_upload.rs`），走 tap 那条、可丢；`key` 是界面编的草稿号，`body` 是本机后端写好的那一排（同 `attach-draft-view` 的应答）；界面只照这一份画 chip，超了上限就不带、重问 `attach-draft-view`。
 可丢的走 tap 那条（丢了下一次变化或重问就补上），不可丢的走 watcher 的出方向（丢了那台就地重报时再发一帧）；`login` 走发起它的那条连接的应答通道（不丢）。带了 `body` 不改可丢性。
 
 历史不重放 ⇒ 客户端先取快照（尾部优先：`history-tail`）。宣告不等记录：`session_added` 一认出来就发，记录在后台预读，读完发 `session_primed {sid, path?, lines?}` —— `session_primed.lines` 是那一刻那份记录的完整行数，这条会话的 `line` 从这一行起来（之前一帧都不发，`session_runs` · `session_branch` 同），客户端在这一帧排快照、拿它核快照拉全了没有。半路接上来的连接先收一份此刻的样子：每个活会话一帧 `session_added`（现值）、读完了的再一帧 `session_primed`（行数是此刻已计完的）、运行表 · 可重连的 `session_left`（主线外清单不在里面：报名单时照 `branch` 给） · 清单已报完就一帧 `sessions_replayed`。

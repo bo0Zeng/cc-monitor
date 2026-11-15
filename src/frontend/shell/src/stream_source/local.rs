@@ -83,6 +83,7 @@ impl Conn {
 ///
 /// - 本机：这条流交来第一件东西 ⇒ 本机那台「看得见」（订阅原位收 `Seen`）。
 /// - 别台：里面那一行是 hello ⇒ 那台这一条连接开（[`attached`]）；`gap` ⇒ 原位一格；`ended` ⇒ 冲完、那台清单作废、订阅原位 `Unseen`（[`ended`]）；那台各条的说不清是本机后端在 `ended` 之前发的 `session_left`。
+///   那台的会话簿 · 活卡板由本机后端折：`seats` 换进会话账、`live` 原样交会话流句柄，这一侧不折。
 /// - 本机那条流结束（[`LocalItem::StreamEnded`]）⇒ 本机与经它转来的各台一并收（各台的连接随本机这条一起没了）；
 ///   下一条流换新的：本机后端先交此刻接着的各台的 hello、重新宣告每个活会话，旁路快照按续点接着拉（`snapshot_resume`）。
 ///
@@ -115,6 +116,8 @@ pub(crate) async fn consume(
                 }
             }
             LocalItem::LineLost => {
+                // 丢的也可能是一格本机的活卡成品（`live_now` 带那一处整份，最长）⇒ 订了本机活卡的，每一处下一格先交整份。
+                replay.live_gap(&local);
                 if let Some(c) = conns.get_mut(&local) {
                     c.intake.lost().await
                 }
@@ -197,7 +200,10 @@ async fn relayed(
         }
         // 那台流上一行超长、整行丢了 ⇒ 订阅原位一格 `Gap`（`to_seq` 缺）。
         Relayed::Gap { machine } => {
-            if let Some(c) = conns.get_mut(&crate::origin::Origin::named(machine)) {
+            let origin = crate::origin::Origin::named(machine);
+            // 丢的也可能是一格活卡成品 ⇒ 订了那台活卡的，每一处下一格先交整份。
+            replay.live_gap(&origin);
+            if let Some(c) = conns.get_mut(&origin) {
                 c.intake.lost().await;
             }
         }
@@ -206,6 +212,27 @@ async fn relayed(
             if conns.contains_key(&origin) {
                 ended(&origin, conns, replay).await;
             }
+        }
+        // 本机后端照那台的会话簿折好的整条：换进会话账手上那一份（与那台的会话帧同一条流上的先后）。
+        Relayed::Seats { machine, seats } => {
+            let origin = crate::origin::Origin::named(machine);
+            if origin.is_local() {
+                tracing::warn!("本机后端转来了一份说是本机的会话成品，丢掉");
+                return;
+            }
+            crate::session_book::feed(BookIn::Seats {
+                origin: origin.to_string(),
+                seats,
+            });
+        }
+        // 本机后端照那台的活卡板折好的一处：原样交会话流句柄。
+        Relayed::Live { machine, live } => {
+            let origin = crate::origin::Origin::named(machine);
+            if origin.is_local() {
+                tracing::warn!("本机后端转来了一份说是本机的活卡成品，丢掉");
+                return;
+            }
+            replay.on_live_now(&origin, live);
         }
     }
 }
@@ -245,7 +272,7 @@ async fn ended(
     if !origin.is_local() {
         crate::inbound_client::gone(origin);
     }
-    // 连接断了 ≠ 会话死了：说不清由本机后端逐条发（`session_left`，已经折进账里）；这里只作废「清单报完了」，下一条连接自己重报。
+    // 连接断了 ≠ 会话死了：说不清由本机后端逐条发（`session_left`，别台的各跟一格 `seats` 进账）；这里只作废「清单报完了」，下一条连接自己重报。
     crate::session_book::feed(BookIn::Closed { origin: at.clone() });
     replay.origin_seen(origin, false);
     tracing::info!("stream_source [{at}] 那一条连接结束 ⇒ 收口换新、这台的清单作废");

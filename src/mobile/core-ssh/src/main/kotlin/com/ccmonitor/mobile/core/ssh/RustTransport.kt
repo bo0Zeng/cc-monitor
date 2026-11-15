@@ -1,7 +1,6 @@
 package com.ccmonitor.mobile.core.ssh
 
 import com.ccmonitor.mobile.core.copy.copyText
-import com.ccmonitor.mobile.core.data.crypto.SshWire
 import com.ccmonitor.mobile.core.rs.Core
 import com.ccmonitor.mobile.core.rs.ResidentEvents
 import com.ccmonitor.mobile.core.wire.Wire
@@ -184,7 +183,7 @@ class RustTransport(
                 is AuthMethod.Password -> Core.putPassword(auth.password)
                 is AuthMethod.PrivateKey -> Core.putPem(auth.pem, auth.passphrase?.concatToString())
                 is AuthMethod.KeystoreSigner -> {
-                    val ks = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+                    val ks = KeyStore.getInstance(SshKeyGenerator.ANDROID_KEYSTORE).apply { load(null) }
                     val pub =
                         ks.getCertificate(auth.alias)?.publicKey as? ECPublicKey
                             ?: error(copyText("mobSsh.keystore.noCert"))
@@ -256,7 +255,6 @@ class RustTransport(
     }
 
     internal companion object {
-        const val ANDROID_KEYSTORE = "AndroidKeyStore"
         const val CAPTURE_MAX = 16 * 1024 * 1024
     }
 }
@@ -329,7 +327,7 @@ internal object RustCore : Core.Sink {
         data: ByteArray,
     ): ByteArray? =
         try {
-            val ks = KeyStore.getInstance(RustTransport.ANDROID_KEYSTORE).apply { load(null) }
+            val ks = KeyStore.getInstance(SshKeyGenerator.ANDROID_KEYSTORE).apply { load(null) }
             val key = ks.getKey(alias, null) as PrivateKey
             java.security.Signature.getInstance("SHA256withECDSA").run {
                 initSign(key)

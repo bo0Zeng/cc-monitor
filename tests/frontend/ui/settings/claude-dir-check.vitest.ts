@@ -1,5 +1,5 @@
 /**
- * 设置里填的 Claude 目录：存之前问本机后端一次（`agent-home-check`），后端判在不在 · 是不是目录 · 有没有记录树、回码；界面按码取那一句。
+ * 设置里填的 Claude 目录：存之前问本机后端一次（`agent-home-check`），后端判在不在 · 是不是目录 · 有没有记录树、回写好的那一句；界面照抄。
  * 不在的照收的话，重启后会被悄悄忽略、退回默认目录，输入框却还显示着它；没有 `projects/` 的读不出一条会话。
  */
 import { describe, expect, it, vi, beforeEach } from "vitest";
@@ -8,7 +8,6 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import { invoke } from "@tauri-apps/api/core";
 import { claudeDirProblem } from "../../../../src/frontend/ui/settings/claude-dir-check";
-import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { copyPattern } from "../../../test-support/copy-pattern";
 import { chanReply, type ChanCallArgs } from "../../../test-support/chan-fake";
 
@@ -27,35 +26,24 @@ function backend(answer: (path: string) => unknown): void {
   });
 }
 
-describe("Claude 目录：存之前问后端一次，按码说", () => {
+describe("Claude 目录：存之前问后端一次，照抄那一句", () => {
   beforeEach(() => {
     invokeMock.mockReset();
     asked = [];
   });
 
-  it("★ 四个码各一句；只问一次 agent-home-check（界面不自己问 files-stat）", async () => {
-    const cases: [string, string | null][] = [
-      ["ok", null],
-      ["missing", copyText("settingsPanel.claudeDir.missing", { path: "/mnt/x" })],
-      ["not_dir", copyText("settingsPanel.claudeDir.notDir", { path: "/mnt/x" })],
-      ["no_records", copyText("settingsPanel.claudeDir.noRecords", { path: "/mnt/x" })],
-    ];
-    for (const [state, want] of cases) {
+  it("★ 能用 ⇒ null；不能用 ⇒ 照抄后端写好的那一句；只问一次 agent-home-check（界面不自己问 files-stat）", async () => {
+    for (const said of [null, "台架：/mnt/x 那一句由后端写"]) {
       invokeMock.mockReset();
       asked = [];
-      backend(() => chanReply({ state }));
-      expect(await claudeDirProblem("/mnt/x")).toBe(want);
+      backend(() => chanReply({ said }));
+      expect(await claudeDirProblem("/mnt/x")).toBe(said);
       expect(asked).toEqual(["agent-home-check"]);
     }
   });
 
-  it("★ 问不到 ⇒ 说没法确认；码不认识 ⇒ 说认不出（不当能用）", async () => {
+  it("★ 问不到 ⇒ 说没法确认", async () => {
     backend(() => ({ err: { Hop: { idx: 0, tag: "open", reach: "NotSent", why: "Unreachable" } }, body: [] }));
     expect(await claudeDirProblem("/h/y")).toMatch(copyPattern("settingsPanel.claudeDir.uncheckable", { path: "/h/y" }));
-    invokeMock.mockReset();
-    backend(() => chanReply({ state: "maybe" }));
-    const said = await claudeDirProblem("/h/y");
-    expect(said).not.toBeNull();
-    expect(said).toContain(copyText("peerVersion.said.unreadable", { machine: copyText("control.machine.unsure") }));
   });
 });

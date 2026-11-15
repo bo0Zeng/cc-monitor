@@ -7,7 +7,6 @@
 //! 认法：先看记录级字段（`origin.kind` · `isCompactSummary` · `isMeta` · 子 agent 的首条）；没有字段的（排队消息 · 老版本）
 //! 再认**具名**的框与固定句。认不出的归人 —— 宁可漏判，不许吃掉人话；也不拿「以 `<` 开头」当判据（人真会这么打字）。
 
-use crate::agents::SpeakerExt as _;
 use serde_json::Value;
 
 // ── 文本抽取 ─────────────────────────────────────────────────────────────
@@ -106,6 +105,7 @@ pub(crate) fn stringify_json(v: &Value) -> String {
     }
 }
 
+use crate::agents::record::Heard;
 use crate::agents::{Speaker, UserText};
 
 /// 剥掉的 CLI 注入包装（人话里夹着它们时只剥它们，人话留着）。
@@ -180,7 +180,7 @@ impl<'a> Facts<'a> {
 }
 
 /// 注册表 `TextFace.user`：一条已解析的记录 ⇒ 它是谁说的；不是 user 记录、也不是人在一轮中途插的那一句 ⇒ `None`。
-pub(crate) fn user_text_of_record(v: &Value) -> Option<UserText> {
+pub(crate) fn user_text_of_record(v: &Value) -> Option<Heard> {
     if let Some(f) = Facts::of(v) {
         return Some(user_text(&f));
     }
@@ -203,6 +203,7 @@ pub(crate) fn user_text_of_record(v: &Value) -> Option<UserText> {
         flag("isSidechain"),
         has_parent,
     )
+    .map(Heard::from)
 }
 
 /// `attachment` 那一格里判「是不是插进来的那一句」要的几样（解析成品与通用层的已解析 JSON 各取一份，判定是同一个函数）。
@@ -232,37 +233,39 @@ pub(crate) fn mid_turn_text(
         is_compact_summary: false,
         has_parent,
         origin: a.origin.filter(|o| o.is_object()),
-    });
+    })
+    .who;
     crate::agents::UserTextExt::speech(&t)
         .is_some()
         .then_some(t)
 }
 
 /// **一条 user 记录是谁说的**（规则只此一份）。
-pub(crate) fn user_text(f: &Facts) -> UserText {
+/// 来话的正文原文跟着交出（[`Heard`]；造记录那一下 [`Heard::said`] 解成块树）。
+pub(crate) fn user_text(f: &Facts) -> Heard {
     let raw = extract_text_blocks(f.content);
     let has_result = f.content.as_array().is_some_and(|a| {
         a.iter()
             .any(|b| b.get("type").and_then(Value::as_str) == Some("tool_result"))
     });
     if has_result && raw.trim().is_empty() {
-        return UserText::of(Speaker::ToolResult);
+        return UserText::of(Speaker::ToolResult).into();
     }
     if f.is_compact_summary {
-        return compact(&raw);
+        return compact(&raw).into();
     }
     match f.origin.and_then(|o| o.get("kind")).and_then(Value::as_str) {
-        Some("human") if !f.is_meta => return spoken(&raw),
-        Some("peer") => return UserText::of(peer(f.origin, &raw)),
-        Some("task-notification") => return UserText::of(notice(&raw)),
+        Some("human") if !f.is_meta => return spoken(&raw).into(),
+        Some("peer") => return peer(f.origin, &raw),
+        Some("task-notification") => return UserText::of(notice(&raw)).into(),
         Some("coordinator") => {
-            return UserText::of(Speaker::Coordinator {
-                body: origin_body(f.origin).or_else(|| coordinator_body(&raw)),
-                doc: None,
-            })
+            return Heard::of(
+                Speaker::Coordinator { doc: None },
+                origin_body(f.origin).or_else(|| coordinator_body(&raw)),
+            )
         }
         Some("auto-continuation") => {
-            return UserText::of(system(origin_body(f.origin).as_deref().unwrap_or(&raw)))
+            return UserText::of(system(origin_body(f.origin).as_deref().unwrap_or(&raw))).into()
         }
         _ => {}
     }
@@ -270,12 +273,12 @@ pub(crate) fn user_text(f: &Facts) -> UserText {
         return t;
     }
     if f.is_meta {
-        return UserText::of(system(&raw));
+        return UserText::of(system(&raw)).into();
     }
     if f.is_sidechain && !f.has_parent && f.origin.is_none() {
-        return brief(&raw);
+        return brief(&raw).into();
     }
-    spoken(&raw)
+    spoken(&raw).into()
 }
 
 /// 整条是不是 ESC 中断标记（子运行被叫停的收场认它）。
@@ -335,7 +338,7 @@ fn notice(raw: &str) -> Speaker {
 }
 
 /// 记录级说是 agent 来的话（`origin.kind = peer`）：字段从 `origin` 取，缺的再看框上的 `from`。
-fn peer(origin: Option<&Value>, raw: &str) -> Speaker {
+fn peer(origin: Option<&Value>, raw: &str) -> Heard {
     let field = |k: &str| {
         origin
             .and_then(|o| o.get(k))
@@ -345,64 +348,72 @@ fn peer(origin: Option<&Value>, raw: &str) -> Speaker {
     };
     let t = after_lead(raw);
     if opens(t, "cross-session-message") {
-        return Speaker::PeerSession {
+        return Heard::of(
+            Speaker::PeerSession {
+                from: field("from").or_else(|| attr(t, "from")),
+                doc: None,
+                title: None,
+            },
+            origin_body(origin).or_else(|| frame_body(t, "cross-session-message")),
+        );
+    }
+    Heard::of(
+        Speaker::AgentMessage {
             from: field("from").or_else(|| attr(t, "from")),
-            body: origin_body(origin).or_else(|| frame_body(t, "cross-session-message")),
+            name: field("name"),
+            handback: origin
+                .and_then(|o| o.get("handback"))
+                .and_then(Value::as_bool)
+                == Some(true),
             doc: None,
-            title: None,
-        };
-    }
-    Speaker::AgentMessage {
-        from: field("from").or_else(|| attr(t, "from")),
-        name: field("name"),
-        handback: origin
-            .and_then(|o| o.get("handback"))
-            .and_then(Value::as_bool)
-            == Some(true),
-        body: origin_body(origin).or_else(|| frame_body(t, "agent-message")),
-        doc: None,
-    }
+        },
+        origin_body(origin).or_else(|| frame_body(t, "agent-message")),
+    )
 }
 
 /// 没有记录级字段时认具名框与固定句（前导固定行跟着框走）。认不出 ⇒ `None`。
-fn framed(raw: &str, sidechain: bool) -> Option<UserText> {
+fn framed(raw: &str, sidechain: bool) -> Option<Heard> {
     let t = raw.trim_start_matches(|c: char| c.is_whitespace() || c == '\u{feff}');
     let body = after_lead(t);
     if t.starts_with(NOTICE_MARK) || (body.starts_with(NOTICE_OPEN) && body.contains(NOTICE_CLOSE))
     {
-        return Some(UserText::of(notice(t)));
+        return Some(UserText::of(notice(t)).into());
     }
     if framed_by(body, "agent-message") {
-        return Some(UserText::of(Speaker::AgentMessage {
-            from: attr(body, "from"),
-            name: None,
-            handback: false,
-            body: frame_body(body, "agent-message"),
-            doc: None,
-        }));
+        return Some(Heard::of(
+            Speaker::AgentMessage {
+                from: attr(body, "from"),
+                name: None,
+                handback: false,
+                doc: None,
+            },
+            frame_body(body, "agent-message"),
+        ));
     }
     if framed_by(body, "cross-session-message") {
-        return Some(UserText::of(Speaker::PeerSession {
-            from: attr(body, "from"),
-            body: frame_body(body, "cross-session-message"),
-            doc: None,
-            title: None,
-        }));
+        return Some(Heard::of(
+            Speaker::PeerSession {
+                from: attr(body, "from"),
+                doc: None,
+                title: None,
+            },
+            frame_body(body, "cross-session-message"),
+        ));
     }
     if t.lines().next().map(str::trim_end) == Some(COORDINATOR_LEAD) {
-        return Some(UserText::of(Speaker::Coordinator {
-            body: coordinator_body(t),
-            doc: None,
-        }));
+        return Some(Heard::of(
+            Speaker::Coordinator { doc: None },
+            coordinator_body(t),
+        ));
     }
     if t.starts_with(LIMIT_RESET_LEAD) {
-        return Some(UserText::of(system(t)));
+        return Some(UserText::of(system(t)).into());
     }
     if t.starts_with(COMPACT_LEAD) {
-        return Some(compact(t));
+        return Some(compact(t).into());
     }
     if sidechain && t.starts_with(FORK_OPEN) {
-        return Some(brief(t));
+        return Some(brief(t).into());
     }
     None
 }
@@ -460,11 +471,11 @@ fn human(text: String) -> UserText {
 }
 
 /// 要显示正文的那几种非人来源（压缩摘要 · 派的活）：正文同样剥注入。
-/// 压缩摘要：正文照显示，数字数的是显示的那一份。
+/// 压缩摘要：正文照显示；标题里的字数由出口照这一份正文数（`wire::stamp`）。
 fn compact(raw: &str) -> UserText {
     let text = strip_injected(raw);
     UserText {
-        speaker: Speaker::compact(&text),
+        speaker: Speaker::CompactSummary { title_text: None },
         text,
         parts: Vec::new(),
     }

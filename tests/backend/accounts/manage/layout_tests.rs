@@ -147,6 +147,7 @@ fn add_plans_dir_links_and_manifest_and_refuses_duplicates() {
         api_key: true,
         cred_file: None,
         make_default: false,
+        agent: None,
     };
     let p = plan_add(&s, &want).unwrap();
     assert_eq!(
@@ -255,6 +256,7 @@ fn the_shared_dirs_claude_makes_on_demand_are_linked_before_the_shared_store_has
             api_key: true,
             cred_file: None,
             make_default: false,
+            agent: None,
         },
     )
     .unwrap();
@@ -386,6 +388,7 @@ fn transcripts_and_live_session_records_are_linked_even_when_the_shared_store_ha
             api_key: true,
             cred_file: None,
             make_default: false,
+            agent: None,
         },
     )
     .unwrap();
@@ -678,4 +681,166 @@ fn busy_accounts_come_from_live_sessions_only() {
     assert!(!unknown);
     let (busy, unknown) = crate::accounts::manage::wire::busy_of(&[row(None, true, false)]);
     assert!(busy.is_empty() && unknown);
+}
+
+/// 建一个替身家的号：清单那一号带替身家；布局照替身家的身份 · 共享两张表算，不拿缺省那一家（共享库是它的）的表去链 · 复制；
+/// 认不出的家 ⇒ 拒。
+#[test]
+fn adding_an_account_of_another_family_lays_it_out_by_that_familys_tables() {
+    let fake = crate::agents::fake::AGENT_KIND;
+    let reg = [
+        crate::agents::fake::family_row("stand-in", "CCM_STAND_IN_DIR", "si", true, || None),
+        crate::agents::fake::full_row(|| None),
+    ];
+    let s = snap(healthy());
+    let want = AddIntent {
+        name: "f".into(),
+        api_key: false,
+        cred_file: None,
+        make_default: false,
+        agent: Some(fake.to_string()),
+    };
+    let p = plan_add_among(&reg, &s, &want).unwrap();
+    assert!(
+        !p.ops
+            .iter()
+            .any(|op| matches!(op, Op::Link { .. } | Op::Isolate { .. })),
+        "替身家没申报共享项与身份项 ⇒ 不链、不复制：{:?}",
+        p.ops
+    );
+    let m = p.manifest.unwrap();
+    assert_eq!(m.find("f").unwrap().agent.as_deref(), Some(fake));
+    let nobody = AddIntent {
+        agent: Some("nobody".into()),
+        ..want
+    };
+    let e = plan_add_among(&reg, &s, &nobody).unwrap_err();
+    assert_eq!(e.code.as_deref(), Some("refused"));
+    assert_eq!(
+        e.said,
+        copy_core::copy_text(
+            "beArgv.validate.agentNoAccounts",
+            &[("agent", &crate::agents::family_said_among(&reg, "nobody"))]
+        ),
+        "认不出的家照实说，不把请求里那个码当家名"
+    );
+    assert!(!e.said.contains("nobody"), "{}", e.said);
+}
+
+/// 导入凭据写成那个号那一家声明的凭据文件名（替身家的名与两家都不同）；那一家没声明凭据文件 ⇒ 照实拒，不落成别家的名。
+#[test]
+fn an_imported_credentials_file_takes_the_name_that_family_declares() {
+    let fake = crate::agents::fake::AGENT_KIND;
+    let row = crate::agents::fake::full_row(|| None);
+    let face = row.accounts.expect("替身家有账号面");
+    let creds = face.login.expect("替身家声明了凭据文件").creds_file;
+    let unsaid = crate::agents::Adapter {
+        kind: "no-login",
+        display_name: Some("替身无凭据"),
+        accounts: Some(crate::agents::AccountsFace {
+            login: None,
+            ..face
+        }),
+        ..crate::agents::fake::full_row(|| None)
+    };
+    let reg = [row, unsaid];
+    let mut s = snap(healthy());
+    s.files.insert("/tmp/in.json".into(), file(0o600));
+    let want = AddIntent {
+        name: "f".into(),
+        api_key: false,
+        cred_file: Some("/tmp/in.json".into()),
+        make_default: false,
+        agent: Some(fake.to_string()),
+    };
+    let p = plan_add_among(&reg, &s, &want).unwrap();
+    let to: Vec<&String> = p
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            Op::Copy { to, .. } => Some(to),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        to,
+        [&format!("/h/.cc-monitor/accounts/f/{creds}")],
+        "{:?}",
+        p.ops
+    );
+    let nobody = AddIntent {
+        agent: Some("no-login".into()),
+        ..want
+    };
+    let e = plan_add_among(&reg, &s, &nobody).unwrap_err();
+    assert_eq!(
+        e.said,
+        copy_core::copy_text("beAcctPlan.cred.noCredsFile", &[("agent", "替身无凭据")]),
+        "那一句说那一家的叫法，不露 kind"
+    );
+}
+
+/// 替身家是缺省那一家（共享库是它的）、自己申报了一份身份表与共享表：它的号照这两张表布局 ——
+/// 只链它申报的共享项、只从共享库隔离出它申报的身份项；缺省那一家（生产注册表）的两张表一项都不拿来用。
+#[test]
+fn a_stand_in_familys_account_is_laid_out_by_its_own_identity_and_shared_tables() {
+    use crate::agents::{IdentityClass, IdentityRoot};
+    let row = crate::agents::fake::family_row("stand-in", "CCM_STAND_IN_DIR", "si", true, || None);
+    let face = row.accounts.expect("替身家有账号面");
+    let stand_in = crate::agents::Adapter {
+        accounts: Some(crate::agents::AccountsFace {
+            identity: &[(
+                "si-state.json",
+                IdentityRoot::ConfigDir,
+                IdentityClass::State,
+            )],
+            shared: &["plans"],
+            ..face
+        }),
+        ..row
+    };
+    let reg = [stand_in, crate::agents::fake::full_row(|| None)];
+    let mut s = snap(healthy());
+    s.shared.entries.insert("si-state.json".into(), file(0o644));
+    let want = AddIntent {
+        name: "f".into(),
+        api_key: false,
+        cred_file: None,
+        make_default: false,
+        agent: None,
+    };
+    let p = plan_add_among(&reg, &s, &want).unwrap();
+    let linked: Vec<&String> = p
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            Op::Link { at, .. } => Some(at),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        linked,
+        [&"/h/.cc-monitor/accounts/f/plans".to_string()],
+        "{:?}",
+        p.ops
+    );
+    let isolated: Vec<&String> = p
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            Op::Isolate { at, .. } => Some(at),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        isolated,
+        [&"/h/.cc-monitor/accounts/f/si-state.json".to_string()],
+        "{:?}",
+        p.ops
+    );
+    assert_eq!(
+        p.manifest.unwrap().find("f").unwrap().agent,
+        None,
+        "缺省那一家的号不补那一格"
+    );
 }

@@ -160,7 +160,7 @@ put new = Ok(("<D>/a.txt", true, true, false))
 put same = Ok(("<D>/a.txt", false, false, false))
 put backup = Ok(("<D>/a.txt", true, false, true))
 put stale = Err(Stale("<D>/a.txt · 已在别处改过 · 未写入 · 刷新后再试"))
-put no parent = Err(Peer(Said { code: Some("refused"), said: "解析 <D>/p/q 失败 · 路径不存在", raw: None, data: None }))
+put no parent = Err(Peer(Said { code: Some("refused"), said: "解析 <D>/p/q 失败 · 路径不存在", raw: None, data: None, written: None }))
 put parents = Ok(("<D>/p/q/a.txt", true, true, false))
 peek present = Ok(Peeked { path: "<D>/a.txt", text: Some("two") })
 stat file = Ok(Some("file"))
@@ -234,4 +234,126 @@ fn an_edit_that_keeps_losing_the_race_says_so_and_keeps_the_last_word_for_the_de
         "跟着走的不是最后一次被拒的那一句：{raw}"
     );
     let _ = std::fs::remove_dir_all(&base);
+}
+
+/// 只答家目录的门（家目录的线上字节原样交出；别的问一律不该走到）。
+struct BytesHome(Vec<u8>);
+
+impl Door for BytesHome {
+    fn home(
+        &self,
+        _: cmd_wire::files::HomeReq,
+    ) -> Result<cmd_wire::files::FilesPathReply, crate::common::said::Said> {
+        Ok(cmd_wire::files::FilesPathReply {
+            path: self.0.as_slice().into(),
+        })
+    }
+    fn stat(
+        &self,
+        _: cmd_wire::files::StatReq,
+    ) -> Result<cmd_wire::files::StatReply, crate::common::said::Said> {
+        unreachable!("只问家目录")
+    }
+    fn ls(
+        &self,
+        _: cmd_wire::files::LsReq,
+    ) -> Result<cmd_wire::files::LsReply, crate::common::said::Said> {
+        unreachable!("只问家目录")
+    }
+    fn peek(
+        &self,
+        _: cmd_wire::files::FilesPeekReq,
+    ) -> Result<cmd_wire::files::FilesPeekReply, crate::common::said::Said> {
+        unreachable!("只问家目录")
+    }
+    fn put(
+        &self,
+        _: cmd_wire::files::FilesPutReq,
+    ) -> Result<cmd_wire::files::FilesPutReply, crate::common::said::Said> {
+        unreachable!("只问家目录")
+    }
+    fn delete(
+        &self,
+        _: cmd_wire::files::FilesDeleteReq,
+    ) -> Result<cmd_wire::batch::BatchReply, crate::common::said::Said> {
+        unreachable!("只问家目录")
+    }
+    fn copy(
+        &self,
+        _: cmd_wire::files::FilesCopyReq,
+    ) -> Result<cmd_wire::batch::BatchReply, crate::common::said::Said> {
+        unreachable!("只问家目录")
+    }
+    fn mkdir(
+        &self,
+        _: cmd_wire::files::FilesMkdirReq,
+    ) -> Result<cmd_wire::files::FilesPathReply, crate::common::said::Said> {
+        unreachable!("只问家目录")
+    }
+    fn link(
+        &self,
+        _: cmd_wire::files::FilesLinkReq,
+    ) -> Result<cmd_wire::files::FilesPathReply, crate::common::said::Said> {
+        unreachable!("只问家目录")
+    }
+    fn rename_to(
+        &self,
+        _: cmd_wire::files::FilesRenameReq,
+    ) -> Result<cmd_wire::files::FilesPathReply, crate::common::said::Said> {
+        unreachable!("只问家目录")
+    }
+    fn chmod(
+        &self,
+        _: cmd_wire::files::FilesChmodReq,
+    ) -> Result<cmd_wire::batch::BatchReply, crate::common::said::Said> {
+        unreachable!("只问家目录")
+    }
+}
+
+/// 家目录名不是 UTF-8 ⇒ 门那一问照实拒（「主目录名不是合法 UTF-8」那一句），不按替换符拼出一个不存在的家；是 UTF-8 的照原样交。
+#[cfg(unix)]
+#[test]
+fn a_home_that_is_not_utf8_is_refused_as_such_not_mangled() {
+    let bad = b"/h/caf\xe9".to_vec();
+    let e = home(&BytesHome(bad)).expect_err("非 UTF-8 的家被有损拼成了字");
+    assert!(!e.contains('\u{FFFD}'), "拒的那一句里带着替换符：{e}");
+    assert!(
+        copy_core::copy_matches_with("beAssets.door.homeNotUtf8", &[], &e),
+        "不是「主目录名不是合法 UTF-8」那一句：{e}"
+    );
+    assert_eq!(
+        home(&BytesHome("/h/café".as_bytes().to_vec())).as_deref(),
+        Ok("/h/café")
+    );
+    assert!(home(&BytesHome(Vec::new())).is_err(), "说不出家却交了一个");
+}
+
+/// 资产目录扫这台时问「有没有账号库」、扩展页问用户级 MCP 住哪：家名不是 UTF-8 ⇒ 照字节拼、照实带，找得到那个家底下的账号库，
+/// 共用那一份也落在那个家底下（有损拼出来的那一串指不到它）。家说不出 ⇒ 没有。
+#[cfg(unix)]
+#[test]
+fn a_library_under_a_home_that_is_not_utf8_is_found_by_its_bytes() {
+    use crate::accounts::manage::mcp_share_exec::store_path_in;
+    use std::os::unix::ffi::OsStrExt;
+    let base = std::env::temp_dir().join(format!("ccm-door-home-bytes-{}", std::process::id()));
+    let home = base.join(std::ffi::OsStr::from_bytes(b"caf\xe9"));
+    let accts = crate::platform::paths::home_join(&home, relay_route_core::ACCOUNTS_DIR_REL);
+    std::fs::create_dir_all(&accts).unwrap();
+    std::fs::write(
+        accts.join(relay_route_core::ACCOUNTS_MANIFEST_NAME),
+        r#"{"version":1,"accounts":[]}"#,
+    )
+    .unwrap();
+    let shared = crate::assets::asset_catalog::shared_mcp_at(Some(&home));
+    let store = store_path_in(&home);
+    let _ = std::fs::remove_dir_all(&base);
+    assert!(shared, "非 UTF-8 的家底下的账号库没找到");
+    assert_eq!(
+        store,
+        Some(crate::platform::paths::home_join(
+            &home,
+            relay_route_core::ACCOUNTS_MCP_REL
+        ))
+    );
+    assert!(!crate::assets::asset_catalog::shared_mcp_at(None));
 }

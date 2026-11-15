@@ -235,3 +235,18 @@ fn wf1_real_powershell_add_then_remove_restores_the_user_path() {
         assert_eq!(row["rb"], 1, "撤的广播：{orig:?}");
     }
 }
+
+/// ★ 起不来那一句只一处取原因词：一条起不来的 PowerShell 经 [`run_said`] 与经 [`crate::platform::child::spawn_said`] 出同一句。
+#[test]
+fn a_powershell_that_cannot_start_says_what_spawn_said_says() {
+    let gone = std::env::temp_dir().join(format!("ccm-ps-gone-{}", std::process::id()));
+    let err = run_said(crate::platform::child::Child::new(&gone), Deadline::secs(5))
+        .expect_err("不存在的程序起来了");
+    let want = crate::platform::child::spawn_said(
+        &std::io::Error::from(std::io::ErrorKind::NotFound),
+        str::to_owned,
+    );
+    assert_eq!(err.code, want.code);
+    assert_eq!(err.said, want.said);
+    assert!(err.raw.is_some(), "系统原话丢了");
+}

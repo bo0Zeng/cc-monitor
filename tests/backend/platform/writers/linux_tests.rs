@@ -50,7 +50,7 @@ fn pids_writing(file: &Path) -> Vec<u32> {
 fn a_process_holding_the_file_open_for_append_is_its_writer_and_a_reader_is_not() {
     let d = tmp("who");
     let f = d.join("rollout-a.jsonl");
-    std::fs::write(&f, "{}\n").unwrap();
+    seed(&f);
     let mut reader = holder(&f, "<");
     assert!(pids_writing(&f).is_empty(), "只读开着的不算写者");
     let mut writer = holder(&f, ">>");
@@ -102,13 +102,54 @@ fn until(rx: &mpsc::Receiver<OpenBatch>, pred: impl Fn(&OpenBatch) -> bool) -> O
     }
 }
 
+/// 挂耳朵之前就在的一份记录（一行 `{}`），由 `sh` 子进程写好：本进程从没有它的写端。本进程写的那一份，写端会漏进
+/// 别的判据线程 fork 出来的子进程（`O_CLOEXEC` 到 exec 才生效），那个子进程 exec 时才真关 ⇒ 挂上之后冒出一次迟到的「写完关闭」。
+fn seed(file: &Path) {
+    let st = Command::new("sh")
+        .arg("-c")
+        .arg("printf '{}\\n' > \"$1\"")
+        .arg("sh")
+        .arg(file)
+        .status()
+        .unwrap();
+    assert!(st.success(), "sh 没写成 {}：{st}", file.display());
+}
+
+/// 旁边不停 fork 时，挂上之前写好的那份旧记录不会在挂上之后冒出一次「写完关闭」：写它的写端漏进别人 fork 出来的子进程，
+/// 那个子进程 exec 时才真关，耳朵就听见一次迟到的关闭，落进新建那一批。
+#[test]
+fn a_record_written_before_the_ear_is_hung_does_not_close_late_while_others_fork() {
+    let _f = test_home::forking(4);
+    for i in 0..30 {
+        let d = tmp(&format!("ear-busy{i}"));
+        let old = d.join("rollout-old.jsonl");
+        seed(&old);
+        let (_e, rx) = ear(&d);
+        let new = d.join("rollout-new.jsonl");
+        let mut w = holder(&new, ">>");
+        // 挂上起到新建那一份被听见为止的每一批：都不许有旧记录的关闭。
+        loop {
+            let b = next(&rx);
+            assert!(
+                !b.closed.contains(&old),
+                "第 {i} 次：挂上之前写好的旧记录在挂上之后报了一次写完关闭：{b:?}"
+            );
+            if b.opened.contains(&new) {
+                break;
+            }
+        }
+        let _ = w.kill();
+        let _ = w.wait();
+    }
+}
+
 #[test]
 fn the_ear_hears_create_open_and_close_after_write_but_not_appends() {
     let d = tmp("ear");
     let day = d.join("2026").join("10").join("10");
     std::fs::create_dir_all(&day).unwrap();
     let old = day.join("rollout-old.jsonl");
-    std::fs::write(&old, "{}\n").unwrap();
+    seed(&old);
     let (_e, rx) = ear(&d);
     // 起步时已有的文件当「打开了」报一次（挂上之前写进去的那一下听不见）。
     let first = next(&rx);
@@ -203,6 +244,51 @@ fn a_root_that_appears_later_is_heard_once_it_does() {
         b.closed.contains(&f) || b.opened.contains(&f),
         "根出现之后里面的文件听得见"
     );
+}
+
+/// 根在一长串还不在的目录底下，那一串一层紧跟一层地长出来：耳朵每挂一层，下一层都可能恰好在「看过它不在」与「挂上等它」之间出现，
+/// 那一层的新建只能靠挂上之后再看一眼补上 —— 漏了就再也听不到根。层数多，撞上这道夹缝的回数就多。
+#[test]
+fn a_root_whose_levels_appear_one_right_after_another_is_still_heard() {
+    let d = tmp("late-deep");
+    let mut root = d.clone();
+    for _ in 0..300 {
+        root.push("l");
+    }
+    let (_e, rx) = ear(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let f = root.join("rollout-deep.jsonl");
+    std::fs::write(&f, "{}\n").unwrap();
+    until(&rx, |b| b.opened.contains(&f) || b.closed.contains(&f));
+}
+
+/// 等着的那个祖先被挪走（不是删掉）：那一道跟着挪走的目录走了 ⇒ 照原路径重挂；原路径上再长出来的根照样听得到。
+#[test]
+fn a_root_is_heard_after_the_ancestor_it_waited_on_was_moved_away() {
+    let d = tmp("moved");
+    let codex = d.join("codex");
+    std::fs::create_dir(&codex).unwrap();
+    let root = codex.join("sessions");
+    let (_e, rx) = ear(&root);
+    std::fs::rename(&codex, d.join("codex-old")).unwrap();
+    std::fs::create_dir_all(&root).unwrap();
+    let f = root.join("rollout-moved.jsonl");
+    std::fs::write(&f, "{}\n").unwrap();
+    until(&rx, |b| b.opened.contains(&f) || b.closed.contains(&f));
+}
+
+/// 挂不上（目录没有读权限 ⇒ inotify 拒挂）⇒ 不交耳朵，不交一道永远听不到的。等的那个祖先 · 根自己各一回。
+#[test]
+fn an_ear_that_cannot_be_hung_is_not_handed_out() {
+    let d = tmp("unhung");
+    let locked = d.join("locked");
+    std::fs::create_dir(&locked).unwrap();
+    test_home::set_dir_mode(&locked, 0o300);
+    let waits = watch_opens(&locked.join("codex").join("sessions"), |_| true).is_none();
+    let roots = watch_opens(&locked, |_| true).is_none();
+    test_home::set_dir_mode(&locked, 0o700);
+    assert!(waits, "等的那个祖先挂不上 ⇒ None");
+    assert!(roots, "根自己挂不上 ⇒ None");
 }
 
 #[test]

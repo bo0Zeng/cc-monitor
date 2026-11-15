@@ -37,7 +37,6 @@ import com.ccmonitor.mobile.core.data.db.KeyBinding
 import com.ccmonitor.mobile.core.data.db.KeyDao
 import com.ccmonitor.mobile.core.data.db.KeyMod
 import com.ccmonitor.mobile.core.data.db.TermKey
-import com.ccmonitor.mobile.core.data.db.cap
 import com.ccmonitor.mobile.core.data.db.isRepeatable
 import com.ccmonitor.mobile.core.terminal.ModGesture
 import com.ccmonitor.mobile.core.terminal.ModState
@@ -46,6 +45,7 @@ import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
+import com.ccmonitor.mobile.ui.session.keys.cap
 import org.koin.compose.koinInject
 
 /**

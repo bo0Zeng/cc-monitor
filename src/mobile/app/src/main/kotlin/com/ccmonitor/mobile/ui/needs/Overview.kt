@@ -1,12 +1,10 @@
 package com.ccmonitor.mobile.ui.needs
 
-import com.ccmonitor.mobile.core.claude.link.NeedsFace
 import com.ccmonitor.mobile.core.copy.DurationFormat
 import com.ccmonitor.mobile.core.wire.gen.ManualItem
 import com.ccmonitor.mobile.core.wire.gen.NeedsCell
 import com.ccmonitor.mobile.core.wire.gen.NeedsClock
 import com.ccmonitor.mobile.core.wire.gen.NeedsItem
-import com.ccmonitor.mobile.core.wire.gen.NeedsMerged
 import com.ccmonitor.mobile.core.wire.gen.NeedsRow
 import com.ccmonitor.mobile.ui.chats.HostName
 
@@ -59,7 +57,7 @@ data class UnreadableLine(
 )
 
 /**
- * 需手动屏此刻：那几行 · 头那一句 · 没答上的 · 会外读不出的（这几样都是核心合好的那一份，[mergedOf]）· 读中的那几台（骨架）。
+ * 需手动屏此刻：那几行 · 头那一句 · 没答上的 · 会外读不出的（这几样都是核心合好的那一份，[NeedsNow.merged]）· 读中的那几台（骨架）。
  * 「无需手动事项」只在各台都读到、加起来 0 件时说（[empty]），下一行写读到了哪几台（[readFrom]）；没读到不当没有。
  */
 data class Overview(
@@ -74,56 +72,40 @@ data class Overview(
     val readFrom: List<HostName>,
     /** 各台加起来几项（没答上的不算）。 */
     val total: Int,
-    /** 数说得准（核心判的：没有哪台读中 · 答失败 · 会外读不出）。 */
+    /** 数说得准（核心判的：没有哪台读中 · 断着 · 答失败 · 会外读不出）。 */
     val sure: Boolean,
 ) {
     /** 列表里不止一台 ⇒ 会外那一行第二行写机器名。 */
     val manyHosts: Boolean get() = needs.map { it.host }.distinct().size > 1
 
-    /** 各台都读到了、一件也没有。 */
-    val empty: Boolean get() = needs.isEmpty() && loading.isEmpty() && down.none { it.retry } && readFrom.isNotEmpty()
+    /** 核心说得准、一件也没有、读到过至少一台（各台读没读到只照核心的 [sure]，这里不另判）。 */
+    val empty: Boolean get() = sure && total == 0 && readFrom.isNotEmpty()
 }
 
 /**
- * 板 ⇒ 需手动屏。机器的先后（当前那台在前，别的照机器列表的先后）是交核心时的台序、也排读中那几行；
- * 需手动那几行的先后 · 总数 · 头那一句 · 没答上 · 会外读不出那几行都由核心合（[mergedOf]，本机后端 `sessions-needs-merge` 那一份合法）；
+ * 板 ⇒ 需手动屏。需手动那几行的先后 · 总数 · 头那一句 · 说得准说不准只照核心合好的需手动那一列（[NeedsNow.merged] 的 `manual`；
+ * 界面答得了的那几条在待答请求那一列，不进这一屏，从会话列表 · 钉条答）；没答上 · 会外读不出那几行同一份（本机后端 `sessions-needs-merge` 那一份合法）；
  * 判 · 排 · 写字（连计划那一格的「编号 标题」）都在那台。
+ * 机器的先后（当前那台在前，别的照机器列表的先后）只排读中 · 读到了那几行。还没问完过一圈 ⇒ 没有行、数说不准。
  */
 fun overviewOf(
-    board: Map<String, MachineNeeds>,
+    board: NeedsNow,
     hosts: List<HostName>,
     current: String,
 ): Overview {
-    val order = hosts.sortedBy { it.id != current }.filter { board.containsKey(it.id) }
-    val of = { h: HostName -> board.getValue(h.id) }
+    val order = hosts.sortedBy { it.id != current }.filter { it.id in board.on }
     val byId = order.associateBy { it.id }
-    val merged = mergedOf(board, order)
+    val merged = board.merged
+    val manual = merged?.manual
     return Overview(
-        needs = merged.items.mapNotNull { x -> byId[x.origin]?.let { h -> lineOf(h, x.item, of(h).at) } },
-        head = merged.head,
-        down = merged.down.mapNotNull { d -> byId[d.origin]?.let { DownLine(it, d.said, d.detail, retry = !of(it).down) } },
-        unreadable = merged.unreadable.mapNotNull { u -> byId[u.origin]?.let { UnreadableLine(it, u.line, u.said) } },
-        loading = order.filter { of(it).reading },
-        readFrom = order.filter { of(it).answered },
-        total = merged.total,
-        sure = merged.sure,
-    )
-}
-
-/**
- * 板上的那几台（照 [hosts] 的台序，板上没有的不交）交核心合一份（[NeedsFace]，`face_core::needs::merge_needs`）：
- * 答了的交回包原样，断着 · 没答上的交那一问的结局，读中的报一声；跨台照各项的 `rank` 排、数总数、写头那一句与没答上那几台那一句（照称呼叫出那台）。
- * 入口 · 总览同这一份。
- */
-fun mergedOf(
-    board: Map<String, MachineNeeds>,
-    hosts: List<HostName>,
-): NeedsMerged {
-    val on = hosts.filter { board.containsKey(it.id) }.map { it to board.getValue(it.id) }
-    return NeedsFace.of(
-        answered = on.filter { (_, m) -> m.answered }.map { (h, m) -> NeedsFace.Asked(h.id, h.label, m.raw) },
-        unanswered = on.filter { (_, m) -> m.down || m.unread != null }.map { (h, m) -> NeedsFace.Asked(h.id, h.label, NeedsFace.missOf(m.unread, m.offline, m.down)) },
-        reading = on.filter { (_, m) -> m.reading }.map { (h, _) -> h.id },
+        needs = manual?.items.orEmpty().mapNotNull { x -> byId[x.origin]?.let { h -> lineOf(h, x.item, board.at) } },
+        head = manual?.head.orEmpty(),
+        down = merged?.down.orEmpty().mapNotNull { d -> byId[d.origin]?.let { DownLine(it, d.said, d.detail, retry = it.id !in board.down) } },
+        unreadable = merged?.unreadable.orEmpty().mapNotNull { u -> byId[u.origin]?.let { UnreadableLine(it, u.line, u.said) } },
+        loading = order.filter { board.reading(it.id) },
+        readFrom = order.filter { board.answered(it.id) },
+        total = manual?.total ?: 0,
+        sure = manual?.sure == true,
     )
 }
 

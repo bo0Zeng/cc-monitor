@@ -32,7 +32,7 @@ fn m(name: &str) -> Machine {
 
 fn face(life: WireLife) -> cmd_wire::frame::SessionFace {
     use crate::wire::SessionFaceExt as _;
-    cmd_wire::frame::SessionFace::of(crate::wire::Life::of_wire(&life))
+    cmd_wire::frame::SessionFace::listed(&life, None)
 }
 
 /// 复活那几格（占位的值，照真东西的形状）。
@@ -564,11 +564,11 @@ fn g10_this_machines_facts_come_from_its_listing_row() {
     assert_eq!(x.account.as_deref(), Some("work"));
     assert!(x.bg);
     assert_eq!(x.at, Some(99));
-    let (f, x) = unlisted(t.get("s1"), running());
+    let (f, x) = unlisted(t.get("s1"), running(), None);
     assert_eq!(f.dot, cmd_wire::frame::SessionDot::Running, "照活会话表");
     assert_eq!(x.record, None);
     assert_eq!(x.title.0, "改过的", "改过的标题照注解");
-    let (_, x) = unlisted(None, WireLife::Ended { by: None });
+    let (_, x) = unlisted(None, WireLife::Ended { by: None }, None);
     assert_eq!(
         x.title.0,
         copy_core::copy_text("history.row.untitled", &[]),
@@ -924,4 +924,67 @@ async fn g15_last_known_survives_a_restart_and_the_pinned_one_still_shows() {
         machine(&old, "devbox")
     );
     assert!(old.pinned.is_empty(), "{old:?}");
+}
+
+/// 清单那条路一路到脸：这台名单里挂着它（托管终端 `h1`）⇒ 清单行带上这一格 ⇒ 这一行的脸「看它的终端」接的就是那个终端；
+/// 一份清单至多列一次名单，一条活的都没有就不列；不是活着的不带。
+#[test]
+fn a_listed_row_carries_where_it_lives_into_its_face() {
+    let managed_row = |sid: &str| crate::host::TermRow {
+        host: crate::wire::TerminalHost::Managed,
+        id: "h1".into(),
+        pane: None,
+        shared: false,
+        name: "n".into(),
+        windows: 1,
+        activity: 0,
+        sid: sid.into(),
+        agent: "claude".into(),
+        client: String::new(),
+        program: "claude".into(),
+        cwd: "/".into(),
+        title: String::new(),
+        input: crate::host::Input::Held(None),
+    };
+    let calls = std::cell::Cell::new(0u32);
+    let list = || {
+        calls.set(calls.get() + 1);
+        vec![managed_row("s1"), managed_row("s2")]
+    };
+    let listing = |rows| cmd_wire::listing::Listing {
+        rows,
+        failed: vec![],
+        annotations: None,
+        annotations_notice: None,
+        rules: Default::default(),
+    };
+
+    let mut quiet = listing(vec![raw_row("s2", Some(WireLife::Ended { by: None }))]);
+    crate::history::history_list::with_own_housing(&mut quiet, &crate::host::Housing::with(&list));
+    assert_eq!(calls.get(), 0, "一条活的都没有 ⇒ 不列名单");
+    assert_eq!(quiet.rows[0].housed, None, "不是活着的不带");
+
+    let mut l = listing(vec![
+        raw_row("s1", Some(running())),
+        raw_row("s3", Some(running())),
+        raw_row("s2", Some(WireLife::Ended { by: None })),
+    ]);
+    crate::history::history_list::with_own_housing(&mut l, &crate::host::Housing::with(&list));
+    assert_eq!(calls.get(), 1, "一份清单只列一次名单");
+    assert_eq!(l.rows[1].housed, None, "名单里不挂它 ⇒ 不知道");
+    let mut rows = l.rows.into_iter();
+    let mut view = || {
+        let (face, _) = crate::history::history_list::member_facts(rows.next().unwrap(), None);
+        serde_json::to_value(&face.can.view).unwrap()
+    };
+    assert_eq!(
+        view()["open"],
+        serde_json::json!({"kind": "attach", "terminal": "h1"}),
+        "清单行带着的宿主进了这一行的脸"
+    );
+    assert_eq!(
+        view(),
+        serde_json::json!({"can": "no", "why": copy_core::copy_text("beTerminal.why.unclear", &[])}),
+        "不知道 ⇒ 看不了，照实说说不清"
+    );
 }

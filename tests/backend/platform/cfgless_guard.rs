@@ -632,6 +632,14 @@ mod tests {
             "合法线外",
             "按名字判一项是哪一种的扩展名表（`.sh` · `.bash` 文件算代码）：只按名字分类、画图标，不起 shell、不假设它在，在任何平台上都不会答错。",
         ),
+        (
+            "platform/shell/posix.rs",
+            "pub const SELF_START: &str",
+            "合法线外",
+            "POSIX 方言模块里「这个 shell 的起始时刻」那一句（窗口标签的后半）：只拼进 POSIX shell 跑的那几串\
+             （接入块 `ccm-aliases.sh` · `note_own_window`），`/proc` 在那台的 shell 里才展开，后端进程自己不读这条路；\
+             PowerShell 那一句是 `powershell::SELF_START`，各走各的方言。",
+        ),
     ];
 
     /// 🔴 **搬走过一次的文件，不许再靠签字回到这张表上。**

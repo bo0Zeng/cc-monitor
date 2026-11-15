@@ -29,16 +29,16 @@
 //! ⚠ 刻意不回一个结构体：`设计` 那条纪律是「返回类型只在 TS 侧真消费字段时才生成」
 //! （`tests/frontend/ui/ipc/commands.vitest.ts` 头注逐字），一个 `usize` 不需要 `ts-rs`。
 //!
-//! # 🔴 三、签名为什么只吃一台远端的名字 —— 因为**只有一侧**
+//! # 🔴 三、签名只吃一台的名字 —— 本机也是一台
 //!
-//! 窗口的数据面只有远端一侧（那条白名单住 `super::source` 头注「只有远端一侧」那一节）
-//! ⇒ `parity_ledger` 那一行签 `Side::Remote`，签的就是全部：本机那一侧没有另一条可达路径。
+//! 窗口寻址那台的后端（本机就是 `<local>`），本机与远端同一条路、没有另一条可达路径。
 //!
 //! 🔴 `path` 传空串是**合法调用**，意思是「开在远端 home」（由窗口进程去问）——
 //! 顶栏那个入口（`src/frontend/ui/sftp-host-picker.ts`，0 台提示 / 1 台直开 / 多台选单）接过来时**不必先自己解一趟路径**。
 //! 逐条理由住 [`open_file_window`] 的 `# 🔴` 那一节。
 
 use crate::detail::Shell as _;
+use cmd_wire::files::WirePath;
 use copy_core::copy_text;
 use copy_core::said::Said;
 
@@ -73,8 +73,8 @@ pub enum Target {
 ///
 /// # 🔴 父目录与尾段**在这一侧算**
 ///
-/// 前端不许自己切远端路径：窗口这条路只有 [`super::source::parent_dir`] / [`super::source::remote_basename`]
-/// 这**一对**。多一份就多一种「Windows 上 `\` 被当分隔符」的机会。
+/// 前端不许自己切远端路径：切法只有线上类型那一份（[`WirePath::parent`] / [`WirePath::tail`]，窗口里也调它）。
+/// 多一份就多一种「Windows 上 `\` 被当分隔符」的机会。
 ///
 /// # Errors
 ///
@@ -87,15 +87,15 @@ pub fn plan_target(path: &str, reveal_file: Option<&str>) -> Result<Target, Stri
     let Some(f) = reveal_file.map(str::trim).filter(|s| !s.is_empty()) else {
         return Ok(Target::Home);
     };
-    let name = filewin_contract::remote_basename(f).to_string();
+    let name = String::from_utf8_lossy(WirePath::tail(f.as_bytes())).into_owned();
     if name.is_empty() {
         return Err(copy_text(
             "rsFilewinEntry.plan.noTarget",
             &[("target", &f.to_string())],
         ));
     }
-    // 🔴 `parent_dir` 只吃一条字符串（窗口只有远端一侧，切法只有一种）⇒ 这里不用合成任何占位配置。
-    let dir = filewin_contract::parent_dir(f);
+    // 合法 UTF-8 进 ⇒ 切点都在 `/` 上，出来的也是合法 UTF-8（lossy 那一下不会替换任何字节）。
+    let dir = String::from_utf8_lossy(&WirePath::parent(f.as_bytes()).0).into_owned();
     Ok(Target::Reveal { dir, name })
 }
 
@@ -192,10 +192,10 @@ pub(crate) async fn open_with(
     late: super::proc::LateExit,
 ) -> Result<usize, Said> {
     // 窗口进程只拿那台的名字（寻址用，本机后端机器表里的那个名字）。
-    // 视图文件住 monitor 自己的数据目录（不是用户文件），路径在这一侧算好交过去（名字只住 `data_paths`）。
+    // 视图文件住 monitor 自己的数据目录（不是用户文件），路径在这一侧算好交过去（名字只住契约包）。
     //   书签不在这里：它归那台后端，窗口按机器名自己问（`bookmarks-read` / `-edit`）。
     let view = crate::config::resolve_monitor_data_dir()
-        .map(|d| d.join(crate::data_paths::FILEWIN_VIEW_FILE));
+        .map(|d| d.join(relay_route_core::FILEWIN_VIEW_FILE));
     // ⓪ 三者优先级 —— 那一段是**纯函数**（[`plan_target`]），理由见它的头注。
     //    〔09-28 裁 3〕home 那一支不在这里问了：`cwd` 缺席交给窗口进程（`proc::first_screen`）。
     let (cwd, reveal) = match plan_target(&path, reveal_file.as_deref()).map_err(Said::from)? {
@@ -240,13 +240,6 @@ pub(crate) async fn open_from_window(
     machine: &str,
     args: &serde_json::Value,
 ) -> Result<(), (&'static str, String)> {
-    // 本机没有文件窗口（窗口只开在远端上）⇒ 说真实原因，不让下面那句「没有叫 <local> 的远端配置」出声。
-    if machine == cmd_wire::LOCAL {
-        return Err((
-            "local_has_no_file_window",
-            copy_text("rsFilewinEntry.other.localNone", &[]),
-        ));
-    }
     let Some(theme) = filewin_contract::filewin_open_theme(args) else {
         return Err(("bad_args", copy_text("rsFilewinEntry.other.badArgs", &[])));
     };

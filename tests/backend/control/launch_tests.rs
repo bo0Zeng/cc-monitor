@@ -88,7 +88,7 @@ fn shape_validation_rejects_the_things_that_would_break_tmux() {
             .as_deref(),
         Some("bad_args")
     );
-    // `ccm_sid` 会被拼进 tmux 格式串，收紧字符集
+    // `ccm_sid` 只收会话 id（`cmd_wire::Sid` 那一个值域，解入参那一下就判，与模式无关）
     let e = parse_request(&serde_json::json!({
         "mode":"create-or-attach","name":"n","payload":"p","ccm_sid":"a b"
     }))
@@ -300,10 +300,10 @@ fn exact_target_is_the_exact_match_shape() {
 /// 诊断说的是「那条路没了 ⇒ 删登记」，照做反而会把这条路移出人群。
 ///
 /// ⚠ **订正上面 B 那一格**：本文件的创建臂**今天不再写
-/// `@ccm_sid`** 了（写的是意图键 `@ccm_sid_expect`，见 [`run`] 里那段头注）
+/// `@ccm_sid`** 了（建会话不写身份，见 [`create_steps`] 的头注）
 /// ⇒ 「`@ccm_sid` 改名」那个变异**在本文件里已经没有靶子**。
 /// 而这一族今天真有人盯着，只是**不在本文件**：`readonly_guard` 只许 `control/identity_tag.rs` 写 tmux 变量，
-/// `ccm/plan_tests.rs::the_container_path_carries_every_intent_inward` 钉渲出的命令只写意图键 ⇒ **门① 会红、门③ 仍不会**。
+/// `ccm/plan_tests.rs::the_container_path_carries_every_intent_inward` 钉渲出的命令不写身份 ⇒ **门① 会红、门③ 仍不会**。
 /// 别把「门③ 绿」读成「没人看着」，也别读成「有人看着」—— 它们分在别的判据里。
 ///
 /// ⇒ E10 说结构守卫**钉得住顺序与字面量**，那这一条就该有人写。本条补上。
@@ -605,10 +605,10 @@ fn every_mode_variant_has_an_arm_and_a_parse_and_is_named_in_some_judge() {
 ///
 /// # 它治的不是「没做探测」，是**替证据说大话**
 ///
-/// `type_payload` 的全部依据就是 `tmux(&["send-keys", …])?` ——
-/// **退 0 就 `Ok`**。而 tmux 在 pane 处于 **copy-mode** 时照样退 0：键被键表吃掉，
-/// 载荷根本没进应用（`pane_in_mode` / `copy-mode` / `-X cancel` 在**生产函数体**里零命中 ——
-/// 不是「全仓零命中」：这几个词在本注释与下面那条判据的 needle 表里都出现着；
+/// `type_payload` 的全部依据就是送字那一串（`run_steps` 跑 `input_steps` 拼的 `send-keys` · `paste-buffer`）每一发的退出码 ——
+/// **退 0 就 `Ok`**。送之前同一串里先退了窗格模式（`copy-mode -q`，copy-mode 吃键那一形没了），
+/// 但退 0 仍说不出程序起没起来、shell 读没读它（`capture-pane` / `display-message` / `pane_in_mode` / `-X` 在
+/// 那几个**生产函数体**里零命中 —— 不是「全仓零命中」：这几个词在本注释与下面那条判据的 needle 表里都出现着；
 /// 那条判据扫的是抽出来的函数体，所以它自己不会自匹配，说法跟着它的真实扫描面走。）
 ///
 /// 后果是链式的，且**每一环都在放大上一环的乐观**：
@@ -628,7 +628,12 @@ fn every_mode_variant_has_an_arm_and_a_parse_and_is_named_in_some_judge() {
 #[test]
 fn typed_is_only_as_strong_as_the_send_keys_exit_code() {
     let src = guard_core::production_code(include_str!("../../../src/backend/control/launch.rs"));
-    for f in ["fn type_payload("] {
+    for f in [
+        "fn type_payload(",
+        "fn run_steps(",
+        "fn input_steps(",
+        "fn to_pane(",
+    ] {
         let at = src
             .find(f)
             .unwrap_or_else(|| panic!("找不到 `{f}` —— 改名了就把本条一起改"));
@@ -639,7 +644,7 @@ fn typed_is_only_as_strong_as_the_send_keys_exit_code() {
             .unwrap_or(rest.len())];
         // 抽取器自检：抽出来的得像个函数体。
         assert!(
-            (3..30).contains(&body.lines().count()),
+            (3..60).contains(&body.lines().count()),
             "从 `{f}` 抽出 {} 行，不像函数体（抽取器坏了）",
             body.lines().count()
         );
@@ -792,6 +797,7 @@ fn create_req() -> LaunchRequest {
         "payload": "claude --resume x",
         "cwd": "/home/u/p",
         "agent": "claude",
+        // 带着它：建会话那一串照样不写身份（意图键加回来，下面 ③ 那张整条动词表当场红）。
         "ccm_sid": "1a2b3c4d-0000-0000-0000-000000000000",
     }))
     .expect("请求应当解析成功")
@@ -810,7 +816,7 @@ fn w5vis_s4_s5_the_create_arm_carries_tmux_reasons_and_is_not_blocked_by_seconda
         ),
         _ => said(false, "can't find session: cc-w5vis"),
     });
-    let e = run_with(&req, &|a| f.call(a)).unwrap_err();
+    let e = run_with(&req, &|a| f.call(a), &|| {}).unwrap_err();
     assert_eq!(e.code.as_deref(), Some("create_failed"));
     // 句子只带原因词；tmux 的原话进复制详情（`raw`），不上句子。
     assert_eq!(
@@ -828,19 +834,19 @@ fn w5vis_s4_s5_the_create_arm_carries_tmux_reasons_and_is_not_blocked_by_seconda
     );
     // ② 建不出、但已存在 ⇒ 幂等短路：什么都不做（不键入）。
     let f = FakeTmux::new(|verb| said(verb == "has-session", "duplicate session: cc-w5vis"));
-    let o = run_with(&req, &|a| f.call(a)).expect("已存在是幂等成功");
+    let o = run_with(&req, &|a| f.call(a), &|| {}).expect("已存在是幂等成功");
     assert_eq!((o.created, o.typed), (false, false));
     assert_eq!(f.verbs(), ["new-session", "has-session"]);
     // ③ 建出来了、两步次要动作全失败 ⇒ 不阻断：照样键入、回成功；两步都真的被调过、键入排在它们之后。
     let f = FakeTmux::new(|verb| said(verb != "set-option", "invalid option: w5vis"));
-    let o = run_with(&req, &|a| f.call(a)).expect("次要动作失败不许阻断");
+    let o = run_with(&req, &|a| f.call(a), &|| {}).expect("次要动作失败不许阻断");
     assert_eq!((o.created, o.typed), (true, true));
     assert_eq!(
         f.verbs(),
         [
             "new-session",
             "set-option @ccm_agent",
-            "set-option @ccm_sid_expect",
+            "send-keys",
             "send-keys",
         ]
     );
@@ -849,7 +855,7 @@ fn w5vis_s4_s5_the_create_arm_carries_tmux_reasons_and_is_not_blocked_by_seconda
         "send-keys" => said(false, "can't find pane: %9"),
         _ => said(true, ""),
     });
-    let e = run_with(&req, &|a| f.call(a)).unwrap_err();
+    let e = run_with(&req, &|a| f.call(a), &|| {}).unwrap_err();
     assert_eq!(e.code.as_deref(), Some("typed_unconfirmed"));
     assert!(!e.said.contains("can't find pane"), "{}", e.said);
     assert_eq!(e.raw.as_deref(), Some("can't find pane: %9"));
@@ -858,7 +864,7 @@ fn w5vis_s4_s5_the_create_arm_carries_tmux_reasons_and_is_not_blocked_by_seconda
 /// ★ S5 的话：做成了不说；没做成 ⇒ 说哪一步、tmux 说的、后果（两步逐格，两向）。起不来 tmux 那一形同样要说。
 #[test]
 fn w5vis_s5_the_secondary_note_speaks_only_when_the_step_failed() {
-    for step in [Secondary::AgentTag, Secondary::IntentTag] {
+    for step in [Secondary::AgentTag, Secondary::ClientTag] {
         assert_eq!(
             secondary_note("cc-x", step, &said(true, "")),
             None,
@@ -885,27 +891,20 @@ fn w5vis_s5_the_secondary_note_speaks_only_when_the_step_failed() {
             )
         );
     }
-    // 身份意图那一步的后果必须点名 `wrong_owner`（S2 那条事实链的另一头）。
-    assert!(Secondary::IntentTag.consequence().contains("wrong_owner"));
 }
 
 /// ★ S4：真起一个假 tmux 子进程（退出码 · stderr 由它定 —— 异源），`ran` 把原话收下来。
 #[cfg(unix)]
 #[test]
 fn w5vis_s4_ran_keeps_what_the_real_process_said_on_stderr() {
-    let dir = std::env::temp_dir().join(format!("ccm-w5vis-s4-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).expect("mkdir");
+    let dir = test_home::scratch("w5vis-s4");
     let fake = dir.join("tmux");
-    std::fs::write(
+    test_home::write_exe(
         &fake,
         "#!/bin/sh\nif [ \"$1\" = new-session ]; then echo 'duplicate session: w5vis' >&2; exit 1; fi\nexit 0\n",
-    )
-    .expect("write");
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).expect("chmod");
-    // 经 `/bin/sh <脚本>` 起（不直接 exec 刚写完的文件 —— 并行 fork 下会撞 `ETXTBSY`，见 `identity_tag_tests::fake_cmd`）。
-    let sh = || crate::platform::child::Child::new("/bin/sh").arg(&fake);
-    let r = ran(sh(), &["new-session", "-d"]).expect("起得来");
+    );
+    let fake_tmux = || crate::platform::child::Child::new(&fake);
+    let r = ran(fake_tmux(), &["new-session", "-d"]).expect("起得来");
     assert_eq!(
         r,
         Ran {
@@ -913,7 +912,7 @@ fn w5vis_s4_ran_keeps_what_the_real_process_said_on_stderr() {
             stderr: "duplicate session: w5vis".into()
         }
     );
-    let r = ran(sh(), &["has-session"]).expect("起得来");
+    let r = ran(fake_tmux(), &["has-session"]).expect("起得来");
     assert!(r.ok);
     let e = ran(crate::platform::child::Child::new(dir.join("gone")), &["x"]).unwrap_err();
     assert_eq!(e.code.as_deref(), Some("no_tmux"));
@@ -984,7 +983,7 @@ fn the_create_arm_refuses_a_name_the_new_session_rule_refuses_unless_it_already_
     };
     for bad in ["-x", "a.b", "a*b"] {
         let f = FakeTmux::new(|_| said(false, "can't find session"));
-        let e = run_with(&with_name(bad), &|a| f.call(a)).unwrap_err();
+        let e = run_with(&with_name(bad), &|a| f.call(a), &|| {}).unwrap_err();
         assert_eq!(e.code.as_deref(), Some("bad_args"), "{bad}");
         assert_eq!(
             Some(e.fail.said),
@@ -993,12 +992,12 @@ fn the_create_arm_refuses_a_name_the_new_session_rule_refuses_unless_it_already_
         );
         assert_eq!(f.verbs(), ["has-session"], "{bad}：判不过还去建了");
         let f = FakeTmux::new(|verb| said(verb == "has-session", ""));
-        let o = run_with(&with_name(bad), &|a| f.call(a)).expect("已在的会话照旧幂等接回");
+        let o = run_with(&with_name(bad), &|a| f.call(a), &|| {}).expect("已在的会话照旧幂等接回");
         assert_eq!((o.created, o.typed), (false, false));
         assert_eq!(f.verbs(), ["has-session"]);
     }
     let f = FakeTmux::new(|_| said(true, ""));
-    run_with(&create_req(), &|a| f.call(a)).expect("合法名照旧建");
+    run_with(&create_req(), &|a| f.call(a), &|| {}).expect("合法名照旧建");
     assert_eq!(f.verbs()[0], "new-session");
 }
 
@@ -1024,7 +1023,7 @@ fn a_created_session_is_declared_by_whoever_created_it() {
                 stderr: String::new(),
             })
         };
-        run_with(&req, &fake).expect("该建成");
+        run_with(&req, &fake, &|| {}).expect("该建成");
         let seen = seen.into_inner();
         let tag = seen
             .iter()
@@ -1081,7 +1080,7 @@ fn busy1_the_start_command_reaches_the_shell_even_if_the_new_pane_is_in_a_mode()
         }
         r
     };
-    let o = run_with(&req, &tmux).expect("该建成");
+    let o = run_with(&req, &tmux, &|| {}).expect("该建成");
     assert_eq!((o.created, o.typed), (true, true));
     let landed = sb.wait_for(3_000, |s| {
         s.out(&["capture-pane", "-p", "-t", "=busy1-typed:"])
@@ -1111,7 +1110,7 @@ fn busy1_a_start_command_that_did_not_get_through_says_so() {
         "send-keys" => said(false, "can't find pane: %9"),
         _ => said(true, ""),
     });
-    let e = run_with(&req, &|a| f.call(a)).unwrap_err();
+    let e = run_with(&req, &|a| f.call(a), &|| {}).unwrap_err();
     assert_eq!(e.code.as_deref(), Some("typed_unconfirmed"));
     assert_eq!(
         e.said,
@@ -1134,7 +1133,7 @@ fn busy1_a_start_command_that_did_not_get_through_says_so() {
         )),
         _ => said(true, ""),
     });
-    let e = run_with(&req, &|a| f.call(a)).unwrap_err();
+    let e = run_with(&req, &|a| f.call(a), &|| {}).unwrap_err();
     assert_eq!(e.code.as_deref(), Some("typed_unconfirmed"), "{}", e.said);
     assert_eq!(
         e.said,
@@ -1153,7 +1152,7 @@ fn busy2_a_start_command_that_did_not_get_through_says_which_kind() {
         "send-keys" => said(false, "can't find pane: %9"),
         _ => said(true, ""),
     });
-    let e = run_with(&req, &|a| f.call(a)).unwrap_err();
+    let e = run_with(&req, &|a| f.call(a), &|| {}).unwrap_err();
     assert_eq!(e.code.as_deref(), Some("typed_unconfirmed"));
     assert_eq!(
         e.untyped,
@@ -1173,7 +1172,7 @@ fn busy2_a_start_command_that_did_not_get_through_says_which_kind() {
         )),
         _ => said(true, ""),
     });
-    let e = run_with(&req, &|a| f.call(a)).unwrap_err();
+    let e = run_with(&req, &|a| f.call(a), &|| {}).unwrap_err();
     assert_eq!(e.code.as_deref(), Some("typed_unconfirmed"));
     assert_eq!(
         e.untyped,
@@ -1185,7 +1184,7 @@ fn busy2_a_start_command_that_did_not_get_through_says_which_kind() {
         "new-session" | "has-session" => said(false, "no"),
         _ => said(true, ""),
     });
-    let e = run_with(&req, &|a| f.call(a)).unwrap_err();
+    let e = run_with(&req, &|a| f.call(a), &|| {}).unwrap_err();
     assert_eq!(e.code.as_deref(), Some("create_failed"));
     assert_eq!(e.untyped, None);
 }
@@ -1209,7 +1208,7 @@ fn busy2_a_bare_session_left_by_an_undelivered_start_command_is_reaped() {
         }
         ran(sb.child(), a)
     };
-    let e = run_with(&req, &tmux).unwrap_err();
+    let e = run_with(&req, &tmux, &|| {}).unwrap_err();
     let Some((Delivery::NotDelivered, Some(made))) = e.untyped else {
         panic!("没送进却没带回「刚建的」令牌：{:?}", e.untyped);
     };
@@ -1302,12 +1301,158 @@ fn a_shell_session_is_made_bare_or_left_as_it_is() {
     assert!(!f.verbs().contains(&"new-session".to_string()));
 }
 
+/// ★ 容器路打印＝真跑：记录替身跑 [`run_with`]（建会话那一臂，入参就是 ccm 真跑那一份 `ccm::launch_args`），
+/// 每一发 tmux 的 argv 照打印那一行的拼法（`tmux -u` ＋ 要引号的词才加）都出现在 `ccm --ccm-print`（`plan::render`）的输出里、先后一样。
+#[test]
+fn the_container_print_spells_out_the_real_run_step_by_step() {
+    use crate::control::ccm::plan;
+    let word = crate::platform::shell::dialect::posix_word;
+    for (name, cwd, size, payload) in [
+        (
+            "cc-p1",
+            "/tmp",
+            None,
+            "'/usr/local/bin/ccm' '--resume' 'p1' '--' '--cwd' '/tmp'",
+        ),
+        (
+            "n w",
+            "/p q",
+            Some(("220", "50")),
+            "'/usr/local/bin/ccm' '--' '--say' 'a\nb'",
+        ),
+    ] {
+        let c = plan::Container {
+            host: plan::TerminalHost::Tmux,
+            host_run: Vec::new(),
+            name: name.into(),
+            cwd: cwd.into(),
+            agent: "claude".into(),
+            size: size.map(|(w, h): (&str, &str)| (w.to_string(), h.to_string())),
+            detach: true,
+            payload: payload.into(),
+            self_check: "'/usr/local/bin/ccm' '--ccm-print'".into(),
+            inner_head: vec!["/usr/local/bin/ccm".into()],
+            self_check_argv: Vec::new(),
+            unset: Vec::new(),
+        };
+        let out = plan::render(&plan::Plan::Container(c.clone()));
+        let req = super::parse_request(crate::control::ccm::launch_args(&c)).expect("该过得了门");
+        let log = std::cell::RefCell::new(Vec::<String>::new());
+        run_with(
+            &req,
+            &|a| {
+                log.borrow_mut().push(format!(
+                    "tmux -u {}",
+                    a.iter().map(|w| word(w)).collect::<Vec<_>>().join(" ")
+                ));
+                said(true, "")
+            },
+            &|| {},
+        )
+        .expect("该建成");
+        let log = log.into_inner();
+        assert!(log.len() >= 4, "{log:?}");
+        let mut at = 0;
+        for line in &log {
+            // 粘贴缓冲名打印那一形另起（`ccm-input-print-N`）：比的时候抹掉编号那一截。
+            let norm = |s: &str| {
+                let mut s = s.to_string();
+                while let Some(i) = s.find("ccm-input-") {
+                    let end = s[i..].find(' ').map_or(s.len(), |k| i + k);
+                    s.replace_range(i..end, "BUF");
+                }
+                s
+            };
+            let (line, out) = (norm(line), norm(&out));
+            let k = out[at..].find(line.as_str()).unwrap_or_else(|| {
+                panic!("真跑的这一发不在打印里（或先后不对）：\n{line}\n打印：{out}")
+            });
+            at += k + line.len();
+        }
+    }
+}
+
 // ── 送字那一串（括号粘贴 · 隔一下再回车）────────────────────────────
 
-/// 一次送字里 tmux 收到的每一发（`settle` 记成 `"settle"`），只留动词与它送的那一段。
+/// 替身 tmux 收到的每一发（整串 argv），回「做成了」。
+fn recorded(run: impl FnOnce(&dyn Fn(&[&str]) -> Result<Ran, Said>)) -> Vec<Vec<String>> {
+    let log = std::cell::RefCell::new(Vec::<Vec<String>>::new());
+    let tmux = |a: &[&str]| {
+        log.borrow_mut()
+            .push(a.iter().map(|s| s.to_string()).collect());
+        said(true, "")
+    };
+    run(&tmux);
+    log.into_inner()
+}
+
+/// ★ 落到窗格上的每一发（`send-keys` · `paste-buffer`）都在同一串里先退窗格模式（`copy-mode -q -t <目标> ;` 打头）：
+/// 窗格翻着屏（copy-mode）或被一条钩子切进 view-mode 时，送的字归那个模式的键表，tmux 照样退 0。
+/// 送字三形（单行 · 多行 · 带图）· 送键 · 起会话送启动命令都一样；载荷当字面字送（`-l`），`C-c` 不被当键名。
+#[test]
+fn every_send_to_the_pane_leaves_pane_mode_first() {
+    let leave = |t: &str| -> Vec<String> {
+        ["copy-mode", "-q", "-t", t, ";"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect()
+    };
+    let to_pane = |c: &Vec<String>| c.iter().any(|w| w == "send-keys" || w == "paste-buffer");
+    let line = recorded(|t| {
+        type_into("%1", &[], "C-c", true, t, &|| {}).expect("送成");
+    });
+    assert_eq!(
+        line[0],
+        [
+            &leave("%1")[..],
+            &["send-keys", "-t", "%1", "-l", "--", "C-c"].map(String::from)[..]
+        ]
+        .concat(),
+        "单行那一形的第一发就是先退模式、再按字面送"
+    );
+    let req = create_req();
+    let fresh = exact_target(&req.name);
+    for (what, target, calls) in [
+        ("单行", "%1", line),
+        (
+            "多行带图",
+            "%1",
+            recorded(|t| {
+                type_into("%1", &["/w/x.png".to_string()], "a\nb", true, t, &|| {}).expect("送成");
+            }),
+        ),
+        (
+            "送键",
+            "%1",
+            recorded(|t| {
+                press_into("%1", "Escape", t).expect("送成");
+            }),
+        ),
+        (
+            "起会话送启动命令",
+            fresh.as_str(),
+            recorded(|t| {
+                run_with(&req, t, &|| {}).expect("该建成");
+            }),
+        ),
+    ] {
+        let sends: Vec<_> = calls.iter().filter(|c| to_pane(c)).collect();
+        assert!(!sends.is_empty(), "{what}：一发都没落到窗格上：{calls:?}");
+        for c in sends {
+            assert_eq!(
+                c[..5],
+                leave(target)[..],
+                "{what}：这一发没先退窗格模式：{c:?}"
+            );
+        }
+    }
+}
+
+/// 一次送字里 tmux 收到的每一发（`settle` 记成 `"settle"`），只留动词与它送的那一段（先退模式那一截不看）。
 fn typed_into(pastes: &[&str], text: &str, enter: bool) -> Vec<String> {
     let log = std::cell::RefCell::new(Vec::<String>::new());
     let tmux = |a: &[&str]| {
+        let a = last_cmd(a);
         let shown = match a.first().copied() {
             Some("set-buffer") => format!("set-buffer {}", a.last().copied().unwrap_or("")),
             Some("send-keys") => format!("send-keys {}", a.last().copied().unwrap_or("")),
@@ -1406,4 +1551,193 @@ fn the_field_cap_stays_in_the_same_range_as_the_monitor_command_cap() {
         lo > 0 && hi <= lo * 4,
         "「一条人能读的启动命令」两侧差得太远（后端 {backend} / monitor {monitor}）"
     );
+}
+
+// ── 跑一件活（`run_task`）────────────────────────────────────────────────
+
+/// 替身家的那个程序：认 `chore --into <结果文件> -- <说明>`（形不对 ⇒ 退 9），先睡一会儿、往标准输出印一行杂音，
+/// 再照说明办：`big` · `huge` ⇒ 往标准输出再印刚过 4 MiB · 64 MiB、退 5；`bigfile` ⇒ 结果文件写刚过 4 MiB、退 5；
+/// `loud` ⇒ 往 stderr 印刚过 64 MiB、再照常写结果文件；`skip` ⇒ 不写结果文件；`fail` ⇒ 写了、退 3；别的 ⇒ 写了、退 0。写进去的是说明 · 号载体 · 在哪跑。
+#[cfg(unix)]
+const FAKE_AGENT: &str = r#"#!/bin/sh
+[ "$1" = chore ] && [ "$2" = --into ] && [ "$4" = -- ] || exit 9
+out=$3; say=$5
+sleep 0.3
+echo "noise on stdout"
+[ "$say" = big ] && { head -c 4194305 /dev/zero | tr '\0' a; exit 5; }
+[ "$say" = huge ] && { head -c 67108865 /dev/zero | tr '\0' a; exit 5; }
+[ "$say" = bigfile ] && { head -c 4194305 /dev/zero | tr '\0' a > "$out"; exit 5; }
+[ "$say" = loud ] && head -c 67108865 /dev/zero | tr '\0' a >&2
+[ "$say" = skip ] && exit 0
+printf 'did %s · %s · %s' "$say" "$FAKE_ACCOUNT_DIR" "$(pwd)" > "$out"
+[ "$say" = fail ] && exit 3
+exit 0
+"#;
+
+/// 一件活的计划：替身家（声明了一次性那一形）在交进来的号上、在 `dir/work` 里跑，启动器换成上面那个程序
+/// （经 `test_home::write_exe` 写：写完马上 exec 也不撞 ETXTBSY）。
+#[cfg(unix)]
+fn task_in(dir: &std::path::Path, say: &str) -> crate::control::ccm::plan::Task {
+    let prog = dir.join("fakeagent");
+    test_home::write_exe(&prog, FAKE_AGENT);
+    let work = dir.join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    let reg = [crate::agents::Adapter {
+        kind: "fake-task",
+        launch: Some(crate::agents::fake::LAUNCH),
+        ..crate::agents::fake::full_row(crate::agents::fake::home)
+    }];
+    let env = crate::control::ccm::plan::Env {
+        home: dir.to_path_buf(),
+        pwd: dir.to_string_lossy().into_owned(),
+        account_env: "FAKE_ACCOUNT_DIR".into(),
+        ..Default::default()
+    };
+    let ask = crate::control::ccm::plan::TaskAsk {
+        agent: "fake-task".into(),
+        account_dir: "/acct/a1".into(),
+        account_name: "a1".into(),
+        cwd: work.to_string_lossy().into_owned(),
+        say: say.into(),
+        out: dir.join("result.txt").to_string_lossy().into_owned(),
+    };
+    let mut t = crate::control::ccm::plan::task_among(&reg, &ask, &env).expect("算得出");
+    t.direct.argv[0] = prog.to_string_lossy().into_owned();
+    t
+}
+
+#[cfg(unix)]
+const TASK_WITHIN: crate::platform::child::Deadline =
+    crate::platform::child::Deadline::millis(20_000);
+
+/// ★ 跑完交回结果文本（照替身家说的从结果文件读，标准输出的杂音不算）＋ 退出码 ＋ 用时；号载体 · 工作目录照计划交到了那个进程。
+#[cfg(unix)]
+#[test]
+fn a_task_comes_back_with_its_text_exit_and_time() {
+    let dir = test_home::scratch("task-ok");
+    let t = task_in(&dir, "fix the bug");
+    let done = run_task(&t, TASK_WITHIN).expect("起得来");
+    let work = dir.join("work");
+    assert_eq!(
+        done.text.as_deref(),
+        Some(format!("did fix the bug · /acct/a1 · {}", work.display()).as_str())
+    );
+    assert_eq!(done.exit, Some(0));
+    assert!(done.took_ms >= 300, "用时没照起止算：{}", done.took_ms);
+    assert!(done.took_ms < 20_000, "{}", done.took_ms);
+}
+
+/// ★ 进程非 0 退出 ⇒ 照实交那个退出码，结果文本照读。
+#[cfg(unix)]
+#[test]
+fn a_failing_task_reports_its_exit_code_and_still_its_text() {
+    let dir = test_home::scratch("task-fail");
+    let done = run_task(&task_in(&dir, "fail"), TASK_WITHIN).expect("起得来");
+    assert_eq!(done.exit, Some(3));
+    assert!(
+        done.text
+            .as_deref()
+            .is_some_and(|s| s.starts_with("did fail · ")),
+        "{:?}",
+        done.text
+    );
+}
+
+/// ★ 结果文件没写出 ⇒ 文本没有（照实说没有，不拿标准输出顶），退出码照交。
+#[cfg(unix)]
+#[test]
+fn a_task_that_writes_no_result_comes_back_without_text() {
+    let dir = test_home::scratch("task-none");
+    let done = run_task(&task_in(&dir, "skip"), TASK_WITHIN).expect("起得来");
+    assert_eq!(done.text, None);
+    assert_eq!(done.exit, Some(0));
+}
+
+/// 起不来（程序不在）⇒ 回错，不交一个空结果。
+#[cfg(unix)]
+#[test]
+fn a_task_whose_program_is_missing_is_an_error_not_an_empty_result() {
+    let dir = test_home::scratch("task-gone");
+    let mut t = task_in(&dir, "fix");
+    t.direct.argv[0] = dir.join("nope").to_string_lossy().into_owned();
+    assert!(run_task(&t, TASK_WITHIN).is_err());
+}
+
+/// 非得经 shell 的那一趟（机器级 env 要 eval）⇒ 拒（`no_shell`），一个进程都不起、不交空结果。
+#[cfg(unix)]
+#[test]
+fn a_task_that_needs_a_shell_is_refused_not_run() {
+    let dir = test_home::scratch("task-sh");
+    let mut t = task_in(&dir, "fix");
+    t.direct.ccm_env = "export X=1".into();
+    let e = run_task(&t, TASK_WITHIN).expect_err("该拒");
+    assert_eq!(e.code.as_deref(), Some(crate::control::ccm::NO_SHELL));
+    assert!(!dir.join("result.txt").exists(), "拒了却起了进程");
+}
+
+/// 同一件活改走标准输出那一路（替身家印的那一份原样就是结果文本）。
+#[cfg(unix)]
+fn on_stdout(mut t: crate::control::ccm::plan::Task) -> crate::control::ccm::plan::Task {
+    t.text = crate::agents::TaskText::Stdout(|s| Some(s.to_string()));
+    t
+}
+
+/// ★ 标准输出那一路照读：上限以内 ⇒ 交印的那一份。
+#[cfg(unix)]
+#[test]
+fn a_stdout_task_comes_back_with_what_it_printed() {
+    let dir = test_home::scratch("task-out");
+    let done = run_task(&on_stdout(task_in(&dir, "fix")), TASK_WITHIN).expect("起得来");
+    assert_eq!(done.text.as_deref(), Some("noise on stdout\n"));
+    assert_eq!(done.exit, Some(0));
+}
+
+/// ★ 标准输出超过 4 MiB ⇒ 文本照实说没有，退出码照交（同结果文件那一路）。
+#[cfg(unix)]
+#[test]
+fn a_stdout_task_over_the_cap_comes_back_without_text() {
+    let dir = test_home::scratch("task-big");
+    let done = run_task(&on_stdout(task_in(&dir, "big")), TASK_WITHIN).expect("起得来");
+    assert!(
+        done.text.is_none(),
+        "超了却交了 {} 字节",
+        done.text.map_or(0, |s| s.len())
+    );
+    assert_eq!(done.exit, Some(5));
+}
+
+/// ★ 标准输出超过 64 MiB 也一样：交回 `text: None`，不当这一趟失败。
+#[cfg(unix)]
+#[test]
+fn a_stdout_task_far_over_the_cap_is_still_a_result_without_text() {
+    let dir = test_home::scratch("task-huge");
+    let done = run_task(&on_stdout(task_in(&dir, "huge")), TASK_WITHIN).expect("超了也算跑完");
+    assert!(done.text.is_none());
+    assert_eq!(done.exit, Some(5));
+}
+
+/// ★ stderr 超过 64 MiB ⇒ 同标准输出超了：读完、不当这一趟失败，结果文本 · 退出码照交。
+#[cfg(unix)]
+#[test]
+fn a_task_that_floods_stderr_still_comes_back_with_its_text_and_exit() {
+    let dir = test_home::scratch("task-loud");
+    let done = run_task(&task_in(&dir, "loud"), TASK_WITHIN).expect("stderr 超了也算跑完");
+    assert!(
+        done.text
+            .as_deref()
+            .is_some_and(|s| s.starts_with("did loud · ")),
+        "{:?}",
+        done.text
+    );
+    assert_eq!(done.exit, Some(0));
+}
+
+/// 结果文件超过 4 MiB ⇒ 文本照实说没有（两路同一个上限）。
+#[cfg(unix)]
+#[test]
+fn a_task_whose_result_file_is_over_the_cap_comes_back_without_text() {
+    let dir = test_home::scratch("task-bigfile");
+    let done = run_task(&task_in(&dir, "bigfile"), TASK_WITHIN).expect("起得来");
+    assert!(done.text.is_none());
+    assert_eq!(done.exit, Some(5));
 }

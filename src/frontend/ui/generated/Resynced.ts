@@ -14,17 +14,10 @@ added: number,
  */
 removed: number, 
 /**
- * 这次真写了几处 `@ccm_sid`（值一样的不写）。
+ * 给人看的那一句（补读了几条 ＋ 差异；没人在看 ⇒ 那一句）：后端照这一趟的差异写好，界面照抄。
+ * 写了几处 `@ccm_sid` · 补读了几行 · 几份 watcher 做完了只进这一句，不另上线（没有读者）。
  */
-retagged: number, 
-/**
- * 在跟的会话这次从游标补读出几行（带 `sid` 只数那一个；各份 watcher 相加）。
- */
-caught_up: number, 
-/**
- * 几份 watcher 做完了对齐（常驻后端每条连接一份 ＋ 空转那一份）。
- */
-watchers: number, 
+said: string, 
 /**
  * 这台当下接得下但做不到的命令（同 hello 那一格）：握手之后才装上 tmux 的机器，靠「重新对齐」让客户端认出来。
  */

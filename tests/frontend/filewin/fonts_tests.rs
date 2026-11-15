@@ -218,13 +218,15 @@ fn label_chars() -> std::collections::BTreeSet<char> {
             set.extend(zh.chars().filter(|c| !c.is_ascii()));
         }
     }
-    // 字住两端共用的核心、窗口照画的那几句：`pick-core`（选中几项 ⇒ 菜单那张表 · 灰着的为什么）·
-    //   `batch-core`（一组的标题 · 结局句 · 失败那几行 · 断开那一行 · 冲突框那一行）。
-    for core in ["pick-core", "batch-core"] {
-        let lib = std::fs::read_to_string(
-            guard_core::addr::repo_root().join(format!("src/common/{core}/src/lib.rs")),
-        )
-        .unwrap_or_else(|_| panic!("读不到 {core}"));
+    // 别处写好、窗口照画的那几句：本机后端的菜单成品（`files/menu.rs` 菜单项的字 · 「这一件不适用」那几句，
+    //   连同它照 `pick-core` 取的一件事的字 · 灰着的为什么）· `batch-core`（一组的标题 · 结局句 · 失败那几行 · 断开那一行 · 冲突框那一行）。
+    for at in [
+        "src/backend/files/menu.rs",
+        "src/common/pick-core/src/lib.rs",
+        "src/common/batch-core/src/lib.rs",
+    ] {
+        let lib = std::fs::read_to_string(guard_core::addr::repo_root().join(at))
+            .unwrap_or_else(|_| panic!("读不到 {at}"));
         for key in copy_text_keys(&lib) {
             let zh = entries[&key]["zh"]
                 .as_str()
@@ -402,7 +404,8 @@ fn the_probe_equals_every_non_ascii_char_in_the_window_labels() {
         // 36 → 37，多的是 `trip.rs`（一趟：各看板共用的那一格与落地时那一个结局；一个字都不画，按文件数进人群，同 `theme.rs`）。
         // 37 → 46，多的是 `shell/` 底下按职责拆出去的九份（cross · edit · frame · keys · listing · search · trips · window · writes）：
         //   都是从 `shell.rs` 原样搬过去的，字形一个没多。
-        46,
+        // 46 → 44，少的是 `lossy_pull.rs` · `chunk_upload.rs`（上传 · 下载并成一组寻址本机的 `transfer-copy`，块形与按字节拉都在本机后端）。
+        44,
         "人群应当是 10 份（2026-09-21 现打：copy · corpus · entry · **find** · rows · scale · \
          shell · source · transfer · **writeops**；`fonts.rs` 与 `mod.rs` 摘掉了。\
          ⚠ `corpus.rs` 的非 ASCII 字面量是 0，按字符数统计时看不见它 —— \
@@ -426,7 +429,9 @@ fn the_probe_equals_every_non_ascii_char_in_the_window_labels() {
     assert_eq!(
         scanned.len(),
         // 现扫出的字数本身没有对错：变了说明窗口标签动过，增减的是哪几个字看下面那条两向差集。
-        339,
+        // 330 → 332：命令栏成品没到时那一句「正在查询可用操作…」（`rsFilewinSelect.menu.asking`）多了「正」「询」。
+        // 332 → 335：通道那一句「待处理命令已达上限 · 未执行 · 稍后重试」（本侧在等的满了）多了「理」「令」「稍」。
+        335,
         "现扫出 {} 个不同的非 ASCII 字符：数变了说明窗口标签动过，连着下面那条两向差集一起看\
          （只钉字数的话，`−1 ＋1` 那种改动会安安静静地过去）",
         scanned.len()
@@ -480,14 +485,19 @@ fn without_a_cjk_font_the_probe_is_almost_entirely_unrenderable() {
         super::unrenderable(&ctx, &prop(), PROBE).len(),
         // 现打的读数：汉字不装字体全画不出，画得出的只有 egui 自带字体里有的那几个符号。
         // 10-31 现打 333：多的「请」「求」（通道那一句「请求格式不对」进了窗口），两个都是汉字、不装字体都画不出。
-        333,
+        // 11-08 现打 324：少的九个汉字随上传 · 下载那几行字删了（交 侧 分 往 比 经 继 续 途）。
+        // 11-10 现打 326：多的「正」「询」（命令栏成品没到时那一句「正在查询可用操作…」），两个都是汉字、不装字体都画不出。
+        // 11-12 现打 329：多的「理」「令」「稍」（通道那一句「待处理命令已达上限」），三个都是汉字、不装字体都画不出。
+        329,
         "比例字体下画不出的字数变了（探针 {} 字）：重新量，这个数不许由探针字数算出来（两侧同源就退化成恒真）",
         PROBE.chars().count()
     );
     assert_eq!(
         super::unrenderable(&ctx, &mono(), PROBE).len(),
-        // 现打：比比例少一个，就是 `→`（它住 `Hack`，只在等宽这条链上）。10-31 现打 332（同比例那格多「请」「求」）。
-        332,
+        // 现打：比比例少一个，就是 `→`（它住 `Hack`，只在等宽这条链上）。10-31 现打 332（同比例那格多「请」「求」）；11-08 现打 323（同比例那格少九个）。
+        // 11-10 现打 325（同比例那格多「正」「询」）。
+        // 11-12 现打 328（同比例那格多「理」「令」「稍」）。
+        328,
         "等宽字体下画不出的字数变了（探针 {} 字）：重新量，连「比比例那一格少几个、少的是哪几个」一起核",
         PROBE.chars().count()
     );

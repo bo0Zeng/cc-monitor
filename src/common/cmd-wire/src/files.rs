@@ -64,6 +64,67 @@ impl WirePath {
             Err(_) => format!("\0{}", to_hex(&self.0)),
         }
     }
+
+    // 远端路径按**字节**切的上一级 · 尾段 · 拼一项 · 公共上级（文件窗口 · 开窗入口 · 一组的计划都调它）：
+    // 只认 `/`（远端恒是 POSIX；`\` 是名字里的普通字节），尾巴上的 `/` 全去掉、不算一段，
+    // 根与空的上一级是根、尾段为空。收的是一段字节（`.bytes()` · `str::as_bytes()` 都行），不必先包成 `WirePath`。
+
+    /// 上一级目录（根的上一级是根）。
+    pub fn parent(path: &[u8]) -> WirePath {
+        let t = trim_slashes(path);
+        WirePath(match t.iter().rposition(|c| *c == b'/') {
+            Some(0) | None => b"/".to_vec(),
+            Some(i) => t[..i].to_vec(),
+        })
+    }
+
+    /// 最后一段（根与空 ⇒ 空）。
+    pub fn tail(path: &[u8]) -> &[u8] {
+        let t = trim_slashes(path);
+        match t.iter().rposition(|c| *c == b'/') {
+            Some(i) => &t[i + 1..],
+            None => t,
+        }
+    }
+
+    /// 目录底下名叫 `name` 的那一项：目录尾巴的 `/` 不重复，根上就是 `/名字`。名字合不合法不在这里判（交那台）。
+    pub fn child(dir: &[u8], name: &[u8]) -> WirePath {
+        let mut b = trim_slashes(dir).to_vec();
+        b.push(b'/');
+        b.extend_from_slice(name);
+        WirePath(b)
+    }
+
+    /// 两条路径按段比的公共上级目录（没有 ⇒ `/`）。
+    pub fn common_dir(a: &[u8], b: &[u8]) -> WirePath {
+        let segs = |x: &[u8]| -> Vec<Vec<u8>> {
+            x.split(|c| *c == b'/')
+                .filter(|s| !s.is_empty())
+                .map(<[u8]>::to_vec)
+                .collect()
+        };
+        let (sa, sb) = (segs(a), segs(b));
+        let mut out = Vec::new();
+        for (x, y) in sa.iter().zip(sb.iter()) {
+            if x != y {
+                break;
+            }
+            out.push(b'/');
+            out.extend_from_slice(x);
+        }
+        if out.is_empty() {
+            out.push(b'/');
+        }
+        WirePath(out)
+    }
+}
+
+fn trim_slashes(b: &[u8]) -> &[u8] {
+    let mut end = b.len();
+    while end > 0 && b[end - 1] == b'/' {
+        end -= 1;
+    }
+    &b[..end]
 }
 
 impl From<&[u8]> for WirePath {
@@ -286,13 +347,6 @@ pub enum LsSortBy {
     Type,
 }
 
-impl LsSort {
-    /// 这一屏那一列是不是从大到小（第一下：大小 · 时间大的在前，名称 · 类型 A 在前；`reverse` 反过来）。
-    pub fn descending(self) -> bool {
-        matches!(self.by, LsSortBy::Size | LsSortBy::Mtime) != self.reverse
-    }
-}
-
 /// 一项按名字看是哪一种：图标 · 「类型」那一列 · 按类型排都看它（那台判）。
 #[derive(
     Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
@@ -466,6 +520,185 @@ pub struct LsHead {
     /// 有几项读不出来（照数，不静默少一项）。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub unreadable: u64,
+    /// 列的这一级就是这台的家目录（「家」那一项亮不亮照它；问不到家 ⇒ `false`；手写的回包缺这一格 ⇒ `false`）。
+    #[serde(default)]
+    pub at_home: bool,
+    /// 这一屏实际排的那一列（那台照 [`LsReq::sort`] 排的那一列；缺 `sort` ⇒ `name`）：表头箭头画在它上面，
+    /// 不照窗口自己记的那一列（点了新一列、回包未到，箭头还在这一格）；手写的回包缺这一格 ⇒ `name`。
+    #[serde(default)]
+    pub by: LsSortBy,
+    /// 这一屏排的那一列是不是从大到小（那台照 [`LsReq::sort`] 判；表头箭头照它画；手写的回包缺这一格 ⇒ `false`）。
+    #[serde(default)]
+    pub descending: bool,
+}
+
+// ── files-menu ───────────────────────────────────────
+
+/// 对选中那几项能做的一件事（桌面右键菜单 · 命令栏 · 手机顶栏与 ⋯ 同一个闭集；哪一种选中给哪几件由核心那几张表定）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(rename_all = "snake_case")]
+pub enum Action {
+    /// 进这个目录。
+    Open,
+    /// 编辑这份文本。
+    Edit,
+    /// 开一个查看页看这张图（手机：文本预览）。
+    View,
+    /// 零流量复制（「复制为」那个框）。
+    Copy,
+    /// 下载到本机。
+    Download,
+    /// 算大小 —— 一项或多项。
+    Size,
+    /// 解压到这里 —— 恰好一份压缩包。
+    Extract,
+    /// 复制到另一台机器 —— 一项或多项。
+    CrossCopy,
+    /// 复制到另一栏（双栏时）。
+    Across,
+    /// 复制到同一台的另一个目录（手机没有另一栏）。
+    CopyTo,
+    Rename,
+    Chmod,
+    Delete,
+    /// 属性（路径 · 大小 · 修改时间 · 权限 · 所有者 · 链接指向）。
+    Properties,
+}
+
+impl Action {
+    /// 十四件，照这个次序（[`DeskMenu::acts`] 一件一行）。
+    pub const ALL: [Action; 14] = [
+        Action::Open,
+        Action::Edit,
+        Action::View,
+        Action::Copy,
+        Action::Download,
+        Action::Size,
+        Action::Extract,
+        Action::CrossCopy,
+        Action::Across,
+        Action::CopyTo,
+        Action::Rename,
+        Action::Chmod,
+        Action::Delete,
+        Action::Properties,
+    ];
+}
+
+/// 菜单上的一项：对选中那几项的一件事 ·「在计划里看」· 对这个目录的那几件 · 全选。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(rename_all = "snake_case")]
+pub enum Item {
+    Act(Action),
+    /// 在计划里看（单选的那一份归某一格时才有）。
+    InPlan,
+    Mkdir,
+    NewFile,
+    Upload,
+    Term,
+    /// 选中这一目录的全部（手机没有 Ctrl+A）。
+    SelectAll,
+}
+
+/// 断在哪一段：那台机器（在重连 / 离线）· 窗口与 cc-monitor 之间（桌面文件窗口才有；手机没有这一段）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(rename_all = "snake_case")]
+pub enum Cut {
+    Machine,
+    Monitor,
+}
+
+/// 此刻那一台的样子：断在哪一段（连着 ⇒ `None`）· 那台说做不到的那几条命令（`hello.unavailable`）。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct Here {
+    pub offline: Option<Cut>,
+    pub unavailable: Vec<String>,
+}
+
+/// `files-menu`：选中这几项（此刻那一台的样子）⇒ 桌面那一份菜单成品（[`DeskMenu`]）。寻址本机，本机后端照桌面那张表答。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct FilesMenuReq {
+    /// 选中那几项在 `files-ls` 回包里的原行（那台判好的那几格原样交回；本机后端照 `pick_core::PickIn::of_ls` 认）。
+    pub picked: Vec<LsEntry>,
+    pub here: Here,
+    /// 单选的那一份归的那一格的标题（`plan-files` 回包里那台写的，原样交回）：给了 ⇒ 删除那组前多一组「在计划里看」。
+    pub plan: Option<String>,
+}
+
+/// 右键菜单上的一项：哪一项 · 字 · 做不了 ⇒ 为什么（灰着说）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct DeskEntry {
+    pub item: Item,
+    pub text: String,
+    pub why: Option<String>,
+}
+
+/// 一件事此刻的样子：命令栏那一颗的字 · 做不了 ⇒ 为什么（没选中 · 表里没有这一件 · 这一份做不了 · 这台做不到 · 断着）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct ActState {
+    pub action: Action,
+    pub text: String,
+    pub why: Option<String>,
+}
+
+/// `files-menu` 的回包：右键菜单那几组（组与组之间一道线，危险那一组在最后）· 十四件每件一行（[`Action::ALL`] 的次序）。
+/// 命令栏 · 键盘 · 预览头 · 编辑那道闸都读 `acts`。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct DeskMenu {
+    pub groups: Vec<Vec<DeskEntry>>,
+    pub acts: Vec<ActState>,
+}
+
+impl DeskMenu {
+    /// 那一件那一行（`acts` 照 [`Action::ALL`] 排，一件一行）。
+    pub fn act(&self, a: Action) -> Option<&ActState> {
+        self.acts.iter().find(|s| s.action == a)
+    }
 }
 
 // ── files-stat ───────────────────────────────────────
@@ -509,6 +742,8 @@ pub struct StatReply {
     pub kind: FileKind,
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub size: u64,
+    /// `size` 写好的字（同 [`LsEntry::size_text`]）。
+    pub size_text: String,
     pub readonly: bool,
     /// unix 权限位低 12 位；非 unix 缺席。
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -557,6 +792,8 @@ pub struct SizeReply {
     pub path: WirePath,
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub bytes: u64,
+    /// `bytes` 写好的字（同 [`LsEntry::size_text`]）。
+    pub size_text: String,
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub files: u64,
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
@@ -836,6 +1073,10 @@ pub struct FilesFindHit {
     pub location: WirePath,
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number | null"))]
     pub size: Option<u64>,
+    /// `size` 写好的字（同 [`LsEntry::size_text`]）；`size` 缺 ⇒ 缺。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub size_text: Option<String>,
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number | null"))]
     pub mtime_secs: Option<u64>,
     pub mtime_text: Option<String>,
@@ -1034,8 +1275,8 @@ fn nullable<'de, D: Deserializer<'de>, T: Deserialize<'de>>(d: D) -> Result<Opti
 )]
 pub struct Sha256Hex(pub String);
 
-/// 摘要的长度（十六进制位数）。
-const SHA256_HEX_LEN: usize = 64;
+/// 摘要的长度（十六进制位数；SHA-256 = 32 字节）。全仓只此一处定义：后端 `common::digest` · 文件窗口 `editor` 都引它。
+pub const SHA256_HEX_LEN: usize = 64;
 
 impl<'de> Deserialize<'de> for Sha256Hex {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
@@ -1343,6 +1584,8 @@ pub struct FilesTreeReply {
     pub path: WirePath,
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub bytes: u64,
+    /// `bytes` 写好的字（同 [`LsEntry::size_text`]）。
+    pub size_text: String,
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub files: u64,
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
@@ -1470,6 +1713,30 @@ pub struct FilesPutReply {
 )]
 #[serde(deny_unknown_fields)]
 pub struct FilesDeleteSessionReq {
+    pub sid: String,
+}
+
+/// `files-archive-session`：归档一条会话（照那一家声明的归档面跑它那一条命令）—— 只收 sid。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct FilesArchiveSessionReq {
+    pub sid: String,
+}
+
+/// `files-unarchive-session`：取消归档一条会话 —— 只收 sid。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct FilesUnarchiveSessionReq {
     pub sid: String,
 }
 

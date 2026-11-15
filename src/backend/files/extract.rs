@@ -838,6 +838,7 @@ fn extract_of(face: &Face, req: wire::FilesExtractReq) -> Result<wire::FilesTree
         dirs: got.dirs as u64,
         links: got.links as u64,
         bytes: got.bytes,
+        size_text: copy_core::size_text(got.bytes),
     })
 }
 

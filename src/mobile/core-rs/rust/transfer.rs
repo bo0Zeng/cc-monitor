@@ -3,7 +3,7 @@
 //! 往 Kotlin 交的事：进度 `moved {call, done, total}`，结局走一问一答那一种 `reply`（同 [`resident::reply_json`] 那一行，编号同一族）。
 //!
 //! 上传那一半（[`stage_with`]）只把块送进那台的暂存区、交回 `{key, chunks, bytes, sha256}`：文件屏的上传那一组（`batch.rs`）
-//! 照它送、再自己提交；送块口 [`stage`] 此刻只剩聊天附件在用（提交那一问由附件那一侧发）。
+//! 照它送、再自己提交（聊天附件那一排送块直接走 `chunk_core::stage`，见 `attach.rs`）。
 //! 下载那一半（[`pull_with`]）只由下到本机那一组调（`batch.rs`：本机那一份由它向 Kotlin 要）；
 //! 拉进内存那一形（[`read_with`]，文件屏预览一张图）同一个循环，按门给的上限停。
 
@@ -359,27 +359,6 @@ fn launch<F: std::future::Future<Output = String> + Send + 'static>(
         }
     });
     id
-}
-
-/// 起一趟上传（暂存那一半）：回问答编号，进度与结局经 `on_event` 交；这台不在 ⇒ 0（`file` 当场关）。
-pub fn stage(h: i64, file: File, name: String, within_ms: u64, on_event: OnEvent) -> i64 {
-    if resident::feed(h).is_none() {
-        return 0;
-    }
-    let mut random = [0u8; 16];
-    let _ = ring::rand::SecureRandom::fill(&ring::rand::SystemRandom::new(), &mut random);
-    launch(h, within_ms, on_event, move |ask, mut moves| async move {
-        let total = size_of(&file);
-        stage_with(
-            &ask,
-            ask.id,
-            chunk_core::key_of(random),
-            (file, total),
-            &name,
-            &mut moves,
-        )
-        .await
-    })
 }
 
 #[cfg(test)]

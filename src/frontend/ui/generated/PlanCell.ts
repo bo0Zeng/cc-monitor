@@ -8,7 +8,6 @@ import type { PlanReturned } from "./PlanReturned";
 import type { PlanSetsTo } from "./PlanSetsTo";
 import type { PlanState } from "./PlanState";
 import type { PlanWho } from "./PlanWho";
-import type { PlanWhyCode } from "./PlanWhyCode";
 import type { PlanWhyShort } from "./PlanWhyShort";
 
 /**
@@ -49,10 +48,6 @@ end: string | null,
  */
 quiet: string | null, 
 /**
- * 没签收（或待定没人定）的原因；签收了 · 不算活 ⇒ `null`。
- */
-whyCode: PlanWhyCode | null, 
-/**
  * 行尾那一个原因短词；没有原因 ⇒ `null`。
  */
 whyShort: PlanWhyShort | null, 
@@ -64,6 +59,10 @@ sets: Array<PlanSetsTo>,
  * 在它底下加节点要在哪个权力范围里做（pb 的 `children_in`；最上面那一个 ⇒ `project`）。
  */
 block: string | null, 
+/**
+ * 它是哪一块的根格 ⇒ 那一块的编号（同 `blocks[].id`）；`project` 的根格与不是根格的 ⇒ `null`。
+ */
+rootOf: string | null, 
 /**
  * 那个权力范围的负责人（要改它，该说给的那一位）。
  */

@@ -32,7 +32,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.wire.gen.LoginStartReq
-import com.ccmonitor.mobile.core.wire.gen.PasteKind
 import com.ccmonitor.mobile.ui.chat.newsession.AccountBadge
 import com.ccmonitor.mobile.ui.chat.newsession.Sheet
 import com.ccmonitor.mobile.ui.chat.newsession.SheetHead
@@ -103,7 +102,6 @@ private fun Body(
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
-    var pasted by remember { mutableStateOf("") }
     val started = s.started
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -113,7 +111,33 @@ private fun Body(
             }
         }
         HorizontalDivider(Modifier.padding(vertical = 4.dp))
-        val code = started?.paste != PasteKind.REDIRECT_URL
+        when (val form = started?.let(::formOf)) {
+            is LoginForm.ShowCode -> {
+                // 显示码：那段码在登录页里填，不粘回；那台登完推一帧，抽屉自己关。
+                Text(copyText("login.sheet.code"), style = MaterialTheme.typography.labelLarge)
+                Text(form.code, style = MaterialTheme.typography.headlineSmall)
+                OutlinedButton(onClick = { clipboard.setText(AnnotatedString(form.code)) }, modifier = Modifier.heightIn(min = 48.dp)) { Text(copyText("login.act.copyCode")) }
+            }
+            is LoginForm.Wait -> form.said?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+            is LoginForm.Paste -> Paste(flow, s, form)
+            null -> Paste(flow, s, null)
+        }
+    }
+}
+
+/** 粘回那两形（还在起 ⇒ 照码那一格灰着）：名字 · 定义 · 输入框 ·［粘贴］·［提交］。 */
+@Suppress("DEPRECATION")
+@Composable
+private fun Paste(
+    flow: LoginFlow,
+    s: LoginUi,
+    form: LoginForm.Paste?,
+) {
+    val clipboard = LocalClipboardManager.current
+    var pasted by remember { mutableStateOf("") }
+    val started = s.started
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        val code = form?.redirect != true
         Text(if (code) copyText("login.paste.code") else copyText("login.paste.redirectUrl"), style = MaterialTheme.typography.labelLarge)
         Text(if (code) copyText("login.paste.codeHelp") else copyText("login.paste.redirectUrlHelp"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         OutlinedTextField(value = pasted, onValueChange = { pasted = it }, enabled = started != null && !s.submitting, singleLine = true, modifier = Modifier.fillMaxWidth())

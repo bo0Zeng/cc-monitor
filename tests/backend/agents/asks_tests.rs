@@ -19,6 +19,9 @@ fn ask_in(kind: AskKind) -> AskIn {
     }
 }
 
+/// 别的判据都按写得出停下的那一家搭成品（「拒绝并停下」那一项在不在只在 [`deny_stop_only_for_a_family_that_can_stop`] 判）。
+const STOPS: bool = true;
+
 fn ids(a: &Ask) -> Vec<&str> {
     a.choices.iter().map(|c| c.id.as_str()).collect()
 }
@@ -35,8 +38,7 @@ fn looks(a: &Ask) -> Vec<(&str, ChoiceRow, ChoiceLook, bool)> {
 }
 
 fn one_question(multi: bool, header: Option<&str>) -> AskIn {
-    let mut q = ask_in(AskKind::Question);
-    q.blocks_terminal = true;
+    let mut q = ask_in(AskKind::Answer);
     q.questions = vec![AskQuestion {
         header: header.map(str::to_string),
         question: "first".into(),
@@ -47,67 +49,87 @@ fn one_question(multi: bool, header: Option<&str>) -> AskIn {
 }
 
 /// 每颗选项的样子 · 段 · 带不带 picks 只在这里判（出口照摆，不按 id · 次序自己挑）：
-/// 每一种的第一颗主按钮、只这一颗；停下整轮危险；改到终端里答 · 有题时的不回答弱；批计划 · 有题的提问全在一段。
+/// 每一种的第一颗主按钮、只这一颗；停下整轮危险；有题时的不回答弱；批计划 · 有题的提问全在一段。
 #[test]
 fn each_choice_carries_its_look_row_and_picks() {
     use ChoiceLook::{Danger, Ghost, Main as M, Plain};
-    use ChoiceRow::{Hold, Main, Release};
-    let mut plan = ask_in(AskKind::Plan);
-    plan.blocks_terminal = true;
+    use ChoiceRow::{Hold, Main};
+    let plan = ask_in(AskKind::Plan);
     assert_eq!(
-        looks(&product_of("a", &plan, None, 1)),
+        looks(&product_of("a", &plan, STOPS, false, None)),
         [
             ("plan-auto", Main, M, false),
             ("plan-edits", Main, Plain, false),
             ("plan-manual", Main, Plain, false),
             ("plan-keep", Main, Plain, false),
-            ("release", Main, Ghost, false),
         ],
-        "批计划：一段，第一颗主按钮，改到终端里答弱"
+        "批计划：一段，第一颗主按钮"
     );
-    let mut a = ask_in(AskKind::Approve);
-    a.blocks_terminal = true;
+    let a = ask_in(AskKind::Approve);
     assert_eq!(
-        looks(&product_of("a", &a, None, 1)),
+        looks(&product_of("a", &a, STOPS, false, None)),
         [
             ("allow", Main, M, false),
             ("deny", Hold, Plain, false),
             ("deny-note", Hold, Plain, false),
             ("deny-stop", Hold, Danger, false),
-            ("release", Release, Ghost, false),
         ],
-        "批准：三段"
+        "批准：两段"
     );
     assert_eq!(
-        looks(&product_of("a", &one_question(false, None), None, 1)),
-        [
-            ("answer", Main, M, true),
-            ("dismiss", Main, Ghost, false),
-            ("release", Main, Ghost, false),
-        ],
+        looks(&product_of(
+            "a",
+            &one_question(false, None),
+            STOPS,
+            false,
+            None
+        )),
+        [("answer", Main, M, true), ("dismiss", Main, Ghost, false),],
         "有题：一段，只有提交答案带 picks"
     );
     assert_eq!(
-        looks(&product_of("a", &ask_in(AskKind::Question), None, 1)),
+        looks(&product_of(
+            "a",
+            &ask_in(AskKind::Answer),
+            STOPS,
+            false,
+            None
+        )),
         [("dismiss", Main, M, false)],
         "没有题 ⇒ 不回答是唯一那一项、就是主按钮"
     );
 }
 
-/// 不论哪一种、挡不挡终端、有没有题：恰好一颗主按钮，就是照做那一段的第一颗。
+/// 「拒绝并停下」只给拒绝时写得出停下的那一家：替身家声明不能 ⇒ 成品里没有那一项（别的照旧、次序不变）；Claude 照旧有。
+#[test]
+fn deny_stop_only_for_a_family_that_can_stop() {
+    let a = ask_in(AskKind::Approve);
+    let fake = crate::agents::fake::ASK;
+    assert!(!fake.stop_on_deny, "替身家声明停不下");
+    assert_eq!(
+        ids(&product_of("a", &a, fake.stop_on_deny, false, None)),
+        ["allow", "deny", "deny-note"],
+        "停不下的那一家：成品里不带「拒绝并停下」"
+    );
+    let claude = crate::agents::ask_face("claude").expect("claude 有答题口");
+    assert!(claude.stop_on_deny, "Claude 声明停得下");
+    assert_eq!(
+        ids(&product_of("a", &a, claude.stop_on_deny, false, None)),
+        ["allow", "deny", "deny-note", "deny-stop"],
+        "Claude：照旧有「拒绝并停下」"
+    );
+}
+
+/// 不论哪一种、有没有题（在这里答的那几种）：恰好一颗主按钮，就是照做那一段的第一颗。
 #[test]
 fn every_ask_has_exactly_one_main_and_it_leads_the_main_row() {
-    let mut cases = Vec::new();
-    for kind in [AskKind::Approve, AskKind::Plan, AskKind::Question] {
-        for blocks in [false, true] {
-            let mut a = ask_in(kind);
-            a.blocks_terminal = blocks;
-            cases.push(a);
-        }
-    }
+    let mut cases: Vec<AskIn> = [AskKind::Approve, AskKind::Plan, AskKind::Answer]
+        .into_iter()
+        .map(ask_in)
+        .collect();
     cases.push(one_question(true, Some("H")));
     for a in &cases {
-        let p = product_of("a", a, None, 1);
+        let p = product_of("a", a, STOPS, false, None);
         let mains: Vec<_> = p
             .choices
             .iter()
@@ -123,7 +145,7 @@ fn every_ask_has_exactly_one_main_and_it_leads_the_main_row() {
 #[test]
 fn a_question_head_is_written_here() {
     let head = |multi, header| {
-        product_of("a", &one_question(multi, header), None, 1).questions[0]
+        product_of("a", &one_question(multi, header), STOPS, false, None).questions[0]
             .head
             .clone()
     };
@@ -139,32 +161,36 @@ fn a_question_head_is_written_here() {
     assert_eq!(head(false, None), None);
 }
 
-/// 每一项排在哪一段由这里定：批准分三段（照做 · 拒绝一族 · 改到终端里答）；批计划 · 有题的提问全在照做那一段。
+/// 每一项排在哪一段由这里定：批准分两段（照做 · 拒绝一族）；批计划 · 有题的提问全在照做那一段。
 #[test]
 fn each_choice_carries_the_row_it_goes_in() {
-    use ChoiceRow::{Hold, Main, Release};
+    use ChoiceRow::{Hold, Main};
     let mut a = ask_in(AskKind::Approve);
-    a.blocks_terminal = true;
     a.suggestions = vec![allow_dirs(&["/r"])];
     assert_eq!(
-        rows(&product_of("a", &a, None, 1)),
+        rows(&product_of("a", &a, STOPS, false, None)),
         [
             ("allow", Main),
             ("always-0", Main),
             ("deny", Hold),
             ("deny-note", Hold),
             ("deny-stop", Hold),
-            ("release", Release)
         ]
     );
-    let plan = product_of("a", &ask_in(AskKind::Plan), None, 1);
+    let plan = product_of("a", &ask_in(AskKind::Plan), STOPS, false, None);
     assert!(rows(&plan).iter().all(|(_, r)| *r == Main));
     assert_eq!(
-        rows(&product_of("a", &ask_in(AskKind::Question), None, 1)),
+        rows(&product_of(
+            "a",
+            &ask_in(AskKind::Answer),
+            STOPS,
+            false,
+            None
+        )),
         [("dismiss", Main)],
         "没有题 ⇒ 不回答是唯一那一项"
     );
-    let mut q = ask_in(AskKind::Question);
+    let mut q = ask_in(AskKind::Answer);
     q.questions = vec![AskQuestion {
         header: None,
         question: "first".into(),
@@ -172,7 +198,7 @@ fn each_choice_carries_the_row_it_goes_in() {
         options: Vec::new(),
     }];
     assert_eq!(
-        rows(&product_of("a", &q, None, 1)),
+        rows(&product_of("a", &q, STOPS, false, None)),
         [("answer", Main), ("dismiss", Main)]
     );
 }
@@ -182,7 +208,7 @@ fn each_choice_carries_the_row_it_goes_in() {
 fn approve_puts_allow_first_then_the_suggestions_then_the_denials() {
     let mut a = ask_in(AskKind::Approve);
     a.suggestions = vec![allow_dirs(&["/a"]), allow_dirs(&["/b"])];
-    let p = product_of("ask-9", &a, None, 42);
+    let p = product_of("ask-9", &a, STOPS, false, None);
     assert_eq!(
         ids(&p),
         [
@@ -212,16 +238,13 @@ fn approve_puts_allow_first_then_the_suggestions_then_the_denials() {
         [Main, Plain, Plain, Plain, Plain, Danger],
         "拒绝并停下标红：出口照 look，不认 id"
     );
-    assert_eq!(
-        (p.id.as_str(), p.since_ms, p.run.clone()),
-        ("ask-9", 42, None)
-    );
+    assert_eq!((p.id.as_str(), p.run.clone()), ("ask-9", None));
 }
 
 /// 批计划：四档，最后那档「留在计划里」可附一句话。
 #[test]
 fn plan_offers_the_three_modes_and_keep_planning() {
-    let p = product_of("a", &ask_in(AskKind::Plan), None, 1);
+    let p = product_of("a", &ask_in(AskKind::Plan), STOPS, false, None);
     assert_eq!(
         ids(&p),
         ["plan-auto", "plan-edits", "plan-manual", "plan-keep"]
@@ -233,10 +256,10 @@ fn plan_offers_the_three_modes_and_keep_planning() {
 /// 提问：有题才有「回答」；题目与选项编号 `q<i>` · `q<i>o<j>`，每题都许自由文本。
 #[test]
 fn a_question_numbers_its_questions_and_options() {
-    let p = product_of("a", &ask_in(AskKind::Question), None, 1);
+    let p = product_of("a", &ask_in(AskKind::Answer), STOPS, false, None);
     assert_eq!(ids(&p), ["dismiss"], "没有题就没有「回答」");
 
-    let mut a = ask_in(AskKind::Question);
+    let mut a = ask_in(AskKind::Answer);
     a.questions = vec![
         AskQuestion {
             header: None,
@@ -260,7 +283,7 @@ fn a_question_numbers_its_questions_and_options() {
             ],
         },
     ];
-    let p = product_of("a", &a, None, 1);
+    let p = product_of("a", &a, STOPS, false, None);
     assert_eq!(ids(&p), ["answer", "dismiss"]);
     let q = &p.questions[1];
     assert_eq!(
@@ -276,17 +299,28 @@ fn a_question_numbers_its_questions_and_options() {
     assert!(p.questions.iter().all(|q| q.other));
 }
 
-/// 挡着终端的请求每种都多一项「改到终端里答」，排最后；子 agent 发的带上它的 id 与写好的「谁要批」。
+/// 挡着终端的请求（终端里有框、在终端里答）：每种都一颗按钮不给；子 agent 发的照样带上它的 id 与写好的「谁要批」。
 #[test]
-fn a_terminal_blocking_ask_gets_release_last_and_a_run_carries_the_agent() {
-    for kind in [AskKind::Approve, AskKind::Plan, AskKind::Question] {
+fn a_terminal_blocking_ask_offers_no_choices_and_a_run_carries_the_agent() {
+    for kind in [AskKind::Approve, AskKind::Plan, AskKind::Answer] {
         let mut a = ask_in(kind);
         a.blocks_terminal = true;
         a.agent_id = Some("ag".into());
         a.agent_type = Some("general".into());
-        let p = product_of("a", &a, None, 1);
-        assert_eq!(ids(&p).last(), Some(&"release"), "{kind:?}");
-        assert_eq!(ids(&p).iter().filter(|i| **i == "release").count(), 1);
+        let p = product_of("a", &a, STOPS, false, None);
+        assert!(p.choices.is_empty(), "{kind:?}：{:?}", ids(&p));
+        let at = |ask| Asked { ask, since_ms: 0 }.manual().map(|w| w.0);
+        assert_eq!(
+            at(p.clone()),
+            Some(copy_text("beAsk.manual.inTerminal", &[])),
+            "答的位置写在终端里答"
+        );
+        a.blocks_terminal = false;
+        assert_eq!(
+            at(product_of("a", &a, STOPS, false, None)),
+            None,
+            "在这里答得了 ⇒ 不写"
+        );
         assert_eq!(
             p.run,
             Some(AskRun {
@@ -302,12 +336,14 @@ fn a_terminal_blocking_ask_gets_release_last_and_a_run_carries_the_agent() {
 fn who_asks_names_the_agent_and_its_kind_with_what_is_known() {
     let mut a = ask_in(AskKind::Approve);
     assert_eq!(
-        product_of("a", &a, Some("l"), 1).run,
+        product_of("a", &a, STOPS, false, Some("l")).run,
         None,
         "主会话发的不带 run"
     );
     a.agent_id = Some("ag".into());
-    let text = |a: &AskIn, label: Option<&str>| product_of("a", a, label, 1).run.unwrap().text.0;
+    let text = |a: &AskIn, label: Option<&str>| {
+        product_of("a", a, STOPS, false, label).run.unwrap().text.0
+    };
     let named = copy_text("speaker.agent.title", &[("label", "Audit")]);
     assert_eq!(text(&a, Some("Audit")), named);
     assert_eq!(text(&a, None), copy_text("beProfile.slot.agent", &[]));
@@ -323,12 +359,7 @@ fn who_asks_names_the_agent_and_its_kind_with_what_is_known() {
 fn the_product_is_camel_case_and_strict() {
     let s = specimen();
     let v = serde_json::to_value(&s).unwrap();
-    assert!(
-        v.get("sinceMs").is_none() && v.get("since_ms").is_none(),
-        "挂上的时刻只给后端排先后，不上线"
-    );
-    let mut back = serde_json::from_value::<Ask>(v.clone()).unwrap();
-    back.since_ms = s.since_ms;
+    let back = serde_json::from_value::<Ask>(v.clone()).unwrap();
     assert_eq!(back, s);
     let mut extra = v;
     extra
@@ -349,6 +380,9 @@ fn hook_off_codes_round_trip_and_unknown_codes_carry_no_reason() {
         HookOff::Policy,
         HookOff::Version,
         HookOff::EnvLost,
+        HookOff::Elsewhere,
+        HookOff::NoAnswer,
+        HookOff::Overridden,
     ];
     let mut codes = std::collections::BTreeSet::new();
     for o in all {
@@ -375,6 +409,14 @@ fn hook_off_words_name_the_reason() {
         hook_off_words("env-lost").0,
         copy_text("beAsk.manual.offEnvLost", &[])
     );
+    assert_eq!(
+        hook_off_words("no-answer").0,
+        copy_text("beAsk.manual.offNoAnswer", &[])
+    );
+    assert_eq!(
+        hook_off_words("overridden").0,
+        copy_text("beAsk.manual.offOverridden", &[])
+    );
     for (code, why) in [
         ("settings-unread", "beAsk.manual.whyUnread"),
         ("settings-json", "beAsk.manual.whyJson"),
@@ -400,11 +442,47 @@ fn plugin_dir_list_appends_once_and_matches_whole_entries() {
     assert_eq!(dirs_with(Some("/a"), "/p"), two);
     assert!(dirs_have(&two, "/p") && dirs_have(&two, "/a"));
     assert!(!dirs_have(&format!("/a{sep}/pp"), "/p"), "子串不算");
-    let d = plugin_dir_under("/h");
-    assert!(d.starts_with("/h") && d.len() > "/h/".len(), "{d}");
+    let d = plugin_dir_under(std::path::Path::new("/h")).expect("家说得出");
+    assert!(
+        d.starts_with("/h") && d.as_os_str().len() > "/h/".len(),
+        "{d:?}"
+    );
     assert_eq!(
         std::path::Path::new(&d),
         std::path::Path::new("/h").join(relay_route_core::ANSWER_PLUGIN_DIR_REL)
+    );
+}
+
+/// 插件目录只在家说得出时才有（判只在 `platform::paths::under_home`）：空家照实拒、不拼成相对路径；
+/// 家名里有非 UTF-8 的字节 ⇒ 原样留着（不经字符串转一道、拼出另一个目录）。
+#[test]
+fn plugin_dir_refuses_an_empty_home_and_keeps_the_homes_bytes() {
+    let said = plugin_dir_under(std::path::Path::new("")).expect_err("空家拼成了相对路径");
+    assert_eq!(
+        said,
+        crate::platform::paths::under_home(None, relay_route_core::ANSWER_PLUGIN_DIR_REL)
+            .unwrap_err(),
+        "拒的那一句不是 `under_home` 那一句"
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        let home = std::path::Path::new(std::ffi::OsStr::from_bytes(b"/h\xffome"));
+        let d = plugin_dir_under(home).expect("家说得出");
+        assert!(d.starts_with(home), "非 UTF-8 的家读偏了：{d:?}");
+        assert_eq!(
+            plugin_dir_in_env(home),
+            None,
+            "环境变量那一串装不下，不换字节硬塞"
+        );
+    }
+    // 环境变量里那一项：家说不出 ⇒ 没有；说得出 ⇒ 就是插件目录那一串。
+    assert_eq!(plugin_dir_in_env(std::path::Path::new("")), None);
+    assert_eq!(
+        plugin_dir_in_env(std::path::Path::new("/h")).as_deref(),
+        plugin_dir_under(std::path::Path::new("/h"))
+            .unwrap()
+            .to_str()
     );
 }
 
@@ -446,4 +524,30 @@ fn a_suggestion_is_said_by_the_core_from_its_codes() {
             ]
         )
     );
+}
+
+/// ★ 挡着终端、那一家认得出终端里那个框（app 里经读屏答）⇒ 只给「允许 · 拒绝」两项：附话 · 以后不再问 · 停下这一轮终端里按不出来；
+/// 允许是主按钮；界面答得了 ⇒ 不写「在终端里答」。认不得（`on_screen` 假）⇒ 照旧一项都不给。
+#[test]
+fn a_terminal_ask_answered_on_screen_offers_allow_and_deny_only() {
+    let mut a = ask_in(AskKind::Approve);
+    a.blocks_terminal = true;
+    a.suggestions = vec![AskSuggestion {
+        scope: SuggestScope::Session,
+        rule: SuggestRule::AcceptEdits,
+        raw: Value::Null,
+    }];
+    let p = product_of("a", &a, STOPS, true, None);
+    assert_eq!(ids(&p), ["allow", "deny"]);
+    assert_eq!(p.choices[0].look, ChoiceLook::Main);
+    assert!(p.choices.iter().all(|c| c.note == NoteNeed::None));
+    assert_eq!(
+        Asked {
+            ask: p,
+            since_ms: 0
+        }
+        .manual(),
+        None
+    );
+    assert!(product_of("a", &a, STOPS, false, None).choices.is_empty());
 }

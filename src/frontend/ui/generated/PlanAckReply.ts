@@ -3,7 +3,7 @@
 /**
  * `plan-ack` / `plan-unack` 的回包。
  */
-export type PlanAckReply = { acked: boolean, key: string, 
+export type PlanAckReply = { key: string, 
 /**
  * 这个工作区此刻要人过目的数。
  */

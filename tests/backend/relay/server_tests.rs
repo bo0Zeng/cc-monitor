@@ -10,7 +10,8 @@ use comms_outward::test_support::http1::RequestHead;
 use comms_outward::test_support::server::*;
 use comms_outward::test_support::{http1, upstream};
 use comms_outward::{
-    Base, Destination, Destinations, Mode, Relay, RouteKey, TapBody, TapEvent, TapPort, TeeSink,
+    AuthSwap, Base, Destination, Destinations, Mode, Relay, RouteKey, TapBody, TapEvent, TapPort,
+    TeeSink,
 };
 use creds_core::SecretKey;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -671,7 +672,7 @@ fn spawn_relay_counted(up: SocketAddr) -> (SocketAddr, Arc<Relay>, TeeTap, Arc<A
         got: Arc::clone(&got),
         tick: std::sync::Mutex::new(tick),
     });
-    let base = Base::parse(&format!("http://127.0.0.1:{}", up.port())).expect("base");
+    let base = crate::relay::base_of(&format!("http://127.0.0.1:{}", up.port())).expect("base");
     let relay = Arc::new(Relay::new(
         dest_of(two_accounts_no_key(&base)),
         crate::relay::test_support::test_keys(),
@@ -1916,7 +1917,8 @@ fn a_port_nobody_listens_on() -> u16 {
 #[test]
 fn an_account_that_is_not_in_the_table_gets_404_and_nothing_reaches_upstream() {
     let up = spawn_fake_upstream(None);
-    let base = Base::parse(&format!("http://127.0.0.1:{}", up.addr.port())).expect("base");
+    let base =
+        crate::relay::base_of(&format!("http://127.0.0.1:{}", up.addr.port())).expect("base");
     // 表里**只有** `acctA`。
     let addr = spawn_relay_with_table(table_of(&[(ACCT_A, &base, Some("KEY-OF-A"))]));
 
@@ -2222,7 +2224,7 @@ fn a_configured_key_replaces_the_clients_header_instead_of_being_appended() {
         b"POST /s/a/acct/v1/x HTTP/1.1\r\nHost: relay\r\nAuthorization: Bearer THEIRS\r\nContent-Length: 3\r\n\r\n",
     )
     .expect("parse");
-    let base = Base::parse("https://api.example.com").expect("base");
+    let base = crate::relay::base_of("https://api.example.com").expect("base");
     // 两行：一行配了 key，一行没配。**同一张表**里取，走的是生产段那条真实的路。
     let t = table_of(&[("with", &base, Some(MINE)), ("without", &base, None)]);
 
@@ -2268,7 +2270,7 @@ fn the_auth_header_shape_follows_the_row_and_not_a_process_wide_guess() {
         b"POST /s/a/acct/v1/x HTTP/1.1\r\nHost: relay\r\nAuthorization: Bearer THEIRS\r\nx-api-key: THEIRS-XAK\r\nContent-Length: 3\r\n\r\n",
     )
     .expect("parse");
-    let base = Base::parse("https://api.example.com").expect("base");
+    let base = crate::relay::base_of("https://api.example.com").expect("base");
     // 三行**同一把 key、同一个端点**，只有鉴权头形状不同 ⇒ 量到的差别只能来自那一格。
     let t = table_of_styled(&[
         ("bearer", &base, Some(MINE), AuthStyle::Bearer),
@@ -2350,8 +2352,8 @@ fn the_path_prefix_from_the_base_url_really_reaches_the_request_line() {
         b"POST /s/a/acct/v1/messages HTTP/1.1\r\nHost: relay\r\nContent-Length: 0\r\n\r\n",
     )
     .expect("parse");
-    let prefixed = Base::parse("https://gw.example.com/anthropic").expect("带前缀那一形");
-    let bare = Base::parse("https://gw.example.com").expect("不带前缀那一形");
+    let prefixed = crate::relay::base_of("https://gw.example.com/anthropic").expect("带前缀那一形");
+    let bare = crate::relay::base_of("https://gw.example.com").expect("不带前缀那一形");
     let t = table_of(&[("with-prefix", &prefixed, None), ("no-prefix", &bare, None)]);
     let render = |id: &str, rest: &str| render_via_upstream_selection(&t, id, &head, rest, 0);
 
@@ -2630,7 +2632,8 @@ fn forwarding_keeps_nothing_per_request_on_the_relay() {
     const WARM: usize = 8;
     const N: usize = 64;
     let up = spawn_fake_upstream(None);
-    let base = Base::parse(&format!("http://127.0.0.1:{}", up.addr.port())).expect("base");
+    let base =
+        crate::relay::base_of(&format!("http://127.0.0.1:{}", up.addr.port())).expect("base");
     let relay = Relay::new(
         dest_of(two_accounts_no_key(&base)),
         crate::relay::test_support::test_keys(),
@@ -2701,7 +2704,8 @@ fn a_stub_that_closes_late_still_answers_every_forward() {
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
     });
-    let base = Base::parse(&format!("http://127.0.0.1:{}", stub_addr.port())).expect("base");
+    let base =
+        crate::relay::base_of(&format!("http://127.0.0.1:{}", stub_addr.port())).expect("base");
     let relay = Relay::new(
         dest_of(two_accounts_no_key(&base)),
         crate::relay::test_support::test_keys(),
@@ -2786,7 +2790,7 @@ fn upstream_request_drops_hop_by_hop_and_narrows_accept_encoding() {
         b"POST /s/a/acct/v1/x HTTP/1.1\r\nHost: relay\r\nConnection: keep-alive\r\nAccept-Encoding: gzip, br\r\nAuthorization: Bearer T\r\nContent-Length: 3\r\n\r\n",
     )
     .expect("parse");
-    let base = Base::parse("https://api.example.com").expect("base");
+    let base = crate::relay::base_of("https://api.example.com").expect("base");
     // 这一行**没配 key** ⇒ 原样转发那一支。换头那一支见下一条判据。
     let t = table_of(&[("acct", &base, None)]);
     let out = render_via_upstream_selection(&t, "acct", &head, "/v1/x", 3);
@@ -2849,7 +2853,8 @@ fn both_directions_really_disable_nagle_on_the_socket() {
         !probe.nodelay().expect("getsockopt"),
         "非空对照：accept 出来的 socket 默认该是开着 Nagle 的"
     );
-    let base = Base::parse(&format!("http://127.0.0.1:{}", up.addr.port())).expect("base");
+    let base =
+        crate::relay::base_of(&format!("http://127.0.0.1:{}", up.addr.port())).expect("base");
     let relay = Relay::new(
         dest_of(two_accounts_no_key(&base)),
         crate::relay::test_support::test_keys(),
@@ -2876,7 +2881,7 @@ fn both_directions_really_disable_nagle_on_the_socket() {
     // ㈡ 上游方向：`upstream::connect()` 真的在**它自己**那条 socket 上关掉 Nagle。
     let peer = TcpListener::bind(SocketAddr::new(LOOPBACK, 0)).expect("bind 假上游端");
     let a = peer.local_addr().expect("addr");
-    let base2 = Base::parse(&format!("http://127.0.0.1:{}", a.port())).expect("base");
+    let base2 = crate::relay::base_of(&format!("http://127.0.0.1:{}", a.port())).expect("base");
     let up = upstream::connect(
         &base2,
         UPSTREAM_DEADLINE,
@@ -2954,7 +2959,8 @@ fn both_peers_really_carry_their_read_and_write_deadline_on_the_socket() {
         None,
         "非空对照：accept 出来的 socket 默认该是**没有**写期限的"
     );
-    let base = Base::parse(&format!("http://127.0.0.1:{}", up.addr.port())).expect("base");
+    let base =
+        crate::relay::base_of(&format!("http://127.0.0.1:{}", up.addr.port())).expect("base");
     let relay = Relay::new(
         dest_of(two_accounts_no_key(&base)),
         crate::relay::test_support::test_keys(),
@@ -2988,7 +2994,7 @@ fn both_peers_really_carry_their_read_and_write_deadline_on_the_socket() {
     // ㈡ 上游方向：`upstream::connect()` 真的在**它自己**那条 socket 上装了期限。
     let peer = TcpListener::bind(SocketAddr::new(LOOPBACK, 0)).expect("bind 假上游端");
     let a = peer.local_addr().expect("addr");
-    let base2 = Base::parse(&format!("http://127.0.0.1:{}", a.port())).expect("base");
+    let base2 = crate::relay::base_of(&format!("http://127.0.0.1:{}", a.port())).expect("base");
     let up = upstream::connect(
         &base2,
         UPSTREAM_DEADLINE,
@@ -3663,7 +3669,7 @@ fn spawn_relay_with_upstream_deadline(
     up: SocketAddr,
     upstream_deadline: std::time::Duration,
 ) -> SocketAddr {
-    let base = Base::parse(&format!("http://127.0.0.1:{}", up.port())).expect("base");
+    let base = crate::relay::base_of(&format!("http://127.0.0.1:{}", up.port())).expect("base");
     let relay = Arc::new(Relay::new(
         dest_of(two_accounts_no_key(&base)),
         crate::relay::test_support::test_keys(),
@@ -3880,6 +3886,11 @@ const STATUS_HOMES: &[(&str, &str, StatusGroup)] = &[
     // 轮换硬上限回的那一份：那一家自己认得的「用满」回包，住适配层（状态码照它真被拒时的那一个）。
     (
         "agents/claudecode/quota.rs",
+        "429 Too Many Requests",
+        StatusGroup::AgentLimit,
+    ),
+    (
+        "agents/codex/relay.rs",
         "429 Too Many Requests",
         StatusGroup::AgentLimit,
     ),
@@ -4435,4 +4446,42 @@ impl comms_outward::TapPort for Taps {
             .count()
             > 0
     }
+}
+
+/// ★ 换号时一家要写几个头（`AuthSwap::write` 是一串）：几个头都照写、各一份；下游带来的同名头与 `clear` 里的整条剥掉。
+#[test]
+fn a_swap_writes_every_head_it_is_given_and_strips_the_downstream_ones() {
+    let base = crate::relay::base_of("https://api.example.com").expect("base");
+    let head = RequestHead {
+        method: "POST".to_string(),
+        target: "/t/a/b/v1/x".to_string(),
+        headers: vec![
+            ("Authorization".to_string(), "Bearer downstream".to_string()),
+            ("X-Seat".to_string(), "downstream-seat".to_string()),
+            ("x-other".to_string(), "kept".to_string()),
+        ],
+    };
+    let swap = AuthSwap {
+        clear: &["authorization", "x-seat"],
+        write: &[("Authorization", "Bearer second"), ("X-Seat", "seat-2")],
+    };
+    let out = String::from_utf8(render_upstream_request(
+        &head,
+        "/v1/x",
+        &base,
+        Some(&swap),
+        0,
+    ))
+    .expect("utf8");
+    assert!(
+        out.contains("\r\nAuthorization: Bearer second\r\n"),
+        "{out}"
+    );
+    assert!(out.contains("\r\nX-Seat: seat-2\r\n"), "{out}");
+    assert!(out.contains("\r\nx-other: kept\r\n"), "{out}");
+    assert!(
+        !out.contains("downstream"),
+        "下游那几个鉴权头一条不剩：{out}"
+    );
+    assert_eq!(out.matches("Authorization:").count(), 1, "{out}");
 }

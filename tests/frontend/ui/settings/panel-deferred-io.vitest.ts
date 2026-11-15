@@ -126,7 +126,7 @@ const LANDING_IPC = ["load_config", "chan_call", "backend_status"] as const; // 
 /**
  * 登记表 ②：点进「应用」才该出现的那几发。
  *
- * 就是点名的那三块（日志 2 · 数据位置 1）。
+ * 就是点名的那几块（日志 2；数据位置那几行照本机后端 `data-report` 画、不打壳命令）。
  * 的 `dryRun` 预览）—— 那是「按账号生成命令」那一块的；它搬去了机器页「本机 → 工具 → 别名」，
  * 而且在那里**连「本机页可见」都不够**：它是个 `<details>`，第一次展开才发 I/O
  * （那几发由 `machine-aliases.vitest.ts` 钉）。
@@ -139,7 +139,6 @@ const APP_PAGE_IPC = [
   "diagnostics_report",
   "get_diagnostics_config",
   "get_log_file_info",
-  "get_data_paths",
 ] as const;
 
 /**
@@ -151,7 +150,6 @@ const APP_PAGE_IPC_ON_REOPEN = [
   "diagnostics_report",
   "get_diagnostics_config",
   "get_log_file_info",
-  "get_data_paths",
 ] as const;
 
 /** 登记表 ④：点进某台机器的子页才该出现的那一发（步 14a 之后「足迹」住那儿）。 */
@@ -162,7 +160,8 @@ const MACHINE_PAGE_IPC = ["footprint_client_facts"] as const;
 // 日志页：日志设置 · 文件 · 诊断信息那一份（「未识别数据」那一行与复制读同一份）；诊断信息的原料：
 //   机器表（哪几台，经通道问本机后端 `machines-read`）· 各台记录账（经通道 `chan_call` 问 `drift-report`）。
 const LOGS_PAGE_IPC = ["diagnostics_report", "get_diagnostics_config", "get_log_file_info"] as const;
-const DATA_PAGE_IPC = ["get_data_paths"] as const;
+// 文件与数据页自己不打壳命令：数据位置那几行照本机后端 `data-report` 画（经通道），界面这一块只读本地存储。
+const DATA_PAGE_IPC = [] as const;
 
 /** 点左侧导航的某一项。 */
 function visit(id: string): void {
@@ -205,7 +204,7 @@ describe(" 判据 #3：非落地页零 I/O（第一刀 · 步 2）", () => {
     }
   });
 
-  it("〔ST2 · 步 15〕「应用」那三发拆到两个子页：日志 ⇒ 恰好日志两发 · 数据位置 ⇒ 恰好那一发 · 通用 ⇒ 只问终端那一行 · 外观 ⇒ 零发", async () => {
+  it("〔ST2 · 步 15〕「应用」那三发拆到两个子页：日志 ⇒ 恰好日志两发 · 数据位置 ⇒ 壳命令零发（经通道问本机后端） · 通用 ⇒ 只问终端那一行 · 外观 ⇒ 零发", async () => {
     new SettingsPanel({ windowMode: true });
     await tick();
     let mark = ipc.calls.length;
@@ -224,7 +223,7 @@ describe(" 判据 #3：非落地页零 I/O（第一刀 · 步 2）", () => {
     visit("data");
     await tick();
     await tick();
-    // 文件与数据：数据位置那一发 ＋ 本机那几条事实
+    // 文件与数据：本机那几条事实
     // ＋ 机器表（哪几台，经通道问本机后端 `machines-read`）。本机那几条事实这里也是 reject ⇒ 本机那一问不发出去（不拿远端视角冒充本机）。
     expect(uniq(since(mark)).sort()).toEqual(uniq([...DATA_PAGE_IPC, ...MACHINE_PAGE_IPC, "chan_call"]).sort());
     // 两页合起来 == 原来「应用」那一趟的几发（拆开不许丢、也不许多；诊断信息的原料两发是打开设置时本来就有的那两种）。

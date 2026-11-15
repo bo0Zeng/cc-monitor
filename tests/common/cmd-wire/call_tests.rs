@@ -229,12 +229,12 @@ fn terminal_search_listing_and_accounts_requests_are_the_ones_the_backend_takes(
             query: "q".into(),
             include_tools: None,
             scope: Some(SearchScope::Report),
-            after_ms: Some(5),
+            within_days: Some(5),
             limit: None,
             titles: Some(true),
         },
         "history-search",
-        json!({"query": "q", "scope": "report", "after_ms": 5, "titles": true}),
+        json!({"query": "q", "scope": "report", "within_days": 5, "titles": true}),
     );
     sent(
         HistoryListReq::on(crate::Machine::local()),
@@ -260,16 +260,10 @@ fn terminal_search_listing_and_accounts_requests_are_the_ones_the_backend_takes(
     );
 }
 
-/// `terminal-input` 的 `pastes` 不上线：写出去不带它，线上带了它后端拒。
+/// `terminal-input` 线上没有 `pastes`（各单独粘一次的那几段只在后端投递那一道里）：线上带了它后端拒。
 #[test]
 fn terminal_input_pastes_stay_off_the_wire() {
     use crate::terminal::TerminalInputReq;
-    let req = TerminalInputReq {
-        sid: Some("s".into()),
-        pastes: vec!["/tmp/a.png".into()],
-        ..Default::default()
-    };
-    assert_eq!(serde_json::to_value(&req).unwrap(), json!({"sid": "s"}));
     assert!(
         serde_json::from_value::<TerminalInputReq>(json!({"sid": "s", "pastes": ["x"]})).is_err()
     );
@@ -315,6 +309,7 @@ fn needs_history_lines_and_session_requests_are_the_ones_the_backend_takes() {
             sid: sid(),
             model: "m".into(),
             client: None,
+            effort: None,
         },
         "session-model",
         json!({"sid": "s1", "model": "m"}),
@@ -360,7 +355,8 @@ fn needs_history_lines_and_session_requests_are_the_ones_the_backend_takes() {
                     uuid: "u".into(),
                 }),
                 prompt: None,
-                model: None,
+                model: Some("m".into()),
+                effort: Some("high".into()),
                 permission_mode: Some("plan".into()),
                 rotation: Some(RotationPick { strategy: None }),
                 alias: None,
@@ -373,7 +369,7 @@ fn needs_history_lines_and_session_requests_are_the_ones_the_backend_takes() {
         },
         "session-open",
         json!({"what": {"kind": "new", "agent": "claude", "cwd": "~/p", "tmuxName": "t",
-                "fork": {"sid": "s", "uuid": "u"}, "permissionMode": "plan", "rotation": {"strategy": null}},
+                "fork": {"sid": "s", "uuid": "u"}, "model": "m", "effort": "high", "permissionMode": "plan", "rotation": {"strategy": null}},
             "account": {"kind": "follow"}, "local": true, "ticket": "k"}),
     );
     sent(
@@ -455,7 +451,7 @@ fn catalog_requests_are_the_ones_the_backend_takes() {
 /// `machine-stop` 的回包照两端同一个类型解；`machine-read` 的回包是各台成品 ＋ 首屏那一句。
 #[test]
 fn machine_stop_and_read_replies_are_the_shared_types() {
-    let stopped = json!({"stopped": "graceful", "pid": 7});
+    let stopped = json!({"stopped": "graceful", "pid": 7, "said": "那台·收尾退了"});
     assert_eq!(
         round_trip("machine-stop", stopped.clone()),
         Some(Ok(stopped))

@@ -16,10 +16,6 @@
 
 use copy_core::copy_text;
 
-/// 菜单上那一项的字。**唯一住址**。
-pub static SIZE_LABEL: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| copy_text("rsFilewinSize.label.size", &[]));
-
 /// 那条线上命令（后端读族第九条）。
 pub const CMD_SIZE: &str = <cmd_wire::files::SizeReq as cmd_wire::Call>::NAME;
 
@@ -31,6 +27,8 @@ pub const SIZE_BUDGET: std::time::Duration = super::writeops::TREE_BUDGET;
 pub struct Sized {
     pub name: String,
     pub bytes: u64,
+    /// `bytes` 写好的字（后端写好；照抄）。
+    pub size_text: String,
     pub files: u64,
     pub dirs: u64,
     pub links: u64,
@@ -46,6 +44,7 @@ pub fn sized_from_reply(name: &str, d: cmd_wire::files::SizeReply) -> Sized {
     Sized {
         name: name.to_string(),
         bytes: d.bytes,
+        size_text: d.size_text,
         files: d.files,
         dirs: d.dirs,
         links: d.links,
@@ -60,7 +59,7 @@ pub fn size_line(s: &Sized) -> String {
         "rsFilewinSize.outcome.line",
         &[
             ("name", &s.name),
-            ("human", &copy_core::size_text(s.bytes)),
+            ("human", &s.size_text),
             ("bytes", &s.bytes.to_string()),
             ("files", &s.files.to_string()),
             ("dirs", &s.dirs.to_string()),

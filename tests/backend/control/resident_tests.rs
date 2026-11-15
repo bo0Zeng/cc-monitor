@@ -11,9 +11,13 @@ fn the_child_env_is_the_switch_plus_the_hosted_slots() {
         &home,
         &[
             ("CCM_RELAY_PORT", "8788".into()),
-            ("CCM_BACKEND_STDERR_LOG", format!("~/{STDERR_LOG_REL}")),
+            (
+                "CCM_BACKEND_STDERR_LOG",
+                format!("~/{BACKEND_STDERR_LOG_REL}"),
+            ),
         ],
-    );
+    )
+    .expect("家写得成字");
     assert_eq!(
         env,
         vec![
@@ -24,7 +28,7 @@ fn the_child_env_is_the_switch_plus_the_hosted_slots() {
             ("CCM_RELAY_PORT".to_string(), "8788".to_string()),
             (
                 "CCM_BACKEND_STDERR_LOG".to_string(),
-                home.join(STDERR_LOG_REL).display().to_string()
+                home.join(BACKEND_STDERR_LOG_REL).display().to_string()
             ),
         ]
     );
@@ -114,7 +118,10 @@ async fn a_socket_path_over_the_cap_is_refused_out_loud() {
 /// 那几层目录由起它的那一步逐层建好（`stderr_log` 只建文件不建目录），每层只给本人。
 #[test]
 fn the_resident_log_lives_under_logs_backend_and_its_dirs_are_made() {
-    assert_eq!(STDERR_LOG_REL, ".cc-monitor/logs/backend/stderr.log");
+    assert_eq!(
+        BACKEND_STDERR_LOG_REL,
+        ".cc-monitor/logs/backend/stderr.log"
+    );
     let home = test_home::scratch("logdir");
     log_dir_chain(&crate::platform::fs::Own::issue_at(&home)).expect("逐层建");
     for rel in [
@@ -246,6 +253,36 @@ fn the_one_shot_supervisor_stops_politely_then_by_force() {
     .map(|s| s.word())
     .collect();
     assert_eq!(words, ["graceful", "killed", "not_running"]);
+    // 结局那一句在这里写（`--resident-stop` 那一行带着；壳与机器页照抄）：pid 照填，没在跑 ⇒ 不带 pid 那一句。
+    assert_eq!(
+        Stopped::Graceful(42).said(),
+        copy_text("backend.stopSaid.graceful", &[("pid", "42")])
+    );
+    assert_eq!(
+        Stopped::Killed(7).said(),
+        copy_text("backend.stopSaid.killed", &[("pid", "7")])
+    );
+    assert_eq!(
+        Stopped::NotRunning.said(),
+        copy_text("backend.stopSaid.notRunning", &[])
+    );
+}
+
+/// `--resident-stop` 打出的那一行（壳照它读）：三个词 · pid · 那一句都在，壳不替那台补字。
+#[test]
+fn the_stop_line_carries_the_word_the_pid_and_the_sentence() {
+    for end in [
+        Stopped::Graceful(42),
+        Stopped::Killed(7),
+        Stopped::NotRunning,
+    ] {
+        let v: serde_json::Value = serde_json::from_str(&stop_line(end)).unwrap();
+        assert_eq!(
+            v,
+            serde_json::json!({"stopped": end.word(), "pid": end.pid(), "said": end.said()}),
+            "{end:?}"
+        );
+    }
 }
 
 /// 扮一个在听的常驻后端：另一个进程绑 `<家>/run/backend.sock`，每条连接先给一行 hello（带 `build`）再关；收 SIGTERM 就退。
@@ -254,7 +291,7 @@ fn fake_resident(dh: &Path, build: &str) -> Reap {
     use std::io::BufRead as _;
     let run = relay_route_core::listen_dir_for(dh);
     std::fs::create_dir_all(&run).unwrap();
-    std::fs::set_permissions(&run, std::os::unix::fs::PermissionsExt::from_mode(0o700)).unwrap();
+    test_home::set_dir_mode(&run, 0o700);
     let mut c = std::process::Command::new("python3")
         .args([
             "-c",
@@ -352,7 +389,7 @@ async fn one_resident(
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
     let run = relay_route_core::listen_dir_for(dh);
     std::fs::create_dir_all(&run).unwrap();
-    std::fs::set_permissions(&run, std::os::unix::fs::PermissionsExt::from_mode(0o700)).unwrap();
+    test_home::set_dir_mode(&run, 0o700);
     let l = own_chan::bind(&relay_route_core::listen_socket_for(dh)).expect("绑");
     tokio::spawn(async move {
         let own_chan::Accepted::Ours(s) = l.accept().await.expect("收") else {
@@ -533,4 +570,18 @@ fn a_resident_call_waits_only_as_long_as_the_asker_said() {
     let (ms, total) = deadline_of(&args(&["--stdin-line", "--within-ms", "45000"])).unwrap();
     assert_eq!(ms, 45_000);
     assert_eq!(total, Deadline::millis(45_000), "没照发起方给的等");
+}
+
+/// 家名里有非 UTF-8 的字节（替身家）⇒ 带 `~` 的那一格照实拒（不有损拼成另一个文件交下去）；不带 `~` 的照交。
+#[cfg(unix)]
+#[test]
+fn a_non_utf8_home_is_refused_for_the_tilde_slots_only() {
+    use std::os::unix::ffi::OsStrExt as _;
+    let home = Path::new(std::ffi::OsStr::from_bytes(b"/h\xffome"));
+    let log = format!("~/{BACKEND_STDERR_LOG_REL}");
+    assert_eq!(
+        child_env(home, &[("CCM_BACKEND_STDERR_LOG", log.clone())]),
+        Err(crate::platform::paths::expand_tilde_text(&log, Some(home)).unwrap_err())
+    );
+    assert!(child_env(home, &[("CCM_RELAY_PORT", "8788".into())]).is_ok());
 }

@@ -10,6 +10,7 @@ import com.ccmonitor.mobile.core.claude.link.WatchFrom
 import com.ccmonitor.mobile.core.wire.Wire
 import com.ccmonitor.mobile.core.wire.gen.BatchAnswer
 import com.ccmonitor.mobile.core.wire.gen.BatchLine
+import com.ccmonitor.mobile.core.wire.gen.Changed
 import com.ccmonitor.mobile.core.wire.gen.Failed
 import com.ccmonitor.mobile.core.wire.gen.LineRecord
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
@@ -51,6 +52,8 @@ internal fun machineOf(
     said = said,
     offlineSaid = FakeCoreLink.OFFLINE,
     heldSaid = FakeCoreLink.HELD,
+    withdrawHeld = FakeCoreLink.WITHDRAW,
+    rewindHeld = FakeCoreLink.REWIND,
     fixes = fixes,
     seenHostKey = null,
     expectedHostKey = null,
@@ -100,6 +103,12 @@ internal class FakeCoreLink :
     /** 流上来一帧 `session_branch`（主线外清单的一截）。 */
     suspend fun branch(b: SessionBranch) = branchFlow.emit(b)
 
+    private val changedFlow = MutableSharedFlow<Changed>(extraBufferCapacity = 64)
+    override val changed: SharedFlow<Changed> = changedFlow.asSharedFlow()
+
+    /** 流上来一帧 `changed`（照线上那一形，经生成的 [Changed] 解）。 */
+    suspend fun changed(frame: Map<String, Any?>) = changedFlow.emit(Wire.bind<Changed>(frame)!!)
+
     val calls = mutableListOf<Pair<String, Map<String, Any?>?>>()
 
     /** ［重试］叫了几回整份重接。 */
@@ -116,7 +125,11 @@ internal class FakeCoreLink :
 
     fun arrive(sid: String) = arrival.complete(Reply.Ok(mapOf("kind" to "arrived", "sid" to sid)))
 
-    fun miss(said: String) = arrival.complete(Reply.Ok(mapOf("kind" to "missed", "said" to said, "terminal" to null)))
+    /** 没见到：那台分好的标题 · 那一句，[words] 是那个终端画面的末几行（读不到 ⇒ `null`）。 */
+    fun miss(
+        said: String,
+        words: String? = null,
+    ) = arrival.complete(Reply.Ok(mapOf("kind" to "missed", "title" to "命令已发出 · 会话未报到", "said" to said, "words" to words, "terminal" to words?.let { "w-cc" })))
 
     override suspend fun call(
         cmd: String,
@@ -130,8 +143,8 @@ internal class FakeCoreLink :
 
     fun calls(cmd: String) = calls.filter { it.first == cmd }.map { it.second }
 
-    /** 分块传每一趟：哪一半 ＋ 交出来的描述符。 */
-    val transfers = mutableListOf<Pair<Transfer, Int>>()
+    /** 分块传每一趟：哪一半。 */
+    val transfers = mutableListOf<Transfer>()
 
     /** 分块传怎么答：先报几下走到哪（[moved]），再回结局。 */
     var moves: List<Pair<Long, Long>> = emptyList()
@@ -139,11 +152,10 @@ internal class FakeCoreLink :
 
     override suspend fun transfer(
         how: Transfer,
-        fd: () -> Int,
         withinMs: Long,
         moved: (Long, Long) -> Unit,
     ): Reply {
-        transfers += how to fd()
+        transfers += how
         moves.forEach { (d, t) -> moved(d, t) }
         return transferred(how)
     }
@@ -242,6 +254,12 @@ internal class FakeCoreLink :
 
         /** 成品写的那台待发没回执那一句。 */
         const val HELD = "成品写的那台离线那一句"
+
+        /** 成品写的那台撤着、断着那一句。 */
+        const val WITHDRAW = "成品写的撤着断着那一句"
+
+        /** 成品写的上一版还撤着、退法抽屉那一句。 */
+        const val REWIND = "成品写的上一版还撤着那一句"
 
         fun human(
             id: String,

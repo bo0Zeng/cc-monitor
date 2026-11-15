@@ -9,7 +9,11 @@ export type StatReply = { path: WirePath,
 /**
  * 上一级（那台按自己的路径规则切）；到顶 ⇒ `null`。
  */
-up: WirePath | null, kind: FileKind, size: number, readonly: boolean, 
+up: WirePath | null, kind: FileKind, size: number, 
+/**
+ * `size` 写好的字（同 [`LsEntry::size_text`]）。
+ */
+size_text: string, readonly: boolean, 
 /**
  * unix 权限位低 12 位；非 unix 缺席。
  */

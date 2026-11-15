@@ -64,7 +64,7 @@ pub struct Viewer {
 
 /// 能开查看页的那一行：后端给了查看那道门（解得开的图）· 名字是合法 UTF-8。
 pub fn viewable(r: &Listed) -> bool {
-    r.pick().viewable()
+    view_gate(r).is_some() && !r.row.lossy_name
 }
 
 /// 那一行的查看那道门（后端判的；不是解得开的图 ⇒ `None`）。
@@ -386,7 +386,7 @@ pub fn head_acts(ui: &mut egui::Ui, v: &Viewer, pct: Option<u32>, acts: &mut Act
 /// 状态栏那一行：`1024 × 768 · 23.4 KB · 09-21`（尺寸要等图解好）；缩过 ⇒ 第二段「原图 … · 按 … 显示」。
 pub fn status(v: &Viewer, pic: Option<&super::picture::Pic>) -> (String, Option<String>) {
     let r = &v.shot().listed;
-    let size = copy_core::size_text(r.row.size);
+    let size = r.size_text.clone().unwrap_or_default();
     let time = r.mtime_text.clone();
     let line = match (pic, &time) {
         (Some(p), Some(t)) => copy_text(

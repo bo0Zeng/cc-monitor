@@ -24,28 +24,38 @@ fn every_title_bearing_record_is_consumed_by_the_extractor() {
         .expect("找不到 `JsonlRecord` 定义 —— 记录类型搬家了，本条要跟着改");
     let e = msgs[b..].find("\nfn ").map_or(msgs.len(), |k| b + k);
     let block = &msgs[b..e];
+    // 线上的记录类型名由容器的 `rename_all = "kebab-case"` 从变体名出（变体上不写 `rename`，R2）：容器上的那一条规则钉住，名字照它算。
+    let head = &msgs[msgs[..b]
+        .rfind("#[derive(")
+        .expect("`JsonlRecord` 上面没有 derive")..b];
+    assert!(
+        head.contains("rename_all = \"kebab-case\""),
+        "`JsonlRecord` 容器上不再写 `rename_all = \"kebab-case\"` —— 下面按它从变体名算线上类型名，算法要跟着改：{head}"
+    );
+    let kebab = |v: &str| {
+        let mut out = String::new();
+        for (i, c) in v.chars().enumerate() {
+            if c.is_ascii_uppercase() && i > 0 {
+                out.push('-');
+            }
+            out.push(c.to_ascii_lowercase());
+        }
+        out
+    };
 
     let mut cur = String::new();
     let mut bearers: Vec<String> = Vec::new();
-    // 每个变体在线上的记录类型名（它上面那行 `#[serde(rename = "…")]`）—— 后端按这个名字认记录。
-    let mut pending_tag: Option<String> = None;
+    // 每个变体在线上的记录类型名 —— 后端按这个名字认记录。
     let mut tags: std::collections::BTreeMap<String, String> = Default::default();
     for line in block.lines() {
         let ind = line.len() - line.trim_start().len();
         let s = line.trim_start();
-        if ind == 4 {
-            if let Some(rest) = s.strip_prefix("#[serde(rename = \"") {
-                pending_tag = rest.split('"').next().map(str::to_string);
-            }
-        }
         if ind == 4 && s.chars().next().is_some_and(|c| c.is_ascii_uppercase()) {
             cur = s
                 .chars()
                 .take_while(|c| c.is_ascii_alphanumeric())
                 .collect::<String>();
-            if let Some(t) = pending_tag.take() {
-                tags.insert(cur.clone(), t);
-            }
+            tags.insert(cur.clone(), kebab(&cur));
         }
         if !cur.is_empty()
             && s.contains("title")
@@ -77,9 +87,9 @@ fn every_title_bearing_record_is_consumed_by_the_extractor() {
     let missing: Vec<String> = bearers
         .iter()
         .filter(|v| {
-            let tag = tags.get(*v).unwrap_or_else(|| {
-                panic!("变体 {v} 上面没有 `serde(rename)` —— 认不出它的线上类型名")
-            });
+            let tag = tags
+                .get(*v)
+                .unwrap_or_else(|| panic!("变体 {v} 没算出线上类型名"));
             !here.contains(&format!("Some(\"{tag}\")"))
         })
         .cloned()

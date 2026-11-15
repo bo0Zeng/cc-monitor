@@ -300,9 +300,7 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
     // ── 通道客户端 ──
     ("comms_inward::chan::client::Client", Kind::Channel),
     ("comms_inward::chan::client::Client::over", Kind::Channel),
-    // 通道没成时那一句 · 那台离线那一句（全产品一份住通信层）：窗口照抄，不自己按层说。
-    ("comms_inward::chan::said::offline", Kind::Channel),
-    ("comms_inward::chan::said::refused", Kind::Channel),
+    // 通道没成时那一句（全产品一份住通信层）：窗口照抄，不自己按层说。
     ("comms_inward::chan::said::said", Kind::Channel),
     // ── 线上类型 ──
     ("comms_inward::chan::wire::Body", Kind::Wire),
@@ -319,8 +317,7 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
     ("comms_inward::chan::wire::Op", Kind::Wire),
     ("comms_inward::chan::wire::Origin", Kind::Wire),
     ("comms_inward::chan::wire::PeerFault", Kind::Wire),
-    // 订阅那一口（`source::watch`，窗口进程里唯一一处 `subscribe`）用到的四样。
-    ("comms_inward::chan::wire::By", Kind::Wire),
+    // 订阅那几口（`source::watch_cells` · 那台怎么了那条流）用到的几样。
     ("comms_inward::chan::wire::Item", Kind::Wire),
     ("comms_inward::chan::wire::Kind", Kind::Wire),
     ("comms_inward::chan::wire::Sub", Kind::Wire),
@@ -340,6 +337,12 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
     // 书签那份文件的名字住数据目录的唯一枚举点（设置页「数据位置」列它），窗口这一侧引过来。
     // ── 对外文案表（CP2b）──
     ("copy_core::copy_text", Kind::Copy),
+    // 那台离线那一句（全产品一份住 `copy_core::peer`）：窗口照抄。
+    ("copy_core::offline", Kind::Copy),
+    // 一句话里称呼一台：全产品一份住 `copy_core::peer`，窗口照抄。
+    ("copy_core::machine_word", Kind::Copy),
+    // 断着 ⇒ 写类为什么做不了那一句（全产品一份住 `copy_core::peer`）：窗口的命令栏 · 编辑页［保存］· 关窗那一问 · 右键断开那一行照抄。
+    ("copy_core::write_refused", Kind::Copy),
     // 天数 ⇒ 公历：与取文口同住 copy-core（「复制详情」的时刻要它，后端也链，宿主原语那一家后端不许链）。纯函数。
     ("copy_core::civil_from_days", Kind::Copy),
     // 时长的两种写法（「约多久」「多久前」走短时长，冷启动预计走长时长）：与取文口同住 copy-core。纯函数。
@@ -356,8 +359,6 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
     ("copy_core::said::Said", Kind::Copy),
     ("copy_core::detail::channel", Kind::Copy),
     ("copy_core::detail::stamp", Kind::Copy),
-    // 走块上传本机那份读不到：IO 错 → 原因词（全仓那一张表住 copy-core）。
-    ("copy_core::io_reason", Kind::Copy),
     // 丢一个结果带上为什么可以丢（`Discard` · 理由闭集 `Why`）：与 `Said` 同住 copy-core 的一对，丢的那一下什么也不做。
     ("copy_core::Discard", Kind::Copy),
     ("copy_core::Why", Kind::Copy),
@@ -398,8 +399,6 @@ const MONITOR_SIDE: &[(&str, Kind)] = &[
     ("frame_query::Deadline::within", Kind::Ask),
     ("origin::Origin::local", Kind::Ask),
     ("config::resolve_monitor_data_dir", Kind::DataDir), // 原 `paths::`（`paths.rs` 并进 `config.rs`）
-    // 视图文件（整窗缩放）的名字：全路径在这一侧拼好随种子交过去（窗口那一侧不引它）。
-    ("data_paths::FILEWIN_VIEW_FILE", Kind::DataDir),
     // 自带那份窗口程序放到哪（`~/.cc-monitor/bin`）：落点句柄经壳里写盘的唯一一层造。
     ("platform::own_fs::OwnBin::issue", Kind::DataDir),
     // 问主窗所在显示器的工作区，放进种子。
@@ -457,10 +456,10 @@ fn edges_by_process() -> (
     let window_files = guard_core::scan_tree_excluding(&window_crate_dir(), &["rs"], &[]);
     // 🔴 两侧人群都现数（恒等，不是地板）：塌成空集时下面那两条相等**照样成立**。
     // 壳里 `filewin/` 现打 3 份（mod · entry · proc；bin 入口是窗口包的 `main.rs`）；窗口包现打 29 份（含 `proc.rs`（窗口进程那一半）与 `guard_support.rs`）。
-    // 29 → 30：窗口包的平台层 `platform.rs`。30 → 34：样子 `theme.rs` · 窗口的框 `chrome.rs` · 文件种类 `kind.rs` · 属性框 `props.rs`。34 → 35：窗口的通用件 `kit.rs`。35 → 36：「进度」表 `progress.rs`。36 → 37：帧日志 `frame_log.rs`（窗口那一侧）。37 → 38：计划反查 `plan.rs`。38 → 40：图片查看页 `imgview.rs` ＋ 一张图读一次解一次 `picture.rs`。40 → 41：bin 入口 `main.rs`（size2 从壳里搬来）。41 → 42：渲染器挑哪块显卡 `render.rs`（fwgpu）。42 → 43：一组一条命令那一层 `batch.rs`（票 · 冲突框 · 断了带票再问 · 撤）。43 → 42：判据住址 `guard_support.rs` 并进共享的 `guard_core::addr`。42 → 40：只在测试档编的语料 `corpus.rs` 与秤 `scale.rs` 挪进 `tests/frontend/filewin/`。40 → 41：一趟 `trip.rs`（各看板共用的那一格与落地那一个结局）。41 → 50：目录视图 `shell.rs` 按职责拆进 `shell/` 底下九份（cross · edit · frame · keys · listing · search · trips · window · writes）。
+    // 29 → 30：窗口包的平台层 `platform.rs`。30 → 34：样子 `theme.rs` · 窗口的框 `chrome.rs` · 文件种类 `kind.rs` · 属性框 `props.rs`。34 → 35：窗口的通用件 `kit.rs`。35 → 36：「进度」表 `progress.rs`。36 → 37：帧日志 `frame_log.rs`（窗口那一侧）。37 → 38：计划反查 `plan.rs`。38 → 40：图片查看页 `imgview.rs` ＋ 一张图读一次解一次 `picture.rs`。40 → 41：bin 入口 `main.rs`（size2 从壳里搬来）。41 → 42：渲染器挑哪块显卡 `render.rs`（fwgpu）。42 → 43：一组一条命令那一层 `batch.rs`（票 · 冲突框 · 断了带票再问 · 撤）。43 → 42：判据住址 `guard_support.rs` 并进共享的 `guard_core::addr`。42 → 40：只在测试档编的语料 `corpus.rs` 与秤 `scale.rs` 挪进 `tests/frontend/filewin/`。40 → 41：一趟 `trip.rs`（各看板共用的那一格与落地那一个结局）。41 → 50：目录视图 `shell.rs` 按职责拆进 `shell/` 底下九份（cross · edit · frame · keys · listing · search · trips · window · writes）。50 → 48：上传块形 `chunk_upload.rs` 与有损名下载 `lossy_pull.rs` 删了（搬字节并成一组寻址本机的 `transfer-copy`）。
     assert_eq!(
         (inside.len(), window_files.len()),
-        (3, 50),
+        (3, 48),
         "两侧扫到的 `.rs` 份数变了 —— 遍历器坏了，或者两侧有人加 / 删了文件（先回答那份住哪一侧，再改这个数）"
     );
     let root = repo_root();

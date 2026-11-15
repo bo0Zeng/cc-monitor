@@ -114,21 +114,39 @@ impl Writer {
         let known = own.at_home(KNOWN_HOSTS.rel)?;
         let file = own.at_home(SSH_CONFIG.rel)?;
         let body = config_text(
-            &known.as_path().to_string_lossy(),
+            path_bytes(known.as_path())?,
             USER_CONFIG,
             &crate::platform::ssh_client::system_config(),
         );
         let dir = own.home_dir()?;
         own.ensure_dir(&dir).map_err(|e| e.to_string())?;
         let held = own.lock(&dir)?;
-        let now = match SSH_CONFIG.read_with(file.as_path(), utf8) {
+        let now = match SSH_CONFIG.read_with(file.as_path(), Ok) {
             crate::common::own_state::Read::Present(s) => Some(s),
             _ => None,
         };
-        if now.as_deref() != Some(body.as_str()) {
-            own.write(&file, &held, body.as_bytes())?;
+        if now.as_ref() != Some(&body) {
+            own.write(&file, &held, &body)?;
         }
         Ok(file.as_path().to_path_buf())
+    }
+}
+
+/// 钥匙库路径写进那份配置的字节：unix 上就是路径本身的字节（家名不是 UTF-8 也照原样）；
+/// 别的平台路径不是合法 Unicode ⇒ 写不出 ssh 认得的那串，照实拒（不写一份指着不存在文件的配置）。
+fn path_bytes(p: &std::path::Path) -> Result<&[u8], crate::common::said::Said> {
+    #[cfg(unix)]
+    {
+        Ok(std::os::unix::ffi::OsStrExt::as_bytes(p.as_os_str()))
+    }
+    #[cfg(not(unix))]
+    {
+        p.to_str().map(str::as_bytes).ok_or_else(|| {
+            crate::common::said::Said::new(
+                "refused",
+                copy_core::copy_text("beAssets.door.homeNotUtf8", &[]),
+            )
+        })
     }
 }
 
@@ -136,21 +154,31 @@ impl Writer {
 const USER_CONFIG: &str = "~/.ssh/config";
 
 /// 那份配置的全文：主机钥匙认这一份（在前 ⇒ ssh 取先读到的值，这一格算数），之后照读用户与系统的 ssh 配置（同 ssh 自己的先后）。
-pub(crate) fn config_text(known_hosts: &str, user: &str, system: &str) -> String {
-    format!(
-        "UserKnownHostsFile {}\nInclude {}\nInclude {}\n",
-        config_word(&known_hosts.replace('%', "%%")),
-        config_word(user),
-        config_word(system),
-    )
+/// 钥匙库路径照字节交（ssh 读配置按字节切词）：家名不是 UTF-8 也照原字节写，不有损。
+pub(crate) fn config_text(known_hosts: &[u8], user: &str, system: &str) -> Vec<u8> {
+    let mut escaped = Vec::with_capacity(known_hosts.len());
+    for &b in known_hosts {
+        if b == b'%' {
+            escaped.push(b'%');
+        }
+        escaped.push(b);
+    }
+    let mut out = b"UserKnownHostsFile ".to_vec();
+    out.extend(config_word(&escaped));
+    out.extend_from_slice(b"\nInclude ");
+    out.extend(config_word(user.as_bytes()));
+    out.extend_from_slice(b"\nInclude ");
+    out.extend(config_word(system.as_bytes()));
+    out.push(b'\n');
+    out
 }
 
-/// ssh 配置里的一个值：含空白就加双引号。
-fn config_word(v: &str) -> String {
-    if v.chars().any(char::is_whitespace) {
-        format!("\"{v}\"")
+/// ssh 配置里的一个值：含 ASCII 空白就加双引号（ssh 读配置按字节切词）。
+fn config_word(v: &[u8]) -> Vec<u8> {
+    if v.iter().any(u8::is_ascii_whitespace) {
+        [b"\"", v, b"\""].concat()
     } else {
-        v.to_string()
+        v.to_vec()
     }
 }
 
@@ -158,8 +186,8 @@ fn config_word(v: &str) -> String {
 pub const KNOWN_HOSTS: crate::common::own_state::Doc<String> =
     crate::common::own_state::Doc::of(&relay_route_core::KNOWN_HOSTS_FILE);
 
-/// 开终端那一行用的配置：缓存、`ssh -F` 的格式（照钥匙库的路径现写，读不懂 ⇒ 当没有、重写）。照声明表取。
-const SSH_CONFIG: crate::common::own_state::Doc<String> =
+/// 开终端那一行用的配置：缓存、`ssh -F` 的格式（照钥匙库的路径照字节现写、照字节比对；超了读上限 ⇒ 当没有、重写）。照声明表取。
+const SSH_CONFIG: crate::common::own_state::Doc<Vec<u8>> =
     crate::common::own_state::Doc::of(&relay_route_core::SSH_CONFIG_FILE);
 
 #[cfg(test)]

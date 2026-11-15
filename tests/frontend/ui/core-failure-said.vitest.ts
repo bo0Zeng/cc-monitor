@@ -33,6 +33,9 @@ const NOT_FAILURES: Record<string, string> = {
 /** 界面自己知道的事、两端各一个取句口（判定登记表里登成镜像：取的是表里同一把键）：键 ⇒ 允许的那几个文件。 */
 const ONE_MOUTH: Record<string, readonly string[]> = {
   "peerVersion.said.unreadable": ["src/frontend/ui/ipc/chan-caller.ts", "src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/link/Problem.kt"],
+  // 那台离线 ⇒ 只读：离线是这一端自己知道的，那台后端断着、给不出这一句 ⇒ 账号页只读的悬停只能这一端取（一处 `readOnlyHover`），
+  //   与核心「断着 ⇒ 写类做不了」（`copy_core::peer::write_refused`）是同一句、同一把键；不是豁免。
+  "link.machine.readOnly": ["src/frontend/ui/settings/accounts-section.ts"],
 };
 
 function coreKeys(): Set<string> {

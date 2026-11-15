@@ -2,6 +2,7 @@
  * 会话的脸按流里到达的先后落：`added` · `status` · `left` 三格都带整份脸，界面只走一条路（与行同一个队列）落它们，
  * 后到的盖先到的。曾经去向那一格进队列、`status` / `added` 当场派 ⇒ 「可重连 → 活」这一串里排在后面的旧「已退出」
  * 盖掉「空闲」，之后真退出脸不变、探针也不打。
+ * 落下的脸怎么读成「在等人」：`asks`（待答请求）与 `needs-you`（需手动）两颗都算（`session-face.ts`）。
  */
 import { describe, expect, it, vi } from "vitest";
 
@@ -17,6 +18,8 @@ vi.mock("../../../src/comms/inward/chan", async () => (await import("../../test-
 import { bindEvents, type EventHandlers } from "../../../src/frontend/ui/events";
 import { streamFake } from "../../test-support/chan-stream-fake.ts";
 import { UNTIL_CEILING } from "../../test-support/wall-ceiling";
+import { needsOf, stateLine } from "../../../src/frontend/ui/session-face";
+import type { Tab } from "../../../src/frontend/ui/tab-model";
 
 /** 脸只取判据看的那一格（`dot`）；其余形状不在这条判据里。 */
 const face = (dot: string): unknown => ({ dot });
@@ -70,5 +73,22 @@ describe("会话的脸按到达先后落（一条路）", () => {
       { status: { sid: "s", face: face("idle"), label } },
     ], 2);
     expect(dots).toEqual(["exited", "idle"]);
+  });
+});
+
+describe("在等人的两颗点（待答请求 · 需手动）都认作在等", () => {
+  const needs = { kind: "approve" } as unknown as NonNullable<ReturnType<typeof needsOf>>;
+  const tab = (dot: string): Tab => ({ face: { dot, line: "l" }, needs }) as unknown as Tab;
+
+  it("`asks` 与 `needs-you`：都交出等的那一份、状态一句都是在等那一色", () => {
+    for (const dot of ["asks", "needs-you"]) {
+      expect(needsOf(tab(dot)), dot).toBe(needs);
+      expect(stateLine(tab(dot), 0), dot).toEqual({ text: "l", needs: true });
+    }
+  });
+
+  it("别的点不认作在等", () => {
+    expect(needsOf(tab("idle"))).toBeNull();
+    expect(stateLine(tab("running"), 0).needs).toBe(false);
   });
 });

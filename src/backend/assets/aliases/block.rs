@@ -17,7 +17,8 @@
 //!
 //! ## 两种方言，一份实现
 //!
-//! 装进 POSIX rc 与 PowerShell `$PROFILE` 的内容来自同一个常量（[`CCM_WRAPPER_SNIPPET`] · 模板 `cc.ps1.tpl`），
+//! 装进 POSIX rc 与 PowerShell `$PROFILE` 的内容各来自一份模板（`ccm-aliases.sh` · `cc.ps1.tpl`）：模板只写形状，
+//! 家里的路径 · 握手目录 · 起始时刻那一句 · 围栏由这里从唯一的那一处填（[`CCM_WRAPPER_SNIPPET`] · [`render_cc_code`]）。
 //! 合块与剥块走同一份实现（[`merge_profile_block`] / [`strip_profile_block`]），围栏各一对标记。
 //! 块外的内容一个字节都不动：围栏之外的行边界只有用户知道。
 //!
@@ -35,8 +36,11 @@ use crate::platform::shell::dialect::{self, Shell};
 pub(crate) const BEGIN_MARKER: &str = "# === cc-monitor BEGIN";
 pub(crate) const END_MARKER: &str = "# === cc-monitor END";
 
-/// PowerShell 别名块的模板源码（`__ccm_bind` · 窗口标签 ＋ `ssh` · 接上别名文件那一行）。
+/// PowerShell 别名块的模板源码（`__ccm_bind` · 窗口标签 ＋ `ssh` · 接上别名文件那一行）；围栏不在里面（[`render_cc_code`] 包）。
 const CC_TEMPLATE: &str = include_str!("../../../shared/cc.ps1.tpl");
+
+/// PowerShell 别名块的版本串（写进块头那一行，唯一住址；同 [`POSIX_BLOCK_VERSION`]）。
+pub(crate) const PS_BLOCK_VERSION: &str = "v9";
 
 /// 启动文件里、我们的围栏之外，自己定义了一个与清单里某条同名的函数（会和那条别名打架：后定义的赢）。
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -152,8 +156,8 @@ pub fn render_block(shell: Shell, home: &str) -> Result<String, String> {
 /// 纯函数：**装**完之后这份文件该长什么样。落盘那一跳在 [`install_to_profile`]。
 ///
 /// 🔴 **`Posix` 那一臂是正题**：它一个字节的 snippet 都不生成、
-/// 也没有第二套 merge —— 内容是 [`CCM_WRAPPER_SNIPPET`]（= `src/shared/ccm-aliases.sh`
-/// 本身），合块是 [`merge_profile_block`]，围栏是 [`CCM_PROFILE_BEGIN`] / `_END`。
+/// 也没有第二套 merge —— 内容是 [`CCM_WRAPPER_SNIPPET`]（模板 `src/shared/ccm-aliases.sh`
+/// 编译期填好的那一份），合块是 [`merge_profile_block`]，围栏是 [`CCM_PROFILE_BEGIN`] / `_END`。
 /// ⇒ 本机与远端装进 rc 的**是同一份东西**，而不是同一件事的又一个形状。
 ///
 /// 两种方言的块都只管接入：POSIX 让 `ccm` 进 PATH ＋ 接上别名文件；PowerShell 是 `__ccm_bind` ＋ 窗口标签 ＋ 接上别名文件
@@ -248,7 +252,8 @@ fn fence_marker(line: &str) -> Option<bool> {
 /// （`files-home`），而那台可能不是 monitor 这台 —— `std::path::Path::is_absolute` 在 Windows 上把 `/home/user/.bashrc`
 /// 判成相对（没有盘符），`Path::join` 又用本机分隔符。
 pub(crate) fn fence_lexical(home: &str, raw: &str) -> Result<String, String> {
-    let expanded = crate::platform::paths::expand_tilde_from(raw, Some(std::path::Path::new(home)));
+    let expanded =
+        crate::platform::paths::expand_tilde_text(raw, Some(std::path::Path::new(home)))?;
     let b = expanded.as_bytes();
     let absolute = expanded.starts_with('/')
         || expanded.starts_with("\\\\")
@@ -378,11 +383,23 @@ fn encode_for_disk(flavor: Shell, content: &str) -> String {
 ///
 /// `monitor_data_dir` 填进模板那一格 `{{MONITOR_DATA_DIR}}`（`__ccm_bind` 找 `auto-launch.json` 的那个目录），按 PowerShell
 /// 单引号字面量写。它只有一个出口 —— `paths::resolve_monitor_data_dir`（跟 `CCM_DATA_DIR`），由 [`plan_install`] 取了交进来。
+/// 另两格：别名文件（`relay_route_core::PS_ALIASES_REL`，换成反斜杠）· 起始时刻那一句（`powershell::SELF_START`）。
+/// 填好再包一对围栏（[`BEGIN_MARKER`] ＋ [`PS_BLOCK_VERSION`] · [`END_MARKER`]），与 POSIX 那一块同一形。
 pub(crate) fn render_cc_code(monitor_data_dir: &Path) -> String {
-    CC_TEMPLATE.replace(
-        "{{MONITOR_DATA_DIR}}",
-        &dialect::ps_literal(&monitor_data_dir.to_string_lossy()),
-    )
+    let code = CC_TEMPLATE
+        .replace(
+            "{{MONITOR_DATA_DIR}}",
+            &dialect::ps_literal(&monitor_data_dir.to_string_lossy()),
+        )
+        .replace(
+            "{{ALIASES}}",
+            &relay_route_core::PS_ALIASES_REL.replace('/', "\\"),
+        )
+        .replace(
+            "{{SELF_START}}",
+            crate::platform::shell::powershell::SELF_START,
+        );
+    format!("{BEGIN_MARKER} {PS_BLOCK_VERSION} ===\n{code}{END_MARKER} ===\n")
 }
 
 /// idempotent 安装：把别名块写到 profile / rc，已有块则原地替换。用户在 BEGIN/END 块外的内容完全不动。
@@ -556,9 +573,7 @@ pub(crate) const CCM_PROFILE_END: &str = "# === cc-monitor remote ccm END ===";
 /// 远端 ↗ 拉前用的 `ccm` wrapper（**后端拥有**，install 写它而非前端传入——见审计 S-1：
 /// 写进 ~/.bashrc 的是被 shell **执行**的代码，绝不能让前端注入任意 bash）。
 ///
-/// **必须与前端 `remote-section.ts::CCM_WRAPPER_SNIPPET`（面板展示/手动复制用）逐字一致。**
-/// **单一来源**：`src/shared/ccm-aliases.sh`——前端 `remote-section.ts` 经 `?raw` import
-/// 同一文件（修复历史漂移：Batch7 重构时只改了前端展示版，装进远端的还是老版）。
+/// 模板 `src/shared/ccm-aliases.sh` 在 Rust 侧只住这里；界面要看就问后端（预览 `render_block`）。
 ///
 /// **本块只有「别名层」**；它指向的那个 `ccm` 是 `local_backend::ccm_entry_shim`
 /// （三行入口，转给后端本体），不是一份 bash 实现。
@@ -568,7 +583,113 @@ pub(crate) const CCM_PROFILE_END: &str = "# === cc-monitor remote ccm END ===";
 /// 「`cc` / `cct` 这几个名字是不是已经被自带的别名块占了」，
 /// 而那个答案**只有这份文件说了算** —— 在那边抄一份名字清单就是第二个住址。
 /// 这份文件里没有 `cch` ⇒ 它**不**被当作「已被占用」，用户可以自己定义一个 `cch`。
-pub(crate) const CCM_WRAPPER_SNIPPET: &str = include_str!("../../../shared/ccm-aliases.sh");
+///
+/// 模板只写形状：`bin` 目录 · 别名文件 · 数据目录变量与默认目录 · 握手目录（都住 `relay_route_core`）· 起始时刻那一句
+/// （`posix::SELF_START`）是占位，这里**编译期**填好 ⇒ 它仍是一个 `&str` 常量。
+pub(crate) const CCM_WRAPPER_SNIPPET: &str = {
+    const TEMPLATE: &str = include_str!("../../../shared/ccm-aliases.sh");
+    const FILL: &[(&str, &str)] = &[
+        (
+            "{{BIN_DIR}}",
+            parent_of(relay_route_core::BACKEND_LANDING_REL),
+        ),
+        ("{{ALIASES}}", relay_route_core::POSIX_ALIASES_REL),
+        ("{{DATA_DIR_ENV}}", relay_route_core::DATA_DIR_ENV),
+        (
+            "{{DATA_HOME}}",
+            parent_of(relay_route_core::POSIX_ALIASES_REL),
+        ),
+        ("{{AWAIT_SUBDIR}}", relay_route_core::AWAIT_SUBDIR),
+        ("{{SELF_START}}", crate::platform::shell::posix::SELF_START),
+    ];
+    const FILLED: &[u8; filled_len(TEMPLATE, FILL)] = &fill(TEMPLATE, FILL);
+    match core::str::from_utf8(FILLED) {
+        Ok(s) => s,
+        Err(_) => panic!("POSIX 接入块填出来不是 UTF-8"),
+    }
+};
+
+/// 相对家目录的一段去掉最后一截（`a/b/c` ⇒ `a/b`）；没有 `/` ⇒ 原样。
+const fn parent_of(rel: &'static str) -> &'static str {
+    let b = rel.as_bytes();
+    let mut i = b.len();
+    while i > 0 && b[i - 1] != b'/' {
+        i -= 1;
+    }
+    if i == 0 {
+        return rel;
+    }
+    let (head, _) = b.split_at(i - 1);
+    match core::str::from_utf8(head) {
+        Ok(s) => s,
+        Err(_) => rel,
+    }
+}
+
+/// `t` 的第 `i` 个字节起是不是 `cells` 里哪一格的占位（编译期用）。
+const fn placeholder_at(t: &[u8], i: usize, cells: &[(&str, &str)]) -> Option<usize> {
+    let mut k = 0;
+    while k < cells.len() {
+        let p = cells[k].0.as_bytes();
+        if i + p.len() <= t.len() {
+            let mut j = 0;
+            while j < p.len() && t[i + j] == p[j] {
+                j += 1;
+            }
+            if j == p.len() {
+                return Some(k);
+            }
+        }
+        k += 1;
+    }
+    None
+}
+
+/// 模板按 `cells` 填好之后有几个字节（编译期定 [`fill`] 那个数组的长度）。
+const fn filled_len(tpl: &str, cells: &[(&str, &str)]) -> usize {
+    let t = tpl.as_bytes();
+    let (mut i, mut n) = (0, 0);
+    while i < t.len() {
+        match placeholder_at(t, i, cells) {
+            Some(k) => {
+                n += cells[k].1.len();
+                i += cells[k].0.len();
+            }
+            None => {
+                n += 1;
+                i += 1;
+            }
+        }
+    }
+    n
+}
+
+/// 模板里的每个占位换成它那一格的值（编译期）；`N` 由 [`filled_len`] 给。
+const fn fill<const N: usize>(tpl: &str, cells: &[(&str, &str)]) -> [u8; N] {
+    let t = tpl.as_bytes();
+    let mut out = [0u8; N];
+    let (mut i, mut o) = (0, 0);
+    while i < t.len() {
+        match placeholder_at(t, i, cells) {
+            Some(k) => {
+                let v = cells[k].1.as_bytes();
+                let mut j = 0;
+                while j < v.len() {
+                    out[o] = v[j];
+                    o += 1;
+                    j += 1;
+                }
+                i += cells[k].0.len();
+            }
+            None => {
+                out[o] = t[i];
+                o += 1;
+                i += 1;
+            }
+        }
+    }
+    out
+}
 
 /// 我们自己那块别名块的正文 —— 撞名那一问交给方言认函数用（`ShellDialect::name_taken`）：
 /// POSIX 是 [`CCM_WRAPPER_SNIPPET`] 本身；PowerShell 是模板渲染出来的那一份（与数据目录无关 —— 喂一个占位目录）。

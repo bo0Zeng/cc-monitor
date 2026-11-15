@@ -534,6 +534,13 @@ async fn listing_has_no_second_road_when_the_backend_refuses() {
         cut,
         crate::source::Cut {
             total: want.len() as u64,
+            // 合成后端不报上一级（`up: null`）⇒ 照它说到顶了。
+            at_root: true,
+            // 头到了 ⇒ 箭头照那台答的那一列（缺省排法 ⇒ 名称、A 在前）。
+            caret: Some(crate::source::Caret {
+                by: crate::source::SortBy::Name,
+                descending: false,
+            }),
             ..Default::default()
         }
     );
@@ -597,12 +604,12 @@ fn the_four_columns_and_how_a_click_turns_the_order() {
             copy_core::copy_static!("rsFilewinSource.sort.size")
         ]
     );
+    // 那一列是不是从大到小由那台判（回包头的 `descending`，后端判据钉），窗口只交 `by` 与 `reverse`。
     let s = Sort::default();
-    assert!(!s.descending());
     let t = after_click(s, SortBy::Mtime);
-    assert!(t.descending() && !t.reverse);
+    assert_eq!((t.by, t.reverse), (SortBy::Mtime, false));
     let t2 = after_click(t, SortBy::Mtime);
-    assert!(!t2.descending() && t2.reverse);
+    assert_eq!((t2.by, t2.reverse), (SortBy::Mtime, true));
     assert_eq!(after_click(t2, SortBy::Name), Sort::default());
 }
 
@@ -714,6 +721,9 @@ fn backend_ls_fields() -> std::collections::BTreeSet<String> {
                 truncated: false,
                 total: 1,
                 unreadable: 0,
+                at_home: false,
+                by: cmd_wire::files::LsSortBy::Name,
+                descending: false,
             },
         }),
     };
@@ -781,6 +791,9 @@ fn the_field_by_field_table_between_backend_and_window_is_a_judge() {
         ("gates", "gates（预览 · 看图 · 编辑那几道门，原样）"),
         ("truncated", "界面上那句「只拿到了前 N 条」"),
         ("unreadable", "界面上那句「有 n 项读不出来」"),
+        ("at_home", "左栏「家」那一项亮不亮"),
+        ("by", "表头箭头画在哪一列（Cut::caret）"),
+        ("descending", "表头那一列的箭头朝哪（Cut::caret）"),
     ];
     let declared: std::collections::BTreeSet<String> =
         TABLE.iter().map(|(k, _)| (*k).to_string()).collect();
@@ -860,7 +873,7 @@ fn the_field_by_field_table_between_backend_and_window_is_a_judge() {
     // order · up · head：换进手上那一份、照先后摊开（截断那几格从头来）。
     let (rows, cut) = rows_from_ls_data(&whole_json(
         serde_json::json!([ { "path": "/a/x", "shown": "/a/x", "name": "x", "kind": "file", "class": "other", "type_text": "" } ]),
-        serde_json::json!({ "shown": "/a", "up": null, "crumbs": [], "truncated": true, "unreadable": 3, "total": 9 }),
+        serde_json::json!({ "shown": "/a", "up": null, "crumbs": [], "truncated": true, "unreadable": 3, "total": 9, "at_home": false, "by": "size", "descending": true }),
     ))
     .unwrap();
     assert_eq!(
@@ -871,6 +884,13 @@ fn the_field_by_field_table_between_backend_and_window_is_a_judge() {
                 truncated: true,
                 unreadable: 3,
                 total: 9,
+                at_home: false,
+                at_root: true,
+                // 箭头那一列与朝向照回包头那两格（窗口不自己算）。
+                caret: Some(crate::source::Caret {
+                    by: crate::source::SortBy::Size,
+                    descending: true,
+                }),
             }
         )
     );
@@ -878,14 +898,14 @@ fn the_field_by_field_table_between_backend_and_window_is_a_judge() {
 
 /// 🔴 **盘上每一处按 `/` 切远端路径的地方都在这张表里，表里也没有死行。**
 ///
-/// `parent_dir` / `remote_basename` / `breadcrumbs` 那一族的头注说「多一份切法就多一种
+/// `WirePath::{parent, tail, child}` 与 `breadcrumbs` 的头注说「多一份切法就多一种
 /// 『Windows 上 `\` 被当分隔符』的机会」—— 这一条把那句话从散文变成相等断言。
 ///
 /// # 人群与口径
 ///
-/// - 人群：`filewin/` 生产段（`guard_core::production_code` 剥过测试与注释）。窗口独立成包之后那是三棵：
-///   窗口包本身 · monitor 那一侧 `shell/src/filewin/`（开窗入口也切「跳到这个文件」）· 契约 crate `filewin-contract`
-///   （`parent_dir` / `remote_basename` 搬去那里、两边共用一份）；后两棵的键带前缀。
+/// - 人群：`filewin/` 生产段（`guard_core::production_code` 剥过测试与注释）。那是五棵：
+///   窗口包本身 · monitor 那一侧 `shell/src/filewin/`（开窗入口也切「跳到这个文件」）· 契约 crate `filewin-contract` ·
+///   `batch-core`（复制一组的公共根）· `cmd-wire`（`WirePath` 上那一份切法，窗口与开窗入口都调它）；后四棵的键带前缀。
 /// - 算一处「切」：一行里出现 `.split('/')` · `.rsplit('/')` · `.rfind('/')` ·
 ///   `.split_terminator('/')` 任一形；记成 `(文件, 所在函数)`。
 /// - ⚠ **不算**：`trim_end_matches('/')`（剥尾巴，不切）· `push('/')`（拼，下一条管）·
@@ -893,11 +913,7 @@ fn the_field_by_field_table_between_backend_and_window_is_a_judge() {
 #[test]
 fn every_place_that_splits_a_remote_path_is_declared() {
     /// `(文件, 函数, 为什么它可以切)`。
-    const DECLARED: &[(&str, &str, &str)] = &[
-        ("source.rs", "breadcrumbs", "面包屑那一摞前缀"),
-        ("filewin-contract/lib.rs", "parent_dir", "上一级"),
-        ("filewin-contract/lib.rs", "remote_basename", "尾段"),
-    ];
+    const DECLARED: &[(&str, &str, &str)] = &[("source.rs", "breadcrumbs", "面包屑那一摞前缀")];
     sites_match(
         &[
             ".split('/')",
@@ -910,22 +926,17 @@ fn every_place_that_splits_a_remote_path_is_declared() {
     );
 }
 
-/// 🔴 **窗口里拼路径（目录 ＋ `/` ＋ 名字）只在 `child_bytes` 一处**；名字合不合法交那台判（写面带 `single`），这里不判。
+/// 🔴 **窗口里拼路径（目录 ＋ `/` ＋ 名字）只在 `WirePath::child` 一处**；名字合不合法交那台判（写面带 `single`），这里不判。
 /// 算一处「拼」：一行里出现 `.push(b'/')` · `.push('/')` · 格式串里的 `}/{` 任一形。人群与口径同上一条。
 #[test]
 fn every_place_that_joins_a_remote_path_is_declared() {
     const DECLARED: &[(&str, &str, &str)] = &[
-        ("source.rs", "child_bytes", "拼路径的那一处"),
+        ("cmd-wire/files.rs", "child", "拼路径的那一处"),
         ("source.rs", "breadcrumbs", "面包屑那一摞前缀"),
         (
-            "batch-core/lib.rs",
-            "common_dir_bytes",
+            "cmd-wire/files.rs",
+            "common_dir",
             "两条路径按段比出来的公共前缀",
-        ),
-        (
-            "batch-core/lib.rs",
-            "copy_plan",
-            "手机「复制到…」：选中那几项的名字拼进源目录与目标目录（手机没有这一侧的路径类型）",
         ),
         (
             "batch-core/lib.rs",
@@ -962,6 +973,7 @@ fn sites_match(patterns: &[&str], declared: &[(&str, &str, &str)], what: &str) {
             "filewin-contract/",
         ),
         (repo.join("src/common/batch-core/src"), "batch-core/"),
+        (repo.join("src/common/cmd-wire/src"), "cmd-wire/"),
     ];
     for (dir, label) in &trees {
         for (path, src) in guard_core::scan_tree_excluding(dir, &["rs"], &[]) {
@@ -1351,103 +1363,6 @@ fn a_call_cut_at_the_monitor_pipe_is_not_said_as_the_machine_offline() {
     assert_eq!(
         said_here(&hop(1, Reach::NotSent, HopFault::Dropped), &at),
         copy_text("rsChanSaid.hop.remoteDown", &[("machine", "devbox")])
-    );
-}
-
-/// 合成后端：订阅那一面照剧本吐几格（调用那一面不用）。
-struct Scripted(Vec<comms_inward::chan::wire::Item>);
-
-impl comms_inward::chan::router::Backends for Scripted {
-    fn call(
-        &self,
-        _origin: comms_inward::chan::wire::Origin,
-        _op: comms_inward::chan::wire::Op,
-        _payload: comms_inward::chan::wire::Body,
-        _view: Option<serde_json::Value>,
-        _left: std::time::Duration,
-        _cancel: comms_inward::chan::wire::CancelToken,
-    ) -> futures::future::BoxFuture<
-        'static,
-        Result<comms_inward::chan::wire::Body, comms_inward::chan::wire::CallError>,
-    > {
-        Box::pin(async { Ok(comms_inward::chan::wire::Body(b"{}".to_vec())) })
-    }
-
-    fn subscribe(
-        &self,
-        _o: comms_inward::chan::wire::Origin,
-        _k: comms_inward::chan::wire::Kind,
-        _f: Option<comms_inward::chan::wire::Cursor>,
-    ) -> futures::stream::BoxStream<'static, comms_inward::chan::wire::Item> {
-        use futures::StreamExt as _;
-        futures::stream::iter(self.0.clone()).boxed()
-    }
-}
-
-/// 照剧本看一趟传输：回（每一格进度, 结局）。
-async fn watch_script(
-    items: Vec<comms_inward::chan::wire::Item>,
-) -> (Vec<(u64, u64)>, Result<Watched, Failed>) {
-    let line = crate::find::testing::wire(std::sync::Arc::new(Scripted(items)), 1 << 20);
-    let stop = comms_inward::chan::wire::CancelToken::new();
-    let mut seen = Vec::new();
-    let r = watch(&line, &Origin::named("R"), "transfer/t1", &stop, |g, t| {
-        seen.push((g, t))
-    })
-    .await;
-    (seen, r)
-}
-
-fn frame_of(v: serde_json::Value) -> comms_inward::chan::wire::Item {
-    comms_inward::chan::wire::Item::Frame {
-        seq: 1,
-        body: comms_inward::chan::wire::Body(serde_json::to_vec(&v).unwrap()),
-    }
-}
-
-fn end_of(v: serde_json::Value) -> comms_inward::chan::wire::Item {
-    comms_inward::chan::wire::Item::Closed {
-        by: comms_inward::chan::wire::By::Peer(comms_inward::chan::wire::Body(
-            serde_json::to_vec(&v).unwrap(),
-        )),
-    }
-}
-
-/// 传输进度帧按 `cmd_wire::frame::Transfer` 解、收场按 `TransferEnd` 解：照类型写的那几格原样到手。
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_transfer_is_read_by_its_wire_type() {
-    use cmd_wire::frame::{Transfer, TransferEnd};
-    let t = Transfer {
-        id: "t1".into(),
-        got: 3,
-        total: 9,
-        end: None,
-    };
-    let done = TransferEnd::Done {
-        bytes: 9,
-        sha256: Some("ab".into()),
-    };
-    let (seen, r) = watch_script(vec![
-        frame_of(serde_json::to_value(&t).unwrap()),
-        end_of(serde_json::to_value(&done).unwrap()),
-    ])
-    .await;
-    assert_eq!(seen, vec![(3, 9)]);
-    let w = r.expect("传完了");
-    assert_eq!((w.bytes, w.sha256.as_deref()), (9, Some("ab")));
-}
-
-/// 缺必填格的进度帧 / 收场不许补 0 当真：缺 `total` 的那一格不画、缺 `bytes` 的「传完了」是失败。
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_transfer_missing_a_required_field_is_an_error_not_a_zero() {
-    let (seen, r) = watch_script(vec![frame_of(serde_json::json!({ "id": "t1", "got": 5 }))]).await;
-    assert!(seen.is_empty(), "缺 total 那一格被补成了 0：{seen:?}");
-    assert!(r.is_err());
-    let (_, r) = watch_script(vec![end_of(serde_json::json!({ "state": "done" }))]).await;
-    assert!(
-        r.is_err(),
-        "缺 bytes 的「传完了」被补成了 0：{:?}",
-        r.ok().map(|w| w.bytes)
     );
 }
 

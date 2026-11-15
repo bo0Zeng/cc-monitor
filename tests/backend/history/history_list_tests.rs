@@ -9,7 +9,7 @@
 //!
 //! 1. **这台的清单**：记录树各目录的行带 `projectDir` / `group`（按真实目录）· 读不了的目录进 `failed` · 合成历史按 `<kind>:<cwd>` · 上次的号逐 sid。
 //! 2. **注解并的是这台的**（远端行也并）；`label` = 改过的标题 ＞ 标题 ＞ 第一句；都没有 ⇒ `untitled`。
-//! 3. **能做什么**：在跑 ⇒ 恢复 `switch`、删 `live`；分身 ⇒ `bg`、不能分叉；判不了活 ⇒ 删 `unsure`；没有账号维的那一家 ⇒ `accounts:false`。
+//! 3. **能做什么**：在跑 ⇒ 恢复 `switch`、删 `live`；分身 ⇒ `bg`、不能分叉；判不了活 ⇒ 删 `unsure`；有账号面的那一家（Claude · Codex）⇒ `accounts:true`。
 //! 4. **筛**：隐藏的默认不出（`hidden:true` 才出）· 时间窗 · 搜索词只比显示标题 / 第一句 / 项目名、不分大小写。
 //! 5. **分叉父会话被筛掉** ⇒ 照样带上、标 `context`（也是一行，算进总数）。
 //! 6. **排与窗口**：`activity` 按最后活动、`created` 按开始，`at` 就是那个键；`range` 只回那一窗、总数是整份的。
@@ -31,6 +31,9 @@ use super::*;
 use crate::history::history_annotations::{Entry, Table};
 use serde_json::json;
 use std::path::PathBuf;
+
+// 替身家的合成历史面与子运行住址（假适配层的夹具，`backend-agents` 的 `test-support` 开它）。
+use crate::agents::fake::runs::history as chats;
 
 // 判据照线上的样子读（成品与清单都过一遍真序列化器）：下面四个把有类型的那几个口包成 JSON 进出，盖住 `super::*` 里的同名口。
 
@@ -174,7 +177,7 @@ fn row(
 ) -> SessionRow {
     SessionRow {
         session_id: sid.to_string(),
-        record_path: format!("/h/.claude/projects/-w/{sid}.jsonl"),
+        jsonl_path: format!("/h/.claude/projects/-w/{sid}.jsonl"),
         started_at_ms: started,
         updated_at_ms: updated,
         message_count_approx: 3,
@@ -247,7 +250,10 @@ fn listing() -> Value {
         ),
         (
             "-w-gamma".to_string(),
-            Err("读不了 /h/.claude/projects/-w-gamma".to_string()),
+            Err(Unread {
+                kind: crate::agents::default_kind(),
+                why: "读不了 /h/.claude/projects/-w-gamma".to_string(),
+            }),
         ),
     ];
     let synth = vec![(
@@ -259,6 +265,7 @@ fn listing() -> Value {
             mtime_ms: 650,
         }],
         no_excerpt as fn(&std::path::Path) -> String,
+        crate::agents::RunFaces::NONE,
     )];
     let live = live_table(&[(S1, Some(crate::agents::SessionActivity::Working))], &[]);
     listing_from(tree, &synth, &live, &json!({ S1: "work", S3: "home" }))
@@ -312,6 +319,7 @@ fn a_synth_rows_excerpt_is_clipped_like_the_record_tree_ones() {
             mtime_ms: 650,
         }],
         long_said as fn(&std::path::Path) -> String,
+        crate::agents::RunFaces::NONE,
     )];
     let l = listing_from(Vec::new(), &synth, &live_table(&[], &[]), &json!({}));
     let got = l["rows"][0]["firstUserExcerpt"]
@@ -330,6 +338,79 @@ fn a_synth_rows_excerpt_is_clipped_like_the_record_tree_ones() {
             crate::history::search_rules::EXCERPT_CHARS
         )
     );
+}
+
+/// 那一家说得出父的那几份记录是子运行的：清单只列父会话，不认哪一家（替身家的子运行与父平铺在同一个目录，只有 `owner` 认得出）。
+#[test]
+fn a_record_whose_owner_names_a_parent_is_not_listed() {
+    let home = std::env::temp_dir().join(format!("ccm-hlist-child-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    let root = chats::records_root(&home);
+    std::fs::create_dir_all(&root).unwrap();
+    let (parent, child) = ("p-1", "c-1");
+    let head = |sid: &str, said: &str, under: Option<&str>| {
+        let mut v = json!({"chat": sid, "dir": "/w/eps", "said": said});
+        if let Some(p) = under {
+            v["under"] = json!(p);
+        }
+        format!("{v}\n")
+    };
+    std::fs::write(
+        root.join(chats::file_name(parent)),
+        head(parent, "父那一句", None),
+    )
+    .unwrap();
+    std::fs::write(
+        root.join(chats::file_name(child)),
+        head(child, "子运行那一句", Some(parent)),
+    )
+    .unwrap();
+    let sessions = (chats::HISTORY.sessions)(&[crate::agents::AccountHome {
+        account: None,
+        home: home.clone(),
+    }]);
+    let listed = |runs| {
+        let synth = vec![(chats::KIND, sessions.clone(), chats::HISTORY.excerpt, runs)];
+        let mut got = sids(&listing_from(
+            Vec::new(),
+            &synth,
+            &live_table(&[], &[]),
+            &json!({}),
+        ));
+        got.sort();
+        got
+    };
+    let with_owner = listed(chats::RUNS);
+    let without = listed(crate::agents::RunFaces::NONE);
+    let _ = std::fs::remove_dir_all(&home);
+    assert_eq!(sessions.len(), 2, "合成历史面两份都列");
+    assert_eq!(with_owner, vec![parent], "答得出父的那一份不进清单");
+    assert_eq!(without, vec![child, parent], "不答 owner ⇒ 两份都在");
+}
+
+/// 父记录已不在盘上的子运行（孤儿）：那一家说不出父 ⇒ 照独立会话进清单，还够得到、还能删（`ChildFace.owner` 答 `None`）。
+#[test]
+fn an_orphan_run_whose_parent_record_is_gone_is_listed_as_a_session() {
+    let home = std::env::temp_dir().join(format!("ccm-hlist-orphan-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    let root = chats::records_root(&home);
+    std::fs::create_dir_all(&root).unwrap();
+    let child = "c-1";
+    let v = json!({"chat": child, "dir": "/w/eps", "said": "子运行那一句", "under": "p-gone"});
+    std::fs::write(root.join(chats::file_name(child)), format!("{v}\n")).unwrap();
+    let sessions = (chats::HISTORY.sessions)(&[crate::agents::AccountHome {
+        account: None,
+        home: home.clone(),
+    }]);
+    let synth = vec![(chats::KIND, sessions, chats::HISTORY.excerpt, chats::RUNS)];
+    let got = sids(&listing_from(
+        Vec::new(),
+        &synth,
+        &live_table(&[], &[]),
+        &json!({}),
+    ));
+    let _ = std::fs::remove_dir_all(&home);
+    assert_eq!(got, vec![child], "父记录不在 ⇒ 孤儿照独立会话列出");
 }
 
 /// ★ 判据 1：这台的清单逐格。
@@ -368,8 +449,178 @@ fn the_machine_listing_carries_group_dir_failures_synth_and_last_accounts() {
     );
     assert_eq!(
         l["failed"],
-        json!([{"projectDir": "-w-gamma", "error": "读不了 /h/.claude/projects/-w-gamma"}])
+        json!([{
+            "agent": crate::agents::default_kind(),
+            "projectDir": "-w-gamma",
+            "error": "读不了 /h/.claude/projects/-w-gamma"
+        }])
     );
+}
+
+/// ★ 判据 7：**读不了的目录照扫它的那一根认家**。两家树下各有一个同名目录：一家读得了、另一家（替身家）读不了 ⇒
+/// 读不了的那一项与那一组的家是替身家（扫它时手里那一根的），不照看的这一台的记录根逐个拼路径挑头一家。
+#[test]
+fn an_unreadable_dir_belongs_to_the_root_it_was_scanned_under() {
+    let other = crate::agents::fake::AGENT_KIND;
+    let tree = vec![
+        (
+            "-w-same".to_string(),
+            Ok(vec![row(S1, "/w/same", 100, 200, None, "甲", false, None)]),
+        ),
+        (
+            "-w-same".to_string(),
+            Err(Unread {
+                kind: other,
+                why: "读不了".to_string(),
+            }),
+        ),
+    ];
+    let l = listing_from(tree, &[], &live_table(&[], &[]), &json!({}));
+    assert_eq!(l["failed"][0]["agent"], other, "{l}");
+    let v = answer_from(
+        &l,
+        None,
+        Ok(&ann()),
+        &ask(json!({})),
+        1_000,
+        &Default::default(),
+    );
+    let failed: Vec<&Value> = v["groups"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|g| g["failed"].is_string())
+        .collect();
+    assert_eq!(failed.len(), 1, "{v}");
+    assert_eq!(
+        failed[0]["agent"], other,
+        "读不了的那一组照扫它的那一根认家"
+    );
+}
+
+/// ★ 判据 7：**两家树下同名目录都读不了 ⇒ 两组、键不撞**（键带上那一家）。
+#[test]
+fn same_named_unreadable_dirs_of_two_homes_are_two_groups() {
+    let other = crate::agents::fake::AGENT_KIND;
+    let own = crate::agents::default_kind();
+    let unread = |kind| {
+        Err(Unread {
+            kind,
+            why: "读不了".to_string(),
+        })
+    };
+    let tree = vec![
+        ("-w-same".to_string(), unread(own)),
+        ("-w-same".to_string(), unread(other)),
+    ];
+    let l = listing_from(tree, &[], &live_table(&[], &[]), &json!({}));
+    let v = answer_from(
+        &l,
+        None,
+        Ok(&ann()),
+        &ask(json!({})),
+        1_000,
+        &Default::default(),
+    );
+    let failed: Vec<(&str, &str)> = v["groups"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|g| g["failed"].is_string())
+        .map(|g| (g["key"].as_str().unwrap(), g["agent"].as_str().unwrap()))
+        .collect();
+    assert_eq!(failed.len(), 2, "{v}");
+    assert_ne!(failed[0].0, failed[1].0, "两家同名目录的键不撞：{failed:?}");
+    assert_eq!(
+        [failed[0].1, failed[1].1],
+        [own, other],
+        "各组的家照扫它的那一根"
+    );
+}
+
+/// ★ 判据 7：真记录树逐家扫，读不了的目录带上扫它的那一家。
+#[cfg(unix)]
+#[test]
+fn a_real_unreadable_dir_carries_the_home_that_scanned_it() {
+    use std::os::unix::fs::PermissionsExt;
+    let home = std::env::temp_dir().join(format!("ccm-hlist-unread-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    let locked = home.join("projects").join("-w-locked");
+    std::fs::create_dir_all(&locked).unwrap();
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let tree = tree_for(&home, None).expect("读得了").expect("记录树在");
+    test_home::set_dir_mode(&locked, 0o755);
+    let _ = std::fs::remove_dir_all(&home);
+    let l = listing_from(tree, &[], &live_table(&[], &[]), &json!({}));
+    assert_eq!(
+        l["failed"],
+        json!([{"agent": crate::agents::default_kind(), "projectDir": "-w-locked", "error": l["failed"][0]["error"]}]),
+        "{l}"
+    );
+}
+
+/// ★ 判据 7：**两家真记录树一趟扫**：两家（替身，都不是默认那一家）树下各有一个读不了的同名目录 ⇒
+/// 两项各带扫它的那一家（不写成默认那一家、不写成头一家），两组的键不撞。
+#[cfg(unix)]
+#[test]
+fn two_real_trees_each_unreadable_dir_carries_its_own_home() {
+    use crate::agents::fake::family_row;
+    use std::os::unix::fs::PermissionsExt;
+    let reg = [
+        family_row("dflt", "CCM_DFLT_DIR", "dflt-w", true, || None),
+        family_row("other", "CCM_OTHER_DIR", "other-w", false, || None),
+    ];
+    let base = std::env::temp_dir().join(format!("ccm-hlist-two-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    let homes: Vec<crate::agents::AgentHome> = ["dflt", "other"]
+        .into_iter()
+        .map(|kind| crate::agents::AgentHome {
+            kind,
+            home: base.join(kind),
+        })
+        .collect();
+    let locked: Vec<PathBuf> = homes
+        .iter()
+        .map(|h| {
+            crate::agents::records_root_among(&reg, h.kind, &h.home)
+                .expect("替身家有记录树")
+                .join("-w-same")
+        })
+        .collect();
+    for d in &locked {
+        std::fs::create_dir_all(d).unwrap();
+        std::fs::set_permissions(d, std::fs::Permissions::from_mode(0o000)).unwrap();
+    }
+    let tree = tree_for_among(&reg, homes.as_slice(), None);
+    for d in &locked {
+        test_home::set_dir_mode(d, 0o755);
+    }
+    let _ = std::fs::remove_dir_all(&base);
+    let tree = tree.expect("读得了").expect("记录树在");
+    let l = listing_from(tree, &[], &live_table(&[], &[]), &json!({}));
+    let agents: Vec<&str> = l["failed"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| f["agent"].as_str().unwrap())
+        .collect();
+    assert_eq!(agents, ["dflt", "other"], "{l}");
+    let v = answer_from(
+        &l,
+        None,
+        Ok(&ann()),
+        &ask(json!({})),
+        1_000,
+        &Default::default(),
+    );
+    let keys: Vec<&str> = v["groups"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|g| g["failed"].is_string())
+        .map(|g| g["key"].as_str().unwrap())
+        .collect();
+    assert_eq!(keys, ["dir:dflt:-w-same", "dir:other:-w-same"], "{v}");
 }
 
 /// ★ 判据 2 ＋ 3：注解 · 标题 · 能做什么。
@@ -407,7 +658,7 @@ fn rows_carry_annotations_label_and_what_can_be_done() {
     assert_eq!(s1["agentTag"], Value::Null, "默认那一家不画");
     assert_eq!(
         cx["can"],
-        json!({"resume": "yes", "accounts": false, "fork": false, "delete": "unsure"})
+        json!({"resume": "yes", "accounts": true, "fork": true, "delete": "unsure"})
     );
     // 改过的标题压过原标题（正控：注解里 S1 没改名、label 是原标题；这里给它一条改名）。
     let mut t = ann();
@@ -422,6 +673,102 @@ fn rows_carry_annotations_label_and_what_can_be_done() {
     );
     assert_eq!(find(&w, S1)["label"], "改过的");
     assert_eq!(find(&w, S1)["customTitle"], "改过的");
+}
+
+/// 默认一家 ＋ 两家不由我们起的（没有起会话面）：一家行头声明了叫法，一家没声明。
+fn unlaunched_families() -> [crate::agents::Adapter; 3] {
+    use crate::agents::fake;
+    [
+        fake::family_row("fake", "CCM_FAKE_A", "fakea", true, fake::home),
+        fake::unlaunched_row("stand-said", Some("替身丙")),
+        fake::unlaunched_row("stand-unsaid", None),
+    ]
+}
+
+/// ★ 家名小牌：不是默认、又没有起会话面的家，叫法照它行头声明的画。
+#[test]
+fn a_family_without_a_launch_face_is_tagged_by_what_its_row_says() {
+    let reg = unlaunched_families();
+    assert_eq!(agent_tag_among(&reg, Some("fake")), None, "默认那一家不画");
+    assert_eq!(
+        agent_tag_among(&reg, Some("stand-said")).as_deref(),
+        Some("替身丙"),
+        "没有起会话面也画行头上的叫法"
+    );
+}
+
+/// ★ 家名小牌：行头连叫法都没声明 ⇒ 画照实的那一句（文案表），不露它的 kind。
+#[test]
+fn a_family_that_says_no_name_is_tagged_honestly_not_by_its_kind() {
+    let reg = unlaunched_families();
+    let unsaid = agent_tag_among(&reg, Some("stand-unsaid")).expect("不是默认那一家 ⇒ 画小牌");
+    assert!(!unsaid.contains("stand-unsaid"), "小牌露了 kind：{unsaid}");
+    assert_eq!(unsaid, copy_core::copy_text("rsAgents.family.unsaid", &[]));
+}
+
+/// ★ 家名小牌：照路径认不出是哪一家的（替身家：记录根不在任何历史根底下、文件名谁都不认）⇒ 行照出，小牌说认不出是哪一家的，
+/// 不当成「名称未声明」的那一家，也不当成默认那一家不画。
+#[test]
+fn a_row_whose_family_is_unknown_is_listed_and_tagged_as_unknown() {
+    let reg = unlaunched_families();
+    let unknown = copy_core::copy_text("rsAgents.family.unknown", &[]);
+    assert_eq!(agent_tag_among(&reg, None), Some(unknown.clone()));
+    let dir = std::env::temp_dir().join(format!("ccm-unknown-family-{}", std::process::id()));
+    let v = SessionRow {
+        session_id: "9e9e9e9e-0000-4000-8000-0000000000f1".to_string(),
+        cwd: Some("/w/a".to_string()),
+        jsonl_path: dir
+            .join("p")
+            .join("sess-x.ndjson")
+            .to_string_lossy()
+            .into_owned(),
+        ..SessionRow::default()
+    };
+    let none: [&str; 0] = [];
+    let r = session_row(&v, "p", &live_table(&[], &none)).expect("行照出");
+    assert_eq!(r.agent, None, "认不出 ⇒ 照实交 None");
+    assert_eq!(agent_tag(r.agent.as_deref()), Some(unknown));
+}
+
+/// ★ 认不出是哪一家的那一行上线：家那一格不带（不写空串）；恢复那一项照 `no` 不给（没在跑、不是分身也一样），在跑的照样切过去。
+#[test]
+fn a_row_whose_family_is_unknown_goes_out_without_a_family_and_cannot_be_resumed() {
+    use crate::history::listing::CanResume;
+    let dir = std::env::temp_dir().join(format!("ccm-unknown-wire-{}", std::process::id()));
+    let v = SessionRow {
+        session_id: "9e9e9e9e-0000-4000-8000-0000000000f2".to_string(),
+        cwd: Some("/w/a".to_string()),
+        jsonl_path: dir
+            .join("p")
+            .join("sess-y.ndjson")
+            .to_string_lossy()
+            .into_owned(),
+        ..SessionRow::default()
+    };
+    let none: [&str; 0] = [];
+    let r = session_row(&v, "p", &live_table(&[], &none)).expect("行照出");
+    assert_eq!(r.agent, None, "认不出 ⇒ 那一格缺");
+    let wire = serde_json::to_value(&r).unwrap();
+    assert!(wire.get("agent").is_none(), "线上不带 agent：{wire}");
+    let ended = crate::wire::WireLife::Ended { by: None };
+    assert_eq!(can_of(None, &ended, false).resume, CanResume::No);
+    assert_eq!(can_of(None, &ended, true).resume, CanResume::No);
+    assert_eq!(serde_json::to_value(CanResume::No).unwrap(), json!("no"));
+    assert_eq!(can_of(Some("fake"), &ended, false).resume, CanResume::Yes);
+    // 为什么不给由这里写好（界面照摆，不照词另取文）：认不出 ⇒ 那一句；分身 ⇒ 须恢复主会话那一句；给 ⇒ 缺。
+    let why = |c: crate::history::listing::Can| c.resume_why.map(|w| w.0);
+    let unknown = copy_core::copy_text("rsAgents.family.unknown", &[]);
+    let bg = copy_core::copy_text("history.row.bgHint", &[]);
+    assert_eq!(why(can_of(None, &ended, false)), Some(unknown));
+    assert_eq!(why(can_of(Some("fake"), &ended, true)), Some(bg));
+    assert_eq!(why(can_of(Some("fake"), &ended, false)), None);
+    assert!(
+        serde_json::to_value(can_of(Some("fake"), &ended, false))
+            .unwrap()
+            .get("resumeWhy")
+            .is_none(),
+        "给 ⇒ 线上不带那一格"
+    );
 }
 
 /// ★ 判据 3（续）：「打开目录」与删除确认那一段字按问的是哪台由这里写好（界面照摆，不另判本机 / 远端）：
@@ -586,12 +933,17 @@ fn groups_rank_live_then_starred_then_recent_and_keep_failed_dirs() {
             "codex:/w/delta",
             "claude:/w/beta",
             "claude:/w/alpha-二",
-            "dir:-w-gamma"
+            "dir:claude:-w-gamma"
         ],
         "在跑的（alpha）→ 说不清的（codex）→ 有星标的（beta）→ 最近的；读不了的目录殿后"
     );
     let g = &v["groups"][0];
     assert_eq!(g["count"], 2);
+    // 组头「会话 N」那一格由后端写好，界面照抄。
+    assert_eq!(
+        g["countText"],
+        copy_core::copy_text("history.group.count", &[("n", "2")])
+    );
     assert_eq!(g["hasLive"], true);
     assert_eq!(
         v["groups"][1]["hasLive"],
@@ -613,6 +965,57 @@ fn groups_rank_live_then_starred_then_recent_and_keep_failed_dirs() {
         .collect();
     assert!(order.windows(2).all(|w| w[0] >= w[1]), "{order:?}");
     assert!(order[2] > order[3], "有星标的压过只是更近的");
+}
+
+/// ★ 判据 7：同档、都没星标的几组照最近动静（组里最晚那一行的 `updatedAt`）排先后，不照键；
+/// 组的行尾时刻照它写，`order` 就是它（档位 · 星标那两截为 0）。
+#[test]
+fn groups_rank_by_latest_activity_and_say_it_at_the_tail() {
+    let now = 1_700_000_000_000_i64;
+    let hour = 3_600_000_i64;
+    let base = specimen().up.into_values().next().expect("样本行");
+    let row = |group: &str, updated_at: i64| HistoryRow {
+        group: group.to_string(),
+        updated_at,
+        starred: false,
+        context: None,
+        face: crate::wire::SessionFace::of(crate::wire::Life::Ended),
+        ..base.clone()
+    };
+    // 键的先后与最近动静的先后相反：只照键排就排反。
+    let rows = vec![
+        row("a:/old", now - 30 * 24 * hour),
+        row("b:/mid", now - 3 * 24 * hour),
+        row("b:/mid", now - 2 * hour),
+        row("c:/new", now - hour),
+    ];
+    let tz = crate::common::time::Tz::default();
+    let groups = groups_of(
+        &rows,
+        &Listing::default(),
+        &cmd_wire::Machine::named("m".to_string()),
+        now,
+        &tz,
+    );
+    let keys: Vec<&str> = groups.iter().map(|g| g.key.as_str()).collect();
+    assert_eq!(keys, vec!["c:/new", "b:/mid", "a:/old"], "最近动过的在前");
+    for (g, last) in groups
+        .iter()
+        .zip([now - hour, now - 2 * hour, now - 30 * 24 * hour])
+    {
+        assert_eq!(g.has_live, Some(false), "{}", g.key);
+        assert_eq!(
+            g.at_text,
+            Some(crate::common::time::history_at_text(last, now, &tz)),
+            "{} 的行尾时刻照组里最晚那一行",
+            g.key
+        );
+        assert_eq!(g.order, last, "{} 的 order 就是最近动静", g.key);
+    }
+    assert_ne!(
+        groups[0].at_text, groups[2].at_text,
+        "一小时前与一个月前写出来不该一样"
+    );
 }
 
 /// ★ 判据 8：问那一台 ⇒ 经 `remote_listing` 取那台的清单（这台的可达表里没有它 ⇒ `unreachable`，照实说、不凭空答）；
@@ -745,9 +1148,7 @@ fn a_real_record_tree_becomes_the_machine_listing() {
             .unwrap();
         }
     }
-    let tree = crate::history::listing::sessions_by_dir(&home)
-        .expect("读得了")
-        .expect("记录树在");
+    let tree = tree_for(&home, None).expect("读得了").expect("记录树在");
     let live = live_table(&[(S4, None)], &[]);
     let v = listing_from(tree, &[], &live, &json!({}));
     let _ = std::fs::remove_dir_all(&home);
@@ -836,7 +1237,7 @@ fn asking_by_sid_scans_one_session_and_answers_the_same() {
         whole["failed"].as_array().is_some_and(|f| !f.is_empty()),
         "夹具没造出读不了的目录"
     );
-    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+    test_home::set_dir_mode(&locked, 0o755);
     let _ = std::fs::remove_dir_all(&home);
 }
 
@@ -901,6 +1302,8 @@ fn a_remote_sessions_annotation_lives_on_that_machine() {
 
 /// ★ 手机读的这一条，线上字节钉住：换成带键集合那一形时重钉过一回（记号换成定值 `h1`）；字节存在 `tests/__fixtures__/history-list.wire-bytes.txt`（每行 `名字<TAB>字节`），
 /// 之后逐字节比（经 `serde_json::Value` 那一跳，同帧面）。没有重写开关：字节变了就是线上形状变了，先问手机那一侧。
+/// 归档那一格（`archive`，可空）加进行里时重钉过一回：手机解码（生成的 `ObjAd.fromJson`）遇到不认识的键跳过、
+/// 这一格 `nullable` 缺了不报缺格 ⇒ 旧手机读新后端、新手机读旧后端都解得开。
 /// A 手机那一问（`origin` 是这台）· B 注解读不到 ＋ 搜索词 · C 按开始排 ＋ 一窗 ＋ 隐藏的也出。
 #[test]
 fn the_wire_bytes_the_phone_reads_stay_the_same() {
@@ -1033,7 +1436,7 @@ fn a_session_the_ledger_calls_reconnectable_is_listed_as_reconnectable() {
     let v = |s: &str| SessionRow {
         session_id: s.to_string(),
         cwd: Some("/w/a".to_string()),
-        record_path: "/x.jsonl".to_string(),
+        jsonl_path: "/x.jsonl".to_string(),
         ..SessionRow::default()
     };
     let none = live_table(&[], &[sid]);
@@ -1180,7 +1583,9 @@ async fn the_frame_arm_takes_the_mark() {
 #[test]
 fn answering_the_listing_lets_a_session_ring_again() {
     let _tree = MACHINE_TREE.blocking_lock();
-    let dir = crate::history::listing::records_root(&crate::history::listing::agent_home())
+    let dir = crate::agents::local_homes()
+        .iter()
+        .find_map(crate::agents::AgentHome::records_root)
         .expect("有记录树")
         .join(format!("-w-listnode-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
@@ -1242,4 +1647,116 @@ fn live_table(
         reconnectable: reconnectable.iter().map(|s| (*s).to_string()).collect(),
         ..Default::default()
     }
+}
+
+/// 合成历史那一行的工作目录取不出最后一段（空 · 根）⇒ 项目名照实说目录不明，不画成 kind（替身家）。
+#[test]
+fn a_synth_row_without_a_dir_name_says_so_not_its_kind() {
+    for cwd in ["", "/"] {
+        let s = crate::agents::SynthSession {
+            sid: "00000000-0000-4000-8000-00000000d1d0".into(),
+            path: PathBuf::from("/h/stand/rollout-x.jsonl"),
+            cwd: cwd.into(),
+            mtime_ms: 1,
+        };
+        let row = synth_row("stand-kind", &s, String::new());
+        assert_eq!(
+            row.project_name,
+            copy_core::copy_text("history.row.noDir", &[]),
+            "cwd {cwd:?}"
+        );
+        assert!(
+            !row.project_name.contains("stand-kind"),
+            "{}",
+            row.project_name
+        );
+    }
+}
+
+fn live_raw(sid: &str, activity: crate::agents::SessionActivity) -> RawRow {
+    let mut r = session_row(
+        &row(sid, "/w", 1, 2, Some("t"), "hi", false, None),
+        "-w",
+        &crate::history::live_table::LiveTable::default(),
+    )
+    .expect("有 sid 就有一行");
+    r.life = crate::wire::WireLife::Live {
+        activity: Some(activity),
+    };
+    r
+}
+
+/// ★ 「挂着的那一条界面答得了」由会话所在那台写进它自己那份清单的行（同住哪那一格）：挂着有选项的 ⇒ 那一格是；
+/// 挂着的是挡着终端的（一项都不给选）· 没挂 ⇒ 不是。判法只读 `wire::answerable`。
+#[test]
+fn the_machine_a_session_lives_on_writes_whether_its_hung_ask_is_answerable() {
+    use crate::agents::asks::{specimen, Asked};
+    use crate::agents::SessionActivity as A;
+    let hung = |clear: bool| {
+        let mut a = Asked {
+            ask: specimen(),
+            since_ms: 1,
+        };
+        if clear {
+            a.ask.choices.clear();
+        }
+        a
+    };
+    let mut listing = Listing {
+        rows: vec![
+            live_raw("可答", A::NeedsYou),
+            live_raw("挡终端", A::NeedsYou),
+            live_raw("没挂", A::NeedsYou),
+        ],
+        ..Default::default()
+    };
+    with_own_asks(&mut listing, |sid| match sid {
+        "可答" => Some(hung(false)),
+        "挡终端" => Some(hung(true)),
+        _ => None,
+    });
+    let cells: Vec<(&str, bool)> = listing
+        .rows
+        .iter()
+        .map(|r| (r.session_id.as_str(), r.asks))
+        .collect();
+    assert_eq!(cells, [("可答", true), ("挡终端", false), ("没挂", false)]);
+}
+
+/// ★ 清单那一行的脸照那台写进行里的那一格（远端那台的行也一样，看的这一台不查自己的登记表）：在等人、那一格是 ⇒ 待答请求那一颗
+/// （名字「待答请求」）；那一格不是 ⇒ 需手动；不在等人的不因那一格换点。远端那一份照线上的样子读回来照样认。
+#[test]
+fn a_listed_waiting_row_says_asks_from_the_cell_its_own_machine_wrote() {
+    use crate::agents::SessionActivity as A;
+    let with = |a: A, asks: bool| {
+        let mut r = live_raw("s", a);
+        r.asks = asks;
+        r
+    };
+    let face = listed_face(&with(A::NeedsYou, true));
+    assert_eq!(face.dot, crate::wire::SessionDot::Asks);
+    assert_eq!(face.name.0, copy_core::copy_text("needs.asks.title", &[]));
+    assert_eq!(
+        face.line.0,
+        copy_core::copy_text("needs.asks.title", &[]),
+        "那一句与点同说待答请求，不留「需手动」"
+    );
+    assert_eq!(
+        listed_face(&with(A::NeedsYou, false)).dot,
+        crate::wire::SessionDot::NeedsYou,
+        "那台说答不了"
+    );
+    assert_eq!(
+        listed_face(&with(A::Working, true)).dot,
+        crate::wire::SessionDot::Running,
+        "不在等人"
+    );
+    let there: RawRow =
+        serde_json::from_value(serde_json::to_value(with(A::NeedsYou, true)).unwrap())
+            .expect("远端那台的一行");
+    assert_eq!(
+        finish_row(there, None).face.dot,
+        crate::wire::SessionDot::Asks,
+        "远端那台写的那一格过线照样认（看的这一台登记表里没有它）"
+    );
 }

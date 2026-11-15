@@ -3,7 +3,7 @@
 use super::Topic;
 
 /// 全部主题（表的行序；逐行核表用：主题表的判据 · 帧的判据都读这一份）。
-pub const ALL: [Topic; 17] = [
+pub const ALL: [Topic; 18] = [
     Topic::Accounts,
     Topic::Profiles,
     Topic::Quota,
@@ -21,6 +21,7 @@ pub const ALL: [Topic; 17] = [
     Topic::HistoryList,
     Topic::Groups,
     Topic::SessionQueue,
+    Topic::Attach,
 ];
 
 // ═══ 第二个前端在读的形状：冻结（只许加字段）═══════════════════════════════

@@ -28,9 +28,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Cdp, Page, sleep } from "./cdp.mjs";
 import { FILEWIN_SCENES, shootFilewin } from "./filewin.mjs";
-import { findChrome, toolchainEnv } from "./host-tools.mjs";
+import { findChrome } from "./host-tools.mjs";
 import { writeIndex } from "./index-page.mjs";
-import { buildBins, pinDateSource, SHOTS_TZ } from "./real/pool.mjs";
+import { buildBins, pinDateSource, scrubbedEnv, SHOTS_TZ } from "./real/pool.mjs";
 import { shootWebkit, webkitMissing } from "./webkit.mjs";
 
 // 等页里起好的上限：兜底的那一个数（与 `tests/test-support/wall-ceiling.ts` · Rust `guard_core::wall::CEILING_SECS` 同值，
@@ -66,20 +66,6 @@ holdSandbox();
 rmSync(sandbox, { recursive: true, force: true });
 mkdirSync(path.join(sandbox, "home"), { recursive: true });
 mkdirSync(out, { recursive: true });
-
-/**
- * 摘掉会把东西引向真环境的那几族：从 cc-monitor 起的 shell 里跑时，环境里带着常驻后端的监听口、钥匙、
- * 日志与几份真文件的位置（`CCM_*`），还有 claude / Anthropic / tmux 的那几样。工具自己的 `CCM_SHOTS_*` 留着。
- * 工具链的家钉死（`toolchainEnv`）：编译那几步照它找 cargo / rustup，HOME 换没换都一样。
- */
-function scrubbedEnv(extra = {}) {
-  const env = { ...process.env, ...toolchainEnv(process.env), ...extra };
-  for (const k of Object.keys(env)) {
-    if (k.startsWith("CCM_SHOTS_")) continue;
-    if (/^(CCM_|CLAUDE_|ANTHROPIC_|TMUX)/.test(k)) delete env[k];
-  }
-  return env;
-}
 
 /** 起浏览器 / vite / 文件窗口那几个子进程用：再把 HOME 换成沙箱、XDG 那几格与桌面会话总线摘掉（测试不碰用户的桌面会话），时区给死（`SHOTS_TZ`）。 */
 function isolatedEnv(extra = {}) {
@@ -127,7 +113,7 @@ async function shootWeb() {
     }
   }
   // 真后端与无头壳：本树那一份（增量编；编要真 HOME，别的照摘）。外面给了 `CCM_SHOTS_BACKEND` 就用那一份后端。
-  const broken = buildBins({ repo, env: scrubbedEnv() });
+  const broken = buildBins({ repo });
   if (broken) {
     problems.push(broken);
     return;

@@ -51,6 +51,8 @@ impl crate::wire::typed::Handle for SessionAccountCmd {
 /// 那台此刻关于这条会话知道的几样（生产由 [`facts_here`] 取；判据直接造）。
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Facts {
+    /// 这条会话那一家（号名照它问；[`agent_among`]）：按 sid 找到它的那一家；这台找不到它的记录 ⇒ 活会话表里的那一家；都认不出 ⇒ 空串。
+    pub(crate) agent: String,
     /// 中转见过这个会话：`(开会话的号, 在用的号)`。
     pub(crate) rot: Option<(String, String)>,
     /// 会话此刻还活着。
@@ -59,7 +61,7 @@ pub(crate) struct Facts {
     pub(crate) live: Option<String>,
     /// 这台记着的「上次用哪个号起的」。
     pub(crate) last: Option<String>,
-    /// 这台的默认号（选得了的才算）。
+    /// 这台的默认号（这条会话那一家的、选得了的才算：[`default_of`]）。
     pub(crate) default: Option<String>,
     /// 这台的号查得了。
     pub(crate) queryable: bool,
@@ -76,25 +78,15 @@ fn facts_here(ctx: &crate::faces::rotation_face::Ctx, sid: &str) -> Facts {
         .sessions
         .get(sid)
         .map(|s| (s.start.clone(), s.current.clone()));
-    let home = crate::history::listing::agent_home();
-    let rows = crate::accounts::manage::library::session_accounts_here(&home);
-    let mine = || {
-        rows.iter()
-            .filter(|r| r.alive && r.sid.as_deref() == Some(sid))
-    };
-    let alive = mine().next().is_some();
-    let live = mine().find_map(|r| r.account.clone());
-    let list = crate::faces::launch_account_face::list_of(
-        crate::accounts::upstream_select::CREDENTIALS_FILE_AGENT,
-    );
-    let default = list
-        .meta
-        .effective_default
-        .as_deref()
-        .and_then(|d| list.accounts.iter().find(|a| a.scanned.name == d))
-        .filter(|a| a.scanned.selectable)
-        .map(|a| a.scanned.name.clone());
+    let home = crate::agents::local_homes();
+    let (alive, live) = standing_at(&home, sid);
+    let at = crate::observe::query::locate::session_at(&home, sid).ok();
+    let live_kind = crate::history::live_table::now(&home).kind_of(sid);
+    let (kind, agent) = agent_among(crate::agents::REGISTRY, at.as_ref(), live_kind);
+    let list = crate::faces::launch_account_face::list_of(agent);
+    let default = kind.and_then(|k| default_of(&list, &cmd_wire::AgentKind::new(k)));
     Facts {
+        agent: agent.to_string(),
         rot,
         alive,
         live,
@@ -105,13 +97,52 @@ fn facts_here(ctx: &crate::faces::rotation_face::Ctx, sid: &str) -> Facts {
     }
 }
 
-/// 号名表里的叫法。
-fn label(account: &str) -> String {
-    crate::accounts::quota::name_words::account_text(account)
+/// 这条会话此刻活没活 · 进程环境判出的号：活没活照脸上那一判（`SessionAccount.live`，启动时刻核不上的照样算活）；
+/// 号只认身份核上了的那一行（`alive`）。家目录是参数（判据拿夹具喂它）。
+pub(crate) fn standing_at(
+    home: impl crate::agents::IntoHomes,
+    sid: &str,
+) -> (bool, Option<String>) {
+    let home_v = crate::agents::IntoHomes::into_homes(home);
+    let rows = crate::accounts::manage::library::session_accounts_here(&home_v);
+    let mine = || rows.iter().filter(|r| r.sid.as_deref() == Some(sid));
+    let alive = mine().any(|r| r.live);
+    let account = mine().filter(|r| r.alive).find_map(|r| r.account.clone());
+    (alive, account)
+}
+
+/// 会话是哪一家照[`crate::observe::accounts_query::session_kind`]（先记录、再活会话表）；认不出 ⇒ `None`（不比默认号：别家的默认号不算）。问清单那几格（查得了没有）· 号名的那一家：就是它；
+/// 不知道是哪一家 · 那一家不由我们起 ⇒ 空串（不退到默认那一家）。
+pub(crate) fn agent_among(
+    registry: &[crate::agents::Adapter],
+    at: Option<&crate::agents::SessionAt>,
+    live: Option<&'static str>,
+) -> (Option<&'static str>, &'static str) {
+    let kind = crate::observe::accounts_query::session_kind(at, live);
+    let agent = kind
+        .and_then(|k| crate::agents::pick_kind_among(registry, Some(k)).ok())
+        .map_or("", |(k, _)| k);
+    (kind, agent)
+}
+
+/// 这台的默认号，且是 `agent` 那一家、选得了的：照起会话「跟随」没有上次的号那一判（[`crate::control::launch_account::pick`]），
+/// 别家的默认号 ⇒ 没有。
+pub(crate) fn default_of(
+    list: &crate::accounts::manage::library::AccountsList,
+    agent: &cmd_wire::AgentKind,
+) -> Option<String> {
+    use crate::control::launch_account::{pick, AccountAsk, Settled};
+    match pick(&AccountAsk::Follow, list, None, agent) {
+        Ok(Settled::Account(a)) => Some(a.name),
+        _ => None,
+    }
 }
 
 /// ★ 并成一份（纯函数）。号照这个先后取：中转记的在用号 ＞ 进程环境判出的号 ＞ 记着的上次的号 ＞ 不知道。
 pub(crate) fn product(f: &Facts, quota: &QuotaRead) -> SessionAccountReply {
+    // 号名表里的叫法：照这条会话那一家问。
+    let label =
+        |account: &str| crate::accounts::quota::name_words::account_text_of(&f.agent, account);
     let rot = f.rot.as_ref();
     let account = rot
         .map(|(_, cur)| cur.clone())
@@ -125,9 +156,17 @@ pub(crate) fn product(f: &Facts, quota: &QuotaRead) -> SessionAccountReply {
     };
     let seen = |a: &str| quota.accounts.iter().find(|x| x.head.account == a);
     let unseen = |a: &str| quota.unseen.iter().find(|x| x.head.account == a);
-    let texts = |rows: &cmd_wire::quota::Rows| -> Vec<Vec<String>> {
-        rows.iter()
-            .map(|r| r.iter().map(|c| c.text.0.clone()).collect())
+    // 自己拼的那几行没有语气：一格一个常规语气的字。额度账那一段照它写好的格（连语气）原样带过去。
+    let plain = |rows: Vec<Vec<String>>| -> cmd_wire::quota::Rows {
+        rows.into_iter()
+            .map(|r| {
+                r.into_iter()
+                    .map(|t| cmd_wire::quota::Cell {
+                        text: crate::common::cells::Words(t),
+                        tone: crate::common::cells::Tone::Plain,
+                    })
+                    .collect()
+            })
             .collect()
     };
     let switch_row = || {
@@ -147,7 +186,7 @@ pub(crate) fn product(f: &Facts, quota: &QuotaRead) -> SessionAccountReply {
             (
                 None,
                 false,
-                vec![
+                plain(vec![
                     head,
                     vec![
                         copy_text("acct.hover.usage", &[]),
@@ -157,7 +196,7 @@ pub(crate) fn product(f: &Facts, quota: &QuotaRead) -> SessionAccountReply {
                         copy_text("acct.hover.switch", &[]),
                         copy_text("acct.own.switch", &[]),
                     ],
-                ],
+                ]),
                 None,
             )
         }
@@ -165,15 +204,15 @@ pub(crate) fn product(f: &Facts, quota: &QuotaRead) -> SessionAccountReply {
         (Some((start, cur)), _) => {
             let led = seen(cur);
             let mut rows = led
-                .map(|l| texts(&l.rows))
-                .or_else(|| unseen(cur).map(|u| texts(&u.rows)))
-                .unwrap_or_else(|| vec![vec![label(cur)]]);
-            // 额度账那一段的末行是采样那一格。
-            let sampled = led.and_then(|_| rows.len().checked_sub(1));
+                .map(|l| l.rows.clone())
+                .or_else(|| unseen(cur).map(|u| u.rows.clone()))
+                .unwrap_or_else(|| plain(vec![vec![label(cur)]]));
+            // 几点采的：额度账那一条写好的那一句（不成行）。
+            let sampled = led.map(|l| l.sampled.0.clone());
             if start != cur {
                 from = Some(start.clone());
                 let line = copy_text("rot.hover.from", &[("account", &label(start))]);
-                rows.push(vec![line.clone()]);
+                rows.extend(plain(vec![vec![line.clone()]]));
                 from_line = Some(line);
             }
             (
@@ -196,7 +235,7 @@ pub(crate) fn product(f: &Facts, quota: &QuotaRead) -> SessionAccountReply {
             (
                 None,
                 false,
-                vec![
+                plain(vec![
                     head,
                     vec![
                         copy_text("acct.hover.usage", &[]),
@@ -204,14 +243,17 @@ pub(crate) fn product(f: &Facts, quota: &QuotaRead) -> SessionAccountReply {
                         copy_text("acct.hover.noRelay", &[]),
                     ],
                     switch_row(),
-                ],
+                ]),
                 None,
             )
         }
         (None, None) => (
             None,
             false,
-            vec![vec![copy_text("acct.hover.noRelay", &[])], switch_row()],
+            plain(vec![
+                vec![copy_text("acct.hover.noRelay", &[])],
+                switch_row(),
+            ]),
             None,
         ),
     };

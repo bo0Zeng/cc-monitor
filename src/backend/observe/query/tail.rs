@@ -2,10 +2,15 @@
 
 use super::locate::validate_session_path;
 use crate::platform::fs::Ro;
-use std::path::Path;
 
 /// 尾段那张图：扫描图留着且没变 ⇒ 从它切；否则现数一遍行（只数行、不解析，比等整遍扫描快得多 —— 冷开时界面最先要它）。
-pub fn tail_now(agent_home: &Path, jsonl_path: &str, n: usize) -> Result<Tail, String> {
+pub fn tail_now(
+    agent_home: impl crate::agents::IntoHomes,
+    jsonl_path: &str,
+    n: usize,
+) -> Result<Tail, String> {
+    let agent_home_v = crate::agents::IntoHomes::into_homes(agent_home);
+    let agent_home: &[crate::agents::AgentHome] = &agent_home_v;
     let target = validate_session_path(agent_home, jsonl_path)?;
     if let Some(map) = super::super::record_scan::global().peek(&target) {
         return Ok(map.tail(n));
@@ -17,12 +22,14 @@ pub fn tail_now(agent_home: &Path, jsonl_path: &str, n: usize) -> Result<Tail, S
 /// 记号（`history-tail` 的 `held.mark`）：`[start, end)` 那一段原始字节的位置与摘要。
 /// 文件不到 `end` ⇒ `None`；那一段比一行的上限还长 ⇒ 空串（不记，下一次不核）。核的时候按同一个函数重算、比相等。
 pub fn mark_at(
-    agent_home: &Path,
+    agent_home: impl crate::agents::IntoHomes,
     jsonl_path: &str,
     start: u64,
     end: u64,
     cap: usize,
 ) -> Result<Option<String>, String> {
+    let agent_home_v = crate::agents::IntoHomes::into_homes(agent_home);
+    let agent_home: &[crate::agents::AgentHome] = &agent_home_v;
     use std::io::{Read, Seek, SeekFrom};
     let target = validate_session_path(agent_home, jsonl_path)?;
     let mut f = Ro::open(&target).map_err(|e| format!("open failed: {e}"))?;

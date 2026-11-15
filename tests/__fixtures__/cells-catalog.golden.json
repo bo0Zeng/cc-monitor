@@ -232,6 +232,12 @@
         },
         {
           "frozen": true,
+          "kind": "text",
+          "path": "{t=reply}.steps.*.body.diff.showAllText",
+          "type": "string"
+        },
+        {
+          "frozen": true,
           "kind": "value",
           "path": "{t=reply}.steps.*.body.diff.shown",
           "type": "number"
@@ -502,6 +508,12 @@
         },
         {
           "frozen": true,
+          "kind": "text",
+          "path": "{t=said}.results.*.patch.showAllText",
+          "type": "string"
+        },
+        {
+          "frozen": true,
           "kind": "value",
           "path": "{t=said}.results.*.patch.shown",
           "type": "number"
@@ -535,6 +547,12 @@
           "kind": "value",
           "path": "{t=said}.results.*.removed",
           "type": "number"
+        },
+        {
+          "frozen": true,
+          "kind": "text",
+          "path": "{t=said}.results.*.resultText",
+          "type": "string"
         },
         {
           "frozen": true,
@@ -653,7 +671,7 @@
         {
           "frozen": true,
           "kind": "text",
-          "path": "{t=said}.who.speaker{kind=compactSummary}.charsText",
+          "path": "{t=said}.who.speaker{kind=compactSummary}.titleText",
           "type": "string"
         },
         {
@@ -879,6 +897,12 @@
         },
         {
           "frozen": false,
+          "kind": "text",
+          "path": "children[].face.can.attach.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
           "kind": "value",
           "path": "children[].face.can.close.can",
           "type": "string"
@@ -969,20 +993,8 @@
         },
         {
           "frozen": false,
-          "kind": "value",
-          "path": "children[].face.can.view.open.kind",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "children[].face.can.view.open.terminal",
-          "type": "string"
-        },
-        {
-          "frozen": false,
           "kind": "text",
-          "path": "children[].face.can.view.said",
+          "path": "children[].face.can.view.why",
           "type": "string"
         },
         {
@@ -1257,6 +1269,18 @@
         },
         {
           "frozen": false,
+          "kind": "text",
+          "path": "needs.askHead",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "needs.askPage",
+          "type": "string"
+        },
+        {
+          "frozen": false,
           "kind": "value",
           "path": "needs.call",
           "type": "string"
@@ -1289,6 +1313,12 @@
           "frozen": false,
           "kind": "value",
           "path": "needs.rank",
+          "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.sinceMs",
           "type": "number"
         },
         {
@@ -1455,6 +1485,12 @@
         },
         {
           "frozen": false,
+          "kind": "text",
+          "path": "startedBy.face.can.attach.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
           "kind": "value",
           "path": "startedBy.face.can.close.can",
           "type": "string"
@@ -1545,20 +1581,8 @@
         },
         {
           "frozen": false,
-          "kind": "value",
-          "path": "startedBy.face.can.view.open.kind",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "startedBy.face.can.view.open.terminal",
-          "type": "string"
-        },
-        {
-          "frozen": false,
           "kind": "text",
-          "path": "startedBy.face.can.view.said",
+          "path": "startedBy.face.can.view.why",
           "type": "string"
         },
         {
@@ -1671,6 +1695,12 @@
         },
         {
           "frozen": false,
+          "kind": "value",
+          "path": "touchedText",
+          "type": "string"
+        },
+        {
+          "frozen": false,
           "kind": "text",
           "path": "usage.contextText",
           "type": "string"
@@ -1740,186 +1770,6 @@
     },
     {
       "cells": [
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "face.can.attach.can",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "face.can.close.can",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "face.can.close.why",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "face.can.end.can",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "face.can.front.can",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "face.can.model.can",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "face.can.model.why",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "face.can.permission.can",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "face.can.permission.why",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "face.can.reattach.can",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "face.can.reattach.why",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "face.can.resume.can",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "face.can.resume.why",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "face.can.say.can",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "face.can.say.hint",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "face.can.stop.can",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "face.can.stop.why",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "face.can.view.can",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "face.can.view.open.kind",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "face.can.view.open.terminal",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "face.can.view.said",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "face.dot",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "face.life.activity",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "face.life.is",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "face.line",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "face.name",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "face.order",
-          "type": "number"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "face.settled",
-          "type": "bool"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "face.tip",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "tone",
-          "path": "face.tone",
-          "type": "enum"
-        },
         {
           "frozen": false,
           "kind": "value",
@@ -2066,6 +1916,18 @@
         },
         {
           "frozen": false,
+          "kind": "text",
+          "path": "needs.askHead",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "needs.askPage",
+          "type": "string"
+        },
+        {
+          "frozen": false,
           "kind": "value",
           "path": "needs.call",
           "type": "string"
@@ -2098,6 +1960,12 @@
           "frozen": false,
           "kind": "value",
           "path": "needs.rank",
+          "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "needs.sinceMs",
           "type": "number"
         },
         {
@@ -2309,6 +2177,12 @@
         },
         {
           "frozen": false,
+          "kind": "text",
+          "path": "face.can.attach.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
           "kind": "value",
           "path": "face.can.close.can",
           "type": "string"
@@ -2411,20 +2285,8 @@
         },
         {
           "frozen": false,
-          "kind": "value",
-          "path": "face.can.view.open.kind",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "face.can.view.open.terminal",
-          "type": "string"
-        },
-        {
-          "frozen": false,
           "kind": "text",
-          "path": "face.can.view.said",
+          "path": "face.can.view.why",
           "type": "string"
         },
         {
@@ -2560,6 +2422,12 @@
         },
         {
           "frozen": false,
+          "kind": "text",
+          "path": "face.can.attach.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
           "kind": "value",
           "path": "face.can.close.can",
           "type": "string"
@@ -2662,20 +2530,8 @@
         },
         {
           "frozen": false,
-          "kind": "value",
-          "path": "face.can.view.open.kind",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "face.can.view.open.terminal",
-          "type": "string"
-        },
-        {
-          "frozen": false,
           "kind": "text",
-          "path": "face.can.view.said",
+          "path": "face.can.view.why",
           "type": "string"
         },
         {
@@ -2778,12 +2634,6 @@
           "frozen": false,
           "kind": "text",
           "path": "title",
-          "type": "string"
-        },
-        {
-          "frozen": true,
-          "kind": "value",
-          "path": "waiting_for",
           "type": "string"
         }
       ],
@@ -3056,6 +2906,12 @@
         },
         {
           "frozen": false,
+          "kind": "text",
+          "path": "accounts[].sampled",
+          "type": "string"
+        },
+        {
+          "frozen": false,
           "kind": "value",
           "path": "accounts[].slots[].full",
           "type": "bool"
@@ -3074,21 +2930,9 @@
         },
         {
           "frozen": false,
-          "kind": "text",
-          "path": "accounts[].slots[].resetText",
-          "type": "string"
-        },
-        {
-          "frozen": false,
           "kind": "value",
           "path": "accounts[].slots[].resetsAt",
           "type": "number"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "accounts[].slots[].resetsAtRelText",
-          "type": "string"
         },
         {
           "frozen": false,
@@ -3218,9 +3062,9 @@
         },
         {
           "frozen": false,
-          "kind": "text",
-          "path": "accounts[].windows[].resetsAtRelText",
-          "type": "string"
+          "kind": "value",
+          "path": "accounts[].windows[].row",
+          "type": "number"
         },
         {
           "frozen": false,
@@ -3428,6 +3272,12 @@
         {
           "frozen": false,
           "kind": "value",
+          "path": "head.info.groups[].countText",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
           "path": "head.info.groups[].failed",
           "type": "string"
         },
@@ -3530,6 +3380,24 @@
         {
           "frozen": false,
           "kind": "value",
+          "path": "up.*.archive.archived",
+          "type": "bool"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "up.*.archive.failed",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "up.*.archive.label",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
           "path": "up.*.at",
           "type": "number"
         },
@@ -3562,6 +3430,12 @@
           "kind": "value",
           "path": "up.*.can.resume",
           "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "up.*.can.resumeWhy",
+          "type": "string"
         },
         {
           "frozen": false,
@@ -4110,18 +3984,6 @@
         },
         {
           "frozen": false,
-          "kind": "value",
-          "path": "groups[].members[].face.can.view.open.kind",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "groups[].members[].face.can.view.said",
-          "type": "string"
-        },
-        {
-          "frozen": false,
           "kind": "text",
           "path": "groups[].members[].face.can.view.why",
           "type": "string"
@@ -4406,18 +4268,6 @@
           "frozen": false,
           "kind": "value",
           "path": "pinned[].face.can.view.can",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "pinned[].face.can.view.open.kind",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "pinned[].face.can.view.said",
           "type": "string"
         },
         {

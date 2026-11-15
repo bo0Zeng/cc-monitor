@@ -152,8 +152,8 @@ fn the_real_check_wants_a_runnable_file_and_reads_absence_as_absence() {
     std::fs::write(&plain, b"").unwrap();
     std::fs::set_permissions(&plain, std::fs::Permissions::from_mode(0o644)).unwrap();
     let runnable_file = dir.join("run");
-    std::fs::write(&runnable_file, b"").unwrap();
-    std::fs::set_permissions(&runnable_file, std::fs::Permissions::from_mode(0o755)).unwrap();
+    // 可执行的文件只经 `write_exe` 写（设可执行位只此一处）。
+    test_home::write_exe(&runnable_file, "");
     assert!(!runnable(&plain).unwrap(), "没有执行位不算");
     assert!(runnable(&runnable_file).unwrap());
     assert!(

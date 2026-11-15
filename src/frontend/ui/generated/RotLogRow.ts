@@ -5,7 +5,11 @@ import type { RotSaw } from "./RotSaw";
 /**
  * 一条换号记录 ＋ 为什么那一句（策略写的；没写 ⇒ 后端看得见的原因）。
  */
-export type RotLogRow = { because: string, at: number, from: string, to: string, cause: RotLogCause, why?: string, 
+export type RotLogRow = { because: string, 
+/**
+ * 「从哪个号 → 到哪个号」那一截（照号名写好，界面照抄）。
+ */
+moved: string, at: number, from: string, to: string, cause: RotLogCause, why?: string, 
 /**
  * 那一判看的事实摘要（事后核每一次为什么换）；没记 ⇒ 缺。
  */

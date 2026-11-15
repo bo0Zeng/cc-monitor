@@ -76,17 +76,16 @@ import { FindStrip, __resetFindScopeForTests } from "../../../../src/frontend/ui
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import type { JumpTarget } from "../../../../src/frontend/ui/views/user-input-panel";
 
-const hit = (uuid: string, matched = "needle", before = "a ", after = " b", turn = 0, tsMs = 0, tsText = "") => ({
+const hit = (uuid: string, matched = "needle", before = "a ", after = " b", turn = 0) => ({
   uuid,
   // 后端给的行号：夹具里 `u{行号}` 照它，别的随便给一个（只核它被原样带去跳）。
   line: /^u\d+$/.test(uuid) ? Number(uuid.slice(1)) : 100 + uuid.length,
-  kind: "assistant",
   before,
   matched,
   after,
   turn,
-  tsMs,
-  tsText,
+  // 那台写好的头一行（谁 · 第几轮 · 时刻）：夹具造占位，界面照抄。
+  meta: `谁 · ${uuid}`,
 });
 /** 那台的回包：结果头 `head` 与［搜全部］那一格 `widen` 是后端写好的（这里只造占位，界面照摆）。 */
 const found = (hits: ReturnType<typeof hit>[], total = hits.length, head = `头 ${hits.length}`, widen = false): FindResult => ({
@@ -219,10 +218,9 @@ describe("会话内查找 · 搜索", () => {
     expect(s, "回车找过了，排着的那一次不许再发").toHaveBeenCalledTimes(2);
   });
 
-  it("🔴 带着「含工具内容」那个勾；命中按后端给的顺序列、头一行「谁 · 第几轮 · 时刻」、<mark> 里是原文", async () => {
-    // 时刻那一格照抄那台写好的 `tsText`（与 `tsMs` 故意对不上：界面若还在自己换算就红）。
-    const at = new Date(2026, 9, 6, 1, 52).getTime();
-    const s = vi.fn(async () => found([{ ...hit("u9", "NeedLe", "前 ", " 后", 3, at, "09-30 18:20"), kind: "user" }, hit("u2"), { ...hit("u4"), kind: "report", turn: 2 }]));
+  it("🔴 带着「含工具内容」那个勾；命中按后端给的顺序列、头一行照抄那台写好的 `meta`、<mark> 里是原文", async () => {
+    // 头一行照抄 `meta`（与轮次 · 时刻故意对不上：界面若还在自己拼就红）。
+    const s = vi.fn(async () => found([hit("u9", "NeedLe", "前 ", " 后", 3), hit("u2"), { ...hit("u4"), turn: 2 }]));
     const { p } = panelWith({ search: s } as Partial<SessionFindHost>);
     p.open("search");
     (p.el.querySelector("input[type=checkbox]") as HTMLInputElement).click();
@@ -231,11 +229,10 @@ describe("会话内查找 · 搜索", () => {
     expect(s.mock.calls.at(-1)).toEqual(["needle", true, 0]);
     const rows = hitRows(p.el);
     expect(rows.map((r) => r.dataset.hitUuid)).toEqual(["u9", "u2", "u4"]);
-    expect(rows[0].firstElementChild!.textContent).toBe(copyText("sessionFind.hit.meta", { who: copyText("machineForm.field.user"), n: 3, time: "09-30 18:20" }));
-    expect(rows[1].firstElementChild!.textContent, "第一句之前的不写轮").toBe("Claude");
-    expect(rows[2].firstElementChild!.textContent, "子 agent 交回的正文命中单列一种").toBe(copyText("sessionFind.hit.metaNoTime", { who: copyText("sessionFind.who.report"), n: "2" }));
+    expect(rows.map((r) => r.firstElementChild!.textContent)).toEqual(["谁 · u9", "谁 · u2", "谁 · u4"]);
     expect(rows[0].querySelector("mark")!.textContent).toBe("NeedLe");
     expect(rows[0].hasAttribute("data-id"), "命中行不许叫 data-id（那是消息卡的名字）").toBe(false);
+    expect(rows.some((r) => r.hasAttribute("data-kind")), "谁说的只在那台写好的 `meta` 里，命中行不另带种类").toBe(false);
     expect(status(p)).toBe("头 3");
   });
 
@@ -481,16 +478,16 @@ describe("ui3 · 查找范围「全部 | 用户」", () => {
     expect(s.mock.calls.at(-1)).toEqual(["needle", true, 0]);
   });
 
-  it("★ 范围「用户」的命中头一行不写「用户」（恒真）：「第几轮 · 时刻」", async () => {
-    const s = vi.fn(async () => found([{ ...hit("u9", "needle", "前 ", " 后", 3, 1, "10:42"), kind: "user" }, { ...hit("u8", "needle", "", "", 0, 1, "10:40"), kind: "user" }]));
+  it("★ 范围「用户」：照样照抄那台按范围写好的头一行（不写谁由那台判）", async () => {
+    const s = vi.fn(async (..._a: unknown[]) => found([{ ...hit("u9", "needle", "前 ", " 后", 3), meta: "第 3 轮 · 10:42" }, { ...hit("u8", "needle", "", "", 0), meta: "10:40" }]));
     const { p } = panelWith({ search: s } as Partial<SessionFindHost>);
     p.open("search");
     seg(p.el, "user").click();
     enter(p, "needle");
     await settleOutline();
+    expect(s.mock.calls.at(-1)?.[3], "范围交给那台").toBe("user");
     const rows = hitRows(p.el);
-    expect(rows[0].firstElementChild!.textContent).toBe(copyText("sessionFind.hit.metaNoWho", { n: 3, time: "10:42" }));
-    expect(rows[1].firstElementChild!.textContent, "第一句之前的：只写时刻").toBe("10:40");
+    expect(rows.map((r) => r.firstElementChild!.textContent)).toEqual(["第 3 轮 · 10:42", "10:40"]);
   });
 
   it("★ 那台说可以放宽（widen）：那一句 ＋［搜全部］⇒ 回「全部」、词不变、马上找、焦点留在框里；不放宽的照摆、无按钮", async () => {

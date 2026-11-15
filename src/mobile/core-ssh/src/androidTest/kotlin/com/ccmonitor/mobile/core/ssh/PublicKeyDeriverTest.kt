@@ -1,7 +1,6 @@
 package com.ccmonitor.mobile.core.ssh
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.ccmonitor.mobile.core.data.crypto.SshKeyGenerator
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull

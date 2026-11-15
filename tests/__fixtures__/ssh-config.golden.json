@@ -25,7 +25,10 @@
             "proxyJump": null
           }
         ],
-        "inList": true
+        "inList": true,
+        "summary": "192.0.2.2 · user · 经 bastion · 备用地址 1",
+        "splitInto": "拆成：devbox-lan · devbox-wan",
+        "splitAction": "按地址拆成 ×2"
       },
       {
         "label": "pi",
@@ -43,7 +46,10 @@
             "proxyJump": null
           }
         ],
-        "inList": false
+        "inList": false,
+        "summary": "pi.local · pi",
+        "splitInto": "拆成：pi",
+        "splitAction": null
       }
     ],
     "partial": false

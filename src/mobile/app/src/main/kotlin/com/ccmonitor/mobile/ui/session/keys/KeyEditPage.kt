@@ -34,9 +34,7 @@ import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.KeyMod
 import com.ccmonitor.mobile.core.data.db.TermKey
-import com.ccmonitor.mobile.core.data.db.autoCap
 import com.ccmonitor.mobile.core.data.db.isModifiedDefault
-import com.ccmonitor.mobile.core.data.db.modName
 import com.ccmonitor.mobile.core.data.repo.SettingsRepository
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.icon.IconTextButton

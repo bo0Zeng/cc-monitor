@@ -29,7 +29,7 @@ class TerminalsTest {
     fun `托管那一行：名字 · 句柄照收，不是 tmux；持有者那一句照那台写好的（手机不接管、不交还，只摆那一句）`() {
         val reply = terminals.obj("terminals-list")!!.obj("reply")!!
         val tmuxRow = (reply["terminals"] as List<*>).first() as Map<*, *>
-        val held = mapOf("kind" to "held", "holder" to mapOf("who" to "terminal-window", "mine" to false, "said" to "S-desk"))
+        val held = mapOf("kind" to "held", "holder" to mapOf("mine" to false, "said" to "S-desk"))
         val managed = tmuxRow + mapOf("host" to "managed", "terminal" to "m-7f3a", "name" to "work", "input" to held)
         val row = TerminalsList.of(reply + mapOf("terminals" to listOf(managed)))!!.single()
         assertEquals("work", row.name)

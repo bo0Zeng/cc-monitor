@@ -100,7 +100,7 @@ fn russh_is_named_nowhere_in_the_monitor_crate() {
         users.is_empty(),
         "界面 crate 里又点名了 `russh` / `russh_sftp`：{users:?}\n\
          ⇒ 界面进程里又拨起 SSH / 开起 SFTP 来了 —— SSH 与 SFTP 都归本机常驻后端（`src/backend/dial/`），\
-         界面经本机客户端（`call_at` · `deploy-*` · `transfer-*`）够到它们。"
+         界面经本机客户端（`call_at` · `deploy-*` · `transfer-copy`）够到它们。"
     );
 }
 

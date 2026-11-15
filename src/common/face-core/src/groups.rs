@@ -130,9 +130,10 @@ pub fn merge(halves: &[(Machine, Half)], machines: Vec<GroupsMachine>) -> Groups
     }
 }
 
-/// 组头那几颗点：需手动 · 在跑 · 后台各几条，名字照第一条那张脸上的字。
+/// 组头那几颗点：待答请求 · 需手动 · 在跑 · 后台各几条，名字照第一条那张脸上的字。
 fn counts_of(rows: &[GroupMember]) -> Vec<GroupCount> {
     [
+        SessionDot::Asks,
         SessionDot::NeedsYou,
         SessionDot::Running,
         SessionDot::Background,
@@ -142,9 +143,11 @@ fn counts_of(rows: &[GroupMember]) -> Vec<GroupCount> {
         let mut hit = rows.iter().filter(|r| r.face.dot == dot);
         let first = hit.next()?;
         let n = u32::try_from(1 + hit.count()).unwrap_or(u32::MAX);
+        let word = first.face.name.clone();
         let n_text = n.to_string();
         let n_text = n_text.as_str();
         let text = match dot {
+            SessionDot::Asks => copy_text("beGroups.count.asks", &[("n", n_text)]),
             SessionDot::NeedsYou => copy_text("beGroups.count.needs", &[("n", n_text)]),
             SessionDot::Running => copy_text("beGroups.count.running", &[("n", n_text)]),
             _ => copy_text("beGroups.count.background", &[("n", n_text)]),
@@ -152,7 +155,7 @@ fn counts_of(rows: &[GroupMember]) -> Vec<GroupCount> {
         Some(GroupCount {
             dot,
             n,
-            word: first.face.name.clone(),
+            word,
             text: Words(text),
         })
     })

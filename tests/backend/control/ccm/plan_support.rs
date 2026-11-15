@@ -7,10 +7,8 @@ pub fn no_library() -> AccountsList {
     AccountsList {
         meta: ListMeta {
             enabled: false,
-            accts_dir: "/h/accts".to_string(),
             manifest_path: "/h/accts/accounts.json".to_string(),
             updated_at: None,
-            shared_store: None,
             count: 0,
             error: None,
             unsupported: None,

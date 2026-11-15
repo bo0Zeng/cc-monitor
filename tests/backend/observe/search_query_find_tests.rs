@@ -40,24 +40,30 @@ fn the_hits_are_exactly_the_named_ones_in_file_order() {
     assert_eq!(v[v.len() - 1]["total"], plain.len() as u64);
     let v = find(&data, Q, true, FIND_DEFAULT_LIMIT);
     assert_eq!(uuids(&v), with_tools);
-    // 种类同 `Hit.kind` 那套词
-    let kinds: Vec<&str> = v[1..v.len() - 1]
-        .iter()
-        .map(|r| r["kind"].as_str().unwrap())
-        .collect();
-    assert_eq!(
-        kinds,
-        [
-            "user",
-            "assistant",
-            "tool",
-            "tool",
-            "user",
-            "report",
-            "assistant"
-        ],
-        "{kinds:?}"
-    );
+    // 谁说的写在成品 `meta` 打头（`who_of`：照命中落在哪一侧与这条会话是哪一家），线上不另带种类。
+    let want: Vec<String> = [
+        "user",
+        "assistant",
+        "tool",
+        "tool",
+        "user",
+        "report",
+        "assistant",
+    ]
+    .iter()
+    .map(|k| who_of(crate::agents::claudecode::AGENT_KIND, k))
+    .collect();
+    let rows = &v[1..v.len() - 1];
+    assert_eq!(rows.len(), want.len());
+    for (r, who) in rows.iter().zip(&want) {
+        let meta = r["meta"].as_str().unwrap();
+        assert!(
+            meta.starts_with(who.as_str()),
+            "{} 的头一行该以「{who}」打头：{meta}",
+            r["uuid"]
+        );
+        assert!(r.get("kind").is_none(), "{r}");
+    }
 }
 
 /// 片段三段：原文里的大小写原样保留在 `matched`，前后文是命中点两侧的原文。

@@ -6,10 +6,12 @@
 //! - **去重**：同 id 再投只入队一次（送过 · 撤过的 id 也记着，最近 [`SEEN_KEEP`] 个），回原来那一条的样子。
 //! - **端内保序**：带端序号 `n` 的，前一号还没到 ⇒ 先收着（不发序号）；补上了连同后面接得上的一起排；
 //!   收着超过 [`HOLD_MS`] 还没等到 ⇒ 照到达先后排。不带 `n` 的照到达先后。不起定时器：每一次读写先把等够了的排掉。
-//! - **撤**：排着 · 收着 · 未送达的撤得了（未送达的撤 ＝ 从名单里拿掉）；送过的撤不了（`cancelled: false`）。
+//! - **撤**：排着 · 收着 · 未送达的撤得了（未送达的撤 ＝ 从名单里拿掉）；投递已交出去的（在送）· 送过的撤不了（`cancelled: false`）；没见过的 id 记作撤过（先撤后到不再送）。回包带那台写好的一句。
 //! - **会话结束**：没送的全标未送达、留在名单里给发件人看（[`end`]）。
 //! - **投递口**（`faces/session_queue_deliver.rs` 那条线程用）：[`sids`] 这台有队的会话 · [`due`] 交排在最前、还没送的那一条
-//!   （连同收着的几点等够）· [`delivered`] 把它摘掉 · [`give_up`] 送不进去标未送达 · [`end`] 会话结束 · [`mark_box`] 记下屏上开没开着框（排着的那几条那一句跟着说等需手动）。
+//!   （连同收着的几点等够）· [`delivered`] 把它摘掉 · [`give_up`] 送不进去标未送达 · [`end`] 会话结束 · [`mark_box`] 记下屏上开没开着框（排着的那几条那一句跟着说等需手动）· [`mark_turn`] 编辑已发的那一句在等这一轮 · [`take`] 认定要送那一下标在送 · [`untake`] 收回成排着 · [`settle_sending`] 起来时把留着在送的当已送
+//!   · [`step`] 排在最前那一条此刻送不送（纯判定；不碰盘、不送字，投递那一遍住 faces 是因为送那一下要同时用 control 与 observe）。
+//! - watcher 看见队目录动了：[`sids_touched`] 哪几条 · [`changed`] 推的那一帧。
 //! - 全仓唯一的写口在这里：读—改—写在那个目录的跨进程锁里、原子换。读不出来（坏了 · 更新的版本）⇒ `queue_unreadable`，不覆盖。
 
 use crate::common::own_state::{Doc, Read};
@@ -59,6 +61,9 @@ pub(crate) struct Book {
     /// 最近送进 agent 的那几条的 id（先进先出，留 [`SENT_KEEP`] 个）。
     #[serde(default)]
     sent: VecDeque<String>,
+    /// 撤过的 id（先进先出，留 [`SEEN_KEEP`] 个）：见过却不在名单 · 不在这里 ⇒ 送过了（`sent` 只留最近几个）。
+    #[serde(default, skip_serializing_if = "VecDeque::is_empty")]
+    cancelled: VecDeque<String>,
     /// 那条会话屏上此刻开着批准 · 问答框（投递线程每一遍读活会话表那一态记下，[`mark_box`]；变了才写盘 ⇒ 名单跟着推）：
     /// 排着的那几条那一句说「需手动 · 答完再送」。旧版不认这一格 ⇒ 照常读（不带 ＝ 没开框）。
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -85,9 +90,18 @@ struct Entry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     rewind: Option<cmd_wire::rewind::Rewind>,
     state: QueueState,
-    /// 标未送达时投递那一下说的为什么（没退成 · 退了没送进）；没有 ⇒ 照「未送进会话」那一句。
+    /// 标未送达时说的为什么：投递那一下交的那一句，或会话结束那一句；每条未送达都带；排着 · 收着的没有这一格。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     why: Option<String>,
+    /// 编辑已发的那一句、回退那一串读屏见在出字回了「等」：从几点起在等这一轮（主人的钟，[`Book::mark_turn`]）。旧版不认这一格 ⇒ 照常读。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    turn_since_ms: Option<i64>,
+    /// 等这一轮过了 [`TURN_LONG_MS`]：那一句改说久未结束。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    turn_long: bool,
+    /// 投递已认定要送、交出去了（[`Book::take`]，锁里标）：名单不列、撤不了；送完摘掉，回「等」· 命令级错收回（[`Book::untake`]）。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    sending: bool,
 }
 
 impl Default for Book {
@@ -98,6 +112,7 @@ impl Default for Book {
             seen: VecDeque::new(),
             items: Vec::new(),
             sent: VecDeque::new(),
+            cancelled: VecDeque::new(),
             boxed: false,
         }
     }
@@ -112,6 +127,28 @@ pub(crate) enum Refused {
     TooLong,
 }
 
+/// 撤一条的结局（[`Book::cancel`]）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Cancel {
+    /// 撤了（或早撤过 · 先撤后到记作撤过）：这一句不会送进会话。
+    Done,
+    /// 投递已把它交出去、正在送：撤不回。
+    Sending,
+    /// 已送进会话：撤不回。
+    Sent,
+}
+
+impl Cancel {
+    /// 回包里那一句（会话那台写好，两端照原样画）。
+    fn said(self) -> String {
+        match self {
+            Cancel::Done => copy_text("beQueue.cancel.done", &[]),
+            Cancel::Sending => copy_text("beQueue.cancel.sending", &[]),
+            Cancel::Sent => copy_text("beQueue.cancel.sent", &[]),
+        }
+    }
+}
+
 impl Book {
     fn saw(&self, id: &str) -> bool {
         self.seen.iter().any(|s| s == id)
@@ -121,6 +158,18 @@ impl Book {
         self.seen.push_back(id.to_string());
         while self.seen.len() > SEEN_KEEP {
             self.seen.pop_front();
+        }
+    }
+
+    fn was_cancelled(&self, id: &str) -> bool {
+        self.cancelled.iter().any(|s| s == id)
+    }
+
+    /// 记下 `id` 撤过（之后同 id 的投回 `Seen`、说已取消）。
+    fn mark_cancelled(&mut self, id: &str) {
+        self.cancelled.push_back(id.to_string());
+        while self.cancelled.len() > SEEN_KEEP {
+            self.cancelled.pop_front();
         }
     }
 
@@ -174,10 +223,10 @@ impl Book {
             return Ok(self.receipt(i, QueuePutOutcome::Seen));
         }
         if self.saw(&req.id) {
-            let said = if self.sent.iter().any(|s| s == &req.id) {
-                copy_text("beQueue.said.sent", &[])
-            } else {
+            let said = if self.was_cancelled(&req.id) {
                 copy_text("reason.op.cancelled", &[])
+            } else {
+                copy_text("beQueue.said.sent", &[])
             };
             return Ok(QueuePut {
                 outcome: QueuePutOutcome::Seen,
@@ -204,6 +253,9 @@ impl Book {
             rewind: req.rewind.clone(),
             state: QueueState::Held,
             why: None,
+            turn_since_ms: None,
+            turn_long: false,
+            sending: false,
         });
         let i = self.items.len() - 1;
         if req.n.is_none() {
@@ -227,15 +279,21 @@ impl Book {
     }
 
     /// 那一条此刻在等什么（回执 · 名单每条同一句；不说第几、不分哪一端）：排着、屏上开着框 ⇒ 需手动 · 答完再送；
-    /// 排着 · 收着 ⇒ 发送中 · 等确认；未送达 ⇒ 投递那一下说的为什么，没有 ⇒ 未送进会话。
+    /// 编辑已发的那一句在等这一轮 ⇒ 等这一轮完再退（过了 [`TURN_LONG_MS`] ⇒ 那一轮久未结束 · 可撤了改选现在退）；
+    /// 别的排着 · 收着 ⇒ 发送中 · 等确认；未送达 ⇒ 标它那一下写的为什么（投递交的 · 会话结束那一句）。
     fn said_of(&self, e: &Entry) -> String {
         match e.state {
             QueueState::Queued if self.boxed => copy_text("beQueue.said.waitBox", &[]),
+            QueueState::Queued if e.turn_long => copy_text("beQueue.said.turnLong", &[]),
+            QueueState::Queued if e.turn_since_ms.is_some() => {
+                copy_text("beQueue.said.waitTurn", &[])
+            }
             QueueState::Queued | QueueState::Held => copy_text("beQueue.said.confirming", &[]),
+            // 盘上没存原因的（这一格加进来之前标的）照实说没留存，不画空。
             QueueState::Undelivered => e
                 .why
                 .clone()
-                .unwrap_or_else(|| copy_text("beQueue.said.undelivered", &[])),
+                .unwrap_or_else(|| copy_text("beQueue.said.noWhy", &[])),
         }
     }
 
@@ -261,15 +319,78 @@ impl Book {
         changed
     }
 
-    /// 撤一条：在名单里（排着 · 收着 · 未送达）⇒ 拿掉、`true`；不在（送过 · 撤过 · 没有）⇒ `false`、什么都不动。
-    pub(crate) fn cancel(&mut self, id: &str, now_ms: i64) -> bool {
-        self.settle(now_ms);
-        let Some(i) = self.items.iter().position(|e| e.id == id) else {
+    /// 编辑已发的那一句 `id` 此刻在等这一轮（回退那一串读屏见在出字）：头一回记下几点起；等过 [`TURN_LONG_MS`] 记上久了。
+    /// 不在排着 · 没变 ⇒ `false`。
+    pub(crate) fn mark_turn(&mut self, id: &str, now_ms: i64) -> bool {
+        let Some(e) = self
+            .items
+            .iter_mut()
+            .find(|e| e.id == id && e.state == QueueState::Queued)
+        else {
             return false;
         };
-        self.items.remove(i);
-        self.boxed &= !self.items.is_empty();
-        true
+        let before = (e.turn_since_ms, e.turn_long);
+        let since = *e.turn_since_ms.get_or_insert(now_ms);
+        e.turn_long = now_ms >= since.saturating_add(TURN_LONG_MS);
+        before != (e.turn_since_ms, e.turn_long)
+    }
+
+    /// 撤一条：在名单里（排着 · 收着 · 未送达）⇒ 拿掉、记作撤过；投递已交出去（在送）⇒ 不动；送过 ⇒ 不动；
+    /// 撤过 · 没见过（先撤后到）⇒ 记作撤过（之后同 id 的投回 `Seen`、不入队）。
+    pub(crate) fn cancel(&mut self, id: &str, now_ms: i64) -> Cancel {
+        self.settle(now_ms);
+        if let Some(i) = self.items.iter().position(|e| e.id == id) {
+            if self.items[i].sending {
+                return Cancel::Sending;
+            }
+            self.items.remove(i);
+            self.boxed &= !self.items.is_empty();
+            self.mark_cancelled(id);
+            return Cancel::Done;
+        }
+        if self.saw(id) && !self.was_cancelled(id) {
+            return Cancel::Sent;
+        }
+        if !self.saw(id) {
+            self.remember(id);
+            self.mark_cancelled(id);
+        }
+        Cancel::Done
+    }
+
+    /// 投递认定要送那一下（锁里）：`id` 还排着、没交出去 ⇒ 标在送、`true`；不在（撤了 · 已在送）⇒ `false`，不送。
+    pub(crate) fn take(&mut self, id: &str) -> bool {
+        match self
+            .items
+            .iter_mut()
+            .find(|e| e.id == id && e.state == QueueState::Queued && !e.sending)
+        {
+            Some(e) => {
+                e.sending = true;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// 送那一下回「等」· 命令级错：交出去的那一条收回成排着（下一遍再判）。
+    pub(crate) fn untake(&mut self, id: &str) {
+        if let Some(e) = self.items.iter_mut().find(|e| e.id == id) {
+            e.sending = false;
+        }
+    }
+
+    /// 盘上留着在送的（进程在送的那一刻没了）：照「不知道送没送到 ⇒ 不重送」当已送。
+    pub(crate) fn settle_sending(&mut self) {
+        let left: Vec<String> = self
+            .items
+            .iter()
+            .filter(|e| e.sending)
+            .map(|e| e.id.clone())
+            .collect();
+        for id in left {
+            self.delivered(&id);
+        }
     }
 
     /// 会话结束：没送的全标未送达（收着的照到达先后补上序号）。
@@ -278,8 +399,12 @@ impl Book {
         while let Some(i) = self.first_held(|_| true) {
             self.admit(i);
         }
+        let ended = copy_text("beQueue.said.ended", &[]);
         for e in &mut self.items {
-            e.state = QueueState::Undelivered;
+            if e.state != QueueState::Undelivered {
+                e.state = QueueState::Undelivered;
+                e.why = Some(ended.clone());
+            }
         }
     }
 
@@ -287,13 +412,13 @@ impl Book {
     pub(crate) fn next_due(&self) -> Option<QueueItem> {
         self.items
             .iter()
-            .filter(|e| e.state == QueueState::Queued)
+            .filter(|e| e.state == QueueState::Queued && !e.sending)
             .min_by_key(|e| e.seq)
             .map(|e| self.item(e))
     }
 
     /// 那一条送不进去（恢复没成 · 附件没了 · 不归我们 · 没退成）：标未送达、留给发件人看；`why` ＝ 投递那一下说的为什么。不在排着 ⇒ `false`。
-    pub(crate) fn give_up(&mut self, id: &str, why: Option<String>) -> bool {
+    pub(crate) fn give_up(&mut self, id: &str, why: String) -> bool {
         let Some(e) = self
             .items
             .iter_mut()
@@ -302,16 +427,17 @@ impl Book {
             return false;
         };
         e.state = QueueState::Undelivered;
-        e.why = why;
+        e.why = Some(why);
+        e.sending = false;
         true
     }
 
-    /// 瘦客户端底行那一句：还在等的（排着 · 收着）合计 N 条；一条都没有 ⇒ `None`。
+    /// 排队那一句（状态行 `queue` 那一格）：还在等的（排着 · 收着）合计 N 条；一条都没有 ⇒ `None`。
     pub(crate) fn waiting_line(&self) -> Option<String> {
         let n = self
             .items
             .iter()
-            .filter(|e| e.state != QueueState::Undelivered)
+            .filter(|e| e.state != QueueState::Undelivered && !e.sending)
             .count();
         (n > 0).then(|| copy_text("beQueue.said.waiting", &[("n", &n.to_string())]))
     }
@@ -350,7 +476,7 @@ impl Book {
             QueueState::Held => 1,
             QueueState::Undelivered => 2,
         };
-        let mut v: Vec<&Entry> = self.items.iter().collect();
+        let mut v: Vec<&Entry> = self.items.iter().filter(|e| !e.sending).collect();
         v.sort_by_key(|e| {
             (
                 rank(e.state),
@@ -389,8 +515,8 @@ fn load(own: &Own, sid: &str) -> Result<Book, Said> {
     }
 }
 
-/// 这台的队目录，不在就建（连家目录那一层）：写口 · 要盯它的（瘦客户端底行）都从这里拿。
-pub(crate) fn made_dir(own: &Own) -> Result<crate::platform::fs::OwnPath, Said> {
+/// 这台的队目录，不在就建（连家目录那一层）：写口 · 要盯它的（状态行的耳朵）都从这里拿。
+pub fn made_dir(own: &Own) -> Result<crate::platform::fs::OwnPath, Said> {
     let home = own.home_dir()?;
     let dir = own.at_home(DIR_REL)?;
     for d in [&home, &dir] {
@@ -459,9 +585,10 @@ pub fn put(own: &Own, req: &SessionQueuePutReq, now_ms: i64) -> Result<QueuePut,
 /// `session-queue-cancel` 在主人这台的那一半：撤一条，回撤完的整份名单。
 pub fn cancel(own: &Own, sid: &str, id: &str, now_ms: i64) -> Result<QueueCancelled, Said> {
     with_book(own, sid, |b| {
-        let cancelled = b.cancel(id, now_ms);
+        let c = b.cancel(id, now_ms);
         Ok(QueueCancelled {
-            cancelled,
+            cancelled: c == Cancel::Done,
+            said: c.said(),
             queue: b.view(),
         })
     })
@@ -475,7 +602,7 @@ pub fn read(own: &Own, sid: &str, now_ms: i64) -> Result<QueueList, Said> {
     })
 }
 
-/// 瘦客户端底行那一句（[`Book::waiting_line`]，先把等够了的排掉）；读不出 ⇒ `None`。
+/// 排队那一句（[`Book::waiting_line`]，状态行 `queue` 那一格，先把等够了的排掉）；读不出 ⇒ `None`。
 pub fn waiting_said(own: &Own, sid: &str, now_ms: i64) -> Option<String> {
     with_book(own, sid, |b| {
         b.settle(now_ms);
@@ -485,9 +612,9 @@ pub fn waiting_said(own: &Own, sid: &str, now_ms: i64) -> Option<String> {
     .flatten()
 }
 
-/// 托管终端 `id` 底行此刻那一句：没打标 · 没在等的 · 读不出 ⇒ `None`。
+/// 托管终端 `id` 此刻排队那一句（状态行的 `queue` 那一格，`faces::status_line_face`）：没打标 · 没在等的 · 读不出 ⇒ `None`。
 /// 瘦客户端、托管终端与会话同在一台（托管口是本机套接字）⇒ 这台就是队的主人；sid 由后端打标写进 `hosts/<id>/facts.json`。
-pub(crate) fn line_of_host(own: &Own, id: &str) -> Option<String> {
+pub fn line_of_host(own: &Own, id: &str) -> Option<String> {
     use crate::host::managed::home;
     let dir = home::dir_of(own, id).ok()?;
     let sid = home::read_facts(dir.as_path())?.sid;
@@ -495,37 +622,6 @@ pub(crate) fn line_of_host(own: &Own, id: &str) -> Option<String> {
         return None;
     }
     waiting_said(own, &sid, crate::common::time::now_ms() as i64)
-}
-
-/// 瘦客户端底行「排队 N 条」的耳朵：经 [`crate::platform::watch_file`] 盯 `hosts/<id>/`（打标那一下）与这台的队目录（队动了），
-/// 起来那一下先说一次 [`line_of_host`]，之后那一句变了才说（`tell`）。交回的那一份丢了 ⇒ 不再盯。
-/// 瘦客户端（`host::managed::attach`）只照说来的那一句摆，由 `ccm` 入口把这一个交给它（host 不引 history）。
-pub fn host_line_ears(
-    own: &Own,
-    id: &str,
-    tell: Box<dyn Fn(Option<String>) + Send>,
-) -> Result<crate::platform::watch_file::Watching, String> {
-    use crate::host::managed::home;
-    let host = home::dir_of(own, id).map_err(|s| s.logged())?;
-    let queue = made_dir(own).map_err(|s| s.logged())?;
-    let (host, queue) = (host.as_path().to_path_buf(), queue.as_path().to_path_buf());
-    let dirs = [(host.clone(), false), (queue.clone(), false)];
-    let concerns = move |p: &std::path::Path| {
-        let name = p.file_name().and_then(|n| n.to_str()).unwrap_or_default();
-        (p.parent() == Some(host.as_path()) && name == home::FACTS)
-            || (p.parent() == Some(queue.as_path()) && sid_of_name(name).is_some())
-    };
-    let first = line_of_host(own, id);
-    tell(first.clone());
-    let (own, id) = (own.clone(), id.to_string());
-    let mut last = first;
-    crate::platform::watch_file::watch(&dirs, concerns, "queue-line", move |_| {
-        let line = line_of_host(&own, &id);
-        if line != last {
-            tell(line.clone());
-            last = line;
-        }
-    })
 }
 
 /// 会话结束：没送的标未送达，回此刻的名单。
@@ -555,7 +651,7 @@ pub struct Due {
 }
 
 /// 投递口：那一条送不进去 ⇒ 标未送达，`why` 是投递那一下说的为什么（不在排着 ⇒ `false`）。
-pub fn give_up(own: &Own, sid: &str, id: &str, why: Option<String>) -> Result<bool, Said> {
+pub fn give_up(own: &Own, sid: &str, id: &str, why: String) -> Result<bool, Said> {
     with_book(own, sid, |b| Ok(b.give_up(id, why)))
 }
 
@@ -598,14 +694,128 @@ pub fn sids_touched<'a>(
     out.into_iter().collect()
 }
 
+/// 一条会话的队此刻那一帧 `changed {session_queue}`（watcher 看见队目录动了就推它）：体 ＝ `session-queue-read` 在这台那一半的回包
+/// （[`read`]，同一个处理器）；读不出 ⇒ 不带体（客户端重问）。
+pub fn changed(own: &Own, sid: &str, now_ms: i64) -> crate::wire::Changed {
+    crate::wire::Changed::SessionQueue {
+        key: sid.to_string(),
+        body: read(own, sid, now_ms).ok(),
+    }
+}
+
 /// 投递口：那条会话屏上此刻开没开着批准 · 问答框（投递线程每一遍照活会话表记，[`Book::set_boxed`]）；变了才写盘、回 `true`。
 pub fn mark_box(own: &Own, sid: &str, boxed: bool) -> Result<bool, Said> {
     with_book(own, sid, |b| Ok(b.set_boxed(boxed)))
 }
 
+/// 投递口：编辑已发的那一句在等这一轮（回退那一串回了「等」、屏上没开框）⇒ 记下几点起 · 久了没有（[`Book::mark_turn`]）；变了才写盘 ⇒ 名单跟着推。
+pub fn mark_turn(own: &Own, sid: &str, id: &str, now_ms: i64) -> Result<bool, Said> {
+    with_book(own, sid, |b| Ok(b.mark_turn(id, now_ms)))
+}
+
+/// 投递口：判定要送那一下，锁里把 `id` 标成在送（[`Book::take`]）；不在排着了（撤了）⇒ `false`，不送。
+pub fn take(own: &Own, sid: &str, id: &str) -> Result<bool, Said> {
+    with_book(own, sid, |b| Ok(b.take(id)))
+}
+
+/// 投递口：送那一下回「等」· 命令级错 ⇒ 收回成排着（[`Book::untake`]）。
+pub fn untake(own: &Own, sid: &str, id: &str) -> Result<(), Said> {
+    with_book(own, sid, |b| {
+        b.untake(id);
+        Ok(())
+    })
+}
+
+/// 投递线程起来那一下：盘上留着在送的当已送（[`Book::settle_sending`]）。
+pub fn settle_sending(own: &Own, sid: &str) -> Result<(), Said> {
+    with_book(own, sid, |b| {
+        b.settle_sending();
+        Ok(())
+    })
+}
+
 /// 投递口：那一条送掉了（不在排着 ⇒ `false`）。
 pub fn delivered(own: &Own, sid: &str, id: &str) -> Result<bool, Said> {
     with_book(own, sid, |b| Ok(b.delivered(id)))
+}
+
+// ---------------------------------------------------------------- 投递的纯判定（投递那一遍住 `faces/session_queue_deliver.rs`）
+
+/// 送出一条之后，那一态一直没换（那一句没起一轮：`/clear` 一类）最多等多久就送下一条（毫秒，这台的钟）。
+pub const CONFIRM_MS: i64 = 15_000;
+
+/// 送那一下回「等」（框开着 · 回退那一串要等）之后，最晚多久再试一次（毫秒）：等的那一样了结时不一定有事件来，
+/// 不到点再试那一条就一直排着。
+pub const WAITING_RETRY_MS: i64 = 5_000;
+
+/// 编辑已发的那一句等这一轮完，等多久（毫秒，主人的钟）名单就改说那一轮久未结束、可撤了改选现在退：比一次前台工具调用最长的等待
+/// （10 分钟）再宽一截，到这时还在出字多半是这一轮真的长，人该知道有别的出口。只改说法，不改结局（不标未送达、不替人停）。
+pub const TURN_LONG_MS: i64 = 15 * 60 * 1000;
+
+/// 一条会话此刻的样子（活会话表那一份）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Look {
+    /// 活着 ⇒ `Some(那一态)`（说不清 ⇒ `Some(None)`）；不活 ⇒ `None`。
+    pub doing: Option<Option<crate::agents::SessionActivity>>,
+    /// 那一态从何时起（epoch ms，这台的钟）。
+    pub since_ms: Option<u64>,
+}
+
+/// 投递线程替一条会话记着的（不落盘：重启之后从头看）。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Memo {
+    /// 上一条送出的时刻（等那一轮起来）；确认过 · 过了期限 ⇒ 清掉。
+    pub sent_ms: Option<i64>,
+    /// 这一段队里有东西时看见它活过（队空了就清掉）。
+    pub live: bool,
+    /// 上一回送那一下回了「等」：最晚这一刻再试（[`WAITING_RETRY_MS`]）；之后送成 · 被拒 · 队空了 ⇒ 清掉。
+    pub retry_ms: Option<i64>,
+}
+
+/// 每条会话一份 [`Memo`]。
+pub type Memos = BTreeMap<String, Memo>;
+
+/// 这一步做什么。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Step {
+    Send,
+    Wait,
+    End,
+}
+
+/// 上一条送出之后那一轮起来过没有：那一态换过（起始晚于送出那一刻）· 过了期限 ⇒ 算过了。
+pub fn settled(look: &Look, sent_ms: i64, now_ms: i64) -> bool {
+    let moved = look
+        .since_ms
+        .and_then(|s| i64::try_from(s).ok())
+        .is_some_and(|s| s > sent_ms);
+    moved || now_ms >= sent_ms.saturating_add(CONFIRM_MS)
+}
+
+/// 投递口：排在最前那一条此刻送不送。不看会话在不在跑、也不分来源（人发的 · cc-bus 投的 · 斜杠命令 · 计划审面退回一样）：
+/// - 不活：这一段队里有东西时看见它活过 ⇒ 会话结束，没送的标未送达；没看见过 ⇒ 送（送字本体恢复它，那一句当第一句）。
+/// - 屏上正有批准框 · 问答框（在等人）⇒ 压着：这时送字带回车会被当成对框的回答、可能误批；框答完就送。
+/// - 别的（闲着 · 在跑 · 后台在跑 · 说不清）⇒ 送。一次一条：上一条送出之后那一态没换过（那一态起始不晚于送出那一刻）、又没过
+///   [`CONFIRM_MS`] ⇒ 下一条先等，免得几句粘成一行。
+/// - 编辑已发的那一句也照这几条：「等这一轮完」在不在出字不看活会话表（只有后台子 agent 在跑、主 agent 空着时那一态也是在跑），
+///   交给回退那一串读屏判（`control::rewind` 第 1 步：在出字 ⇒ 回「等」，照排着；空着的输入行 ⇒ 照常退）。
+/// - 那台离线不归这里：发件端留着待发，接上之后照同一个编号补交。
+pub fn step(look: &Look, memo: &Memo, now_ms: i64) -> Step {
+    use crate::agents::SessionActivity;
+    let waiting_turn = memo.sent_ms.is_some_and(|t| !settled(look, t, now_ms));
+    match look.doing {
+        None if memo.live => Step::End,
+        None => {
+            if waiting_turn {
+                Step::Wait
+            } else {
+                Step::Send
+            }
+        }
+        Some(Some(SessionActivity::NeedsYou)) => Step::Wait,
+        Some(_) if waiting_turn => Step::Wait,
+        Some(_) => Step::Send,
+    }
 }
 
 #[cfg(test)]

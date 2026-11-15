@@ -4,10 +4,10 @@
 
 use crate::accounts::upstream_select::rotate::BookAt;
 use crate::platform::fs::Own;
-use acct_core::{AccountBook, ManifestAccount};
+use acct_core::AccountBook;
 
-/// 交给中转装配的那一份读法：这台的号表（账号库那一个读口），换号那一侧账号 0 恒在、排第一个。
-pub(crate) fn books() -> BookAt {
+/// 交给中转装配与到点重读（`accounts/quota/reread.rs`）的那一份读法：这台的号表（账号库那一个读口），换号那一侧账号 0 恒在、排第一个。
+pub fn books() -> BookAt {
     std::sync::Arc::new(|home| {
         crate::accounts::manage::scan::book_at(home).map(AccountBook::with_bare_first)
     })
@@ -56,13 +56,28 @@ pub(crate) struct Ctx {
 }
 
 impl Ctx {
-    /// 这台的生产那一份：账本 · 额度账（现读盘，住数据目录）· 家 · 账号库 · key 表都从真环境取。
+    /// 这台的生产那一份：数据目录 · 家 · key 表那份文件都照这台推（[`Self::at`]）。
     /// 只读那几问也用它，不拿写句柄：数据目录照读那一侧的推法（`platform::paths::data_home`，与启动时造写句柄同一个出处）。
     pub(crate) fn here() -> Self {
-        let rows = crate::accounts::upstream_select::file_face::machine_rows();
-        let hop = Hop::here(
+        Self::at(
             crate::platform::paths::data_home().as_deref(),
             crate::platform::paths::home_dir(),
+            crate::accounts::upstream_select::file_face::machine_key_path().as_deref(),
+        )
+    }
+
+    /// 落点照交进来的：账本 · 额度账（现读盘）住 `data`，账号库照家 `home` 读，key 表照 `keys` 那份文件答（推不出 ⇒ 零行）。
+    pub(crate) fn at(
+        data: Option<&std::path::Path>,
+        home: Option<std::path::PathBuf>,
+        keys: Option<&std::path::Path>,
+    ) -> Self {
+        let rows = keys
+            .map(crate::accounts::upstream_select::file_face::rows_at)
+            .unwrap_or_default();
+        let hop = Hop::here(
+            data,
+            home,
             books(),
             &crate::accounts::quota::adoptions_at(),
             history_ports(),
@@ -70,11 +85,7 @@ impl Ctx {
         Self {
             setup: Arc::new(Setup::of(Arc::clone(&hop.store))),
             hop,
-            rows: Box::new(move |agent, a| {
-                (agent == crate::accounts::upstream_select::CREDENTIALS_FILE_AGENT
-                    && rows.iter().any(|r| r == a))
-                .then_some(true)
-            }),
+            rows: Box::new(move |agent, a| rows.of(agent).iter().any(|r| r == a).then_some(true)),
         }
     }
 
@@ -83,9 +94,6 @@ impl Ctx {
         move |a| (self.rows)(agent, a)
     }
 }
-
-/// 凭据文件那一家（账号库是它的）：没有会话的那几问（设置页 · 试跑）按它判种类与事实。
-pub(crate) const LIBRARY_AGENT: &str = crate::accounts::upstream_select::CREDENTIALS_FILE_AGENT;
 
 // ── quota-read ───────────────────────────────────────────────────────────────────────
 
@@ -110,15 +118,16 @@ impl crate::wire::typed::Handle for QuotaReadCmd {
         _req: cmd_wire::quota::QuotaReadReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> Result<QuotaRead, QuotaReadErr> {
-        Ok(quota_read_with(
-            &Ctx::here(),
-            crate::common::time::now_secs(),
-            &cx.tz,
-        ))
+        Ok(quota_read_now(&Ctx::here(), &cx))
     }
 }
 
 pub(crate) use crate::faces::quota_read::QuotaRead;
+
+/// [`quota_read_with`]，照请求信封 `cx` 的时区、此刻的钟。
+pub(crate) fn quota_read_now(ctx: &Ctx, cx: &crate::wire::typed::Cx) -> QuotaRead {
+    quota_read_with(ctx, crate::common::time::now_secs(), &cx.tz)
+}
 
 /// 读这台的额度账、给每个号判显示态，交出口写成成品。
 pub(crate) fn quota_read_with(ctx: &Ctx, now: u64, tz: &crate::common::time::Tz) -> QuotaRead {
@@ -143,26 +152,28 @@ pub(crate) fn quota_read_with(ctx: &Ctx, now: u64, tz: &crate::common::time::Tz)
         }
         sh
     };
-    let mut usable: Vec<String> = Vec::new();
-    let mut earliest: Option<(u64, String)> = None;
+    // 号按（家, 号名）认：两家同名的号各算各的。
+    let mut usable: Vec<(String, String)> = Vec::new();
+    let mut earliest: Option<(u64, (String, String))> = None;
     // 「可发」与「几点回来」照事实那一格（`blocked` 由 `rules::standing` 那一处判），显示态不另判；开窗那一判也照这一份事实。
     let mut judge = |agent: &str, account: &str| {
         let f = ctx
             .hop
             .fact_one(agent, &lib, account, &|a| (ctx.rows)(agent, a), now, tz);
+        let key = (agent.to_string(), account.to_string());
         match &f.blocked {
-            None => usable.push(account.to_string()),
+            None => usable.push(key),
             Some(b) => {
                 if let Some(at) = b
                     .until
                     .filter(|at| earliest.as_ref().is_none_or(|(t, _)| at < t))
                 {
-                    earliest = Some((at, account.to_string()));
+                    earliest = Some((at, key));
                 }
             }
         }
         crate::accounts::quota::rules::decide::warm_verdict(
-            &crate::accounts::quota::rules::Acct::of_fact(&f),
+            &crate::accounts::quota::rules::Acct::of_fact(agent, &f),
             now,
         )
     };
@@ -179,21 +190,23 @@ pub(crate) fn quota_read_with(ctx: &Ctx, now: u64, tz: &crate::common::time::Tz)
             warm,
         });
     }
+    // 账号库里每个号照它自己那一家认（（家, 号名）：别家有同名的号出过数，不算这个号出过数）。
     let unseen: Vec<Unseen> = lib
         .accounts
         .iter()
-        .filter_map(ManifestAccount::route_id)
-        .filter(|id| {
-            !seen
-                .iter()
-                .any(|o| o.agent == LIBRARY_AGENT && o.account == *id)
+        .filter_map(|m| {
+            Some((
+                crate::accounts::upstream_select::rotate::family_of(m)?,
+                m.route_id()?,
+            ))
         })
-        .map(|id| {
-            let sh = shown(LIBRARY_AGENT, &id, None);
-            let warm = judge(LIBRARY_AGENT, &id);
+        .filter(|(agent, id)| !seen.iter().any(|o| o.agent == *agent && o.account == *id))
+        .map(|(agent, id)| {
+            let sh = shown(agent, &id, None);
+            let warm = judge(agent, &id);
             Unseen {
                 head: UnseenHead {
-                    agent: crate::agents::kind_of_route(LIBRARY_AGENT),
+                    agent: crate::agents::kind_of_route(agent),
                     account: id,
                     kind: sh.kind,
                     login: sh.login,
@@ -211,10 +224,14 @@ pub(crate) fn quota_read_with(ctx: &Ctx, now: u64, tz: &crate::common::time::Tz)
             path: base.path.clone(),
             now: base.now,
             usable,
-            earliest: earliest.map(|(at, account)| (account, at)),
+            earliest: earliest.map(|(at, key)| (key, at)),
         },
         rows,
         unseen,
         &TextClock::new(now, tz),
     )
 }
+
+#[cfg(test)]
+#[path = "../../../tests/backend/faces/rotation_face_tests.rs"]
+pub(crate) mod tests;

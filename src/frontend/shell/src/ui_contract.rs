@@ -148,6 +148,8 @@ pub enum SessionStreamFrame {
     /// 这个会话刚进了那台那条流的「在看」名单（`stream-watch` 应答的一格）：它的这份记录从第 `seq` 行起上流，
     /// 之前没上流的那段由界面自己补（按行号 / 按骨架）。不进留存：留存在这一刻按它修成「连着的」（见 `event_replay::on_watch_from`）。
     Watch(cmd_wire::watch::WatchFrom),
+    /// 这个会话在这条连接上的未读变了（那台写好的字；不带 ⇒ 没有了）：本机后端折好的整条里那一格变了才交（`session_book`）。
+    Unread(cmd_wire::frame::SessionUnread),
 }
 
 impl SessionStreamFrame {
@@ -165,7 +167,8 @@ impl SessionStreamFrame {
             | SessionStreamFrame::SnapshotInflight(_)
             | SessionStreamFrame::Runs(_)
             | SessionStreamFrame::Branch(_)
-            | SessionStreamFrame::Watch(_) => true,
+            | SessionStreamFrame::Watch(_)
+            | SessionStreamFrame::Unread(_) => true,
         }
     }
 
@@ -190,6 +193,7 @@ impl SessionStreamFrame {
             SessionStreamFrame::Runs(p) => Some(&p.sid),
             SessionStreamFrame::Branch(p) => Some(&p.sid),
             SessionStreamFrame::Watch(p) => Some(&p.sid),
+            SessionStreamFrame::Unread(p) => Some(&p.sid),
             SessionStreamFrame::Batch(_)
             | SessionStreamFrame::Listed(_)
             | SessionStreamFrame::SnapshotInflight(_) => None,
@@ -251,15 +255,15 @@ pub enum BatchEdge {
     End,
 }
 
-/// 会话流 `session-live-card`（通道 `subscribe`）里一格的体：哪台机器 ＋ 那台哪里变了（壳照共享核心的活卡板折好，
-/// `face_core::live`；界面照画、不认 `op`）—— 某会话某运行此刻整份的活卡（空 ⇒ 那里此刻没有卡），或某张卡只换了尾巴。
+/// 会话流 `session-live-card`（通道 `subscribe`）里一格的体：哪台机器 ＋ 那台哪里变了（本机与别台都由本机后端折好交来：本机那一台是 `live_now`，别台是 `relayed` 的 `live`；
+/// 壳只转、不折，界面照画、不认 `op`）—— 某会话某运行此刻整份的活卡（空 ⇒ 那里此刻没有卡），或某张卡只换了尾巴。
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct SessionLiveCardsPayload {
     pub origin: crate::origin::Origin,
     #[cfg_attr(test, ts(type = "import(\"./LiveChange\").LiveChange"))]
-    pub live: face_core::live::LiveChange,
+    pub live: cmd_wire::live::LiveChange,
 }
 
 /// `listed` 格 的 payload：哪台机器的清单报完了。
@@ -277,8 +281,8 @@ pub struct OriginSessionsListedPayload {
 #[derive(Debug, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
+#[serde(rename_all = "camelCase")]
 pub struct FrontendReadyPayload {
-    #[serde(rename = "prioritySid")]
     pub priority_sid: Option<String>,
 }
 

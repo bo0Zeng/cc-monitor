@@ -2,7 +2,8 @@
  * 登录抽屉（账号 · MCP 同一个）：「需手动」浮层里会话外那一行 · 账号页需登录那一行 · 扩展页 MCP 那一行都开这一个。
  *
  * 从上往下：标题 · ✕ ／ 目标行（号牌 ＋ 号名 · 机器；MCP 前面多一个服务器名）／［打开登录页］·［复制链接］· 截断的链接 ／
- * 「登录页完成后自动结束」（只在后端答 `auto` 时）／ 粘贴那一格（名字照 `paste`）·［粘贴］·［提交］／ 底部［取消］（作业没了时［关闭］）。
+ * 显示码那一形：那段码 ·［复制码］／「登录页完成后自动结束」（只在后端答 `auto` 时；只能在那一台登完 ⇒ 换成后端写的 `elsewhere` 那一句）／
+ * 粘贴那一格（只有要粘回的那两形；名字照 `paste`）·［粘贴］·［提交］／ 底部［取消］（作业没了时［关闭］）。
  *
  * 每个动作发什么：开抽屉同时 `login-start`（入参 ＝ 那一项的 `fix.args`，或照那一行拼的同一形）；［打开登录页］用系统浏览器开；
  * ［提交］`login-finish {job, pasted}`；［取消］· ✕ · Esc · 点遮罩 `login-cancel {job}`、不确认；［重新开始］再发一次 `login-start`。
@@ -36,7 +37,9 @@ const TITLE: Record<LoginStartReq["kind"], () => string> = {
   account: () => copyText("login.sheet.account"),
   mcp: () => copyText("login.sheet.mcp"),
 };
-const PASTE: Record<PasteKind, { name: () => string; help: () => string }> = {
+/** 要粘回的那两形（`showCode` · `noPaste` 不粘回，不出粘贴那一格）。 */
+type Pasted = Extract<PasteKind, "code" | "redirectUrl">;
+const PASTE: Record<Pasted, { name: () => string; help: () => string }> = {
   code: { name: () => copyText("login.paste.code"), help: () => copyText("login.paste.codeHelp") },
   redirectUrl: { name: () => copyText("login.paste.redirectUrl"), help: () => copyText("login.paste.redirectUrlHelp") },
 };
@@ -271,16 +274,27 @@ class LoginDrawer {
     } else {
       parts.push(this.links(step));
       if (step.t === "ready") {
+        const how = step.started.paste;
+        // 显示码：那一家印的那段码摆在链接下面，在登录页里填它；不粘回。
+        if (how === "showCode") parts.push(this.codeArea(step.started.code ?? ""));
         if (step.started.auto) {
           const auto = el("div");
           auto.className = s.ldAuto;
           auto.dataset.part = "auto";
           auto.append(spinner(), el("span", "", copyText("login.sheet.auto")));
           parts.push(auto);
+        } else if (step.started.elsewhere) {
+          // 只能在那一台的浏览器里登完（后端判好、写好那一句，这里照摆）。
+          const there = el("div", "", step.started.elsewhere);
+          there.className = s.ldDim;
+          there.dataset.part = "elsewhere";
+          parts.push(there);
         }
-        const rule = el("div");
-        rule.className = s.ldRule;
-        parts.push(rule, this.pasteArea(step));
+        if (how === "code" || how === "redirectUrl") {
+          const rule = el("div");
+          rule.className = s.ldRule;
+          parts.push(rule, this.pasteArea(step, PASTE[how]));
+        }
       }
     }
     this.body.replaceChildren(...parts);
@@ -331,7 +345,7 @@ class LoginDrawer {
       return row;
     }
     const url = step.started.url;
-    const copy = button({ label: copyText("login.act.copyLink"), kind: "ghost", icon: "copy", onClick: () => void this.copyLink(copy, url) });
+    const copy = button({ label: copyText("login.act.copyLink"), kind: "ghost", icon: "copy", onClick: () => void this.toClipboard(copy, url) });
     copy.dataset.action = "login-copy";
     const shown = el("span", "", url);
     shown.className = s.ldUrl;
@@ -340,8 +354,7 @@ class LoginDrawer {
   }
 
   /** 粘贴那一格：名字照 `paste`（ⓘ 悬停是那一格的定义）· 输入框 ·［粘贴］·［提交］；接着粘那一种失败的那一句在框下面。 */
-  private pasteArea(step: Extract<Step, { t: "ready" }>): HTMLElement {
-    const kind = PASTE[step.started.paste];
+  private pasteArea(step: Extract<Step, { t: "ready" }>, kind: (typeof PASTE)[Pasted]): HTMLElement {
     const keep = this.paste?.input.value ?? "";
     const name = kind.name();
     const f = field({ label: name, value: keep, noteOnDemand: true });
@@ -401,6 +414,22 @@ class LoginDrawer {
     return box;
   }
 
+  /** 显示码那一形：「在登录页里填这段码」· 那段码 ·［复制码］（不粘回，那一家自己登完推结局）。 */
+  private codeArea(code: string): HTMLElement {
+    const row = el("div");
+    row.className = s.ldLinks;
+    row.dataset.part = "code";
+    const say = el("span", "", copyText("login.sheet.code"));
+    say.className = s.ldDim;
+    const shown = el("span", "", code);
+    shown.className = s.ldName;
+    shown.dataset.part = "code-text";
+    const copy = button({ label: copyText("login.act.copyCode"), kind: "ghost", icon: "copy", onClick: () => void this.toClipboard(copy, code) });
+    copy.dataset.action = "login-copy-code";
+    row.append(say, shown, copy);
+    return row;
+  }
+
   private async openPage(url: string): Promise<void> {
     try {
       await commands.os_open({ kind: "url", url });
@@ -409,11 +438,12 @@ class LoginDrawer {
     }
   }
 
-  private async copyLink(b: HTMLButtonElement, url: string): Promise<void> {
+  /** ［复制链接］·［复制码］：写进剪贴板、原位勾一下。 */
+  private async toClipboard(b: HTMLButtonElement, text: string): Promise<void> {
     try {
-      await writeClipboard(url);
+      await writeClipboard(text);
     } catch (e) {
-      console.warn("[login] 复制链接没成：", e);
+      console.warn("[login] 复制没成：", e);
       return;
     }
     // 原位勾一下，不弹 toast。

@@ -4,9 +4,9 @@
 //! |---|---|---|
 //! | R1 | 一遍扫出来的 尾段 · 骨架索引 · 用户输入 · 轮次 · 事实 == 各自单扫的那一份（逐格相等，含空行 · 坏行 · 残尾） | 合成记录 |
 //! | R2 | 同一份没变 ⇒ 第二次拿到的就是第一次那张（同一个 `Arc`）；追加一行 / 改了修改时刻 ⇒ 重扫、读到新内容 | 真文件 |
-//! | R3 | 条数上限：超了先淘汰最久没用的；单张比字节上限还大 ⇒ 照留、别的全挤掉（连问几次只读一遍盘） | 真文件 |
+//! | R3 | 条数上限：超了先淘汰最久没用的；单张比字节上限还大 ⇒ 不进缓存、一张都不挤（只留事实尾巴；有骨架的家 ⇒ 没变再问不读记录、追加了只读追加的） | 真文件 |
 //! | R4 | 几个线程同时冷开同一份 ⇒ 只扫一遍（都拿到同一张） | 真文件、8 线程 |
-//! | R10 | 图被挤掉（条数 · 被一张超字节上限的挤）⇒ 留下事实尾巴；再问事实只读追加的那一截，答案同从 0 扫 | 真文件 |
+//! | R10 | 图被挤掉（条数）· 超字节上限不留 ⇒ 留下事实尾巴；再问事实只读追加的那一截，答案同从 0 扫 | 真文件 |
 //! | R12 | 预读收下会话只借那一张：缓存里不留整张图、只留事实尾巴；界面留着的照用不挤；预读与界面同时冷开 ⇒ 照界面的留 | 真文件、8 线程 |
 //! | R13 | 骨架里没有子运行那几行的原文、整份比那几行小二十倍以上；照骨架补的运行表 ＝ 照原文补的 | 合成记录 |
 
@@ -18,16 +18,28 @@ use std::sync::Arc;
 impl ScanMap {
     /// 从字节 0 读 `r`，至多读 `len` 字节；`chain` 是这份记录那一家的链事实面（注册表 `RecordFace.chain`）：给了就顺手算主线外清单。
     /// 判据用（产品那一路经 [`RecordScans::get`]，同一个 [`Scan`]）。
+    /// `face` 不给 ⇒ 注册表上 `kind` 那一家的记录面、只是不认链（夹具不带父子链：不滤主线外）。家与面仍同一家。
     pub(crate) fn scan_with<R: std::io::BufRead>(
         r: R,
         len: u64,
-        kind: &str,
+        kind: &'static str,
         face: Option<crate::agents::RecordFace>,
     ) -> std::io::Result<ScanMap> {
+        let family = face.map(|face| Family { kind, face }).or_else(|| {
+            Family::of(kind).map(|mut f| {
+                f.face.chain = None;
+                f
+            })
+        });
         let mut s = Scan::default();
-        s.feed(r, len, kind, face)?;
+        s.feed(r, len, family)?;
         Ok(s.done(len))
     }
+}
+
+/// 这几条判据的夹具记录照路径认得出那一家（按 sid 找到它的那一路交的同一家）：调用方手里那一根交给扫描图的就是它。
+fn fam(p: &std::path::Path) -> Option<Family> {
+    crate::agents::record_kind_of(p).and_then(Family::of)
 }
 
 impl RecordScans {
@@ -147,7 +159,7 @@ fn r1_one_pass_equals_each_scan_on_its_own() {
     while let Some(row) = lines.next().unwrap() {
         crate::observe::recognize::facts::note_line(
             &mut want_facts,
-            crate::agents::claudecode::AGENT_KIND,
+            Some(crate::agents::claudecode::AGENT_KIND),
             row.body(),
             row.at,
         );
@@ -170,14 +182,14 @@ fn r2_unchanged_is_a_hit_changed_is_a_rescan() {
     let p = d.join("s.jsonl");
     std::fs::write(&p, fixture(2)).unwrap();
     let scans = RecordScans::new(4, 64 << 20);
-    let a = scans.get(&p).unwrap();
-    let b = scans.get(&p).unwrap();
+    let a = scans.get(&p, fam(&p)).unwrap();
+    let b = scans.get(&p, fam(&p)).unwrap();
     assert!(Arc::ptr_eq(&a, &b), "没变也重扫了");
     let mut f = std::fs::OpenOptions::new().append(true).open(&p).unwrap();
     f.write_all("\n{\"type\":\"user\",\"uuid\":\"late\",\"message\":{\"role\":\"user\",\"content\":\"后来的一句\"}}\n".as_bytes())
         .unwrap();
     drop(f);
-    let c = scans.get(&p).unwrap();
+    let c = scans.get(&p, fam(&p)).unwrap();
     assert!(!Arc::ptr_eq(&a, &c), "变长了还拿旧的");
     assert!(c.end > a.end);
     assert!(c.inputs.iter().any(|r| r.uuid == "late"), "新内容没读到");
@@ -185,7 +197,7 @@ fn r2_unchanged_is_a_hit_changed_is_a_rescan() {
 }
 
 #[test]
-fn r3_entry_cap_evicts_the_least_recent_and_oversized_is_kept_alone() {
+fn r3_entry_cap_evicts_the_least_recent() {
     let d = test_home::scratch("r3");
     let paths: Vec<PathBuf> = (0..3)
         .map(|i| {
@@ -195,44 +207,117 @@ fn r3_entry_cap_evicts_the_least_recent_and_oversized_is_kept_alone() {
         })
         .collect();
     let scans = RecordScans::new(2, 64 << 20);
-    let a0 = scans.get(&paths[0]).unwrap();
-    let a1 = scans.get(&paths[1]).unwrap();
+    let a0 = scans.get(&paths[0], fam(&paths[0])).unwrap();
+    let a1 = scans.get(&paths[1], fam(&paths[1])).unwrap();
     assert!(
-        Arc::ptr_eq(&a0, &scans.get(&paths[0]).unwrap()),
+        Arc::ptr_eq(&a0, &scans.get(&paths[0], fam(&paths[0])).unwrap()),
         "0 还在才对"
     );
-    let _a2 = scans.get(&paths[2]).unwrap();
+    let _a2 = scans.get(&paths[2], fam(&paths[2])).unwrap();
     assert!(
-        Arc::ptr_eq(&a0, &scans.get(&paths[0]).unwrap()),
+        Arc::ptr_eq(&a0, &scans.get(&paths[0], fam(&paths[0])).unwrap()),
         "刚用过的 0 被淘汰了"
     );
     assert!(
-        !Arc::ptr_eq(&a1, &scans.get(&paths[1]).unwrap()),
+        !Arc::ptr_eq(&a1, &scans.get(&paths[1], fam(&paths[1])).unwrap()),
         "最久没用的 1 没被淘汰"
     );
+    std::fs::remove_dir_all(&d).ok();
+}
 
-    // 单张比字节上限还大 ⇒ 照留（问的时候本来就整张在内存里），别的全挤掉：连问几次只读一遍盘。
-    let tiny = RecordScans::new(4, 1);
-    let y = tiny.get(&paths[1]).unwrap();
-    let before = tiny.bytes_read();
-    let x = tiny.get(&paths[0]).unwrap();
-    let once = tiny.bytes_read() - before;
-    assert_eq!(once, std::fs::metadata(&paths[0]).unwrap().len());
-    for _ in 0..3 {
-        assert!(
-            Arc::ptr_eq(&x, &tiny.get(&paths[0]).unwrap()),
-            "超字节上限的没留下"
-        );
-    }
+/// R3（用户报：一份 65 MiB 的扫描图每进一次缓存就把别的全挤掉）：一份超字节上限 ＋ 两份小的 ⇒ 小的照留、超的那张不进缓存。
+/// 超的那张不留，下一问也不回盘重扫整份：有骨架的家 ⇒ 没变读 0 字节；追加了只读追加的 ＋ 见证，读过就落，再问又是 0。
+#[test]
+fn r3_an_oversized_map_is_not_cached_and_evicts_nothing() {
+    let (d, own) = crate::observe::skeleton::tests::sandbox("scan-r3-over");
+    let (a, b, big) = (d.join("a.jsonl"), d.join("b.jsonl"), d.join("big.jsonl"));
+    std::fs::write(&a, fixture(1)).unwrap();
+    std::fs::write(&b, fixture(2)).unwrap();
+    std::fs::write(&big, branched(4000)).unwrap(); // 不带残尾：追加的那一截正好是 `more`
+    let size = |p: &std::path::Path| {
+        RecordScans::new(4, usize::MAX)
+            .get(p, fam(p))
+            .unwrap()
+            .bytes
+    };
+    let small = size(&a) + size(&b);
+    let cap = small + (size(&big) - small) / 2;
+    assert!(cap < size(&big), "夹具的大记录不够大");
+
+    let scans = RecordScans::new(4, cap).with_skeletons(Skeletons::at(own, 0));
+    let x = scans.get(&a, fam(&a)).unwrap();
+    let y = scans.get(&b, fam(&b)).unwrap();
+    let before = scans.bytes_read();
+    scans.get(&big, fam(&big)).unwrap();
     assert_eq!(
-        tiny.bytes_read() - before,
-        once,
-        "超字节上限的每问都回盘重读"
+        scans.bytes_read() - before,
+        std::fs::metadata(&big).unwrap().len()
     );
     assert!(
-        !Arc::ptr_eq(&y, &tiny.get(&paths[1]).unwrap()),
-        "超字节上限的那张留下了，别的没挤掉"
+        Arc::ptr_eq(&x, &scans.get(&a, fam(&a)).unwrap()),
+        "小的 a 被超上限的那张挤掉"
     );
+    assert!(
+        Arc::ptr_eq(&y, &scans.get(&b, fam(&b)).unwrap()),
+        "小的 b 被超上限的那张挤掉"
+    );
+    assert!(scans.peek(&big).is_none(), "超字节上限的那张进了缓存");
+
+    scans.flush();
+    let before = scans.bytes_read();
+    scans.get(&big, fam(&big)).unwrap();
+    assert_eq!(
+        scans.bytes_read() - before,
+        0,
+        "超上限的没变，再问回盘读了记录"
+    );
+    let more = "{\"type\":\"user\",\"uuid\":\"late\",\"message\":{\"role\":\"user\",\"content\":\"后来的一句\"}}\n";
+    append(&big, more);
+    let before = scans.bytes_read();
+    let got = scans.get(&big, fam(&big)).unwrap();
+    assert_eq!(
+        scans.bytes_read() - before,
+        more.len() as u64 + crate::observe::skeleton::WITNESS,
+        "超上限的追加了，没有只读追加的那一截"
+    );
+    assert!(got.inputs.iter().any(|r| r.uuid == "late"), "新内容没读到");
+    scans.flush();
+    let before = scans.bytes_read();
+    scans.get(&big, fam(&big)).unwrap();
+    assert_eq!(
+        scans.bytes_read() - before,
+        0,
+        "读过追加的那一截没落骨架，再问又读了一遍"
+    );
+    assert!(Arc::ptr_eq(&x, &scans.get(&a, fam(&a)).unwrap()));
+    std::fs::remove_dir_all(&d).ok();
+}
+
+/// 超上限那张每问都照骨架起步：骨架整份重写只在读进来的攒够落盘门槛之后，不按问的次数写。
+#[test]
+fn r3_an_oversized_map_rewrites_its_skeleton_by_bytes_read_not_by_asks() {
+    let (d, own) = crate::observe::skeleton::tests::sandbox("scan-r3-over-gate");
+    let big = d.join("big.jsonl");
+    std::fs::write(&big, branched(4000)).unwrap();
+    let more = "{\"type\":\"user\",\"uuid\":\"late\",\"message\":{\"role\":\"user\",\"content\":\"后来的一句\"}}\n";
+    let gate = 2 * more.len() as u64 - 1;
+    let scans = RecordScans::new(4, 1).with_skeletons(Skeletons::at(own, gate));
+    scans.get(&big, fam(&big)).unwrap();
+    scans.flush();
+    let ask = || {
+        let before = scans.bytes_read();
+        scans.get(&big, fam(&big)).unwrap();
+        scans.flush();
+        scans.bytes_read() - before
+    };
+    let stretch = |n: usize| (n * more.len()) as u64 + crate::observe::skeleton::WITNESS;
+
+    append(&big, more);
+    assert_eq!(ask(), stretch(1));
+    assert_eq!(ask(), stretch(1), "没攒够门槛就整份重写了骨架");
+    append(&big, more);
+    assert_eq!(ask(), stretch(2));
+    assert_eq!(ask(), 0, "攒够门槛了还没落骨架");
     std::fs::remove_dir_all(&d).ok();
 }
 
@@ -243,7 +328,9 @@ fn r4_concurrent_cold_opens_scan_once() {
     std::fs::write(&p, fixture(4000)).unwrap();
     let scans = RecordScans::new(4, 256 << 20);
     let got: Vec<Arc<ScanMap>> = std::thread::scope(|s| {
-        let hs: Vec<_> = (0..8).map(|_| s.spawn(|| scans.get(&p).unwrap())).collect();
+        let hs: Vec<_> = (0..8)
+            .map(|_| s.spawn(|| scans.get(&p, fam(&p)).unwrap()))
+            .collect();
         hs.into_iter().map(|h| h.join().unwrap()).collect()
     });
     assert!(
@@ -261,7 +348,7 @@ fn r5_peek_never_scans() {
     std::fs::write(&p, fixture(1)).unwrap();
     let scans = RecordScans::new(4, 64 << 20);
     assert!(scans.peek(&p).is_none(), "没扫过就有了");
-    let a = scans.get(&p).unwrap();
+    let a = scans.get(&p, fam(&p)).unwrap();
     assert!(Arc::ptr_eq(&a, &scans.peek(&p).expect("扫过却看不到")));
     std::fs::OpenOptions::new()
         .append(true)
@@ -389,8 +476,12 @@ fn r6_resuming_from_any_line_through_the_skeleton_equals_one_pass() {
         let back: Skel = serde_json::from_slice(&raw).expect("骨架读不回来");
         let start = back.scan.end as usize;
         let mut s = back.scan;
-        s.feed(&bytes[start..], bytes.len() as u64, kind, chain)
-            .unwrap();
+        s.feed(
+            &bytes[start..],
+            bytes.len() as u64,
+            chain.map(|face| Family { kind, face }),
+        )
+        .unwrap();
         assert_eq!(
             whole(&s.done(bytes.len() as u64)),
             whole(&full),
@@ -398,8 +489,12 @@ fn r6_resuming_from_any_line_through_the_skeleton_equals_one_pass() {
         );
         // 进程里留着的那张直接接着扫（不过盘）也一样。
         let mut s = head.resume();
-        s.feed(&bytes[start..], bytes.len() as u64, kind, chain)
-            .unwrap();
+        s.feed(
+            &bytes[start..],
+            bytes.len() as u64,
+            chain.map(|face| Family { kind, face }),
+        )
+        .unwrap();
         assert_eq!(whole(&s.done(bytes.len() as u64)), whole(&full));
     }
 }
@@ -421,12 +516,12 @@ fn r7_cold_scan_reads_nothing_unchanged_and_only_the_appended_bytes() {
     let probe = crate::observe::skeleton::WITNESS;
 
     let first = RecordScans::new(4, 64 << 20).with_skeletons(home());
-    let a = first.get(&p).unwrap();
+    let a = first.get(&p, fam(&p)).unwrap();
     assert_eq!(first.bytes_read(), text.len() as u64, "头一次读整份");
     first.flush();
 
     let restarted = RecordScans::new(4, 64 << 20).with_skeletons(home());
-    let b = restarted.get(&p).unwrap();
+    let b = restarted.get(&p, fam(&p)).unwrap();
     assert_eq!(restarted.bytes_read(), 0, "重启后没变，还是读了记录");
     assert_eq!(whole(&b), whole(&a), "照骨架出的图跟扫出来的不一样");
 
@@ -434,7 +529,7 @@ fn r7_cold_scan_reads_nothing_unchanged_and_only_the_appended_bytes() {
     append(&p, more);
     let k = more.len() as u64;
     let grown = RecordScans::new(4, 64 << 20).with_skeletons(home());
-    let c = grown.get(&p).unwrap();
+    let c = grown.get(&p, fam(&p)).unwrap();
     assert_eq!(grown.bytes_read(), k + probe, "追加 k 字节应只读 k ＋ 见证");
     grown.flush();
     let all = std::fs::read(&p).unwrap();
@@ -450,14 +545,14 @@ fn r7_cold_scan_reads_nothing_unchanged_and_only_the_appended_bytes() {
 
     // 进程里留着的那张（不落盘的那一份）：再追加一行，只读新的那一截 ＋ 见证。
     let grown = RecordScans::new(4, 64 << 20);
-    grown.get(&p).unwrap();
+    grown.get(&p, fam(&p)).unwrap();
     let before = grown.bytes_read();
     let again = more
         .replace("\"late\"", "\"later\"")
         .replace("b3", "late")
         .replace("后来的一句", "再后来一句");
     append(&p, &again);
-    let e = grown.get(&p).unwrap();
+    let e = grown.get(&p, fam(&p)).unwrap();
     assert_eq!(
         grown.bytes_read() - before,
         again.len() as u64 + probe,
@@ -468,7 +563,7 @@ fn r7_cold_scan_reads_nothing_unchanged_and_only_the_appended_bytes() {
     // 改写（同长、内容变了）⇒ 整份。先让骨架跟上此刻这一份（接着扫的那一截没过回写门槛不会重落 ⇒ 删掉旧的、整份落一份）。
     std::fs::remove_dir_all(d.join("data").join("cache").join("skeleton")).unwrap();
     let caught_up = RecordScans::new(4, 64 << 20).with_skeletons(home());
-    caught_up.get(&p).unwrap();
+    caught_up.get(&p, fam(&p)).unwrap();
     caught_up.flush();
     let now = std::fs::read(&p).unwrap();
     let flipped = String::from_utf8(now.clone())
@@ -481,7 +576,7 @@ fn r7_cold_scan_reads_nothing_unchanged_and_only_the_appended_bytes() {
         .unwrap();
     drop(f);
     let rewritten = RecordScans::new(4, 64 << 20).with_skeletons(home());
-    rewritten.get(&p).unwrap();
+    rewritten.get(&p, fam(&p)).unwrap();
     assert_eq!(
         rewritten.bytes_read(),
         now.len() as u64,
@@ -506,14 +601,14 @@ fn r8_the_scan_skeleton_is_rewritten_only_past_the_threshold() {
             .unwrap()
     };
     let scans = RecordScans::new(4, 64 << 20).with_skeletons(home());
-    scans.get(&p).unwrap();
+    scans.get(&p, fam(&p)).unwrap();
     scans.flush();
     let first = skel();
     let line = |u: &str, parent: &str| {
         format!("{{\"type\":\"user\",\"uuid\":\"{u}\",\"parentUuid\":\"{parent}\",\"timestamp\":\"2026-10-01T03:00:00.000Z\",\"message\":{{\"role\":\"user\",\"content\":\"x\"}}}}\n")
     };
     append(&p, &line("n1", "b3"));
-    scans.get(&p).unwrap();
+    scans.get(&p, fam(&p)).unwrap();
     scans.flush();
     assert!(skel() == first, "追加一行（没过门槛）就整份重落了骨架");
     // 一口气追加过门槛（上一次落盘长度的四分之一以上）⇒ 落一份新的。
@@ -526,7 +621,7 @@ fn r8_the_scan_skeleton_is_rewritten_only_past_the_threshold() {
     }
     assert!(big.len() as u64 >= text.len() as u64 / 4);
     append(&p, &big);
-    scans.get(&p).unwrap();
+    scans.get(&p, fam(&p)).unwrap();
     scans.flush();
     assert!(skel() != first, "过了门槛还没重落");
     let _ = std::fs::remove_dir_all(&d);
@@ -540,11 +635,13 @@ fn r9_a_continuation_extends_the_held_map_by_the_appended_bytes_only() {
     let p = d.join("s.jsonl");
     std::fs::write(&p, branched(4)).unwrap();
     let scans = RecordScans::new(4, 64 << 20);
-    scans.get(&p).unwrap();
+    scans.get(&p, fam(&p)).unwrap();
     let before = scans.bytes_read();
     let more = "{\"type\":\"user\",\"uuid\":\"late\",\"parentUuid\":\"b3\",\"timestamp\":\"2026-10-01T02:00:00.000Z\",\"message\":{\"role\":\"user\",\"content\":\"后来的一句\"}}\n";
     append(&p, more);
-    let m = scans.get(&p).expect("留着的图记录又长了，续取却拿不到");
+    let m = scans
+        .get(&p, fam(&p))
+        .expect("留着的图记录又长了，续取却拿不到");
     assert_eq!(
         scans.bytes_read() - before,
         more.len() as u64 + crate::observe::skeleton::WITNESS,
@@ -599,11 +696,11 @@ fn r10_an_evicted_map_leaves_a_facts_tail_that_reads_only_the_appended_bytes() {
 
     // 条数上限 1：问 b 挤掉 a 的图。
     let scans = RecordScans::new(1, 64 << 20);
-    scans.get(&a).unwrap();
-    scans.get(&b).unwrap();
+    scans.get(&a, fam(&a)).unwrap();
+    scans.get(&b, fam(&b)).unwrap();
     append(&a, &rest(&text));
     let before = scans.bytes_read();
-    let got = scans.facts(&a, &limits, None).unwrap();
+    let got = scans.facts(&a, fam(&a), &limits, None).unwrap();
     assert_eq!(
         scans.bytes_read() - before,
         rest(&text).len() as u64 + probe,
@@ -616,20 +713,19 @@ fn r10_an_evicted_map_leaves_a_facts_tail_that_reads_only_the_appended_bytes() {
         "同一请求的两条算成了两次"
     );
 
-    // 被一张超字节上限的挤掉 ⇒ 留尾巴。
+    // 超字节上限的不进缓存 ⇒ 也只留尾巴。
     let tiny = RecordScans::new(4, 1);
     std::fs::write(&b, branched(2)).unwrap();
-    tiny.facts(&b, &limits, None).unwrap();
-    tiny.get(&a).unwrap();
+    tiny.facts(&b, fam(&b), &limits, None).unwrap();
     let more = "{\"type\":\"user\",\"uuid\":\"z\",\"message\":{\"role\":\"user\",\"content\":\"再一句\"}}\n";
     append(&b, more);
     let before = tiny.bytes_read();
-    assert_eq!(tiny.facts(&b, &limits, None).unwrap(), cold(&b));
+    assert_eq!(tiny.facts(&b, fam(&b), &limits, None).unwrap(), cold(&b));
     assert_eq!(tiny.bytes_read() - before, more.len() as u64 + probe);
 
     // 截断重写（比尾巴的游标还短）⇒ 整份重扫。
     std::fs::write(&b, more).unwrap();
-    assert_eq!(tiny.facts(&b, &limits, None).unwrap(), cold(&b));
+    assert_eq!(tiny.facts(&b, fam(&b), &limits, None).unwrap(), cold(&b));
     std::fs::remove_dir_all(&d).ok();
 }
 
@@ -780,17 +876,17 @@ fn r12_a_prime_lends_the_map_and_leaves_only_a_facts_tail() {
     std::fs::write(&p, fixture(3)).unwrap();
 
     let scans = RecordScans::new(4, 64 << 20);
-    let (lent, end) = scans.lend(&p, |m| (whole(m), m.end)).unwrap();
+    let (lent, end) = scans.lend(&p, fam(&p), |m| (whole(m), m.end)).unwrap();
     assert!(scans.peek(&p).is_none(), "预读收下会话把整张图留在了缓存里");
     assert_eq!(
         lent,
-        whole(&RecordScans::new(4, 64 << 20).get(&p).unwrap()),
+        whole(&RecordScans::new(4, 64 << 20).get(&p, fam(&p)).unwrap()),
         "借的那张跟界面问的不一样"
     );
     let more = "{\"type\":\"user\",\"uuid\":\"z\",\"message\":{\"role\":\"user\",\"content\":\"再一句\"}}\n";
     append(&p, more);
     let before = scans.bytes_read();
-    scans.facts(&p, &limits, None).unwrap();
+    scans.facts(&p, fam(&p), &limits, None).unwrap();
     // 夹具末尾有一截残行：尾巴的游标停在最后一个整行之后，追加的那一截从那里算起。
     let grown = std::fs::metadata(&p).unwrap().len();
     assert_eq!(
@@ -802,9 +898,9 @@ fn r12_a_prime_lends_the_map_and_leaves_only_a_facts_tail() {
     // 界面问过、留着的 ⇒ 预读拿的就是那一张，之后它照样留着。
     let q = d.join("q.jsonl");
     std::fs::write(&q, fixture(2)).unwrap();
-    let held = scans.get(&q).unwrap();
+    let held = scans.get(&q, fam(&q)).unwrap();
     let before = scans.bytes_read();
-    let at = scans.lend(&q, |m| m as *const ScanMap).unwrap();
+    let at = scans.lend(&q, fam(&q), |m| m as *const ScanMap).unwrap();
     assert_eq!(at, Arc::as_ptr(&held), "留着的那张预读没用上");
     assert_eq!(
         scans.bytes_read(),
@@ -818,9 +914,9 @@ fn r12_a_prime_lends_the_map_and_leaves_only_a_facts_tail() {
     let s = sd.join("s.jsonl");
     std::fs::write(&s, branched(40)).unwrap();
     let skel = RecordScans::new(4, 64 << 20).with_skeletons(Skeletons::at(own, 0));
-    skel.lend(&s, |_| ()).unwrap();
+    skel.lend(&s, fam(&s), |_| ()).unwrap();
     let before = skel.bytes_read();
-    skel.get(&s).unwrap();
+    skel.get(&s, fam(&s)).unwrap();
     assert_eq!(
         skel.bytes_read(),
         before,
@@ -835,9 +931,11 @@ fn r12_a_prime_lends_the_map_and_leaves_only_a_facts_tail() {
         let scans = RecordScans::new(4, 256 << 20);
         let asked: Vec<Arc<ScanMap>> = std::thread::scope(|s| {
             let lends: Vec<_> = (0..4)
-                .map(|_| s.spawn(|| scans.lend(&r, |m| m.lines()).unwrap()))
+                .map(|_| s.spawn(|| scans.lend(&r, fam(&r), |m| m.lines()).unwrap()))
                 .collect();
-            let gets: Vec<_> = (0..4).map(|_| s.spawn(|| scans.get(&r).unwrap())).collect();
+            let gets: Vec<_> = (0..4)
+                .map(|_| s.spawn(|| scans.get(&r, fam(&r)).unwrap()))
+                .collect();
             for h in lends {
                 h.join().unwrap();
             }
@@ -952,7 +1050,7 @@ fn r14_index_rows_from_a_middle_line_read_only_that_stretch() {
     let scans = RecordScans::new(4, 64 << 20);
     let mut got = Vec::new();
     let end = scans
-        .index_rows(&p, from, |r| {
+        .index_rows(&p, fam(&p), from, |r| {
             got.push(json(r));
             true
         })
@@ -968,7 +1066,7 @@ fn r14_index_rows_from_a_middle_line_read_only_that_stretch() {
 
     let mut n = 0;
     let stop = scans
-        .index_rows(&p, from, |_| {
+        .index_rows(&p, fam(&p), from, |_| {
             n += 1;
             n <= 2
         })
@@ -979,11 +1077,11 @@ fn r14_index_rows_from_a_middle_line_read_only_that_stretch() {
         "停在不收的那一行的起点"
     );
 
-    scans.get(&p).unwrap();
+    scans.get(&p, fam(&p)).unwrap();
     let before = scans.bytes_read();
     let mut again = Vec::new();
     let end = scans
-        .index_rows(&p, from, |r| {
+        .index_rows(&p, fam(&p), from, |r| {
             again.push(json(r));
             true
         })
@@ -991,5 +1089,165 @@ fn r14_index_rows_from_a_middle_line_read_only_that_stretch() {
     assert_eq!(again, want, "图留着时照图切的不一样");
     assert_eq!(end, all.end);
     assert_eq!(scans.bytes_read(), before, "图留着还读盘");
+    std::fs::remove_dir_all(&d).ok();
+}
+
+/// ★ 照路径认不出是哪一家的那份记录（替身家：记录根不在任何历史根底下、文件名谁都不认）⇒ 往下交 `None`，不问哪一家：
+/// 每一行照旧各占一行骨架索引（只有起点与长度），用户输入 · 轮次一条不认，事实照空；整份扫 · 从中间起那一截 · 事实尾巴三处同一口径。
+#[test]
+fn r15_a_record_of_an_unknown_family_asks_no_family() {
+    let d = test_home::scratch("r15");
+    let p = d.join("p").join("sess-x.ndjson");
+    std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+    let text = fixture(2);
+    std::fs::write(&p, &text).unwrap();
+    assert_eq!(
+        crate::agents::record_kind_of(&p),
+        None,
+        "夹具要的是照路径认不出"
+    );
+    let len = text.len() as u64;
+    let mut s = Scan::default();
+    s.feed(text.as_bytes(), len, None).unwrap();
+    let map = s.done(len);
+    assert!(map.index.len() > 3, "正控：每个可计行照旧各占一行");
+    for r in &map.index {
+        let want = super::super::recognize::index_row::IndexRow {
+            o: r.o,
+            n: r.n,
+            ..Default::default()
+        };
+        assert_eq!(*r, want, "认不出那一家 ⇒ 那一行只有起点与长度");
+    }
+    assert!(map.inputs.is_empty(), "认不出那一家 ⇒ 不认用户输入");
+    assert!(map.turns.is_empty(), "认不出那一家 ⇒ 不认轮次");
+    let empty = crate::observe::recognize::facts::SessionFacts::default();
+    assert_eq!(map.facts, empty, "认不出那一家 ⇒ 事实照空");
+
+    let mut tail = crate::observe::recognize::facts::SessionFacts::default();
+    let mut lines = crate::observe::lines::Lines::new(text.as_bytes(), 0);
+    while let Some(row) = lines.next().unwrap() {
+        crate::observe::recognize::facts::note_line(&mut tail, None, row.body(), row.at);
+    }
+    assert_eq!(tail, empty, "事实尾巴那一路同口径");
+
+    let json = |r: &IndexRow| serde_json::to_string(r).unwrap();
+    let got = RecordScans::new(4, 64 << 20).get(&p, fam(&p)).unwrap();
+    assert_eq!(
+        got.index.iter().map(json).collect::<Vec<_>>(),
+        map.index.iter().map(json).collect::<Vec<_>>(),
+        "产品那一路与交 None 的同一张"
+    );
+    assert_eq!(got.facts, empty);
+    let from = map.index[map.index.len() / 2].o;
+    let mut mid = Vec::new();
+    RecordScans::new(4, 64 << 20)
+        .index_rows(&p, fam(&p), from, |r| {
+            mid.push(json(r));
+            true
+        })
+        .unwrap();
+    let want: Vec<String> = map.index.iter().filter(|r| r.o >= from).map(json).collect();
+    assert_eq!(mid, want, "从中间起那一截同口径");
+
+    // 事实尾巴（产品那一路 `follow`）：条数上限 1，问另一份把它的图挤掉、留下尾巴；追加一行再问事实只读那一行，事实照空。
+    let limits = crate::observe::recognize::facts::ContextLimits::default();
+    let other = d.join("p").join("other.ndjson");
+    std::fs::write(&other, "{}\n").unwrap();
+    let scans = RecordScans::new(1, 64 << 20);
+    scans.get(&p, fam(&p)).unwrap();
+    scans.get(&other, fam(&other)).unwrap();
+    assert!(scans.peek(&p).is_none(), "正控：它的图被挤掉了");
+    let more = "{\"type\":\"user\",\"uuid\":\"late\",\"message\":{\"role\":\"user\",\"content\":\"后来的一句\"}}\n";
+    append(&p, more);
+    let before = scans.bytes_read();
+    let facts = scans.facts(&p, fam(&p), &limits, None).unwrap();
+    assert_eq!(
+        scans.bytes_read() - before,
+        len + more.len() as u64 - map.end + crate::observe::skeleton::WITNESS,
+        "正控：走的是事实尾巴（只读尾巴之后的那一截 ＋ 见证）"
+    );
+    let mut want = empty.clone();
+    crate::observe::recognize::facts::settle_limit(&mut want, &limits, None);
+    assert_eq!(facts, want, "事实尾巴那一路照空");
+    std::fs::remove_dir_all(&d).ok();
+}
+
+/// 用户报卡死（30 万行那份切回 tab 每取一页正文 1.5 s）：超字节上限不留的那一份，按行号找起点不为它重建图 ——
+/// 头一问造一次图、留下尾巴里的稀疏行起点表；之后每一问照表跳到不晚于要的那一行的最近起点（离它不到 [`MARK_EVERY`] 行），
+/// 造图次数不涨、不读记录；追加了只读追加的那一截 ＋ 见证。跳到的起点与整份扫的那张图逐个对得上。
+#[test]
+fn an_oversized_map_seeks_lines_by_its_marks_without_rebuilding() {
+    let (d, own) = crate::observe::skeleton::tests::sandbox("scan-r16");
+    let big = d.join("big.jsonl");
+    std::fs::write(&big, branched(4000)).unwrap();
+    let whole = |p: &std::path::Path| RecordScans::new(4, usize::MAX).get(p, fam(p)).unwrap();
+    let scans = RecordScans::new(4, 1).with_skeletons(Skeletons::at(own, 0));
+    let check = |map: &ScanMap, k: u64| {
+        let (at, n0) = scans.seek_line(&big, fam(&big), k).unwrap();
+        let want = k.min(map.lines());
+        if want == 0 {
+            assert_eq!((at, n0), (0, 0), "第 {k} 行");
+            return;
+        }
+        assert!(
+            n0 < want && want - 1 - n0 < MARK_EVERY,
+            "第 {k} 行跳到了第 {n0} 行"
+        );
+        assert_eq!(
+            at, map.starts[n0 as usize],
+            "第 {k} 行跳到的起点不是第 {n0} 行的"
+        );
+    };
+
+    let map = whole(&big);
+    assert!(map.lines() > 4 * MARK_EVERY, "夹具不够长");
+    check(&map, map.lines()); // 头一问：造一次图
+    scans.flush();
+    // 重建一张图要从头读整份记录 ⇒ 只数读了多少字节就认得出（每问只核一次见证）。
+    let read = scans.bytes_read();
+    let asks = [
+        0,
+        1,
+        2,
+        MARK_EVERY,
+        MARK_EVERY + 1,
+        map.lines() / 2,
+        map.lines() - 1,
+        map.lines(),
+        map.lines() + 9,
+    ];
+    for k in asks {
+        check(&map, k);
+    }
+    assert_eq!(
+        scans.bytes_read() - read,
+        asks.len() as u64 * crate::observe::skeleton::WITNESS,
+        "表在手上还读了记录（每问只该核一次见证）"
+    );
+
+    // 追加跨过两个起点的那么多行，夹着不算一行的空行（数行同扫描图那一口径）。
+    let line = "{\"type\":\"user\",\"uuid\":\"late\",\"message\":{\"role\":\"user\",\"content\":\"后来的一句\"}}\n\n";
+    let more = line.repeat(2 * MARK_EVERY as usize + 3);
+    append(&big, &more);
+    let read = scans.bytes_read();
+    let map = whole(&big);
+    check(&map, map.lines());
+    assert_eq!(
+        scans.bytes_read() - read,
+        more.len() as u64 + crate::observe::skeleton::WITNESS,
+        "追加了没有只读追加的那一截"
+    );
+    let read = scans.bytes_read();
+    let tail = (map.lines() - 2 * MARK_EVERY - 3)..=map.lines() + 1;
+    let n = tail.clone().count() as u64;
+    for k in tail {
+        check(&map, k);
+    }
+    assert_eq!(
+        scans.bytes_read() - read,
+        n * crate::observe::skeleton::WITNESS,
+        "追加之后表在手上还重建了图"
+    );
     std::fs::remove_dir_all(&d).ok();
 }

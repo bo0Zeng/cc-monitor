@@ -49,6 +49,8 @@ pub mod commit;
 pub mod extract;
 pub mod grep;
 pub mod index;
+// 桌面文件窗口选中这几项 ⇒ 那一份菜单成品（`files-menu`，寻址本机）。
+pub mod menu;
 // Everything 式搜索词：解析 ＋ 逐条匹配（`files.find` 的 `query` 只在这里被读懂）。
 pub mod query;
 pub mod raw;
@@ -187,7 +189,7 @@ fn ls(req: wire::LsReq, tz: &crate::common::time::Tz) -> Answer<wire::LsReply> {
         limit_of(req.limit),
     );
     let (held, range) = (req.held.clone(), req.range);
-    let now = ls_now(req, tz)?;
+    let now = ls_now(req, tz, crate::platform::paths::home_dir())?;
     let src = LsNow {
         key,
         now: std::cell::Cell::new(Some(now)),
@@ -196,23 +198,36 @@ fn ls(req: wire::LsReq, tz: &crate::common::time::Tz) -> Answer<wire::LsReply> {
 }
 
 /// 此刻那一份：排好、截好的每一行（键 ＝ 末段名）＋ 头。`dirs_only` ⇒ 只列文件夹（含指向目录的链接），截断与计数都只数文件夹。
-/// 路径 `~` 开头的按这台的家目录展开（[`crate::platform::paths::expand_tilde_from`]），面包屑最后一段就是展开后的绝对路径。
+/// 路径 `~` 开头的按家目录 `home` 照字节展开（[`crate::platform::paths::expand_tilde_from`]；家名不是 UTF-8 也照实带），
+/// 面包屑最后一段就是展开后的绝对路径。
 fn ls_now(
     req: wire::LsReq,
     tz: &crate::common::time::Tz,
+    home: Option<std::path::PathBuf>,
 ) -> Answer<(wire::LsHead, Vec<(String, wire::LsEntry)>)> {
-    let home = crate::platform::paths::home_dir();
     let dir = path_of(&req.path, "path")?;
     let dir = match dir.to_str() {
-        Some(s) if s.starts_with('~') => PathBuf::from(crate::platform::paths::expand_tilde_from(
-            s,
-            home.as_deref(),
-        )),
+        Some(s) if s.starts_with('~') => {
+            crate::platform::paths::expand_tilde_from(s, home.as_deref())
+        }
         _ => dir,
     };
+    // 相对路径不补（补就是拿这个进程的工作目录去猜）：窗口手输的那一串原样到这里，照这一句说。
+    if !dir.is_absolute() {
+        return Err(Said::new(
+            "bad_args",
+            copy_core::copy_text(
+                "beFilesRead.ls.notAbsolute",
+                &[("path", &said_text(raw::path_bytes(&dir).to_vec()))],
+            ),
+        ));
+    }
+    // 上跳段 · `.` 按字面折掉再列（同 shell 的 `cd`）：列的那一级、面包屑、`up`、`at_home` 都是这同一条路径，
+    // 窗口照面包屑最后一段换当前目录也就落在列的那一级上。
+    let dir = lexical(&dir);
     let limit = limit_of(req.limit);
     let dirs_only = req.dirs_only.unwrap_or(false);
-    // 打不开的原因分几种码（界面按码说「路径不存在 / 无权限 / 不是目录」，系统原话进详情）。
+    // 打不开：那一句这台写好（目录名 ＋ 原因词），窗口照画；码分几种（窗口只拿它挑出路），系统原话进详情。
     let rd = Ro::read_dir(&dir).map_err(|e| {
         let code = match e.kind() {
             std::io::ErrorKind::NotFound => "not_found",
@@ -224,7 +239,10 @@ fn ls_now(
             code,
             copy_core::copy_text(
                 "beFilesRead.ls.unreadable",
-                &[("kind", &copy_core::io_reason(e.kind()))],
+                &[
+                    ("name", &dir_name(&dir, home.as_deref())),
+                    ("kind", &copy_core::io_reason(e.kind())),
+                ],
             ),
             &e,
         )
@@ -280,6 +298,9 @@ fn ls_now(
         crumbs: crumbs_of(&dir),
         total,
         unreadable: unreadable as u64,
+        at_home: home.as_deref() == Some(dir.as_path()),
+        by: sort.by,
+        descending: descending(sort),
     };
     Ok((head, entries))
 }
@@ -307,6 +328,11 @@ enum Dir {
     Desc(std::cmp::Reverse<Col>),
 }
 
+/// 这一屏那一列是不是从大到小（第一下：大小 · 时间大的在前，名称 · 类型 A 在前；`reverse` 反过来）：排序与回包头那一格同一处判。
+fn descending(sort: wire::LsSort) -> bool {
+    matches!(sort.by, wire::LsSortBy::Size | wire::LsSortBy::Mtime) != sort.reverse
+}
+
 /// 一项的排序键：目录（含指向目录的链接）在前 · 那一列（第一下：名称 · 类型 A 在前，大小 · 时间大的在前；`reverse` 只反这一格）·
 /// 名称小写 · 原字节。
 fn ls_order(p: &Picked, sort: wire::LsSort) -> (bool, Dir, Vec<u8>, Vec<u8>) {
@@ -325,12 +351,26 @@ fn ls_order(p: &Picked, sort: wire::LsSort) -> (bool, Dir, Vec<u8>, Vec<u8>) {
             Col::Type(c, e)
         }
     };
-    let col = if sort.descending() {
+    let col = if descending(sort) {
         Dir::Desc(std::cmp::Reverse(col))
     } else {
         Dir::Asc(col)
     };
     (!p.dir_like, col, lower, name)
+}
+
+/// 打不开那一句里的目录名：末段名；到顶（`/` · 盘符）⇒ 显示形。
+fn dir_name(dir: &Path, home: Option<&Path>) -> String {
+    let b = match dir.file_name() {
+        Some(n) => raw_name(n),
+        None => shown_of(dir, home).0,
+    };
+    said_text(b)
+}
+
+/// 进句子的那一段路径字节：UTF-8 照写；不是的照转义写（一个字节不丢、不换成替换字符）。
+fn said_text(b: Vec<u8>) -> String {
+    String::from_utf8(b).unwrap_or_else(|e| e.into_bytes().escape_ascii().to_string())
 }
 
 /// 一个路径的显示形：家目录那一截写成 `~`，字节一路不解码（[`crate::platform::paths::home_short_bytes`]）。
@@ -400,6 +440,23 @@ fn raw_name(n: &std::ffi::OsStr) -> Vec<u8> {
     n.as_encoded_bytes().to_vec()
 }
 
+/// 一条绝对路径按字面折掉 `.` 与上跳段（`/a/b/../c` ⇒ `/a/c`；到根再上跳仍是根），不碰盘、不跟链接。
+fn lexical(p: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for c in p.components() {
+        match c {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                if out.parent().is_some() {
+                    out.pop();
+                }
+            }
+            c => out.push(c.as_os_str()),
+        }
+    }
+    out
+}
+
 /// 根到 `dir` 的每一段（根在最前）：照这台的路径规则切（`Path::components`；Windows 的盘符与根并成一段）。
 fn crumbs_of(dir: &Path) -> Vec<wire::Crumb> {
     let mut out: Vec<wire::Crumb> = Vec::new();
@@ -460,6 +517,7 @@ fn stat(req: wire::StatReq, tz: &crate::common::time::Tz) -> Answer<wire::StatRe
         up: path.parent().map(|u| wire_path(raw::path_bytes(u))),
         kind: kind_of(t.is_dir(), t.is_file(), t.is_symlink()),
         size: md.len(),
+        size_text: copy_core::size_text(md.len()),
         readonly: md.permissions().readonly(),
         // unix 权限位（低 12 位：rwx×3 ＋ setuid / setgid / sticky）—— 同一次 `metadata`、同样跟链接，
         //   与本条其余几格同源。非 unix 平台**缺席**（不是 0：0 是一个真能设的权限值，报 0 等于说假话）；
@@ -545,6 +603,7 @@ fn find(req: wire::FindReq, tz: &crate::common::time::Tz) -> Answer<wire::FindRe
                     kind,
                     location: wire_path(index::location_of(&h.path, start.as_deref())),
                     size: h.meta.size,
+                    size_text: h.meta.size.map(copy_core::size_text),
                     mtime_secs: h.meta.mtime_secs,
                     mtime_text: h
                         .meta
@@ -654,7 +713,10 @@ fn index_rebuild(req: wire::RebuildReq) -> Answer<wire::RebuildReply> {
             "unreadable",
             copy_core::copy_text(
                 "beFilesRead.ls.unreadable",
-                &[("kind", &copy_core::io_reason(e.kind()))],
+                &[
+                    ("name", &dir_name(&root, None)),
+                    ("kind", &copy_core::io_reason(e.kind())),
+                ],
             ),
             &e,
         )
@@ -723,7 +785,7 @@ pub const READ_CHUNK_MAX_BYTES: cap_core::Cap = cap_core::Cap {
     over: cap_core::Over::Reject,
 };
 
-// 摘要算法（流式那一形 ＋ 十六进制长度）住 `common/digest.rs`：传输台（原生那一块）上传时也边传边算，两块各引各的。
+// 摘要算法（流式那一形 ＋ 十六进制长度）住 `common/digest.rs`：两台之间复制（原生那一块）的 SFTP 腿上传时也边传边算，两块各引各的。
 pub use crate::common::digest::{ContentDigest, SHA256_HEX_LEN};
 
 /// 一份字节的 SHA-256，64 位小写十六进制 —— CAS 摘要形 `expect: {"sha256": …}` 整份那一形（算法本身住 `common/digest.rs`）。
@@ -732,9 +794,7 @@ pub use crate::common::digest::{ContentDigest, SHA256_HEX_LEN};
 /// 拿它比「盘上此刻那一份」、写成之后对新内容再算一次交回去。住读族这一侧，是因为读族不许伸手进写面
 /// （写面只有 `stream/inbound/` 一扇门），反过来写面借读族一个纯函数不开新门。
 pub fn content_sha256(bytes: &[u8]) -> String {
-    let mut d = ContentDigest::new();
-    d.update(bytes);
-    d.finish()
+    crate::common::digest::sha256_hex(bytes)
 }
 
 /// 一份文件的 [`content_sha256`]，**逐块读**（64 KiB 一块）。读不出 ⇒ 原样的 IO 错。
@@ -938,6 +998,7 @@ fn size_of(req: wire::SizeReq) -> Answer<wire::SizeReply> {
     Ok(wire::SizeReply {
         path: wire_path(raw::path_bytes(&path)),
         bytes: m.bytes,
+        size_text: copy_core::size_text(m.bytes),
         files: m.files,
         dirs: m.dirs,
         links: m.links,
@@ -1124,6 +1185,13 @@ impl Ask for wire::IndexStatusReq {
     type Reply = wire::IndexStatusReply;
     fn answer(self, _: &crate::common::time::Tz) -> Answer<wire::IndexStatusReply> {
         Ok(index_status())
+    }
+}
+
+impl Ask for wire::FilesMenuReq {
+    type Reply = wire::DeskMenu;
+    fn answer(self, _: &crate::common::time::Tz) -> Answer<wire::DeskMenu> {
+        Ok(menu::desk_menu(&self))
     }
 }
 

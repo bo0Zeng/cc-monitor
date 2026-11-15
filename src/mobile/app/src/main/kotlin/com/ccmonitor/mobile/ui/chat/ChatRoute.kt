@@ -47,6 +47,7 @@ import com.ccmonitor.mobile.core.wire.gen.CanView
 import com.ccmonitor.mobile.core.wire.gen.Changed
 import com.ccmonitor.mobile.core.wire.gen.TermOpen
 import com.ccmonitor.mobile.link.HostBackends
+import com.ccmonitor.mobile.ssh.machineName
 import com.ccmonitor.mobile.ui.agents.agentsEntry
 import com.ccmonitor.mobile.ui.chat.attach.AttachStore
 import com.ccmonitor.mobile.ui.chat.attach.AttachTray
@@ -262,7 +263,7 @@ fun ChatController.sessionOf(
     sessionFor(key = open.key, hostId = open.hostId) { scope ->
         val link = linkOf(open.hostId)
         val store = attachRoot?.let { AttachStore(it(open.hostId)) }
-        val attach: ((CoroutineScope, () -> String?) -> AttachTray)? = store?.let { st -> { s, sid -> AttachTray(link, open.machine, st, s, sid, fdOf) } }
+        val attach: ((CoroutineScope, () -> String?) -> AttachTray)? = store?.let { st -> { s, sid -> AttachTray(link, st, s, sid, fdOf) } }
         ChatSession(
             link,
             watchOf(open.hostId),
@@ -284,8 +285,7 @@ private data class ChatHost(
 private fun rememberChatHost(hostId: String): ChatHost? {
     val hosts = koinInject<HostRepository>()
     val got by produceState<ChatHost?>(null, hostId) {
-        val h = runCatching { hosts.get(hostId) }.getOrNull()
-        value = ChatHost(machine = h?.label ?: hostId)
+        value = ChatHost(machine = hosts.machineName(hostId))
     }
     return got
 }

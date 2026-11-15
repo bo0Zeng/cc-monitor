@@ -1,6 +1,6 @@
-//! **选中这几项 ⇒ 能做什么**（唯一一处）：选中的是哪一种（[`picked_kind`]）· 每种出口给哪几项（[`table`]，桌面文件窗口的右键菜单
-//! 与手机文件页的顶栏 ＋ ⋯ 各一张）· 表里有、这一份做不了的为什么（[`blocked`]）。桌面文件窗口与手机嵌的核心都调它，
-//! 两端不另写 `if`。图标 · 快捷键 · 字的排法归各自的出口；手机那一份连字一起出（[`phone_menu`]：每项 `id · text · enabled · why`）。
+//! **选中这几项 ⇒ 能做什么**（唯一一处）：选中的是哪一种（[`picked_kind`]）· 一张表里这一种给哪几项（[`groups_of`]；桌面那张
+//! 住本机后端 `files/menu.rs`，手机文件页那张住手机核心）· 表里有、这一份做不了的为什么（[`blocked`]）· 一件事的字（[`label`]）。
+//! 本机后端（桌面文件窗口的菜单成品）与手机嵌的核心都调它，两端不另写 `if`。图标 · 快捷键归各自的出口。
 //!
 //! 事实照 `files-ls` 的一行填（[`Pick`] · [`PickIn::of_ls`]）：是不是目录 · 链接 · 断链 · 名字读不读得出 · 种类 · 三道门，都是那台后端判好的。
 //! 此刻做不到的（那台断着 · 那台说做不到那条命令）也在这里判（[`refused_here`]）。
@@ -8,7 +8,7 @@
 use cmd_wire::files::{FileClass, FileKind, Gate, Gates, LinkTo, LsEntry, PreviewGate};
 use copy_core::copy_text;
 
-/// 一项的事实（`files-ls` 的一行；桌面借窗口那一行的格，手机照 [`PickIn`] 解）。
+/// 一项的事实（`files-ls` 的一行，照 [`PickIn`] 解）。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Pick<'a> {
     pub name: &'a str,
@@ -41,11 +41,6 @@ impl Pick<'_> {
         self.named()
     }
 
-    /// 拉得下来：是文件（不是目录、不是指向目录的链接）且名字寻址得到（有损但带字节的按字节拉）。
-    pub fn downloadable(&self) -> bool {
-        !self.opens_as_dir() && self.named()
-    }
-
     /// 查看页开得了（那台给了查看那道门）。
     pub fn viewable(&self) -> bool {
         !self.opens_as_dir() && !self.lossy && self.gates.is_some_and(|g| g.view.is_some())
@@ -67,7 +62,7 @@ pub struct PickIn {
 }
 
 impl PickIn {
-    /// 🔴 `files-ls` 的一行 ⇒ 那几格（桌面文件窗口列一屏 · 手机交来的原行都走它）。有损看名字那一段的**字节**
+    /// 🔴 `files-ls` 的一行 ⇒ 那几格（桌面文件窗口 · 手机交来的原行都走它）。有损看名字那一段的**字节**
     /// （不看转出来的串里有没有 U+FFFD）；线上那一行带着字节，有损名恒寻址得到。
     pub fn of_ls(e: &LsEntry) -> Self {
         let link = e.kind == FileKind::Symlink;
@@ -100,49 +95,8 @@ impl PickIn {
     }
 }
 
-/// 对选中那几项能做的一件事。
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Action {
-    /// 进这个目录。
-    Open,
-    /// 编辑这份文本。
-    Edit,
-    /// 开一个查看页看这张图。
-    View,
-    /// 零流量复制（「复制为」那个框）。
-    Copy,
-    /// 下载到本机（桌面往外拖 ·「存到哪儿」；手机落进系统文件夹）。
-    Download,
-    /// 算大小 —— 一项或多项。
-    Size,
-    /// 解压到这里 —— 恰好一份压缩包。
-    Extract,
-    /// 复制到另一台机器 —— 一项或多项。
-    CrossCopy,
-    /// 复制到另一栏（双栏时）。
-    Across,
-    /// 复制到同一台的另一个目录（手机没有另一栏）。
-    CopyTo,
-    Rename,
-    Chmod,
-    Delete,
-    /// 属性（路径 · 大小 · 修改时间 · 权限 · 所有者 · 链接指向）。
-    Properties,
-}
-
-/// 表里的一项：对选中那几项的一件事 ·「在计划里看」· 对这个目录的那几件 · 全选。
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Item {
-    Act(Action),
-    /// 在计划里看（单选的那一份归某一格时才有，[`PLAN_GROUP`]）。
-    InPlan,
-    Mkdir,
-    NewFile,
-    Upload,
-    Term,
-    /// 选中这一目录的全部（手机没有 Ctrl+A）。
-    SelectAll,
-}
+/// 一件事 · 菜单上的一项 · 断在哪一段 · 此刻那一台的样子：闭集住契约（桌面窗口照回包读同一份类型）。
+pub use cmd_wire::files::{Action, Cut, Here, Item};
 
 /// 选中的是哪一种（闭集）—— 表按它查。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -172,210 +126,17 @@ pub enum Picked {
     ManyNameless,
 }
 
-/// 哪一个出口：桌面文件窗口的右键菜单 · 手机文件页（第一组是顶栏那几颗，第二组是 ⋯ 里那几项）。
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Outlet {
-    Desk,
-    Phone,
+/// 一张表：一种选中 ⇒ 几组项（组与组之间一道线）。
+pub type Table = &'static [(Picked, &'static [&'static [Item]])];
+
+/// 这张表里这一种选中的那几组（表里没有这一种 ⇒ 空）。
+pub fn groups_of(table: Table, kind: Picked) -> Vec<Vec<Item>> {
+    table
+        .iter()
+        .find(|(k, _)| *k == kind)
+        .map(|(_, g)| g.iter().map(|g| g.to_vec()).collect())
+        .unwrap_or_default()
 }
-
-use Action as A;
-
-type Table = &'static [(Picked, &'static [&'static [Item]])];
-
-/// 🔴 **桌面那张表**：一种选中 ⇒ 几组项，组与组之间一道线，危险的那一组在最后。算大小只给目录与多选 · 解压只给压缩包 ·
-/// 查看给图片 · 编辑给文本。
-const DESK: Table = &[
-    (
-        Picked::Here,
-        &[&[Item::Mkdir, Item::NewFile, Item::Upload], &[Item::Term]],
-    ),
-    (
-        Picked::Dir,
-        &[
-            &[Item::Act(A::Open), Item::Act(A::Copy)],
-            &[
-                Item::Act(A::Size),
-                Item::Act(A::Rename),
-                Item::Act(A::Chmod),
-                Item::Act(A::Properties),
-            ],
-            &[Item::Act(A::Delete)],
-        ],
-    ),
-    (
-        Picked::DirLink,
-        &[
-            &[Item::Act(A::Open), Item::Act(A::Copy)],
-            &[
-                Item::Act(A::Rename),
-                Item::Act(A::Chmod),
-                Item::Act(A::Properties),
-            ],
-            &[Item::Act(A::Delete)],
-        ],
-    ),
-    (
-        Picked::Text,
-        &[
-            &[
-                Item::Act(A::Edit),
-                Item::Act(A::Download),
-                Item::Act(A::CrossCopy),
-                Item::Act(A::Copy),
-            ],
-            &[
-                Item::Act(A::Rename),
-                Item::Act(A::Chmod),
-                Item::Act(A::Properties),
-            ],
-            &[Item::Act(A::Delete)],
-        ],
-    ),
-    (
-        Picked::Image,
-        &[
-            &[
-                Item::Act(A::View),
-                Item::Act(A::Download),
-                Item::Act(A::CrossCopy),
-                Item::Act(A::Copy),
-            ],
-            &[
-                Item::Act(A::Rename),
-                Item::Act(A::Chmod),
-                Item::Act(A::Properties),
-            ],
-            &[Item::Act(A::Delete)],
-        ],
-    ),
-    (
-        Picked::Archive,
-        &[
-            &[
-                Item::Act(A::Download),
-                Item::Act(A::CrossCopy),
-                Item::Act(A::Copy),
-            ],
-            &[
-                Item::Act(A::Extract),
-                Item::Act(A::Rename),
-                Item::Act(A::Chmod),
-                Item::Act(A::Properties),
-            ],
-            &[Item::Act(A::Delete)],
-        ],
-    ),
-    (
-        Picked::File,
-        &[
-            &[
-                Item::Act(A::Download),
-                Item::Act(A::CrossCopy),
-                Item::Act(A::Copy),
-            ],
-            &[
-                Item::Act(A::Rename),
-                Item::Act(A::Chmod),
-                Item::Act(A::Properties),
-            ],
-            &[Item::Act(A::Delete)],
-        ],
-    ),
-    (
-        Picked::BrokenLink,
-        &[
-            &[Item::Act(A::Rename), Item::Act(A::Properties)],
-            &[Item::Act(A::Delete)],
-        ],
-    ),
-    (Picked::NamelessDir, &[&[Item::Act(A::Open)]]),
-    (Picked::Nameless, &[]),
-    (
-        Picked::Many,
-        &[
-            &[
-                Item::Act(A::Download),
-                Item::Act(A::CrossCopy),
-                Item::Act(A::Across),
-            ],
-            &[Item::Act(A::Size), Item::Act(A::Chmod)],
-            &[Item::Act(A::Delete)],
-        ],
-    ),
-    (Picked::ManyNameless, &[]),
-];
-
-/// 手机那一组顶栏：下载 · 删除（下载只收文件：选中里有目录 ⇒ 灰着、说哪几项）。
-const BAR: &[Item] = &[Item::Act(A::Download), Item::Act(A::Delete)];
-/// 手机选一个文件 ⋯ 里那几项。
-const ONE: &[Item] = &[
-    Item::Act(A::Rename),
-    Item::Act(A::CopyTo),
-    Item::Act(A::Chmod),
-    Item::SelectAll,
-];
-
-/// 手机选一份文本 ⋯ 里那几项（打头是预览 · 编辑）。
-const TEXT: &[Item] = &[
-    Item::Act(A::View),
-    Item::Act(A::Edit),
-    Item::Act(A::Rename),
-    Item::Act(A::CopyTo),
-    Item::Act(A::Chmod),
-    Item::SelectAll,
-];
-
-/// 🔴 **手机那张表**：第一组顶栏、第二组 ⋯。查看在手机上是文本预览（手机不开看图页）；没有解压 · 算大小 · 另一台 · 另一栏
-/// （手机直连每一台，同一台换个目录就是另一栏那件事）。
-const PHONE: Table = &[
-    (Picked::Here, &[]),
-    (Picked::Dir, &[BAR, ONE]),
-    (Picked::DirLink, &[BAR, ONE]),
-    (Picked::Text, &[BAR, TEXT]),
-    (Picked::Image, &[BAR, ONE]),
-    (Picked::Archive, &[BAR, ONE]),
-    (Picked::File, &[BAR, ONE]),
-    (
-        Picked::BrokenLink,
-        &[
-            &[Item::Act(A::Delete)],
-            &[Item::Act(A::Rename), Item::SelectAll],
-        ],
-    ),
-    (Picked::NamelessDir, &[&[], &[Item::SelectAll]]),
-    (Picked::Nameless, &[&[], &[Item::SelectAll]]),
-    (
-        Picked::Many,
-        &[
-            BAR,
-            &[Item::SelectAll, Item::Act(A::CopyTo), Item::Act(A::Chmod)],
-        ],
-    ),
-    (Picked::ManyNameless, &[&[], &[Item::SelectAll]]),
-];
-
-/// 🔴 **手机点一下那一行做什么**（同桌面双击）：目录 ⇒ 进去 · 文本 ⇒ 预览 · 别的文件 ⇒ 下载；断链 · 名字读不出的文件 ⇒ 不做。
-const PHONE_TAP: &[(Picked, Action)] = &[
-    (Picked::Dir, A::Open),
-    (Picked::DirLink, A::Open),
-    (Picked::NamelessDir, A::Open),
-    (Picked::Text, A::View),
-    (Picked::Image, A::Download),
-    (Picked::Archive, A::Download),
-    (Picked::File, A::Download),
-];
-
-/// 这个出口那张表。
-pub fn table(o: Outlet) -> Table {
-    match o {
-        Outlet::Desk => DESK,
-        Outlet::Phone => PHONE,
-    }
-}
-
-/// 桌面单选的那一份归某一格 ⇒ 多这一组，插在危险那一组之前。
-pub const PLAN_GROUP: &[Item] = &[Item::InPlan];
 
 /// 这几项是哪一种。
 pub fn picked_kind(picked: &[Pick]) -> Picked {
@@ -401,23 +162,6 @@ pub fn picked_kind(picked: &[Pick]) -> Picked {
         many if many.iter().all(Pick::named) => Picked::Many,
         _ => Picked::ManyNameless,
     }
-}
-
-/// 这一种选中在这个出口的那几组；`planned` ⇒ 危险那一组之前多 [`PLAN_GROUP`]（只桌面有计划）。
-pub fn menu_groups(o: Outlet, kind: Picked, planned: bool) -> Vec<Vec<Item>> {
-    let mut groups: Vec<Vec<Item>> = table(o)
-        .iter()
-        .find(|(k, _)| *k == kind)
-        .map(|(_, g)| g.iter().map(|g| g.to_vec()).collect())
-        .unwrap_or_default();
-    if planned && o == Outlet::Desk {
-        let at = groups
-            .iter()
-            .position(|g| g.contains(&Item::Act(A::Delete)))
-            .unwrap_or(groups.len());
-        groups.insert(at, PLAN_GROUP.to_vec());
-    }
-    groups
 }
 
 /// 编辑不了的为什么（目录 · 名字寻址不到 · 那台的编辑门说的）；编辑得了 ⇒ `None`。
@@ -463,32 +207,6 @@ pub fn blocked(a: Action, picked: &[Pick]) -> Option<String> {
     }
 }
 
-/// 🔴 **对这几项能做什么**（这个出口）—— 表里这一种的那几件，去掉这一份做不了的。顺序同表。空 ⇒ 什么都做不了。
-pub fn actions_for(o: Outlet, picked: &[Pick]) -> Vec<Action> {
-    menu_groups(o, picked_kind(picked), false)
-        .into_iter()
-        .flatten()
-        .filter_map(|i| match i {
-            Item::Act(a) if blocked(a, picked).is_none() => Some(a),
-            _ => None,
-        })
-        .collect()
-}
-
-/// 此刻那一台的样子：断在哪一段（连着 ⇒ `None`）· 那台说做不到的那几条命令（`hello.unavailable`）。
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Here {
-    pub offline: Option<Cut>,
-    pub unavailable: Vec<String>,
-}
-
-/// 断在哪一段：那台机器（在重连 / 离线）· 窗口与 cc-monitor 之间（桌面文件窗口才有；手机没有这一段）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Cut {
-    Machine,
-    Monitor,
-}
-
 /// 这一件落到哪条命令上（那台说做不到它 ⇒ 这一件做不到）。
 fn command_of(a: Action) -> Option<&'static str> {
     match a {
@@ -498,7 +216,7 @@ fn command_of(a: Action) -> Option<&'static str> {
 }
 
 /// 🔴 **此刻做不到的那一件 ⇒ 为什么（唯一一处）**：那台说做不到那条命令 ⇒ 这台不支持；断着、而这一件要碰那台
-/// （进目录除外：进去那一下自己会说断开）⇒ 断在哪一段说哪一段（[`write_refused`]）。桌面菜单 · 键盘 · 手机顶栏与 ⋯ 都问它。
+/// （进目录除外：进去那一下自己会说断开）⇒ 断在哪一段说哪一段（`copy_core::write_refused`）。桌面菜单 · 键盘 · 手机顶栏与 ⋯ 都问它。
 pub fn refused_here(a: Action, here: &Here) -> Option<String> {
     if command_of(a).is_some_and(|c| here.unavailable.iter().any(|u| u == c)) {
         return Some(copy_text("rsFilewinShell.menu.unavailableHere", &[]));
@@ -506,83 +224,34 @@ pub fn refused_here(a: Action, here: &Here) -> Option<String> {
     if a == Action::Open {
         return None;
     }
-    write_refused(here.offline)
+    copy_core::write_refused(here.offline)
 }
 
-/// 🔴 **断着 ⇒ 写类为什么做不了（唯一一处）**：菜单那几件（[`refused_here`]）· 命令栏 · 编辑页的［保存］· 关窗那一问都问它。
-/// 那台断着 ⇒ 离线 · 只读；与 cc-monitor 断开 ⇒ 照实说那一段，不说那台离线。连着 ⇒ `None`。
-pub fn write_refused(cut: Option<Cut>) -> Option<String> {
-    cut.map(|c| match c {
-        Cut::Machine => copy_text("acctPage.offline.hover", &[]),
-        Cut::Monitor => copy_text("rsFilewinChrome.link.severedReadOnly", &[]),
-    })
-}
-
-/// 手机那一项交回的词。桌面没有的那几项不在手机表里，问到了 ⇒ `None`。
-fn phone_id(i: Item) -> Option<&'static str> {
-    Some(match i {
-        Item::Act(A::Open) => "open",
-        Item::Act(A::View) => "preview",
-        Item::Act(A::Edit) => "edit",
-        Item::Act(A::Download) => "download",
-        Item::Act(A::Delete) => "delete",
-        Item::Act(A::Rename) => "rename",
-        Item::Act(A::CopyTo) => "copyTo",
-        Item::Act(A::Chmod) => "chmod",
-        Item::SelectAll => "selectAll",
-        _ => return None,
-    })
-}
-
-/// 手机那一项的字（`n` ＝ 选中了几项：⋯ 里改权限对多项说「改权限 · n 项」）。
-fn phone_text(i: Item, n: usize) -> String {
-    match i {
-        Item::Act(A::View) => copy_text("rsFilewinWorkspace.label.preview", &[]),
-        Item::Act(A::Edit) => copy_text("rsFilewinEditor.label.edit", &[]),
-        Item::Act(A::Download) => copy_text("rsFilewinDownload.label.download", &[]),
-        Item::Act(A::Delete) => copy_text("rsFilewinWriteops.label.delete", &[]),
-        Item::Act(A::Rename) => copy_text("rsFilewinWriteops.label.rename", &[]),
-        Item::Act(A::CopyTo) => copy_text("mobFiles.menu.copyTo", &[]),
-        Item::Act(A::Chmod) if n > 1 => {
-            copy_text("rsFilewinSelect.label.chmodMany", &[("n", &n.to_string())])
-        }
-        Item::Act(A::Chmod) => copy_text("rsFilewinWriteops.label.chmod", &[]),
-        _ => copy_text("mobFiles.menu.selectAll", &[]),
+/// 🔴 **一件事的字**：本机后端写桌面菜单成品 · 手机顶栏 · ⋯ 都照它。`n` ＝ 选中了几项：下载 · 删除 · 改权限 ·
+/// 复制到另一台对多项说「… n 项」，复制到另一栏照 `n` 说拖几项。
+pub fn label(a: Action, n: usize) -> String {
+    let many = n > 1;
+    let n = n.to_string();
+    match a {
+        Action::Open => copy_text("mobTerms.row.attach", &[]),
+        Action::Edit => copy_text("rsFilewinEditor.label.edit", &[]),
+        Action::View => copy_text("tabBatch.result.view", &[]),
+        Action::Copy => copy_text("rsFilewinCopy.label.copy", &[]),
+        Action::Download if many => copy_text("rsFilewinSelect.label.downloadMany", &[("n", &n)]),
+        Action::Download => copy_text("rsFilewinDownload.label.download", &[]),
+        Action::Size => copy_text("rsFilewinSize.label.size", &[]),
+        Action::Extract => copy_text("rsFilewinExtract.label.extract", &[]),
+        Action::CrossCopy if many => copy_text("rsFilewinSelect.label.crossMany", &[("n", &n)]),
+        Action::CrossCopy => copy_text("rsFilewinCrossCopy.label.cross", &[]),
+        Action::Across => copy_text("rsFilewinWorkspace.drag.hint", &[("n", &n)]),
+        Action::CopyTo => copy_text("mobFiles.menu.copyTo", &[]),
+        Action::Rename => copy_text("rsFilewinWriteops.label.rename", &[]),
+        Action::Chmod if many => copy_text("rsFilewinSelect.label.chmodMany", &[("n", &n)]),
+        Action::Chmod => copy_text("rsFilewinWriteops.label.chmod", &[]),
+        Action::Delete if many => copy_text("rsFilewinSelect.label.deleteMany", &[("n", &n)]),
+        Action::Delete => copy_text("rsFilewinWriteops.label.delete", &[]),
+        Action::Properties => copy_text("rsFilewinSelect.label.properties", &[]),
     }
-}
-
-/// 手机文件页选中这几项时交回的那一份（线上形住契约 `cmd_wire::phone`，Kotlin 读同一份生成的类）。
-pub use cmd_wire::phone::{MenuEntry, PhoneMenu};
-
-/// ★ 手机文件页选中这几项（此刻那一台 [`Here`]）⇒ [`PhoneMenu`]。
-pub fn phone_menu(picked: &[Pick], here: &Here) -> PhoneMenu {
-    let kind = picked_kind(picked);
-    let mut groups = menu_groups(Outlet::Phone, kind, false)
-        .into_iter()
-        .map(|g| {
-            g.into_iter()
-                .filter_map(|i| {
-                    let id = phone_id(i)?;
-                    let why = match i {
-                        Item::Act(a) => blocked(a, picked).or_else(|| refused_here(a, here)),
-                        _ => None,
-                    };
-                    Some(MenuEntry {
-                        id,
-                        text: phone_text(i, picked.len()),
-                        enabled: why.is_none(),
-                        why,
-                    })
-                })
-                .collect::<Vec<_>>()
-        });
-    let bar = groups.next().unwrap_or_default();
-    let more = groups.next().unwrap_or_default();
-    let tap = PHONE_TAP
-        .iter()
-        .find(|(k, _)| *k == kind)
-        .and_then(|(_, a)| phone_id(Item::Act(*a)));
-    PhoneMenu { bar, more, tap }
 }
 
 #[cfg(test)]

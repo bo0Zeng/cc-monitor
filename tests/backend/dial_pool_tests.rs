@@ -576,7 +576,7 @@ fn product_of(detail: Option<&str>) -> cmd_wire::machine::MachineState {
     serde_json::from_value(serde_json::json!({
         "name": "box", "state": "up", "dot": "up", "linked": true, "offline": false, "reason": null, "stage": null,
         "version": null, "os": null, "word": "", "said": "",
-        "offlineSaid": "box 离线", "heldSaid": "box 离线", "fixes": [], "seenHostKey": null, "expectedHostKey": null,
+        "offlineSaid": "box 离线", "heldSaid": "box 离线", "withdrawHeld": "box 撤着", "rewindHeld": "box 上一版撤着", "fixes": [], "seenHostKey": null, "expectedHostKey": null,
         "detail": detail,
     }))
     .expect("成品读得回")

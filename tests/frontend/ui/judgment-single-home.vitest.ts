@@ -68,7 +68,7 @@ import { nonEmpty } from "../../test-support/non-empty.ts";
 type JudgmentId =
   | "J1" | "J2" | "J3" | "J4" | "J5" | "J6" | "J7"
   | "J9" | "J10" | "J11" | "J12" | "J13" | "J14" | "J15" | "J16"
-  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29" | "J30" | "J31" | "J32" | "J33" | "J34" | "J35" | "J36" | "J37" | "J38" | "J39" | "J40" | "J41" | "J42" | "J43" | "J44" | "J45" | "J46" | "J47" | "J48" | "J49";
+  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29" | "J30" | "J31" | "J32" | "J33" | "J34" | "J35" | "J36" | "J37" | "J38" | "J39" | "J40" | "J41" | "J42" | "J43" | "J44" | "J45" | "J46" | "J47" | "J48" | "J49" | "J50" | "J51" | "J52";
 
 /** TS 孪生的规则指纹：一段字面子串（在**剥过注释**的生产代码里数）。`file` 缺席 = 全体生产段合计。 */
 interface Needle {
@@ -114,7 +114,7 @@ interface Judgment {
   parity?: Parity;
   /** Rust 内部并家之后不许长回来：`路径::fn 名` ⇒ 那份生产文件里零处 `fn 名`。 */
   rustGone?: string[];
-  /** 同上，按字面指纹（恒等计数）。 */
+  /** 同上，按字面指纹（恒等计数）；`file` 以 `/` 结尾 ⇒ 那个目录下全部生产 `.rs` 合计。 */
   rustNeedles?: RustNeedle[];
   /** `open` 必填：谁在做 / 等谁拍。 */
   owner?: string;
@@ -251,7 +251,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J9: {
     what: "上游 base URL 能不能用（形状 ＋ 协议闭集 ＋ 明文只许回环）",
-    // 三截（写口 creds-core 形状关 · 中转 `Base::parse` · 装表的回环判定）收成一份进新 crate
+    // 三截（写口 creds-core 形状关 · 中转 `relay::base_of` · 装表的回环判定）收成一份进新 crate
     //   `upstream-url-core`。界面不判：新建账号表单与改 key 那格把原样打的字交那台后端（`accounts-add` 预演 · `apikey-key-set`），
     //   只画它拒的那一句（读生成物的那一层薄壳与生成物里那张式子表都删了）。
     homes: ["upstream-url-core::usable", "upstream-url-core::parse", "upstream-url-core::upstream_is_loopback"],
@@ -450,11 +450,14 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     what: "因对方版本说不成的两个码（版本旧 / 回的认不出）各取哪一句、本机怎么称呼",
     // 版本旧那一句只有 Rust 写（monitor 交在 `ChanError.message`）。回的认不出是界面解码失败时自己才知道的事：
     //   界面 `chan-caller.ts::unreadableSaid` 只是取表里那一把键（`peerVersion.said.unreadable`）填成品的 `name`，不是第二份规则 ⇒ 不算孪生。
-    homes: ["copy-core::backend_old", "copy-core::reply_unreadable", "copy-core::local_machine", "copy-core::peer_machine"],
+    // 那台离线那一句（`copy-core::offline`）也住这一族：通道不再写它，桌面 · 手机 · 窗口照抄。
+    homes: ["copy-core::backend_old", "copy-core::reply_unreadable", "copy-core::local_machine", "copy-core::peer_machine", "copy-core::offline", "copy-core::machine_word"],
     status: "zero",
     defs: [],
     gone: ["peerVersionSaid"],
     needles: [],
+    // 后端称呼本机只经 `copy-core::machine_word` / `local_machine`，不自取那把键（只认键名本身：换行写开的 `copy_text(` 也抓得到）。
+    rustNeedles: [{ file: "src/backend/", text: '"detail.label.local"', count: 0 }],
   },
   J23: {
     what: "自 1970-01-01 起第几天 ⇒ 公历年月日",
@@ -478,7 +481,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J25: {
     what: "一个时刻写成给人看的字（记录卡 · 轮次起止 · 子运行开始 · 分叉那一轮 · 终端快照 · 历史页分段 / 行尾 / 时间段 · 会话内查找的时刻）",
     // 后端按那台本地钟写好（记录的 `timeText` · 轮次的 `startText` ·子运行的 `started_text` · 分叉的 `startText` ·
-    //   终端快照的 `captured_at_text` · 历史清单行的 `atText`/`sectionText`/`spanText` · 搜索合并行的 `atText`/`spanText` · 查找命中的 `tsText`），界面照抄。
+    //   终端快照的 `captured_at_text` · 历史清单行的 `atText`/`sectionText`/`spanText` · 搜索合并行的 `atText`/`spanText` · 查找命中头一行 `meta` 里的时刻），界面照抄。
     //   删的是 `format.ts::formatTimestampShort` · `views/history-time.ts` 整份 · 终端页 / 起会话框各自那一个钟面换算。
     // 钟面 `HH:MM` 那一格另立一行（J30）。
     homes: [
@@ -630,8 +633,8 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     //   壳里不造成品（`local_backend_host_tests.rs` 钉）。
     homes: [
       "src/backend/deploy/machine.rs::product",
-      "src/backend/deploy/machine.rs::word",
-      "src/backend/deploy/machine.rs::said",
+      "copy-core::word",
+      "copy-core::said",
       "src/backend/deploy/machine.rs::fixes",
       "src/backend/deploy/machine.rs::offline",
     ],
@@ -769,7 +772,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J46: {
     what: "分块传那一圈：一块多大 · 逐块送进那台暂存区 · 整份摘要 · 现造暂存键",
-    // 唯一的家是 `chunk-core`：文件窗口 · 手机嵌的核心 · 壳替界面的 `attach_stage.rs` 共用；界面只交 Blob 与进度回调（`attach-draft.ts`）。
+    // 唯一的家是 `chunk-core`：文件窗口 · 手机嵌的核心 · 本机后端（桌面附件草稿那一圈 `control/attach_upload.rs`）共用；界面只交名单（`attach-draft.ts`）。
     homes: ["chunk-core::stage", "chunk-core::CHUNK", "chunk-core::key_of"],
     status: "zero",
     defs: ["CHUNK"],
@@ -802,6 +805,57 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     defs: [],
     needles: [],
   },
+  J50: {
+    what: "字节 → 小写十六进制",
+    // 唯一的家是 `cmd_wire::files::to_hex`（`{"b16"}` 那一形 · 暂存件的键与摘要）：后端经 `common::digest::to_hex` 转出去调它，
+    //   摘要（`ContentDigest::finish`）与中转钥匙（`relay/key.rs` 的派生与铸）不再各写一份 `{b:02x}`。
+    homes: ["cmd-wire::to_hex"],
+    status: "zero",
+    defs: [],
+    needles: [],
+    rustNeedles: [
+      { file: "src/backend/common/digest.rs", text: ":02x}", count: 0 },
+      { file: "src/backend/relay/key.rs", text: ":02x}", count: 0 },
+    ],
+  },
+  J51: {
+    what: "这颗点说在等人（待答请求 `asks` 与需手动 `needs-you` 都算）",
+    // Rust 的家是 `cmd_wire::SessionDot::waits_for_human`（终端板照它判），哪几颗算住 `SessionDot::WAITING`；组头那一份手写
+    //   （`face-core/src/groups.rs::counts_of` 原先把待答请求并进需手动那一颗）已收掉，下面 `rustNeedles` 钉住不长回来。
+    //   界面那一份 `session-face.ts::waitsForHuman` 已删：哪几颗算在等人现生成进 `judgment-rules.ts`（`WAITING_DOTS`），
+    //   标签页 · 状态一句 · 呼吸灯 · 历史行的徽标照它查，不另写一份。
+    homes: ["cmd-wire::waits_for_human", "cmd-wire::WAITING"],
+    status: "generated",
+    defs: [],
+    gone: ["waitsForHuman"],
+    needles: [{ text: 'dot === "asks" || dot === "needs-you"', count: 0 }],
+    rustNeedles: [
+      { file: "src/common/face-core/src/groups.rs", text: "dot == SessionDot::NeedsYou && d == SessionDot::Asks", count: 0 },
+    ],
+    gen: {
+      file: "src/frontend/ui/generated/judgment-rules.ts",
+      exports: ["WAITING_DOTS"],
+      importers: ["src/frontend/ui/session-face.ts", "src/frontend/ui/session-status.ts", "src/frontend/ui/views/history-rows.ts"],
+    },
+    parity: {
+      via: "src/frontend/ui/generated/judgment-rules.ts",
+      tests: ["tests/frontend/shell/payload_judgment_rules.rs"],
+    },
+  },
+  J52: {
+    what: "会话未读：数几条 · 写成字（0 不给 · 超 99 写「99+」）",
+    // 数只在出那条会话行的那台后端的 watcher 里（每条连接一份），写成字只经 `SessionUnread::counted`；
+    //   界面原先逐张建卡自己 `+= 1`、切 tab 自己清零，已删：tab 栏 · 格子监视照 `unread` 那一格的字摆。
+    homes: ["cmd-wire::counted"],
+    status: "zero",
+    defs: [],
+    needles: [
+      { text: "unread += 1", count: 0 },
+      { text: "unread = 0", count: 0 },
+      { text: "cappedCount(tab.", count: 0 },
+      { text: "cappedCount(s.unread", count: 0 },
+    ],
+  },
 };
 
 /** `NONE` = 登记时逐个读过规则、在 TS 生产段按规则搜过，没有孪生。 */
@@ -830,13 +884,11 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     auth_ready: "J1",
     account_selectable: "J29",
     effective_default: "J29",
-    CREDENTIALS_NAME: NONE,
     is_deceptive_char: "J2",
     SUPPORTED_SCHEMA: NONE,
     // 账号清单的查法（A5-7）：后端与手机核心照它，界面不另判，没有孪生。
     route_id: NONE,
     is_api_key: NONE,
-    by_route: NONE,
     by_name: NONE,
     named: NONE,
     with_bare_first: NONE,
@@ -844,7 +896,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   // `agent-tools-core` 那一格删了：它收进后端适配层（`agents/claudecode/cards.rs`），不再是共享 crate。
   // `chan-core` 那一格删了：通道成了通信层 crate `comms-inward`（住 `src/comms/inward/`，不在 `src/common/` 的人群里）。
   // 帧命令两端对上的形状（第 8 批）：机器名 `Machine`（从 `comms-inward` 的 `Origin` 挪来）· typed 命令的形状指纹表。
-  // 分块传那一圈（上传进暂存区 ＋ 整份摘要 · 下载逐块读回）：文件窗口 · 手机嵌的核心 · 壳替界面（`attach_stage.rs`）共用，界面零实现（J46）。
+  // 分块传那一圈（上传进暂存区 ＋ 整份摘要 · 下载逐块读回）：文件窗口 · 手机嵌的核心 · 本机后端（桌面附件草稿那一圈）共用，壳与界面零实现（J46）。
   "chunk-core": {
     CHUNK: "J46",
     key_of: "J46",
@@ -855,6 +907,21 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     stage: "J46",
     pull: NONE,
     pull_capped: NONE,
+    // 多附件那一圈（`chunk_core::attach`，W79）：手机嵌的核心照它编排；界面（TS）不碰附件草稿，没有孪生。
+    add: NONE,
+    cards: NONE,
+    close: NONE,
+    cut: NONE,
+    local: NONE,
+    pump: NONE,
+    ready: NONE,
+    remove: NONE,
+    restore: NONE,
+    retry: NONE,
+    settle: NONE,
+    take: NONE,
+    up: NONE,
+    want: NONE,
   },
   // 一组一条命令的全过程与它的字：后端 · 文件窗口 · 手机嵌的核心照它；界面（TS）不做文件的一组，没有孪生。
   "batch-core": {
@@ -866,8 +933,6 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     split_ext: NONE,
     copy_many: NONE,
     copy_body: NONE,
-    ticketed: NONE,
-    opens: NONE,
     text: NONE,
     of_cell: NONE,
     frac: NONE,
@@ -886,31 +951,34 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     cut_left_line: NONE,
     conflict_meta: NONE,
     said_of: NONE,
-    common_dir_bytes: NONE,
     copy_req: NONE,
-    copy_plan: NONE,
     sessions_reply: "J41",
     summary_of: "J41",
+    // W28：两端各拼的那几样收进来（同名答法 · 保留两份起名 · 本机同名清单 · 删除与改权限一组 · 改权限框的字）；界面（TS）不做文件的一组，没有孪生。
+    MINT_TRIES: NONE,
+    answers_of: NONE,
+    chmod_plan: NONE,
+    chmod_title: NONE,
+    delete_plan: NONE,
+    keep_both_name: NONE,
+    local_clashes: NONE,
+    minted: NONE,
+    mode_line: NONE,
+    taken_as: NONE,
   },
-  // 选中几项 ⇒ 菜单那张表：文件窗口与手机嵌的核心照它画；界面（TS）不列文件，没有孪生。
+  // 选中几项 ⇒ 能做什么：本机后端（桌面菜单成品）与手机嵌的核心照它判；界面（TS）不列文件，没有孪生。
   "pick-core": {
-    PLAN_GROUP: NONE,
-    table: NONE,
+    label: NONE,
+    groups_of: NONE,
     picked_kind: NONE,
-    menu_groups: NONE,
     why_not_editable: NONE,
     blocked: NONE,
-    actions_for: NONE,
-    phone_menu: NONE,
     // 「此刻那一台做不到」（离线 · 那台没有这条命令）⇒ 那一句：桌面窗口与手机核心都问它；界面不列文件，没有孪生。
     refused_here: NONE,
-    // 断着 ⇒ 写类为什么做不了（那台离线 · 与 cc-monitor 断开）：菜单 · 命令栏 · 编辑页的［保存］· 关窗那一问都问它；界面不列文件，没有孪生。
-    write_refused: NONE,
     // `files-ls` 原行 ⇒ 一行的事实：桌面窗口与手机核心同一个认法。
     of_ls: NONE,
     opens_as_dir: NONE,
     copyable: NONE,
-    downloadable: NONE,
     viewable: NONE,
     pick: NONE,
   },
@@ -919,6 +987,12 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     //   TS 没有同名常量；界面拿 `"5h"` 当键去取后端成品的那几处（`rot-board.ts` · `settings/accounts-section.ts`）随「界面照成品画」那几块收。
     SLOT_5H: NONE,
     SLOT_7D: NONE,
+    // 那台没有常驻后端时那一码（`cmd_wire::phone::CALL_ABSENT`）：后端 `wire::listen` 照原名转出、face-core 判没答上那一句时引它；TS 侧没有孪生。
+    CALL_ABSENT: NONE,
+    // 活卡的变化那一处（`cmd_wire::live::LiveChange::at`，类型从 face-core 挪来）：界面照画，TS 侧没有孪生。
+    at: NONE,
+    // 菜单成品里那一件那一行（`cmd_wire::files::DeskMenu::act`）：文件窗口照它读灰不灰 · 字；界面不碰文件菜单，TS 侧没有孪生。
+    act: NONE,
     // 接常驻后端那一句拒绝的原因词（客户端照它判、后端照它写）只住 `cmd_wire::attach`；TS 不读 ⇒ NONE。
     REFUSE_ABSENT: NONE,
     REFUSE_MALFORMED: NONE,
@@ -931,17 +1005,10 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     refused: NONE,
     // 推送 `changed` 那一臂的主题名与体上限（`Changed::topic` · `Changed::cap_body`）：后端发前判、壳按主题分订阅；界面不判主题、不判上限，TS 侧没有孪生。
     topic: NONE,
-    cap_body: NONE,
     // 本机后端转来的别台那一件说的是哪一台（`Relayed::machine`）：后端补欠的那一格、壳按台分收口时读；界面不碰这一帧，TS 侧没有孪生。
     machine: NONE,
-    // 书签的目录归一（`bookmarks.rs`）：后端存之前归一、文件窗口拿它比；界面不碰书签，TS 侧没有孪生。
-    normalize_dir: NONE,
-    // 拨号的线上形状（`dial.rs`）：ack 的协议版本与用法表 · 开成 / 没开成那一行 ack 怎么组。拨号核心写、壳与手机核心读；界面不碰拨号的行，TS 侧没有孪生。
-    ACK_V: NONE,
-    USES: NONE,
+    // 拨号的线上形状（`dial.rs`）：只剩数据（没开成 · 竞速次序住 ssh-dial）。界面不碰拨号的行，TS 侧没有孪生。
     OLD_BACKEND_MARKER: NONE,
-    opened: NONE,
-    of_fail: NONE,
     // FNV-1a 的唯一一份（只求稳定的摘要；号色兜底的家是后端 `color_fallback`，见 J35）：界面不算摘要，TS 侧没有孪生。
     FNV64_BASIS: NONE,
     fnv1a64_from: NONE,
@@ -964,6 +1031,14 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     route: NONE,
     // 形状对不上那个码与那一句（`copy-core::backend_differs`）只在 monitor：它比指纹、它写好带机器名的那一句，界面照抄拒绝里的话。
     SHAPE_DIFFERS: NONE,
+    // 会话未读数 ⇒ 写好的字（`SessionUnread::counted`）：后端 watcher 每条连接数完照它写，界面照摆。
+    counted: "J52",
+    // 通道失败的本侧码（命令不认 · 排队满 · 断开 · 超时 · 撤了）：只由 `backend_route::CallError::code` 取，界面照抄回包里的码，TS 侧没有孪生。
+    UNKNOWN_COMMAND: NONE,
+    TOO_MANY_PENDING: NONE,
+    DISCONNECTED: NONE,
+    TIMEOUT: NONE,
+    CANCELLED: NONE,
     // 形状指纹表与查表：只有拿着 hello 的 Rust 那一侧（monitor 的 `Offer`）比，界面不比。
     SHAPES: NONE,
     shape_of: NONE,
@@ -972,8 +1047,15 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 文件管理那一族的线上类型：路径字节的那一形（`{"b16"}` 的键 · 取字节）。界面只发 `files-delete-session`，不解路径字节。
     HEX_KEY: NONE,
     // 那一形的十六进制编解码（后端 · 分块传 · 文件窗口同一份）：界面不解路径字节，TS 侧没有孪生。
-    to_hex: NONE,
+    to_hex: "J50",
     from_hex: NONE,
+    // 远端路径按字节切（上一级 · 尾段 · 拼一项 · 两条的公共上级）：文件窗口 · 开窗入口 · 一组的计划都调这一份；界面不切远端路径，TS 侧没有孪生。
+    parent: NONE,
+    tail: NONE,
+    child: NONE,
+    common_dir: NONE,
+    // 摘要的十六进制长度（`Sha256Hex` 照它判；后端 digest · 文件窗口 editor 都引它）：界面不认摘要，TS 侧没有孪生。
+    SHA256_HEX_LEN: NONE,
     bytes: NONE,
     // base64 编 · 解（`b64.rs`）：界面不编不解，TS 侧没有孪生。
     b64_encode: "J47",
@@ -996,9 +1078,6 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     records_cell: NONE,
     // 判据用的照类型解再写回（手机生成的类写回要与它逐字节同）；TS 侧没有孪生。
     typed_text: NONE,
-    // 拨号那一侧：竞速顺序（没给就只有 host:port）· 「没够着那一台」那几个原因码（ack 带着它，手机照说、不自己判）。界面不拨号，TS 侧没有孪生。
-    race_order: NONE,
-    unreached: NONE,
     // 通用记录的两处纯形状（`record`）：「谁说的」那一格的线上词（`Speaker::kind`，骨架索引也存它）· 没有正文的那一形（`UserText::of`）。
     //   界面直接读记录上的 `kind`，不另判，TS 侧没有孪生。
     kind: NONE,
@@ -1008,7 +1087,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     EXCERPT_BYTES: NONE,
     excerpt_of: NONE,
     BODY_TAGS: NONE,
-    // 线上 `failed` 那一格的兜底码（`Said::code_or_fallback` 引它）：界面照回包里的码判，TS 侧没有孪生。
+    // 线上 `failed` 那一格的兜底码（`Failed::code_or_fallback` 引它）：界面照回包里的码判，TS 侧没有孪生。
     FALLBACK_CODE: NONE,
     // 帧的线上形（`frame`）：一行解一帧 · 宿主那个词（`terminals-list` 的 `host` 与容器那一格同一套）。
     //   解帧的是 Rust 那几端（壳 · 通信层 · 手机核心）；界面读壳转过的载荷，TS 侧没有孪生。
@@ -1023,16 +1102,13 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     gated_tys: NONE,
     ty_of: NONE,
     fnv32: NONE,
-    // 传输台开单那几条：窗口那一份补上机器名成后端那一份（`from` · `on`，monitor 的 `transfer_relay::transfer_call` 用）。界面不开单，TS 侧没有孪生。
-    from: NONE,
+    // 传输入参补上机器名（`on`，文件窗口拼寻址本机的 `transfer-copy` 用）。界面不开单，TS 侧没有孪生。
     on: NONE,
     // 线上一家 agent 的名字（`AgentKind`）：收下 · 取串。不是判定（kind ⇄ 路由名那一换住后端 `agents`）；界面拿生成的类型当串用，没有孪生。
     new: NONE,
     as_str: NONE,
     // cc-bus 信封里哪几种动作必须带 `re`（`BusAct::needs_re`）：后端信封校验那一处调它；界面只显示、不发信，TS 侧没有孪生。
     needs_re: NONE,
-    // `files-ls` 那一列是不是从大到小（后端排序 · 文件窗口表头的箭头）。界面不列目录，TS 侧没有孪生。
-    descending: NONE,
     // 带键集合手上那份照答换（`sync::Hand::apply`）：Rust 消费方与手机 `SyncHand` 照同一份金样；界面问本机后端拿整份、不换，TS 侧没有孪生。
     apply: NONE,
     // 一台的清单拆成「头 ＋ 行」· 拼回去（`listing::Listing`，`history-listing` 那一问的带键集合两头用）：只搬格子、没有判断；界面不收这一形，TS 侧没有孪生。
@@ -1040,6 +1116,14 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     join: NONE,
     // 手上那份照先后摊开（`sync::Hand::in_order`）：同上，界面不存手上那份。
     in_order: NONE,
+    // 需手动答的那一格的两个写口与一个读口（`needs::Needs::answer_with` · `Needs::manual` · `Needs::ask`：答得了 · 答不了二选一住类型 `NeedsReply`）；
+    //   答不答得了那一判住后端 `agents::asks::Asked::manual`。界面只照 `ask` 在不在挑画选项还是画 `manualText`，不写这两格，TS 侧没有孪生。
+    answer_with: NONE,
+    manual: NONE,
+    ask: NONE,
+    // 这颗点说在等人（`frame::SessionDot::waits_for_human`，哪几颗算住 `SessionDot::WAITING`）：界面照生成物 `WAITING_DOTS` 查（J51）。
+    waits_for_human: "J51",
+    WAITING: "J51",
   },
   "face-core": {
     // ↗ 浮层那一张（`face-core/src/front.rs`：窗口那一跳每种结局码的那一张 `missed_faces` · 会话为什么没有链 `Unplaced::face`）：只有本机后端写、壳照结局码挑、界面照摆；TS 侧没有孪生（A16-1-8）。
@@ -1048,12 +1132,11 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 历史那几行按哪台换说法的两格（`face-core/src/history_asks.rs`）：本机后端写行时算、界面照摆；TS 侧没有孪生。
     reveal_of: NONE,
     delete_ask: NONE,
-    // 认不出的那一条（`face-core/src/record.rs`）：那一句 · 那一形 · 判认不认得 · 回包里记录那一格逐条判（后端适配层与手机核心同一份）；
+    delete_ask_named: NONE,
+    // 认不出的那一条（`face-core/src/record.rs`）：那一句 · 那一形（后端适配层与手机核心同一份；逐条判认不认得住手机核心 `record.rs`）；
     //   界面照记录上写好的 `text` · `excerpt` 画，TS 侧没有孪生。
     unread_text: NONE,
     unread_body: NONE,
-    of: NONE,
-    mend_records: NONE,
     // 人说的话怎么切段 · 派活那段 · 命令输出先露几行 · 接在一串后面的重试画不画（同在 `face-core/src/record.rs`）：
     //   后端适配层写进记录、手机核心同一份；界面照记录上的 `parts` · `*_fold` · 画法摆，TS 侧没有孪生。
     said_parts: NONE,
@@ -1066,9 +1149,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     //   界面只照抄排好并好的那一份，TS 侧没有孪生。
     sort_by_recency: "J15",
     merge_by: "J15",
-    // 分叉挂父 · 手机会话屏切段（`face-core/src/column.rs`）：历史页那一列由本机后端摊好、手机照核心交的画，TS 侧没有孪生。
+    // 分叉挂父（`face-core/src/column.rs`）：历史页那一列由本机后端摊好、手机照核心交的画，TS 侧没有孪生。
     nest: NONE,
-    column: NONE,
     // 一台的会话簿（`face-core/src/book.rs`：帧折成整份 · 那台看不见时那一张脸）：壳与手机核心折、界面照画，TS 侧没有孪生。
     unseen: NONE,
     fold: NONE,
@@ -1076,25 +1158,26 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     seats: NONE,
     unseen_now: NONE,
     forget: NONE,
-    // 一台的活卡板（`face-core/src/live.rs`：活卡帧折成整份 · 卡头那一行）：壳与手机核心折、界面照画（`live-card.ts` 不认 `op`），TS 侧没有孪生。
+    // 一台的活卡板（`face-core/src/live.rs`：活卡帧折成整份 · 卡头那一行）：本机后端与手机核心折、界面照画（`live-card.ts` 不认 `op`），TS 侧没有孪生。
     apply: NONE,
-    at: NONE,
     cards_of: NONE,
-    drop_session: NONE,
+    // 一台的会话簿（`face-core/src/book.rs`：折一帧回该推的那一格 · 拼一条 · 出整本）：本机后端与手机核心折，界面只收成品，TS 侧没有孪生。
+    step: NONE,
+    seat_now: NONE,
+    whole: NONE,
     clear: NONE,
     len: NONE,
     is_empty: NONE,
-    // 远端清单副本表（`face-core/src/listing_copy.rs`：照答换 · 落盘那一形 · 一台的文件名）：本机后端与手机核心同一份，界面不碰。
-    VERSION: NONE,
-    on: NONE,
-    kept: NONE,
-    to_ask: NONE,
-    took: NONE,
-    missed: NONE,
-    file_stem: NONE,
     // 几台的需手动合成一份（`face-core/src/needs.rs`：照 rank 排 · 数总数；本机后端 `sessions-needs-merge` · 手机核心 `NeedsFace.merge` 同一份）：界面照抄合好的那一份，TS 侧没有孪生。
     merge_needs: NONE,
     rank_of: NONE,
+    // 合好的一项落待答请求还是需手动（`face-core/src/needs.rs::column_of`：会话且那台交了 `ask` ⇒ 待答请求，其余需手动）：
+    //   `merge_needs` 分两列时调它，本机后端与手机核心同一份；界面照两列画，TS 侧没有孪生。
+    column_of: NONE,
+    // 没答上那台的那一句（`face-core/src/needs.rs`：断着 · 到期 · 撤了 · 答错 · 读不懂）与一台回包拆成需手动 · 搜索各一份（`needs.rs` · `search.rs`）：本机后端与手机核心同一份，界面照抄，TS 侧没有孪生。
+    missed: NONE,
+    needs_reply: NONE,
+    search_reply: NONE,
   },
   "md-core": {
     // 解析 · 分段 · 高亮（`md-core/src/{parse,segment,highlight}.rs`）：后端算、两端照 `Doc` 排；TS 侧的孪生见 J40。
@@ -1118,6 +1201,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     blocks: NONE,
   },
   "copy-core": {
+    // 断着 ⇒ 写类为什么做不了（那台离线 · 与 cc-monitor 断开）：本机后端菜单成品（经 pick-core `refused_here`）· 文件窗口命令栏 · 编辑页［保存］· 关窗那一问都问它；界面不列文件，没有孪生。
+    write_refused: NONE,
     backend_old: "J22",
     backend_differs: NONE,
     // 测试按文案键断言用（占位处任意值）；TS 那一侧的同形在测试支架 `tests/test-support/copy-pattern.ts`，不是生产判定。
@@ -1143,6 +1228,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     first_line: "J42",
     local_machine: "J22",
     peer_machine: "J22",
+    machine_word: "J22",
+    offline: "J22",
     reply_unreadable: "J22",
     unavailable: "J38",
     TABLE_JSON: NONE,
@@ -1165,12 +1252,12 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     target: NONE,
     // 「码 ＋ 一句 ＋ 原话 ＋ data」（`said` 模块，后端与共享契约 crate 同一份）：界面只收后端写好的句子与详情，TS 侧没有孪生。
     and_raw: NONE,
-    code_or_fallback: NONE,
     coded: NONE,
     logged: NONE,
     retold: NONE,
     with_data: NONE,
     with_raw: NONE,
+    with_written: NONE,
     wrap: NONE,
     // 契约错那一串（那一句 ＋ 隔一个控制字符的英文诊断）的拼 · 拆：后端 · 拨号核心写、失败信封那一处拆；界面只收拆好的那一句与原话，TS 侧没有孪生。
     malformed_said: NONE,
@@ -1184,7 +1271,6 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     new: NONE,
     os_word: NONE,
     render: NONE,
-    said: NONE,
     stamp: NONE,
     truncate_raw: NONE,
     // 下层 IO 错 → 原因词（`reason` 模块）：后端 · 壳写句子时取词，TS 侧不碰 IO 错，没有孪生。
@@ -1195,6 +1281,13 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     sftp_status_reason: NONE,
     // 子进程起不来 → 原因词（同一模块）：只有后端起子进程那一口用，TS 侧不起进程，没有孪生。
     spawn_reason: NONE,
+    // 每台机器「态 ⇒ 字 / 样子」那几张表（`machine` 模块，W32 从后端 deploy::machine 挪来；本机后端与手机核心同跑）：词与问题行那一句是 J37；点 · 条 · 修法 · 本机那一格只交成品，界面照画，没有孪生。
+    word: "J37",
+    said: "J37",
+    dot: NONE,
+    strip: NONE,
+    label: NONE,
+    local: NONE,
   },
   "creds-core": {
     ACCOUNTS_FIELD: NONE,
@@ -1249,7 +1342,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     to_pretty_json: NONE,
   },
   // `gate-core` 那一格删了：它收成后端模块（`control/gate_rules.rs`），不再是共享 crate，不在本表人群里。
-  // monitor ↔ 文件窗口进程的契约：开窗种子 · 就绪行 · 开终端那一问 · 远端路径的两个切法（窗口与开窗入口共用；TS 侧不切远端路径 ⇒ 无孪生）。
+  // monitor ↔ 文件窗口进程的契约：开窗种子 · 就绪行 · 开终端那一问（TS 侧无孪生）。
   "filewin-contract": {
     BIN_ENV: NONE,
     // 「这扇窗手上有什么会被打断」那一条的名字（窗口说给 monitor、monitor 自己接）；TS 侧没有孪生。
@@ -1264,16 +1357,12 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     decode_request: NONE,
     encode_ready: NONE,
     encode_request: NONE,
-    parent_dir: NONE,
-    remote_basename: NONE,
     terminal_open_args: NONE,
     terminal_open_cwd: NONE,
     // 「开另一台的文件窗口」那一问（窗口 → monitor），TS 侧零孪生。
     FILEWIN_OPEN_OP: NONE,
     // 文件窗口订一组的进度（`files-batch/<票>`，monitor 按票转），TS 侧零孪生。
     FILES_BATCH_KIND_PREFIX: NONE,
-    // 传输台那一趟的进度流（`transfer/<id>`，monitor 自己接），TS 侧零孪生。
-    TRANSFER_KIND_PREFIX: NONE,
     filewin_open_args: NONE,
     filewin_open_theme: NONE,
     // 「在计划里看」那一问（窗口 → monitor → 主窗口），参数形状只在这里；TS 侧收的是壳发的事件（`window-events.ts`），零孪生。
@@ -1381,6 +1470,14 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     scratch: NONE,
     // 判据看自己铺的临时目录里有什么只从这一口列（排好序的名字）；TS 侧没有孪生。
     list: NONE,
+    // 判据写可执行文件只从这一口（旁稿经 cp 子进程落到目标，本进程不留写 fd）；判据要撑开 fork 到 exec 的窗口只从这一口起；TS 侧没有孪生。
+    write_exe: NONE,
+    forking: NONE,
+    // 判据给目录改权限位只从这一口（不收文件：给文件设可执行位只经 `write_exe`）；TS 侧没有孪生。
+    set_dir_mode: NONE,
+    // 判据要「别人持着一把排他文件锁」只从这一口拿、经 `let_go` 放（unix 上是真子进程持锁，没拿上不说 ok）；TS 侧没有孪生。
+    held_elsewhere: NONE,
+    let_go: NONE,
   },
   "cap-core": {
     // 带上限的同步读只经这三样（读到流尽 · 读一个窗口 · 读本机文件前的预检）：后端 · 壳 · 手机核心同一份；TS 侧没有孪生。
@@ -1391,6 +1488,16 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     as_len: NONE,
   },
   "relay-route-core": {
+    // 数据目录里 monitor 那几样的名字（数据页本机那一问由本机后端列；壳 · 后端都从这里读）：TS 侧只照回包画 ⇒ NONE。
+    MONITOR_DATA_ENTRIES: NONE,
+    AUTO_LAUNCH_FILE: NONE,
+    FILEWIN_VIEW_FILE: NONE,
+    LOG_DIR_REL: NONE,
+    BACKEND_STDERR_REL: NONE,
+    BACKEND_STDERR_LOG_REL: NONE,
+    // 握手目录两个名字（bash / zsh 接入块写终端记录、monitor `bind.rs` 读的契约；接入块模板由 Rust 填）：TS 侧零处写握手文件 ⇒ NONE。
+    AWAIT_SUBDIR: NONE,
+    REGISTRY_SUBDIR: NONE,
     // 家目录 · 数据目录的规则（两侧 Rust 同一份；默认住址、远端常驻后端按同一份推）；TS 侧零处读家目录 ⇒ NONE。
     home_dir: NONE,
     home_dir_from: NONE,
@@ -1564,14 +1671,12 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     account_name_ok: "J18",
     // cc-bus agent id（共享 crate 一份）。
     bus_id_ok: "J12",
-    // 握手目录名（bash / zsh 接入块写终端记录、monitor `bind.rs` 读的契约）：TS 侧零处写握手文件 ⇒ NONE。
-    AWAIT_SUBDIR: NONE,
     // 启动器命令片段白名单（§47 ③）；两个常量是规则的一部分，TS 不抄 ⇒ NONE。
     launcher_refused_char: "J3",
     LAUNCHER_EXTRA: NONE,
     LAUNCHER_HOME_PREFIX: NONE,
   },
-  // 上游 base URL 能不能用（新立；中转解析 · 上游选择装表 · 写口 · 界面生成物共用）。
+  // 上游 base URL 能不能用（中转解析 · 上游选择装表 · 写口 · 出网口共用；界面不判）。
   "upstream-url-core": {
     SCHEMES: NONE,
     LOOPBACK_NAME: NONE,
@@ -1587,21 +1692,16 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     slot_name: NONE,
     of_slot_name: NONE,
     LINES: NONE,
-    UNAME_CMD: NONE,
     STAMP_OPEN: NONE, // 身份戳界标（后端拼戳 · monitor 扫字节两侧同一份；TS 不扫字节）
     STAMP_CLOSE: NONE,
     build_order: NONE,
     build_relation: NONE,
     identity_of_bytes: NONE,
-    interpret_stamp_scan: NONE,
-    key_from_uname: NONE,
     key_of: NONE,
+    of_ids: NONE,
     label: NONE,
     raw: NONE, // 拒绝里那台答的原话（进复制详情；TS 不判拒绝）
     say: NONE,
-    stamp_scan_cmd: NONE,
-    // 部署判定那三种的线上标签（`deploy-install` 回包的 `action`）：壳照回包里的标签挑句子，TS 侧没有孪生。
-    tag: NONE,
     this_machine: NONE,
   },
 };
@@ -1619,8 +1719,8 @@ const CARGO_TOMLS_TOP = [
   "src/frontend/filewin/Cargo.toml",
   "src/backend/Cargo.toml",
 ];
-/** 那几份里 `guard-core = …` 依赖行的总数（恒等计数：monitor · 文件窗口 · 后端 · creds-core · win-path-core · platform-core 各一）。 */
-const GUARD_CORE_DEP_LINES = 7;
+/** 那几份里 `guard-core = …` 依赖行的总数（恒等计数：monitor · 文件窗口 · 后端 · creds-core · win-path-core · platform-core · cmd-wire 各一）。 */
+const GUARD_CORE_DEP_LINES = 8;
 
 const CRATES_ROOT = "src/common";
 
@@ -1712,8 +1812,9 @@ function viaNeedle(via: string): string {
   return seg.slice(-k).join("/");
 }
 
-/** 剥过注释的 Rust 生产文件文本。 */
+/** 剥过注释的 Rust 生产文件文本（`/` 结尾 ⇒ 那个目录下全部生产 `.rs` 接起来）。 */
 function rustCode(file: string): string {
+  if (file.endsWith("/")) return productionRsFiles(file.slice(0, -1)).map((s) => stripComments(s.text, "rust")).join("\n");
   return stripComments(readFileSync(resolve(REPO_ROOT, file), "utf8"), "rust");
 }
 

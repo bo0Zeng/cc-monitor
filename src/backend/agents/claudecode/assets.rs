@@ -201,7 +201,7 @@ pub(crate) fn scan_skills_at(root: &Path, project: Option<&str>, out: &mut Sight
                 out.problems.push(
                     e.wrap(|why| {
                         copy_text(
-                            "beClaudeAssets.skill.docFailed",
+                            "beAssets.skill.docFailed",
                             &[("path", &doc.display().to_string()), ("why", why)],
                         )
                     })
@@ -362,6 +362,8 @@ fn is_plugin_root(dir: &Path) -> bool {
 
 /// 盘上看到的一处安装：`<名>@<市场>` · 插件根 · 装在哪个项目里 · 安装记录里写的版本。
 struct Install {
+    /// 安装记录的键原样（`plugin install` · `uninstall` · `list` 的 `id` 都是这一形）；skills 目录里的那几个 ⇒ `enabledPlugins` 里的那一形。
+    key: String,
     name: String,
     market: String,
     root: PathBuf,
@@ -510,6 +512,11 @@ fn parts_of(
     }
 }
 
+/// 插件键 `<名>@<市场>` 拆成（名, 市场）：照最后一个 `@` 拆；不带 `@` ⇒ `None`。扫安装记录 · 读 `plugin list` 都经它。
+fn split_plugin_key(id: &str) -> Option<(&str, &str)> {
+    id.rsplit_once('@')
+}
+
 /// 盘上的各处安装：安装记录（第 [`PLUGIN_RECORD_V`] 版）记的 ＋ `skills/<名>/` 里带清单的。
 fn installs_at(config_root: &Path, problems: &mut Vec<String>) -> Vec<Install> {
     let mut out = Vec::new();
@@ -520,7 +527,7 @@ fn installs_at(config_root: &Path, problems: &mut Vec<String>) -> Vec<Install> {
         match v.get("plugins").and_then(|p| p.as_object()) {
             Some(plugins) if v.get("version").and_then(|x| x.as_u64()) == Some(PLUGIN_RECORD_V) => {
                 for (id, entries) in plugins {
-                    let Some((name, market)) = id.rsplit_once('@') else {
+                    let Some((name, market)) = split_plugin_key(id) else {
                         continue;
                     };
                     for e in entries.as_array().into_iter().flatten() {
@@ -532,6 +539,7 @@ fn installs_at(config_root: &Path, problems: &mut Vec<String>) -> Vec<Install> {
                             Some("project" | "local")
                         );
                         out.push(Install {
+                            key: id.clone(),
                             name: name.to_string(),
                             market: market.to_string(),
                             root: PathBuf::from(root),
@@ -566,6 +574,7 @@ fn installs_at(config_root: &Path, problems: &mut Vec<String>) -> Vec<Install> {
             .and_then(|m| m.get("name").and_then(|n| n.as_str()).map(str::to_string))
             .unwrap_or(dir);
         out.push(Install {
+            key: format!("{name}@{SKILLS_DIR_MARKET}"),
             name,
             market: SKILLS_DIR_MARKET.to_string(),
             root,
@@ -621,7 +630,7 @@ pub(crate) fn scan_plugins_at(
     };
     let mut seen: std::collections::BTreeSet<(String, Option<String>)> = Default::default();
     for i in installs {
-        let id = format!("{}@{}", i.name, i.market);
+        let id = i.key.clone();
         let manifest = manifest_at(&i.root, &mut problems);
         let text = |k: &str| {
             manifest
@@ -660,6 +669,7 @@ pub(crate) fn scan_plugins_at(
             out.plugins.push(PluginSeen {
                 project,
                 name: i.name.clone(),
+                key: i.key.clone(),
                 market: i.market.clone(),
                 root: i.root.clone(),
                 version: text("version").or_else(|| i.version.clone()),
@@ -692,6 +702,53 @@ pub(crate) fn scan_plugins_at(
 #[cfg(test)]
 #[path = "../../../../tests/backend/agents/claudecode/assets_tests.rs"]
 mod tests;
+
+/// 插件装删那一格（Claude Code 的插件命令）：`claude plugin install <名>@<市场>` · `claude plugin uninstall <名>@<市场>` ·
+/// `claude plugin list --json`（回一个数组，每条 `{id, version, scope, enabled, …}`；没版本时 `version` 写 `"unknown"`）。
+pub(crate) const PLUGIN_CELLS: crate::agents::PluginCells = crate::agents::PluginCells {
+    install: |key| plugin_argv(&["install", key]),
+    remove: |key| plugin_argv(&["uninstall", key]),
+    list: || plugin_argv(&["list", "--json"]),
+    read_list: read_plugin_list,
+};
+
+fn plugin_argv(rest: &[&str]) -> Vec<String> {
+    ["claude", "plugin"]
+        .iter()
+        .chain(rest)
+        .map(|s| s.to_string())
+        .collect()
+}
+
+/// `claude plugin list --json` 的输出 ⇒ 用户级装着的那几个（`scope` 是 `user` 的；项目里 · 只这一趟的不算）；
+/// 不是那一形（不是数组 · 一条缺 `id` · `scope` · `enabled`）⇒ `None`。
+/// 写法取 `id` 原样（`<名>@<市场>`，与安装记录的键同一形，`plugin install` · `uninstall` 收的就是它）；
+/// 光名字取它最后一个 `@` 前那一截（与扫目录那一份 [`split_plugin_key`] 同一个拆法）。
+fn read_plugin_list(stdout: &str) -> Option<Vec<crate::agents::PluginListed>> {
+    let v: serde_json::Value = serde_json::from_str(stdout.trim()).ok()?;
+    let mut out = Vec::new();
+    for p in v.as_array()? {
+        let id = p.get("id")?.as_str()?;
+        let scope = p.get("scope")?.as_str()?;
+        let on = p.get("enabled")?.as_bool()?;
+        if scope != "user" {
+            continue;
+        }
+        out.push(crate::agents::PluginListed {
+            key: id.to_string(),
+            name: split_plugin_key(id)
+                .map_or(id, |(name, _)| name)
+                .to_string(),
+            version: p
+                .get("version")
+                .and_then(serde_json::Value::as_str)
+                .filter(|v| *v != "unknown")
+                .map(str::to_string),
+            on,
+        });
+    }
+    Some(out)
+}
 
 /// 斜杠命令住的目录名（`<项目>/.claude/commands` · `<配置根>/commands`）。
 const COMMANDS_DIR: &str = "commands";

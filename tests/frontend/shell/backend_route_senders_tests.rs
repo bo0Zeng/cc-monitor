@@ -17,18 +17,15 @@
 #[cfg(test)]
 const SENDERS: &[(&str, Verdict)] = &[
     // Rust 这一侧的分层判定只在 `backend_route::layer_call_error` 一处（通道宿主 `host.rs` 用它）；
-    //   「能不能回落」在界面那一侧的同义一份（`ipc/chan-caller.ts::provablyNotSent`）由跨语言金样
-    //   `tests/__fixtures__/reach-collapse.golden.json` 与本侧 `route_call_error` 对拍（`chan/webview_tests.rs`）。
+    //   「能不能证明没发出去」（`backend_route::provably_not_sent`）在界面那一侧的同义一份（`ipc/chan-caller.ts::provablyNotSent`）由跨语言金样
+    //   `tests/__fixtures__/reach-collapse.golden.json` 与本侧那一份对拍（`chan/webview_tests.rs`）。
 
     // **`cc_bus.rs` 那一行退役了**：P4f 起它把 cc-bus 写面（发消息 · 收掉 · 派生 · 查在线）经后端的
     //   `bus-*` 原语转一手、走分流器；现在界面经通道直接说（`src/frontend/ui/cc-bus-control.ts`），
     //   monitor 的 `cc_bus.rs` 只剩读名单 / 读收件箱两条 shell 读，不再是走后端的发送端 —— 从登记表删，不留过渡格。
     //   「monitor 里写面一条路都不剩」由 `cc_bus_one_home.rs::the_monitor_has_no_cc_bus_write_path_any_more` 两向判。
     // ★ 抓屏走帧面 `capture-pane`。它**没有第二条路可回落**（没有一次性 SSH），
-    //   但**照样走分流器**，理由与 `cc_bus.rs` 那条逐字相同：
-    //   本模块的三态是从 `Routed` 搬过来的，不是它自己 match 一遍错误枚举。
-    //   ⚠ 它回的是 `Result<String, Routed>` —— 「拿到了那一屏」与「三态里的另外两态」
-    //   在类型上分得开，怎么对用户说由调用方决定。
+    //   但**照样走分流器**，理由与 `cc_bus.rs` 那条逐字相同。
     // **上面那一行（`tmux.rs`）退役了**：抓屏改由界面经通道直接问那台机器的后端
     //   （`src/frontend/ui/terminal-reads.ts::previewShot`，`terminal-preview`），monitor 里那个发送端删了 ——
     //   `tmux.rs` 从此不再直连 `inbound_client`，发现阶段扫不到它，登记跟着摘。分层判定照旧只在
@@ -41,8 +38,6 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   ⇒ 搜索在 SFTP 那一侧**结构上不存在**，不是「今天还没做」。
     //   但**照样走分流器**，理由与 `cc_bus.rs` / `tmux.rs` 那两条逐字相同：
     //   分流规则一有第二份实现，「被门拒绝」就会在某一份里被洗成「换条路重做」。
-    //   ⚠ 它回的是 `Result<Value, Routed>`（同 `tmux.rs` 那一处的形状）——
-    //   「拿到了那一份 data」与「三态里的另外两态」在类型上分得开。
     // **上面那一行（`find.rs`）退役了**：文件窗口成了独立进程，只经通道说 `call`，
     //   搜索不再直连进程级登记表（`inbound_client`），分层判定在通道宿主那一侧（`host.rs`，
     //   走分流器的分层出口）。窗口一侧只照抄通道那一句（`comms_inward::chan::said`）。
@@ -65,8 +60,8 @@ const SENDERS: &[(&str, Verdict)] = &[
     ("webview.rs", Verdict::PureRouterNoFallbackDecision),
     // ★ 〔面 A 通道，2026-09-24〕**第八个发送端** —— 通道的生产句柄（`chan/host.rs`），
     //   外部前端经路由器转来的 `call` 在这里走 `inbound_client`。
-    //   它要的不是三态而是分层结果（层 × `reach` × `why`），
-    //   ⇒ 走分流器的**第二个出口** `layer_call_error`（三态正是从它收拢出来的，同出一源），
+    //   它要的不是那一句而是分层结果（层 × `reach` × `why`），
+    //   ⇒ 走分流器的分层出口 `layer_call_error`（`route_call_error` 那一句正是建在它上面，同出一源），
     //   「没有控制通道」走 `layer_no_channel`。它自己**不** match inbound 的错误枚举。
     ("host.rs", Verdict::UsesRouter),
     // ★ **第九个发送端** —— 只读查询面（`frame_query.rs`，
@@ -82,10 +77,6 @@ const SENDERS: &[(&str, Verdict)] = &[
     ("backend_policy.rs", Verdict::UsesRouter),
     // `remote_relay.rs` 那一行摘了：远端「用到才起」的脱离中转一族删了（中转只住那台的常驻后端里）。
     // skill「装到这台」不在这里：装 / 卸的编排在被写那台后端，界面经通道直问。
-    // ★ 传输台的中继（`transfer_relay.rs`）：窗口的开单 / 订阅经它转给**本机**常驻后端
-    //   （`transfer-*` 四条，传输台住那里）。没有第二条路可回落（`D11`：不进程内开 SFTP），
-    //   后端说的码原样带回窗口；**照样走分流器**，理由与 `frame_query.rs` 那一行逐字相同。
-    ("transfer_relay.rs", Verdict::UsesRouter),
     // 终端画面流撤掉时会话流句柄替界面向那台退订（`event_replay.rs::unfollow`）：发出去就不管，没成只记一行日志 ——
     //   连接走时那台整张票表本来就收；没有第二条路，也不把成败交给任何人。
     ("event_replay.rs", Verdict::ProbeOnlyNoFallbackDecision),
@@ -95,17 +86,20 @@ const SENDERS: &[(&str, Verdict)] = &[
     // 一台的常驻流（`resident-client/feed.rs`）：问活只记一行日志、没有第二条路；
     //   替宿主转发的一问一答把 `CallError` 原样交回宿主（手机核心按它说那一句），这里不做回落判断。
     ("feed.rs", Verdict::ProbeOnlyNoFallbackDecision),
+    // 关主窗那一下壳自己问本机后端 `machine-interrupts`（`main_close.rs::ask_hub`）：问不到只记一行日志，
+    //   框里只说那一句不带参数的「问不到」—— 没有第二条路，也不照错误的层分流。
+    ("main_close.rs", Verdict::ProbeOnlyNoFallbackDecision),
     // `backend_control.rs` 那一行退役了：［重新连接］叫醒那台（`machine-wake`）改经 `frame_query::call`（走分流器），
     //   拒了那一句回给界面，壳那一份不再直连 `inbound_client`，发现阶段扫不到它。
     // ★ 机器页「停」：请**本机**后端 `machine-stop`（先停它那一条、再在那台跑 `--resident-stop`），经 `remote_resident.rs::stop` 这一口；
-    //   没有第二条路可回落（停那台只经本机后端那条 SSH），失败经共用分流器翻成人话。形状与 `transfer_relay.rs` 那一行同。
+    //   没有第二条路可回落（停那台只经本机后端那条 SSH），失败经共用分流器翻成人话。形状与 `frame_query.rs` 那一行同。
     ("remote_resident.rs", Verdict::UsesRouter),
     // 「复制诊断信息」：整段请**本机**后端 `diagnostics-report` 出，经 `diagnostics_report.rs::diagnostics_report` 这一口；
     //   没有第二条路可回落（后端不在，这件事就不发生），失败经共用分流器翻成人话。形状与 `remote_resident.rs` 那一行同。
     ("diagnostics_report.rs", Verdict::UsesRouter),
 ];
 
-/// 分流器的**两个出口**：分层结果（`05` 形状）与从它收拢出来的旧三态。
+/// 分流器的**两个出口**：分层结果（`05` 形状）与建在它上面的那一句。
 /// `UsesRouter` 认其中之一；两个名字在整棵源码树里都必须**恰好一处定义**、就在 `backend_route.rs`。
 #[cfg(test)]
 const ROUTER_EXITS: &[&str] = &["layer_call_error", "route_call_error"];

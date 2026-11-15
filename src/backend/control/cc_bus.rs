@@ -1,18 +1,21 @@
 //! cc-bus 的读面（`bus-list` · `bus-inbox` · `bus-peek` · `bus-unread`）与两阶段读的第二跳（`bus-commit`）。
 //! 都问收件箱那一处（[`store`]）：收件箱住这台后端的数据目录，读写只在那里，入口脚本不读不写。
-//! 发信那一条（`bus-send`）的本体在 [`super::cc_bus_wire`]：核信封（[`super::cc_bus_envelope`]）→ 范围（[`super::cc_bus_scope`]）→
+//! 发信那一条（`bus-send`）的本体在 [`wire`]：核信封（[`envelope`]）→ 范围（[`scope`]）→
 //! 规矩与落盘（[`rules`] · [`store`]）。
 //!
 //! - `bus-peek`：纯读，交给 agent 读的那一段（这里照信封写好）＋ 令牌；不推已读位置。
 //! - `bus-commit`：拿 `bus-peek` 的令牌在锁里推已读位置（CAS）。`cc-bus recv` ＝ peek 接 commit；Stop 钩子喂回成功之后才 commit。
 //! - `bus-inbox`：界面只读看收件箱尾巴（不推位置，不是 recv）；`bus-list`：名单 ＋ 待读。
 
+pub(crate) mod envelope; // 信封的唯一一处校验（`bus-envelope`；`cc-bus send` 发之前问它，不合格当场拒）
 pub(crate) mod rules;
+pub mod scope; // 范围（组）：同组才送得到，名单读不到就拒
 pub(crate) mod store;
+pub mod wire; // 这一族帧命令的形状（入参 · 回包 · 码表 · 怎么跑）
 
 use copy_core::copy_text;
 
-use super::cc_bus_wire::{
+use wire::{
     BusAgent, BusCommitReq, BusCommitted, BusEnvelope, BusInbox, BusInboxItem, BusInboxReq,
     BusList, BusPeekReq, BusPeeked, BusUnread, BusUnreadReq,
 };
@@ -49,7 +52,7 @@ pub(crate) fn knock(own: &crate::platform::Own, env: &BusEnvelope, now_ms: i64) 
             tracing::info!(
                 "cc-bus knock not queued for {}: {}",
                 env.to,
-                f.code_or_fallback()
+                cmd_wire::failed::Failed::code_or_fallback(f.code.clone())
             );
             false
         }
@@ -102,9 +105,17 @@ pub(crate) fn roster_agents(rows: &[(String, u64)], seen: &dyn Fn(&str) -> Seen)
         .collect()
 }
 
-/// `bus-list` 的成品 `{agents}`：跨语言金样 `tests/__fixtures__/cc-bus-control.golden.json` 拿同一个构造器对拍。
+/// `bus-list` 的成品 `{agents, summary}`：跨语言金样 `tests/__fixtures__/cc-bus-control.golden.json` 拿同一个构造器对拍。
 pub(crate) fn list_reply(agents: Vec<BusAgent>) -> BusList {
-    BusList { agents }
+    let summary = [
+        copy_text(
+            "ccBus.summary.registered",
+            &[("n", &agents.len().to_string())],
+        ),
+        copy_text("ccBus.summary.notOnline", &[]),
+    ]
+    .join(&copy_text("kit.text.sep", &[]));
+    BusList { agents, summary }
 }
 
 /// `bus-inbox` 缺省看几行 / 最多看几行 / 回显最多带多少字节（超了保尾、说 `truncated`）。
@@ -164,10 +175,14 @@ pub(crate) fn inbox_reply(rows: &[String]) -> BusInbox {
         }
         // 一行就是一封规范信封（`bus-send` 盖的那一份）；不是的（坏 JSON · 别的工具写的 · 少格）算坏行。
         match serde_json::from_str::<BusEnvelope>(line) {
-            Ok(m) => messages.push(BusInboxItem {
-                act_said: super::cc_bus_wire::act_said(m.act),
-                envelope: m,
-            }),
+            Ok(m) => {
+                let act_said = wire::act_said(m.act);
+                messages.push(BusInboxItem {
+                    line: wire::inbox_line(&m, &act_said),
+                    act_said,
+                    envelope: m,
+                })
+            }
             Err(_) => skipped += 1,
         }
     }

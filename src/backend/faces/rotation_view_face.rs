@@ -2,8 +2,9 @@
 //! 都只回成品：策略目录里每一份（名字 · 灰字 · 版本 · 读不懂的原因 · 哪几个会话在用）；一个会话（照它载入的副本）或设置页上的一份策略
 //! （照文件此刻的）此刻的设置 · 每个号的事实 · 顺序 · 这一判 · 推演 · 提示。界面照画，不判、不排、不算时刻。
 
+use crate::accounts::quota::facts::{Fact, WinFact};
 use crate::accounts::quota::rules::book::{self, Book};
-use crate::accounts::quota::rules::decide::Pick;
+use crate::accounts::quota::rules::decide::{self, Pick};
 use crate::accounts::quota::rules::decide::{lineup_of, plain_lineup};
 use crate::accounts::quota::rules::{standing, Adopted};
 use crate::accounts::quota::setup::{self, form, script, shelf, uses};
@@ -104,7 +105,6 @@ pub(crate) fn item_of(
         error: s.file.as_ref().err().map(error_of),
         remove: remove_of(&users(book, &s.id, live), for_new == s.id),
         for_new: for_new == s.id,
-        words_bad: head.is_some_and(|h| form::words_bad(&h.form)),
         tz_unknown: head.is_some_and(|h| h.tz.is_none() || h.tz_unknown),
         hand: s.file.as_ref().is_ok_and(|f| !setup::editor::made_by(f)),
     }
@@ -134,19 +134,20 @@ pub(crate) fn strategies_with(
     }
 }
 
-/// 一个号的号牌：号色照账号库（库里没有 ⇒ 缺，画中性）· 号名 · 号牌字（与 `accounts-list` 那一行同一处写法）。
-fn plate_of(id: &str, colors: &std::collections::BTreeMap<String, u8>) -> RotPlate {
-    use crate::accounts::quota::name_words::{account_text, plate_text};
+/// `agent` 那一家一个号的号牌：号色照账号库（库里没有 ⇒ 缺，画中性）· 号名（照那一家问）· 号牌字（与 `accounts-list` 那一行同一处写法）。
+fn plate_of(agent: &str, id: &str, colors: &std::collections::BTreeMap<String, u8>) -> RotPlate {
+    use crate::accounts::quota::name_words::{account_text_of, plate_text};
     RotPlate {
         color: colors.get(id).copied(),
-        label: Words(account_text(id)),
+        label: Words(account_text_of(agent, id)),
         text: Words(plate_text(id)),
     }
 }
 
-/// 视图里的一个号：事实 · 号牌 · 用满了的那几窗（照 [`standing::used_up`] 那一处判）。
+/// 视图里 `agent` 那一家的一个号：事实（出口那一下造线上那一份）· 号牌 · 用满了的那几窗（照 [`standing::used_up`] 那一处判）。
 fn account_of(
-    fact: cmd_wire::rotation::Fact,
+    agent: &str,
+    fact: Fact,
     colors: &std::collections::BTreeMap<String, u8>,
 ) -> RotAccount {
     let full = [(SLOT_5H, &fact.w5h), (SLOT_7D, &fact.w7d)]
@@ -155,8 +156,8 @@ fn account_of(
         .map(|(k, _)| k.to_string())
         .collect();
     RotAccount {
-        plate: plate_of(&fact.account, colors),
-        fact,
+        plate: plate_of(agent, &fact.account, colors),
+        fact: fact.wire(),
         full,
     }
 }
@@ -183,23 +184,26 @@ fn why_text(why: FailWhy) -> String {
     }
 }
 
-/// 提示写成一句（字照文案表）。`name` ＝ 那份策略的标题；`why` ＝ 出错那一条是哪一种常见的错（第几行 · 说法进那一句，原话进复制详情）。
-fn note_of(hint: RotHint, name: &str, why: FailWhy) -> RotNote {
+/// 停发那一条提示写字要的（不上线）：停到的那一刻的钟面（`HH:MM`，看的那一台的时区；不在今天带日期）· 距那一刻还有多久。
+struct Held {
+    at: String,
+    dur: String,
+}
+
+/// 提示写成一句（字照文案表）。`held` ＝ 停发那一条到几点 · 还有多久（说不出 ⇒ 缺）；`name` ＝ 那份策略的标题；
+/// `why` ＝ 出错那一条是哪一种常见的错（第几行 · 说法进那一句，原话进复制详情）。
+fn note_of(hint: RotHint, held: Option<&Held>, name: &str, why: FailWhy) -> RotNote {
     let text = match &hint {
-        RotHint::Hold {
-            until_text: Some(at),
-            left_text: Some(dur),
-            account: Some(a),
-        } => copy_core::copy_text(
-            "beRotation.hint.holdUntil",
-            &[("at", at), ("account", a), ("dur", dur)],
-        ),
-        RotHint::Hold {
-            until_text: Some(at),
-            left_text: Some(dur),
-            ..
-        } => copy_core::copy_text("beRotation.hint.holdAt", &[("at", at), ("dur", dur)]),
-        RotHint::Hold { .. } => copy_core::copy_text("beRotation.hint.hold", &[]),
+        RotHint::Hold { account } => match (account, held) {
+            (Some(a), Some(Held { at, dur })) => copy_core::copy_text(
+                "beRotation.hint.holdUntil",
+                &[("at", at), ("account", a), ("dur", dur)],
+            ),
+            (None, Some(Held { at, dur })) => {
+                copy_core::copy_text("beRotation.hint.holdAt", &[("at", at), ("dur", dur)])
+            }
+            (_, None) => copy_core::copy_text("beRotation.hint.hold", &[]),
+        },
         RotHint::StrategyError { error, .. } => match error.line {
             Some(l) => copy_core::copy_text(
                 "beRotation.hint.errorLine",
@@ -243,10 +247,20 @@ fn note_of(hint: RotHint, name: &str, why: FailWhy) -> RotNote {
     }
 }
 
-/// 换号记录配上为什么那一句。
-fn log_rows(log: &[book::Log]) -> Vec<RotLogRow> {
+/// `agent` 那一家一条会话的换号记录配上为什么那一句（号名照那一家问）。
+fn log_rows(agent: &str, log: &[book::Log]) -> Vec<RotLogRow> {
     log.iter()
         .map(|h| RotLogRow {
+            moved: {
+                use crate::accounts::quota::name_words::account_text_of;
+                copy_core::copy_text(
+                    "rot.strip.move",
+                    &[
+                        ("from", &account_text_of(agent, &h.from)),
+                        ("to", &account_text_of(agent, &h.to)),
+                    ],
+                )
+            },
             because: match (&h.why, &h.cause) {
                 (Some(w), _) if !w.is_empty() => w.clone(),
                 (_, book::Cause::Order) => copy_core::copy_text("beRotation.cause.order", &[]),
@@ -478,13 +492,10 @@ pub(crate) fn view_with(
                     Vec::new(),
                 ),
             };
-            let s = book::Session::fresh(
-                crate::faces::rotation_face::LIBRARY_AGENT,
-                acct_core::BARE_ACCOUNT,
-                now,
-            );
-            let agent = crate::faces::rotation_face::LIBRARY_AGENT.to_string();
-            (s, plan, Some(shelved), form, agent)
+            // 设置页没有会话、请求不写家 ⇒ 默认那一家（照请求的规整，`pick_route`）；一家都没有 ⇒ 空串。
+            let agent = crate::agents::pick_route(None).map_or("", crate::agents::RouteId::id);
+            let s = book::Session::fresh(agent, acct_core::BARE_ACCOUNT, now);
+            (s, plan, Some(shelved), form, agent.to_string())
         }
     };
     let unreadable = || ctx.hop.store.unreadable();
@@ -493,6 +504,7 @@ pub(crate) fn view_with(
         if let Some(e) = unreadable() {
             hints.push(note_of(
                 RotHint::BookUnreadable { text: e.said },
+                None,
                 "",
                 FailWhy::Other,
             ));
@@ -504,12 +516,9 @@ pub(crate) fn view_with(
                 let facts = ctx
                     .hop
                     .accts(sid, &session, &base, &plan.settings, &row, now);
-                let line = plain_lineup(&session.current, &session.off, &facts, now);
+                let line = plain_lineup(&agent, &session.current, &session.off, &facts, now);
                 let sendable = |a: &str| {
-                    facts
-                        .iter()
-                        .find(|x| x.id == a)
-                        .is_some_and(|x| standing::sendable(x, now))
+                    decide::fact(&facts, &agent, a).is_some_and(|x| standing::sendable(x, now))
                 };
                 let all = ctx.hop.facts(&agent, &row, now, tz);
                 let blocked = |a: &str| {
@@ -540,12 +549,18 @@ pub(crate) fn view_with(
             accounts: ids
                 .iter()
                 .filter(|id| !id.is_empty())
-                .map(|id| account_of(ctx.hop.fact_one(&agent, &lib, id, &row, now, tz), &colors))
+                .map(|id| {
+                    account_of(
+                        &agent,
+                        ctx.hop.fact_one(&agent, &lib, id, &row, now, tz),
+                        &colors,
+                    )
+                })
                 .collect(),
             listed: 0,
             decision: None,
             timeline: None,
-            log: log_rows(&session.log),
+            log: log_rows(&agent, &session.log),
             hints,
             can: can_of(&req.target, false),
             foot: None,
@@ -571,18 +586,22 @@ pub(crate) fn view_with(
             error: None,
             remove: remove_of(&users(&base, &plan.id, live), for_new == plan.id),
             for_new: for_new == plan.id,
-            words_bad: false,
             tz_unknown: false,
             hand: false,
         },
     };
     let mut hints = Vec::new();
+    let mut held = None;
     if let Pick::Hold { until, account } = &d.pick {
         let clock = crate::common::time::TextClock::new(now, tz);
+        held = until.and_then(|t| {
+            Some(Held {
+                at: clock.text(t).0,
+                dur: clock.rel(t)?.0,
+            })
+        });
         hints.push(RotHint::Hold {
             account: account.clone(),
-            until_text: until.map(|t| clock.text(t).0),
-            left_text: until.and_then(|t| clock.rel(t)).map(|w| w.0),
         });
     }
     let why = d.strategy_error.as_ref().map_or(FailWhy::Other, |e| e.why);
@@ -617,7 +636,11 @@ pub(crate) fn view_with(
             zone: tz.viewer_zone().unwrap_or_else(|| "UTC".into()),
         });
     }
-    if item.words_bad {
+    if shelved
+        .as_ref()
+        .and_then(|s| s.file.as_ref().ok())
+        .is_some_and(|f| form::words_bad(&f.head.form))
+    {
         hints.push(RotHint::WordsBad);
     }
     if let Some(e) = unreadable() {
@@ -655,26 +678,26 @@ pub(crate) fn view_with(
         .iter()
         .map(|(_, id)| id.clone())
         .chain(
-            facts
-                .iter()
+            decide::mine(&facts, &agent)
                 .map(|a| a.id.clone())
                 .filter(|id| !rows.iter().any(|(_, x)| x == id)),
         )
         .collect();
     let lib = ctx.hop.book();
     let colors = crate::accounts::manage::library::account_colors();
-    let accounts: Vec<RotAccount> = ids
+    let shown: Vec<Fact> = ids
         .iter()
         .map(|id| {
-            account_of(
-                all_facts
-                    .iter()
-                    .find(|f| f.account == *id)
-                    .cloned()
-                    .unwrap_or_else(|| ctx.hop.fact_one(&agent, &lib, id, &row, now, tz)),
-                &colors,
-            )
+            all_facts
+                .iter()
+                .find(|f| f.account == *id)
+                .cloned()
+                .unwrap_or_else(|| ctx.hop.fact_one(&agent, &lib, id, &row, now, tz))
         })
+        .collect();
+    let accounts: Vec<RotAccount> = shown
+        .iter()
+        .map(|f| account_of(&agent, f.clone(), &colors))
         .collect();
     let (lineup, timeline, log) = match &req.target {
         RotTarget::Session { .. } => {
@@ -694,10 +717,7 @@ pub(crate) fn view_with(
                     .map(|b| b.text.clone())
             };
             let sendable = |a: &str| {
-                facts
-                    .iter()
-                    .find(|x| x.id == a)
-                    .is_some_and(|x| standing::sendable(x, now))
+                decide::fact(&facts, &agent, a).is_some_and(|x| standing::sendable(x, now))
             };
             (
                 lines_of(
@@ -709,18 +729,21 @@ pub(crate) fn view_with(
                     Ahead::Strategy { next_at },
                 ),
                 None,
-                log_rows(&session.log),
+                log_rows(&agent, &session.log),
             )
         }
         RotTarget::Strategy { .. } => (
             Vec::new(),
-            Some(timeline_of(&tl, now, now + hours * 3600, tz)),
+            Some(timeline_of(&tl, &agent, now, now + hours * 3600, tz)),
             Vec::new(),
         ),
     };
     let name = item.id.clone();
     let used = item.remove.who.is_some();
-    let notes: Vec<RotNote> = hints.into_iter().map(|h| note_of(h, &name, why)).collect();
+    let notes: Vec<RotNote> = hints
+        .into_iter()
+        .map(|h| note_of(h, held.as_ref(), &name, why))
+        .collect();
     Ok(RotationViewReply {
         now,
         now_text: face(now, tz),
@@ -731,8 +754,8 @@ pub(crate) fn view_with(
             &plan.settings,
             &rows
                 .iter()
-                .zip(&accounts)
-                .map(|((i, id), a)| (*i, a, facts.iter().any(|f| f.id == *id)))
+                .zip(&shown)
+                .map(|((i, id), f)| (*i, f, decide::fact(&facts, &agent, id).is_some()))
                 .collect::<Vec<_>>(),
         ),
         start: session.start.clone(),
@@ -894,7 +917,7 @@ fn rule_of(c: &RotCell) -> String {
     let v = match c.kind {
         form::Kind::Toggle if c.v == Value::Bool(true) => copy_text("beProfile.val.on", &[]),
         form::Kind::Toggle => copy_text("beAsk.auto.off", &[]),
-        form::Kind::OneOf => c
+        form::Kind::Choice => c
             .choices
             .iter()
             .find(|x| Value::String(x.v.clone()) == c.v)
@@ -929,12 +952,8 @@ fn rule_of(c: &RotCell) -> String {
 }
 
 /// 设置那几块：总体（`scope: all`）· 号列表每一行（字 ＋ `scope: each` 那几格 ＋ 写成的句子）。
-/// `listed` 一项一行：它在号列表里的行号（格照这一行画）· 号牌 · 这台账号库里有没有这个号（没有 ⇒ 头一句照实说）。
-fn board_of(
-    form: &[form::Cell],
-    settings: &Value,
-    listed: &[(usize, &RotAccount, bool)],
-) -> RotBoard {
+/// `listed` 一项一行：它在号列表里的行号（格照这一行画）· 那个号的事实（后端的行）· 这台账号库里有没有这个号（没有 ⇒ 头一句照实说）。
+fn board_of(form: &[form::Cell], settings: &Value, listed: &[(usize, &Fact, bool)]) -> RotBoard {
     let of = |scope: form::Scope, row: Option<usize>| -> Vec<RotCell> {
         form.iter()
             .filter(|c| c.scope == scope && form::shown(form, c, settings, row))
@@ -944,7 +963,7 @@ fn board_of(
     // 号名旁的记号：那一行每个几选一此刻取的那一项带的记号。
     let marks = |row: usize| -> Vec<RotMark> {
         form.iter()
-            .filter(|c| c.scope == form::Scope::Each && c.kind == form::Kind::OneOf)
+            .filter(|c| c.scope == form::Scope::Each && c.kind == form::Kind::Choice)
             .filter_map(|c| {
                 let v = form::value_of(c, settings, Some(row)).0;
                 let o = c.choices.iter().find(|o| v == o.v.as_str())?;
@@ -960,12 +979,12 @@ fn board_of(
             })
             .collect()
     };
-    let pct = |w: &crate::accounts::quota::facts::WinFact| format!("{}", w.used.round());
+    let pct = |w: &WinFact| format!("{}", w.used.round());
     RotBoard {
         all: of(form::Scope::All, None),
         rows: listed
             .iter()
-            .map(|&(i, RotAccount { fact: f, .. }, here)| {
+            .map(|&(i, f, here)| {
                 let (u5, u7) = (pct(&f.w5h), pct(&f.w7d));
                 let mut line = copy_text("rot.acct.line", &[("u5", &u5), ("u7", &u7)]);
                 if let Some(at) = &f.w5h.resets_text {

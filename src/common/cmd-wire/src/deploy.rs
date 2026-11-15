@@ -28,50 +28,27 @@ pub struct DeployUninstallReq {
     pub machine: String,
 }
 
-/// 这一趟做了什么：部署判定（`deploy_contract::DeployAction`）那三种的标签，值域与它一处（`DeployAction::tag`）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(
-    any(test, feature = "ts"),
-    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
-)]
-#[serde(rename_all = "lowercase")]
-pub enum ActionTag {
-    /// 已是这一版。
-    Skip,
-    /// 放上了这一版。
-    Deploy,
-    /// 那台不比这一版旧 ⇒ 一个字节没写。
-    Keep,
-}
-
-/// `deploy-install` 的回包：这一趟做了什么 · 那一句 · 落点上现在是哪一版 · 那台是什么 OS。
+/// `deploy-install` 的回包：这一趟做了什么那一句（后端写全：已是这一版 · 装上了哪一版 · 那台不比这一版旧 ⇒ 连出路），出口原样摆。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
     ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
+#[serde(deny_unknown_fields)]
 pub struct Installed {
-    pub action: ActionTag,
-    /// 这一趟做了什么那一句（`deploy::Plan::said`）。
     pub said: String,
-    /// 落点上现在那一份自报的身份（`keep` ⇒ 那台上那一份的；否则这一版的）。
-    pub build: String,
-    /// 那台的 OS（表 A 的词）。
-    pub os: String,
 }
 
-/// `deploy-uninstall` 的回包：删没删 · 那一句（`deploy` crate 写的）。
+/// `deploy-uninstall` 的回包：那一句（`deploy` crate 写的：删了 · 本来就不在）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
     ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
+#[serde(deny_unknown_fields)]
 pub struct Uninstalled {
-    /// 删了落点那一份 ⇒ `true`；本来就不在 ⇒ `false`。
-    pub removed: bool,
     pub said: String,
 }
 

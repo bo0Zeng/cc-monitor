@@ -207,8 +207,8 @@ describe("结束 · 接管 · 交还：都按名单里的句柄说那台", () =>
   });
 
   it("★ 接管 · 交还交句柄，回那一行此刻的输入那一格；送字不再带 `take`（「接管再送」那一支删了）", async () => {
-    const held = { kind: "held", holder: { who: "desktop", mine: true } };
-    answer({ "terminal-take-input": { ok: { input: held } }, "terminal-release-input": { ok: { input: { kind: "held", holder: { who: "none", mine: false } } } } });
+    const held = { kind: "held", holder: { mine: true } };
+    answer({ "terminal-take-input": { ok: { input: held } }, "terminal-release-input": { ok: { input: { kind: "held", holder: { mine: false } } } } });
     expect(await takeInput("devbox", "m-1")).toEqual(held);
     expect((await releaseInput("devbox", "m-1")).kind).toBe("held");
     answer({ "terminal-input": { ok: { result: "delivered" } } });

@@ -3,7 +3,7 @@
 //! | 判据 | 钉的那一形 | 两侧异源在哪 |
 //! |---|---|---|
 //! | [`upload_opens_the_file_picker_and_the_picked_files_go_the_drop_way`] | 命令栏「上传」⇒ 选择框被问「选文件」；选到的那几份走拖入那一条（「进度」表里多一行上传）；没选 ⇒ 什么都不起、不出声 | 假选择框记下被问了什么 |
-//! | [`download_opens_the_save_box_with_a_legal_name_and_starts_the_pull_there`] | 「下载」⇒ 选择框被问「存」、建议名 ＝ 那一行的名字；选到落点 ⇒ 那一趟下载起在那个落点；没选 ⇒ 什么都不起 | 同上 |
+//! | [`download_opens_the_save_box_with_the_rows_name_and_starts_the_pull_there`] | 「下载」⇒ 选择框被问「存」、建议名 ＝ 那一行的名字；选到落点 ⇒ 那一趟下载起在那个落点；没选 ⇒ 什么都不起 | 同上 |
 //! | [`a_pick_that_lands_before_the_next_frame_is_taken_by_that_frame`] | 结局先落下（敲了窗口）⇒ 下一帧生产那一处把它接上、看板清空 | 「落下」认生产那一下 `request_repaint` |
 //!
 //! ⚠ 买不到：真弹框（本机无图形会话；测试构建里缺省的选择框一律答「没选」）· 真 Windows。
@@ -42,12 +42,21 @@ async fn settle(w: &mut crate::shell::FileWindow) {
     panic!("到兜底上限选择框的结局还没落下");
 }
 
-fn uploads(w: &crate::shell::FileWindow) -> usize {
+fn of_verb(w: &crate::shell::FileWindow, verb: batch_core::Verb) -> Vec<batch_core::Plan> {
     w.progress
         .jobs()
         .iter()
-        .filter(|j| matches!(j.trip, crate::progress::Trip::Upload { .. }))
-        .count()
+        .filter_map(|j| match &j.trip {
+            crate::progress::Trip::Batch { board, .. } if board.plan().verb == verb => {
+                Some(board.plan())
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+fn uploads(w: &crate::shell::FileWindow) -> usize {
+    of_verb(w, batch_core::Verb::Upload).len()
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -101,7 +110,7 @@ async fn a_pick_that_lands_before_the_next_frame_is_taken_by_that_frame() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn download_opens_the_save_box_with_a_legal_name_and_starts_the_pull_there() {
+async fn download_opens_the_save_box_with_the_rows_name_and_starts_the_pull_there() {
     let wired = wire_up("w5-pick-down", FakeBackend::new(&[], Declared::default())).await;
     let mut w = window_on(&wired, "/srv");
     *w.listing.rows.lock().unwrap() = vec![crate::source::Row {
@@ -121,7 +130,7 @@ async fn download_opens_the_save_box_with_a_legal_name_and_starts_the_pull_there
     assert!(w.begin_pull(0), "「下载」没起系统存盘框");
     assert_eq!(
         w.pull_want().cloned(),
-        Some(("/srv/report.pdf".to_string(), "report.pdf".to_string()))
+        Some((b"/srv/report.pdf".to_vec(), "report.pdf".to_string()))
     );
     settle(&mut w).await;
     assert_eq!(
@@ -130,18 +139,13 @@ async fn download_opens_the_save_box_with_a_legal_name_and_starts_the_pull_there
             suggested_name: "report.pdf".into()
         }]
     );
-    let dests: Vec<String> = w
-        .progress
-        .jobs()
-        .iter()
-        .filter_map(|j| match &j.trip {
-            crate::progress::Trip::Download { dest, .. } => Some(dest.clone()),
-            _ => None,
-        })
+    let dests: Vec<serde_json::Value> = of_verb(&w, batch_core::Verb::Download)
+        .into_iter()
+        .map(|p| p.args["to_dir"].clone())
         .collect();
     assert_eq!(
         dests,
-        vec!["/home/u/下载/report.pdf".to_string()],
+        vec![serde_json::json!("/home/u/下载")],
         "那一趟没起在选到的落点上"
     );
     assert!(w.pull_want().is_none());

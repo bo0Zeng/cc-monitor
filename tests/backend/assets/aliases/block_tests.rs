@@ -295,9 +295,11 @@ fn the_powershell_block_starts_nothing_in_the_background_and_never_touches_the_t
         "Mutex",
         "Console]::Title",
         "WindowTitle",
-        "ps-await",
-        "ps-registry",
+        relay_route_core::AWAIT_SUBDIR,
+        relay_route_core::REGISTRY_SUBDIR,
         "Sleep",
+        // 不扫进程判 monitor 在不在：照样起一个带 `--background` 的，已经在跑的那个收到后什么都不做（壳 `wants_front`）。
+        "Get-Process",
     ] {
         assert!(!code.contains(gone), "块里又出现了 `{gone}`：{code}");
     }
@@ -970,11 +972,17 @@ fn the_powershell_block_never_touches_the_session_path_again() {
 fn the_powershell_cc_goes_through_ccm_exactly_like_the_posix_one() {
     use super::super::{accounts::with_builtins, render_line, Caps};
     let builtin = |sh: Shell| -> Vec<String> {
-        with_builtins(Default::default(), &[], Caps::of(sh).tmux, &|a, b| a == b)
-            .profiles
-            .into_iter()
-            .map(|p| p.name)
-            .collect()
+        with_builtins(
+            crate::agents::REGISTRY,
+            Default::default(),
+            &[],
+            Caps::of(sh).tmux,
+            &|a, b| a == b,
+        )
+        .profiles
+        .into_iter()
+        .map(|p| p.name)
+        .collect()
     };
     let word = crate::ccm_line::SUBCOMMAND_WORD;
     let cc_of = |sh: Shell| {
@@ -1619,5 +1627,97 @@ fn the_shared_alias_snippet_puts_exactly_the_ccm_landing_on_path() {
         run(2),
         path,
         "source 两趟 PATH 变了 —— 嵌套 shell 会让 PATH 无限变长"
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 接入块模板只写形状：路径 · 握手目录 · 起始时刻 · 围栏由 Rust 填（X45 · X46）
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// 改占位之前那两份渲染结果（逐字）：模板怎么改，装进用户 rc / `$PROFILE` 的字节都得是这一份。
+const POSIX_BLOCK_GOLDEN: &str = r####"# cc-monitor 装进来的终端接入（卸载时整段删掉）：让终端认得 ccm，并接上 cc-monitor「别名」里的那份清单。
+case ":$PATH:" in *":$HOME/.cc-monitor/bin:"*) ;; *) export PATH="$HOME/.cc-monitor/bin:$PATH";; esac
+if [ -r "$HOME/.cc-monitor/aliases.sh" ]; then . "$HOME/.cc-monitor/aliases.sh"; fi
+# 本机桌面上开的终端（不是经 ssh 登进来的）：留一份记录，cc-monitor 据它认出这个终端窗口（↗ 切得回来）；这里不等、不起后台。
+if [ -z "${SSH_CONNECTION:-}" ] && [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && __ccm_tty=$(tty 2>/dev/null) && [ -r "/proc/$$/stat" ]; then
+  __ccm_start=$(sed 's/.*) //' "/proc/$$/stat" | cut -d' ' -f20)
+  export LC_CCM_WINDOW="$$-$__ccm_start"
+  __ccm_dir="${CCM_DATA_DIR:-$HOME/.cc-monitor}/ps-await"
+  if mkdir -p "$__ccm_dir" 2>/dev/null; then
+    printf '{"shell_pid":%s,"proc_start":"%s","tty":"%s"}\n' "$$" "$__ccm_start" "$__ccm_tty" > "$__ccm_dir/$$.tty.part" && mv -f "$__ccm_dir/$$.tty.part" "$__ccm_dir/$$.tty"
+  fi
+  unset __ccm_tty __ccm_start __ccm_dir
+fi
+"####;
+const PS_BLOCK_GOLDEN: &str = r####"# === cc-monitor BEGIN v9 ===
+# 自动生成 — 卸载请用 cc-monitor 设置面板 [卸载]，或手动删除 BEGIN/END 之间所有内容。
+# 文档: https://github.com/bo0Zeng/cc-monitor
+
+function __ccm_bind {
+    # 设置里勾了「用 cc 启动 claude 时自动打开 monitor」：在后台起它（不抢这个终端的焦点）；已经在跑 ⇒ 那一个收到 `--background` 什么都不做。
+    # 清单里每条别名开头那一行调它（名字沿用）。切到终端不靠这里：cc-monitor 点 ↗ 那一刻按这个终端的控制台认窗口。
+    $ccmDir = '/_'
+    $autoLaunchFile = Join-Path $ccmDir 'auto-launch.json'
+    if (-not (Test-Path $autoLaunchFile)) { return }
+    try {
+        $alCfg = Get-Content $autoLaunchFile -Raw -ErrorAction Stop | ConvertFrom-Json
+        if (-not ($alCfg.auto_launch_enabled -and $alCfg.monitor_exe_path)) { return }
+        $monPath = $alCfg.monitor_exe_path
+        if (-not (Test-Path $monPath)) { return }
+        Start-Process -FilePath $monPath -ArgumentList '--background' -ErrorAction SilentlyContinue | Out-Null
+    } catch {}
+}
+# 这个窗口的标签（进程号-起始时刻）：经下面那层 ssh 送到远端，远端只回显，↗ 先按它找这个 PowerShell 所在的窗口。
+try { $env:LC_CCM_WINDOW = '{0}-{1}' -f $PID, [System.Diagnostics.Process]::GetCurrentProcess().StartTime.ToFileTime() } catch {}
+# ssh 包一层：带上窗口标签（远端 sshd 默认收 LC_* 变量；不收就只是没送到）。其余参数原样交给系统的 ssh。
+function ssh {
+    $exe = Get-Command ssh -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $exe) { Write-Error 'ssh: command not found'; return }
+    & $exe.Source -o SendEnv=LC_CCM_WINDOW @args
+}
+# 接上 cc-monitor「别名」那一块写的别名文件（没生成过就什么都不做）。
+if (Test-Path -LiteralPath "$HOME\.cc-monitor\aliases.ps1") { . "$HOME\.cc-monitor\aliases.ps1" }
+# === cc-monitor END ===
+"####;
+
+/// ★ 两份渲染结果逐字等于金样（POSIX 是编译期填好的那一份；PowerShell 喂占位目录 `/_`）。
+#[test]
+fn the_rendered_alias_blocks_are_byte_for_byte_the_golden_ones() {
+    assert_eq!(CCM_WRAPPER_SNIPPET, POSIX_BLOCK_GOLDEN);
+    assert_eq!(render_cc_code(Path::new("/_")), PS_BLOCK_GOLDEN);
+}
+
+/// ★ 两份模板源码里不写那几个事实：家里的路径 · 数据目录变量 · 握手目录 · 起始时刻的写法 · 围栏；都由 Rust 从唯一的那一处填。
+/// 正控：同一张词表在金样（填好的那一份）上每个词都认得出 ⇒ 模板里零命中不是空真。
+#[test]
+fn the_alias_templates_spell_none_of_the_facts_rust_fills_in() {
+    let posix_tpl = include_str!("../../../../src/shared/ccm-aliases.sh");
+    let ps_tpl = include_str!("../../../../src/shared/cc.ps1.tpl");
+    let posix_facts = [
+        ".cc-monitor",
+        relay_route_core::DATA_DIR_ENV,
+        relay_route_core::AWAIT_SUBDIR,
+        crate::platform::shell::posix::SELF_START,
+    ];
+    let ps_facts = [
+        ".cc-monitor",
+        crate::platform::shell::powershell::SELF_START,
+        BEGIN_MARKER,
+        END_MARKER,
+    ];
+    for f in posix_facts {
+        assert!(POSIX_BLOCK_GOLDEN.contains(f), "正控：金样里认不出 `{f}`");
+        assert!(!posix_tpl.contains(f), "POSIX 模板里又写死了 `{f}`");
+    }
+    for f in ps_facts {
+        assert!(PS_BLOCK_GOLDEN.contains(f), "正控：金样里认不出 `{f}`");
+        assert!(!ps_tpl.contains(f), "PowerShell 模板里又写死了 `{f}`");
+    }
+    for m in [BEGIN_MARKER, END_MARKER, CCM_PROFILE_BEGIN, CCM_PROFILE_END] {
+        assert!(!posix_tpl.contains(m), "POSIX 模板里写了围栏 `{m}`");
+    }
+    assert!(
+        !CCM_WRAPPER_SNIPPET.contains("{{"),
+        "POSIX 有占位没填：{CCM_WRAPPER_SNIPPET}"
     );
 }

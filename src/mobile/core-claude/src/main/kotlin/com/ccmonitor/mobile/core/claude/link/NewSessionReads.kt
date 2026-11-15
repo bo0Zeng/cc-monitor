@@ -4,6 +4,7 @@ import com.ccmonitor.mobile.core.wire.gen.AccountNameArgs
 import com.ccmonitor.mobile.core.wire.gen.AccountsListReq
 import com.ccmonitor.mobile.core.wire.gen.Commands
 import com.ccmonitor.mobile.core.wire.gen.DirChecked
+import com.ccmonitor.mobile.core.wire.gen.LoginAccountReq
 import com.ccmonitor.mobile.core.wire.gen.LoginCancelReq
 import com.ccmonitor.mobile.core.wire.gen.LoginFinishReq
 import com.ccmonitor.mobile.core.wire.gen.LoginStartArgs
@@ -53,7 +54,7 @@ object RotationStrategies {
     fun of(data: Any?): RotationStrategiesReply? = Commands.RotationStrategies.reply(data)
 }
 
-/** 在 app 里登录一个号：`login-start` 起那一家的登录、交回链接；粘回来的那一段经 `login-finish` 交给它；`login-cancel` 收。 */
+/** 在 app 里登录一个号：`login-start` 起那一家的登录、交回链接；粘回来的那一段经 `login-finish` 交给它；`login-cancel` 收；`login-out` · `login-status` 退出 · 问状态。 */
 object Login {
     const val START: String = Commands.LoginStart.NAME
     const val FINISH: String = Commands.LoginFinish.NAME
@@ -68,11 +69,8 @@ object Login {
             },
         )
 
-    /** 号那一形的目标（新建会话 · 设置账号那边拼：同 `fix.args` 那一形）。 */
-    fun account(
-        agent: String,
-        account: String,
-    ): LoginStartReq = LoginStartReq.Account(agent = agent, account = account)
+    /** 号那一形的目标（新建会话 · 设置账号那边拼：同 `fix.args` 那一形）：只交号名，家由那台照号表认。 */
+    fun account(account: String): LoginStartReq = LoginStartReq.Account(agent = null, account = account)
 
     fun finish(
         job: String,
@@ -89,4 +87,19 @@ object Login {
     fun cmd(account: String): Map<String, Any?> = Commands.AccountsLoginCmd.args(AccountNameArgs(name = account))
 
     fun cmdOf(data: Any?): String? = Commands.AccountsLoginCmd.reply(data)?.cmd
+
+    /** `login-out`：退出一个号的登录（那台跑那一家声明的退出那一条；账号行 `signOut` 才给）。 */
+    const val OUT: String = Commands.LoginOut.NAME
+
+    /** `login-status`：问一个号登没登（账号行 `status` 才给）。 */
+    const val STATUS: String = Commands.LoginStatus.NAME
+
+    /** 退出 · 状态那两条的入参：哪个号（家由那台照号表认）。 */
+    fun once(account: String): Map<String, Any?> = Commands.LoginOut.args(LoginAccountReq(agent = null, account = account))
+
+    /** 退出 · 状态那两条回包里那台写好的那一句（「x 已退出登录」·「x 已登录」…）；解不出 ⇒ `null`。 */
+    fun saidOf(
+        cmd: String,
+        data: Any?,
+    ): String? = if (cmd == OUT) Commands.LoginOut.reply(data)?.said else Commands.LoginStatus.reply(data)?.said
 }

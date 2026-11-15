@@ -13,8 +13,7 @@
 //! 读清单时认 Windows 盘符）各一条。`\` 不在拒绝集里：它是 Windows 的分隔符，由 POSIX 形那一条自己拒。
 
 // 账号库与清单住哪（相对家目录）是后端的家那一族，住 `relay_route_core::ACCOUNTS_DIR_REL` / `ACCOUNTS_MANIFEST_NAME`。
-/// 凭据文件名（每个账号的 config dir 下）；只 stat 存在性，**绝不读内容**。
-pub const CREDENTIALS_NAME: &str = ".credentials.json";
+// 哪一家的登录存在哪份文件里，住那一家的适配层（后端 `agents/<家>` 的 `LoginFace.creds_file`）；本包不认识。
 
 /// 这台本来那一份登录（不设配置目录的状态）的号名：账号库清单里写它的名字、`/t/` 路由第 2 段写它的账号段、号名的字认它，都是这一个。
 /// 起会话时没说是哪个号（路由段 `_`）用的也是这一份登录 —— 两个段写给人看的是同一个名字。
@@ -27,7 +26,7 @@ pub const SUPPORTED_SCHEMA: u64 = 1;
 
 // ---------------------------------------------------------------- 鉴权方式
 
-/// 鉴权方式 = 订阅登录（`~/.claude` 那套 `.credentials.json`）。
+/// 鉴权方式 = 订阅登录（就绪 == 那一家的凭据文件在）。
 pub const AUTH_KIND_SUBSCRIPTION: &str = "subscription";
 /// 鉴权方式 = 第三方 / 官方 API key（**不**看订阅凭据文件）。
 pub const AUTH_KIND_API_KEY: &str = "api-key";
@@ -72,7 +71,7 @@ pub fn apikey_account_id_of_dir(config_dir: &str) -> Option<String> {
 }
 
 /// 给一批 configDir 与这台机器 apikey 表里的 id，答「哪几个号在表里有行」。这是这条规则的唯一住址。
-/// 「有行」说的是 (agent, 账号) 这一对：凭据文件里的行只属于 `table_agent` 那一家（后端传 `accounts::upstream_select::CREDENTIALS_FILE_AGENT`）⇒ `agent` 不是那一家 ⇒ 空集。
+/// 「有行」说的是 (agent, 账号) 这一对：凭据文件里的行只属于 `table_agent` 那一家（后端传 key 表那几行挂的那一家，`accounts::upstream_select::file_face::RoutedRows::agent`）⇒ `agent` 不是那一家 ⇒ 空集。
 /// 它答的是「表里有没有这一行」，不是「这个 key 能不能用」，也不是「这次拉起会不会真的注入」（那还要过「中转在不在跑」那一格）。
 pub fn apikey_routed_subset(
     config_dirs: &[String],
@@ -142,6 +141,8 @@ pub struct ManifestAccount {
     pub mode: Option<String>,
     /// 盘上 `authKind` 原样（缺席 = 订阅号；分类规则只住 [`auth_kind_from_manifest`]）。
     pub auth_kind: Option<String>,
+    /// 盘上 `agent` 原样：这个号是哪一家的号（线上 `agent_kind`）；缺席 ⇒ 缺省那一家（后端 `agents::account_kind` 认）。
+    pub agent: Option<String>,
 }
 
 impl ManifestAccount {
@@ -166,13 +167,6 @@ pub struct AccountBook {
 }
 
 impl AccountBook {
-    /// 路由段是 `id` 的那个号（[`ManifestAccount::route_id`]）。
-    pub fn by_route(&self, id: &str) -> Option<&ManifestAccount> {
-        self.accounts
-            .iter()
-            .find(|a| a.route_id().as_deref() == Some(id))
-    }
-
     pub fn by_name(&self, name: &str) -> Option<&ManifestAccount> {
         self.accounts.iter().find(|a| a.name == name)
     }

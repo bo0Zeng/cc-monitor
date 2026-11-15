@@ -13,9 +13,8 @@
  * ② 有载荷但 TS 不读字段 ⇒ `unknown`（或不透明 JSON）并在那一行注明；③ TS 真消费字段 ⇒ 生成物类型。
  * 条目按落地顺序追加，不按字母序。
  */
-import { Channel, invoke as tauriInvoke, type InvokeArgs, type InvokeOptions } from "@tauri-apps/api/core";
+import { invoke as tauriInvoke, type InvokeArgs, type InvokeOptions } from "@tauri-apps/api/core";
 import type { Failed } from "../generated/Failed";
-import type { Staged } from "../generated/Staged";
 
 /**
  * 壳命令失败（交出去那一形 `Failed`：码 · 一句 · 复制详情那几行）⇒ 一个 `Error`：`message` 与 `String(e)` 都是那一句，
@@ -58,10 +57,6 @@ async function callShell<T>(cmd: string, args?: InvokeArgs, options?: InvokeOpti
 
 /** 本文件里每一条命令都经这一口：失败是 [`Failed`] ⇒ 换成 [`SaidError`]。`args` 是原样字节的那几条，别的实参走 `options.headers`。 */
 const invoke: <T>(cmd: string, args?: InvokeArgs, options?: InvokeOptions) => Promise<T> = callShell;
-
-/** 头只收可见 ASCII ⇒ 名字照 UTF-8 写成十六进制（壳那一侧 `cmd_wire::files::from_hex` 解）。 */
-const utf8Hex = (s: string): string => Array.from(new TextEncoder().encode(s), (b) => b.toString(16).padStart(2, "0")).join("");
-
 import type { AutoLaunchConfig } from "../generated/AutoLaunchConfig";
 // 合并后的命令一律收 `origin`，类型用生成物 `Machine`（`string`，不手写）：给 origin 参数传 `null` 是编译错。
 // 本机逐字送 `LOCAL`（`"<local>"`，经 `./origin.ts` 转出生成物）；TS 侧其余各处的 origin 也是这一个表示
@@ -72,7 +67,6 @@ import type { TabSession } from "../generated/TabSession";
 import type { TerminalChoices } from "../generated/TerminalChoices";
 import type { ConfigEdit } from "../generated/ConfigEdit";
 import type { BackendStatus } from "../generated/BackendStatus";
-import type { DataPathsResponse } from "../generated/DataPathsResponse";
 import type { DiagnosticsConfig } from "../generated/DiagnosticsConfig";
 import type { DiagnosticsReport } from "../generated/DiagnosticsReport";
 import type { FilewinTotals } from "../generated/FilewinTotals";
@@ -88,10 +82,11 @@ import type { OsOpen } from "../generated/OsOpen";
 export { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 export { homeDir, join as joinLocalPath } from "@tauri-apps/api/path";
 
-/** 「停」的结局：三个词 ＋ 被停的 pid（没在跑 ⇒ `null`）。与 Rust `remote_resident::StopAnswer` 同形。 */
+/** 「停」的结局：三个词 ＋ 被停的 pid（没在跑 ⇒ `null`）＋ 壳写好的那一句（机器页照抄）。与 Rust `remote_resident::StopAnswer` 同形。 */
 export interface StopAnswer {
   stopped: "graceful" | "killed" | "not_running";
   pid: number | null;
+  said: string;
 }
 
 
@@ -114,9 +109,6 @@ export const commands = {
    */
   frontend_perf_log: (args: { lines: string }) =>
     invoke<void>("frontend_perf_log", args),
-
-  /** 设置面板「数据」区：枚举 monitor 写到磁盘的所有路径。返回值字段被真消费 ⇒ 用生成物（桶③）。 */
-  get_data_paths: () => invoke<DataPathsResponse>("get_data_paths"),
 
   /**
    * 写配置：只交「改哪几条路径」，不整份替换（并发写不互相覆盖）。Rust 返回 `Result<(), String>` ⇒ **桶①**。
@@ -173,7 +165,7 @@ export const commands = {
 
   /**
    * 「足迹」里 monitor 自己那台那几行（`HostScope::Client`）要的、只有 monitor 知道的事实（`footprint_client.rs`）：
-   * 它自己进程的 `{home, path}`。成品由那台后端的帧命令 `data-report` 出（这一份原样带过去），
+   * 它自己进程的 `{home, path, webview}`。成品由那台后端的帧命令 `data-report` 出（这一份原样带过去），
    * 本侧不认识它的形状 ⇒ **桶②**。
    */
   footprint_client_facts: () =>
@@ -207,7 +199,7 @@ export const commands = {
    * 回的是**这一趟列到的行数** ⇒ 桶③那一支里的「原始类型」（`number`，不用生成物）。
    *
    * 🔴 **它为什么不是「发个请求就回」**：Rust 侧**先真的把那个目录列出来**，
-   * 列不出来就带着 `transfer_relay` 那边的原文 reject ⇒ 这一条 `await` 真的能失败，
+   * 列不出来就带着那台后端列目录那一趟的原文 reject ⇒ 这一条 `await` 真的能失败，
    * 调用方该接住它并出声（`src/frontend/ui/file-window.ts::openFileWindow`，全仓唯一调用点）。
    * 没有这一层的话「点了按钮什么都没发生」与「开成功了」在界面上分不开
    * —— 本机没有图形会话时那正是必然发生的事。
@@ -236,9 +228,9 @@ export const commands = {
     invoke<void>("open_settings_window", { target }),
 
   /**
-   * 「用系统程序打开 / 在文件夹中显示」：本机一条绝对路径 · 一个网址（http · https · mailto）· monitor 的日志文件 / 日志目录。
+   * 「用系统程序打开 / 在文件夹中显示」：本机一条绝对路径 · 一个网址（http · https · mailto）· monitor 的日志文件（壳里还留着日志目录那一形，界面已不用）。
    * 壳起本机程序的那一门（`lib.rs::os_open`，挑程序住 `platform/proc.rs`）。**桶①**。
-   * 在文件夹中显示一律经 `reveal-in-folder.ts`；远端那台的路径走文件窗口（`file-window.ts::openOnMachine`）。
+   * 在文件夹中显示一律经 `reveal-in-folder.ts`；设置各页「在文件窗口里打开」本机远端都走文件窗口（`file-window.ts::openFileWindow`）。
    */
   os_open: (what: OsOpen) => invoke<void>("os_open", { what }),
 
@@ -304,17 +296,10 @@ export const commands = {
     } | null>("chan_offer", args),
 
   /**
-   * 聊天附件那一份交给壳逐块送进那台暂存区（`attach_stage.rs`：块多大 · 摘要 · 暂存键都是 `chunk_core`）。
-   * 请求体是原样字节；那台（名字 UTF-8 的十六进制）· 撤单号 · 进度通道走头。`moved` 逐块收已送字节。
-   * ⚠ 调用方经 `attach-draft.ts::channelIo`：失败是通道那一形（`chan/webview.rs::Fail`），由它照 `chan.ts::decodeFail` 解回三层。**桶③**。
+   * 聊天附件那一份的原样字节交壳放进本机暂存区（`attach_stage.rs`），回那条本机路径（交 `attach-draft-put`；分块 · 问那台都是本机后端的事）。
+   * ⚠ 调用方经 `attach-draft.ts::channelIo`：失败是通道那一形（`chan/webview.rs::Fail`），由它照 `chan.ts::decodeFail` 解回三层。**桶①**。
    */
-  attach_stage: (origin: Machine, ticket: number, bytes: Uint8Array, moved: (done: number) => void) =>
-    invoke<Staged>("attach_stage", bytes, {
-      headers: { "ccm-origin": utf8Hex(origin), "ccm-ticket": String(ticket), "ccm-moved": new Channel<number>(moved).toJSON() },
-    }),
-
-  /** ✕ 那一份：那一单下一块不再送（`attach_stage.rs::attach_stage_stop`）。**桶①**。 */
-  attach_stage_stop: (args: { ticket: number }) => invoke<void>("attach_stage_stop", args),
+  attach_stage: (bytes: Uint8Array) => invoke<string>("attach_stage", bytes),
 
   /**
    * **通道 `subscribe` 在 Tauri IPC 这一跳上的三条命令**（`chan/webview.rs`）。

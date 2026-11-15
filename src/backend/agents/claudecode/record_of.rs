@@ -1,4 +1,4 @@
-//! Claude 盘上一行（[`JsonlRecord`]，已带后端补的成品格）⇒ 通用记录（[`Record`]）。翻译表只住这里：
+//! Claude 盘上一行（[`JsonlRecord`]，已带后端补的成品格）⇒ 后端的行（[`BackRecord`]：通用记录 ＋ 只给后端看的重试那几格）。翻译表只住这里：
 //!
 //! | 盘上 | 通用记录 |
 //! |---|---|
@@ -7,11 +7,11 @@
 //! | `system` · `subtype == "api_error"` | `retry` |
 //! | `ai-title` / `custom-title` | `title{by: agent / user}` |
 //! | `attachment` · `queued_command` · 人说的（一轮中途插进来的那一句） | `said`（身份 · 时刻是这一行自己的） |
-//! | 看不懂的（`Unrecognized`：没见过的类型 · 形状变了） | `unread`（写好的一句 ＋ 原文摘录）；没见过的类型又没有链上身份 ⇒ 无记录（[`quiet_unread_of`]，会话事实里记数） |
+//! | 看不懂的（`CcMonitorUnrecognized`：没见过的类型 · 形状变了） | `unread`（写好的一句 ＋ 原文摘录）；没见过的类型又没有链上身份 ⇒ 无记录（[`quiet_unread_of`]，会话事实里记数） |
 //! | 其余（别的 `system` · `attachment` · 状态行 · 元数据） | 无记录（链上那一半由 [`super::chain`] 给） |
 
 use super::schema::JsonlRecord;
-use crate::agents::record::{Block, Body, Record, TitleBy, UnreadWhy};
+use crate::agents::record::{BackRecord, Block, Body, TitleBy, UnreadWhy};
 use serde_json::Value;
 
 /// 这一家在线上的 `agent` 值。
@@ -68,7 +68,7 @@ pub(crate) fn lands_of(v: &Value) -> crate::agents::Lands {
 /// （Claude Code 每一版都会添几种，一行一张「认不出的记录」会刷满消息流）。不悄悄丢：会话事实 `quietUnread` 照实记几行、哪几种
 /// （注册表 `RecordFace.quiet_unread`）。带身份的未知行照旧 `unread`；认识的类型形状变了（不论有无身份）照旧 `unread`。
 ///
-/// 判只这一处：[`record_of`] 对 `Unrecognized` 用同一个 [`no_identity`]、同一个「类型 serde 认不出」（`unknown-type` 那一支就是 serde 落到 `Unknown`），
+/// 判只这一处：[`row_of`] 对 `CcMonitorUnrecognized` 用同一个 [`no_identity`]、同一个「类型 serde 认不出」（`unknown-type` 那一支就是 serde 落到 `Unknown`），
 /// 判据逐行对拍两处一致。这一问给的是那个类型名；不是这种行 ⇒ `None`。
 pub fn quiet_unread_of(v: &Value) -> Option<String> {
     let s = |k: &str| v.get(k).and_then(Value::as_str);
@@ -89,19 +89,26 @@ fn no_identity(uuid: Option<&str>, parent_uuid: Option<&str>) -> bool {
     uuid.is_none() && parent_uuid.is_none()
 }
 
-/// 一条解析好的盘上记录 ⇒ 通用记录；不进界面 ⇒ `None`。`start` ＝ 这一行在记录里的起点字节：没有身份的那几类（标题 · 排队）`id` 按它合成
-/// （[`crate::agents::line_id`]，会话内唯一），图那一块的引用也记它（[`Block::Image`] 的 `at`）。
-pub fn record_of(rec: JsonlRecord, start: u64) -> Option<Record> {
-    let mut images = Images { at: start, n: 0 };
-    let rec_of = |id: String, at: Option<String>, body: Body| {
-        let id = if id.is_empty() {
+/// 一条解析好的盘上记录 ⇒ 后端的行（[`BackRecord`]：通用记录 ＋ 重试那几格）＋ 只给后端看的那几格（[`crate::agents::Unsent`]：图的字节 · 读文件那一类结果）；不进界面 ⇒ `None`。
+/// `start` ＝ 这一行在记录里的起点字节：没有身份的那几类（标题 · 排队）`id` 按它合成（[`crate::agents::line_id`]，会话内唯一），
+/// 图那一块的引用也记它（[`Block::Image`] 的 `at`）。
+pub fn row_of(rec: JsonlRecord, start: u64) -> Option<(BackRecord, crate::agents::Unsent)> {
+    let mut images = Images {
+        at: start,
+        data: Vec::new(),
+    };
+    let mut reads = Default::default();
+    let id_of = |id: String| {
+        if id.is_empty() {
             crate::agents::line_id(start)
         } else {
             id
-        };
-        crate::agents::record::record(AGENT.into(), id, at, body)
+        }
     };
-    match rec {
+    let rec_of = |id: String, at: Option<String>, body: Body| -> BackRecord {
+        crate::agents::record::record(AGENT.into(), id_of(id), at, body).into()
+    };
+    let record = match rec {
         JsonlRecord::User {
             uuid,
             timestamp,
@@ -109,8 +116,10 @@ pub fn record_of(rec: JsonlRecord, start: u64) -> Option<Record> {
             cwd,
             user_text,
             tool_results,
+            tool_reads,
             ..
         } => {
+            reads = tool_reads;
             let blocks = blocks_of(&message.content, &mut images);
             let (who, attachments) = with_attachments(user_text, &blocks, cwd.as_deref());
             Some(rec_of(
@@ -168,14 +177,14 @@ pub fn record_of(rec: JsonlRecord, start: u64) -> Option<Record> {
             max_retries,
             api_reason,
             ..
-        } if subtype.as_deref() == Some("api_error") => Some(rec_of(
-            uuid.unwrap_or_default(),
+        } if subtype.as_deref() == Some("api_error") => Some(crate::agents::record::retry(
+            AGENT.into(),
+            id_of(uuid.unwrap_or_default()),
             Some(timestamp),
-            Body::Retry {
+            crate::agents::record::RetryFacts {
                 reason: api_reason.unwrap_or(crate::agents::ApiReason::Unknown),
                 attempt: retry_attempt,
                 max: max_retries,
-                text: None,
             },
         )),
         JsonlRecord::AiTitle { ai_title, .. } => Some(rec_of(
@@ -219,7 +228,7 @@ pub fn record_of(rec: JsonlRecord, start: u64) -> Option<Record> {
         }
         // 认不出（没见过的类型 · 见过的类型形状变了）：每行一条 `unread`；相邻同类并成一条是出记录页那一遍的事。
         // 没见过的类型、又没有链上身份 ⇒ 簿记行，不成卡（[`quiet_unread_of`]）。
-        JsonlRecord::Unrecognized {
+        JsonlRecord::CcMonitorUnrecognized {
             ref uuid,
             ref parent_uuid,
             ref reason,
@@ -227,7 +236,7 @@ pub fn record_of(rec: JsonlRecord, start: u64) -> Option<Record> {
         } if reason == "unknown-type" && no_identity(uuid.as_deref(), parent_uuid.as_deref()) => {
             None
         }
-        JsonlRecord::Unrecognized {
+        JsonlRecord::CcMonitorUnrecognized {
             uuid,
             timestamp,
             original_type,
@@ -248,7 +257,14 @@ pub fn record_of(rec: JsonlRecord, start: u64) -> Option<Record> {
             ))
         }
         _ => None,
-    }
+    }?;
+    Some((
+        record,
+        crate::agents::Unsent {
+            images: images.data,
+            reads,
+        },
+    ))
 }
 
 /// 人说的那一条里认附件（送字那一下 [`super::ATTACH`] 写的那几形）：正文结尾那几行是指进附件目录的 `@相对路径` ⇒ 收进附件、从正文去掉；
@@ -343,9 +359,10 @@ pub(crate) fn blocks_of(content: &Value, images: &mut Images) -> Vec<Block> {
 }
 
 /// 一行里的图数到第几张了（[`Block::Image`] 的 `at` · `n`）：一行一份，按块的先后深度优先数。
+/// 图的字节（base64）按张收在这里，翻完交 [`crate::agents::Unsent::images`]（不上线）。
 pub(crate) struct Images {
     at: u64,
-    n: u32,
+    data: Vec<String>,
 }
 
 fn block_of(b: &Value, images: &mut Images) -> Option<Block> {
@@ -376,7 +393,7 @@ fn block_of(b: &Value, images: &mut Images) -> Option<Block> {
     })
 }
 
-/// 图那一块 ⇒ 引用（字节留在块里、不上线）。只认内联 base64 的图片（`{type: base64, media_type: image/…, data}`）；别的来源画不出 ⇒ 不出块。
+/// 图那一块 ⇒ 引用（字节收进 [`Images`]、不上线）。只认内联 base64 的图片（`{type: base64, media_type: image/…, data}`）；别的来源画不出 ⇒ 不出块。
 fn image_of(source: &Value, images: &mut Images) -> Option<Block> {
     let s = |k: &str| source.get(k).and_then(Value::as_str);
     if s("type")? != "base64" {
@@ -384,14 +401,13 @@ fn image_of(source: &Value, images: &mut Images) -> Option<Block> {
     }
     let media_type = s("media_type").filter(|m| m.starts_with("image/"))?;
     let data = s("data")?;
-    let n = images.n;
-    images.n += 1;
+    let n = u32::try_from(images.data.len()).unwrap_or(u32::MAX);
+    images.data.push(data.to_string());
     Some(Block::Image {
         media_type: media_type.to_string(),
         bytes: (data.trim_end_matches('=').len() as u64) * 3 / 4,
         at: images.at,
         n,
-        data: data.to_string(),
     })
 }
 

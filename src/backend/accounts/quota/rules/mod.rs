@@ -21,6 +21,8 @@ pub(crate) const WINDOW_SECS: [u64; 2] = [5 * 3600, 7 * 86_400];
 /// 判与推演看的那一份事实（一个号）：只有数，没有字。
 #[derive(Debug, Clone, PartialEq)]
 pub struct Acct {
+    /// 这个号是哪一家的号（路由名，同会话那一条的 `agent`）：号在账号域里按（家, 号名）认，一个会话只用本家的号。
+    pub agent: String,
     pub id: String,
     pub api: bool,
     /// 两窗用了多少（0–100）。
@@ -63,13 +65,16 @@ pub struct Barred {
 impl Acct {
     /// 由一条事实拼回判看的那几样（[`super::facts::Fact`]）：事实的 `blocked` 本是 [`standing`] 照同一份拼出来判的，
     /// 这里只把挡着的那一样还原成输入（被拒 · 跟窗口无关的那几种）；「用满」由两窗的数自己说，不另带。
-    pub fn of_fact(f: &super::facts::Fact) -> Self {
+    /// `agent` ＝ 这个号是哪一家的号（事实照那一家拼的）。
+    pub fn of_fact(agent: &str, f: &super::facts::Fact) -> Self {
         use super::facts::FactWhy;
         let barred = f.blocked.as_ref().and_then(|b| match b.why {
-            FactWhy::Login | FactWhy::Key | FactWhy::Overage => Some(Barred {
-                why: b.why,
-                until: b.until,
-            }),
+            FactWhy::Login | FactWhy::Key | FactWhy::Overage | FactWhy::BaseUntouched => {
+                Some(Barred {
+                    why: b.why,
+                    until: b.until,
+                })
+            }
             FactWhy::Refused | FactWhy::Used => None,
         });
         let refused_until = f
@@ -78,6 +83,7 @@ impl Acct {
             .filter(|b| b.why == FactWhy::Refused)
             .map(|b| b.until.unwrap_or(u64::MAX));
         Self {
+            agent: agent.to_string(),
             id: f.account.clone(),
             api: f.kind == super::facts::Kind::Api,
             used: [f.w5h.used, f.w7d.used],

@@ -24,7 +24,7 @@ class DirBrowserTest {
     ): Map<String, Any?> {
         val keys = p.map { it.substringAfterLast('/') }
         val crumbs = listOf(mapOf("name" to "/", "path" to "/"), mapOf("name" to at.substringAfterLast('/'), "path" to at))
-        val info = mapOf("shown" to shown(at), "up" to up, "crumbs" to crumbs, "truncated" to false, "total" to p.size.toDouble(), "unreadable" to 0.0)
+        val info = mapOf("shown" to shown(at), "up" to up, "crumbs" to crumbs, "truncated" to false, "at_home" to false, "by" to "name", "descending" to false, "total" to p.size.toDouble(), "unreadable" to 0.0)
         return mapOf(
             "held" to "h1",
             "whole" to true,

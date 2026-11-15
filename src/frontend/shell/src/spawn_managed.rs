@@ -260,8 +260,7 @@ pub type ManagedSpawn =
     dyn Fn(&mut std::process::Command) -> std::io::Result<ManagedChild> + Send + Sync;
 
 /// 壳里造 `Command` 的唯一一处。造出来的还没起：交 [`spawn_managed_cmd`]（经 [`spawn_managed_with`]）
-/// 或注入的 [`ManagedSpawn`] 按三条策略起；后一形要同一个 `Command` 起不止一次
-/// （`local_backend::spawn_with_etxtbsy_retry` 撞上 ETXTBSY 时重试），所以给得出没起的那一个。
+/// 或注入的 [`ManagedSpawn`] 按三条策略起（后一形要的就是一个没起的 `Command`）。
 #[expect(
     clippy::disallowed_methods,
     reason = "壳起进程的唯一住址：造好交给三条策略那一侧起"

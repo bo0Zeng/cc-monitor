@@ -195,7 +195,7 @@ impl TopicExt for Topic {
                 body_cap: 0,
                 reask: "groups-read",
             },
-            // 走 watcher 的出方向（不可丢：各端只照这一份画队）；`body` 由发端给（`observe/watcher.rs::queue_changed`，跑 `session-queue-read` 在这台那一半）。
+            // 走 watcher 的出方向（不可丢：各端只照这一份画队）；`body` 由发端给（`history/session_queue.rs::changed`，watcher 看见队目录动了推它，跑 `session-queue-read` 在这台那一半）。
             Topic::SessionQueue => TopicSpec {
                 name: "session_queue",
                 lossy: false,
@@ -204,6 +204,16 @@ impl TopicExt for Topic {
                 body: true,
                 body_cap: 16384,
                 reask: "session-queue-read",
+            },
+            // 走 tap 那条（可丢：成品整份，丢了下一次变化或界面重问就补上）；`body` 由发端给（`control/attach_upload.rs::changes`）。
+            Topic::Attach => TopicSpec {
+                name: "attach",
+                lossy: true,
+                key: true,
+                rev: false,
+                body: true,
+                body_cap: 16384,
+                reask: "attach-draft-view",
             },
         }
     }

@@ -19,14 +19,9 @@
 #   手机工具链：外面给了 JAVA_HOME 与 ANDROID_HOME 就用；没给就照 src/mobile/scripts/env.sh 探真家目录下的 android-dev。
 # 红了：每条失败测试的 panic 原话印出来；整趟输出存 `.build/quick-check/<时刻>.log`。
 # 逐条耗时：cargo 那几段存 `.build/quick-check/cargo-times.tsv`（从慢到快，收尾印最慢三条），vitest 存 `vitest-times.json`。
-# 编译锁：外面给了 `CCM_BUILD_LOCK`（一份仓外的锁脚本，`<脚本> <命令…>` 排上队再起命令）⇒ 编译那几段（后端 · clippy · 壳 ·
-#   creds-harden 的 cargo，手机那一段的 gradle）各经它起，排队只排这几段；cargo fmt · tsc · 静态格 · vitest 不经它。没给 ⇒ 不套锁照跑。
-#   cargo 那四段起锁时另带 `CCM_BUILD_REMOTE_OK`：这一段可以派去别的机器跑（锁脚本认它才派，不认 ⇒ 照旧本机）；值是这一段
-#   写在同步的树以外的几个目录（沙箱家 · 沙箱 tmux 目录 · cargo 的临时目录，空格分隔）：那边照同一路径建好，跑完把里面剩的拉回这几个目录，
-#   tmp-left 照旧在本机判。手机那一段不带（gradle 的工具链只认本机）。
-#   整趟外派：`bash "$CCM_BUILD_LOCK" env -u CCM_BUILD_LOCK bash tests/scripts/quick-check.sh`（摘掉锁变量：那一趟里各段不再排一次）。
-#   编译调度在远端起命令时设 `BUILDSCHED_TAG`（本机没有）⇒ 手机与 win-check 两格不跑、各印一行「远端跳过，本机单跑」
-#   （远端没装 Android 工具链与 Windows 目标），本机另跑 `--only mobile` · `--only win-check` 补上；其余各格照跑。
+# 整趟外派：`devsched bash tests/scripts/quick-check.sh`（开发调度，src/devsched）。
+#   开发调度的编译节点起作业时设 `DEVSCHED_SKIPPED`（指一份文件；本机那一支不设）⇒ 手机 · win-check 两格，以及那台没有 shellcheck 时的静态格不跑、各印一行「远端跳过，本机单跑」、
+#   段名一行一个写进那份文件（调度据此逐段印「没跑：<段>」、命令退 0 时退 79），本机另跑 `--only mobile` · `--only win-check`（· `--only static`）补上；其余各格照跑。
 # 收尾修剪 `.build`：每棵 cargo 树每一档的 `incremental/` 下同一个 crate 的会话目录、`deps/` 下同名的测试二进制（无扩展名的可执行文件，
 #   连同它的 `.d`）按名字成组，比同组最新那一份旧出 6 小时的删掉。同一个 crate 同时有几种现役变体（lib · lib 测试 · clippy · 各 bin），
 #   同一趟编出来、时刻挨着，所以按窗口留、不只留最新一份；锁或特性集一变换了哈希的旧变体落在窗口外。`.fingerprint` · `build/` · rlib 不碰。
@@ -37,7 +32,7 @@ cd "$root" || exit 2
 mode=all; only=
 case "${1:-}" in
   --only) only=${2:-}; shift 2 || shift
-    case "$only" in backend|shell|vitest|mobile|win-check) ;; *) echo "quick-check --only 要 backend · shell · vitest · mobile · win-check 之一" >&2; exit 2 ;; esac ;;
+    case "$only" in backend|shell|vitest|mobile|win-check|static) ;; *) echo "quick-check --only 要 backend · shell · vitest · mobile · win-check · static 之一" >&2; exit 2 ;; esac ;;
   --plan) mode=plan; shift ;;
   '') ;;
   *) echo "quick-check：不认识的参数 $1（只认 --plan · --only <段>）" >&2; exit 2 ;;
@@ -98,10 +93,11 @@ else
   esac
 fi
 skip_why="相对 $base_ref 的改动没有一条落在它读的面上（gate-affected/map）"
-# 只本机的两格（mobile · win-check）在远端那一趟（编译调度设了 BUILDSCHED_TAG）不跑：印一行，本机另跑 --only 那一格
+# 只本机的两格（mobile · win-check）在远端那一趟（编译节点设了 DEVSCHED_SKIPPED）不跑：印一行、记进那份文件，本机另跑 --only 那一格
 local_only_skipped() {
-  [ -n "${BUILDSCHED_TAG:-}" ] || return 1
+  [ -n "${DEVSCHED_SKIPPED:-}" ] || return 1
   printf '  --   %-16s 远端跳过，本机单跑：--only %s\n' "$1" "$1"
+  printf '%s\n' "$1" >> "$DEVSCHED_SKIPPED"
 }
 if [ "$mode" = plan ]; then
   for s in "${segs[@]}"; do s=${s%%:*}
@@ -131,14 +127,9 @@ box_env=(env HOME="$box/home" TMUX_TMPDIR="$box/tmux"
   CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}"
   RUST_TEST_THREADS="${RUST_TEST_THREADS:-$share}" GATE_VITEST_WORKERS="${GATE_VITEST_WORKERS:-$share}")
 run() { bash "$HERE/session-scrub.sh" "${box_env[@]}" "$@"; }
-# 编译那几段：锁脚本在沙箱外起（它照真家找锁文件），它起的命令再进沙箱（见头注）。
-build_lock=(); [ -n "${CCM_BUILD_LOCK:-}" ] && build_lock=(bash "$CCM_BUILD_LOCK")
-locked() { "${build_lock[@]}" bash "$HERE/session-scrub.sh" "${box_env[@]}" "$@"; }
 # 每路 cargo 并行数默认 4。要改就在外面设 CARGO_BUILD_JOBS。
 # cargo 那几步不按墙钟判 ⇒ 降到 nice 10，机器忙时给别处按墙钟判的测试让路（vitest / tsc 不降）。
-# runcargo：不编译的（fmt）；buildcargo：编译的，经锁。
 runcargo() { run env TMPDIR="$ctmp" nice -n 10 "$@"; }
-buildcargo() { CCM_BUILD_REMOTE_OK="$box/home $box/tmux $ctmp" locked env TMPDIR="$ctmp" nice -n 10 "$@"; }
 fails=(); notes=()
 t_all=$SECONDS
 # 失败测试的 panic 原话：`panicked at` 那一行起、到空行为止（cargo 的格式）。
@@ -181,7 +172,7 @@ seg_go() {
 mobile_step() {
   local_only_skipped mobile && { skipped+=(mobile); return 0; }
   seg_go mobile || return 0
-  step mobile locked env REAL_HOME="$real_home" bash "$HERE/heavy.sh" bash -c '
+  step mobile run env REAL_HOME="$real_home" bash "$HERE/heavy.sh" bash -c '
     out="$PWD/.build/mobile"; cd src/mobile || exit 1
     if [ -z "${JAVA_HOME:-}" ] || [ -z "${ANDROID_HOME:-}" ]; then
       export CCM_ANDROID_DEV="${CCM_ANDROID_DEV:-$REAL_HOME/android-dev}"
@@ -189,7 +180,7 @@ mobile_step() {
     else export GRADLE_USER_HOME="${GRADLE_USER_HOME:-$REAL_HOME/.gradle}"; fi
     rm -rf "$out"/*/test-results
     ./gradlew --no-daemon --console=plain --max-workers='"$share"' ktlintCheck detektDebug testDebugUnitTest \
-      :core-claude:test :core-claude:detektMain :core-wire:test :core-wire:detektMain :core-copy:test :core-copy:detektMain :detekt-rules:test || exit $?
+      :core-claude:test :core-claude:detektMain :core-wire:test :core-wire:detektMain :detekt-rules:test || exit $?
     n=$(cat "$out"/*/test-results/*/*.xml 2>/dev/null | grep -oE "<testsuite [^>]*tests=\"[0-9]+\"" | grep -oE "tests=\"[0-9]+\"" | grep -oE "[0-9]+" | paste -sd+ - | bc 2>/dev/null)
     echo "mobile: ${n:-0} passed"'
 }
@@ -202,7 +193,7 @@ clippy_step() {
     [ -n "$(touched "${paths[@]}")" ] && pkgs+=(-p "${spec%%:*}")
   done
   if [ ${#pkgs[@]} -eq 0 ]; then printf '  --   %-16s 不跑：相对 %s 没改到%s的包\n' "$name" "$base_ref" "$tree"; return; fi
-  step "$name" buildcargo bash -c 'cd "$1" && shift && cargo clippy --all-targets "$@"' _ "$dir" "${pkgs[@]}"
+  step "$name" runcargo bash -c 'cd "$1" && shift && cargo clippy --all-targets "$@"' _ "$dir" "${pkgs[@]}"
 }
 # 共享包的文档测试（`compile_fail` 那几条钉的是「这样写编不过」）：壳那棵只跑 --lib，这几份也不在后端那棵 ⇒ 单跑 --doc。改到的包才跑。
 #   名单只列有文档测试的包：一条都没有的包单独改到时 step 报「0 条跑到」。
@@ -214,11 +205,11 @@ doc_step() {
     [ -n "$(touched "${paths[@]}")" ] && pkgs+=(-p "${spec%%:*}")
   done
   if [ ${#pkgs[@]} -eq 0 ]; then printf '  --   %-16s 不跑：相对 %s 没改到带文档测试的共享包\n' doc-shared "$base_ref"; return; fi
-  step doc-shared buildcargo bash -c 'cd src/frontend/shell && cargo test --doc "$@"' _ "${pkgs[@]}"
+  step doc-shared runcargo bash -c 'cd src/frontend/shell && cargo test --doc "$@"' _ "${pkgs[@]}"
 }
 # Windows 目标的编译核对（只 check、不链接）：非 unix 那一臂的可见性 · 签名只在 Windows 目标上编得到，Linux 上的测试与 clippy 看不见。
 #   后端那棵只主包的库（它从外面调拆出去的各包，那几包的 Windows 臂跟着编到）· 壳那棵整棵的库。
-#   只在本机：经锁起但不带 CCM_BUILD_REMOTE_OK（外面带进来的也摘掉）—— 别的机器没装这个目标。目标没装 ⇒ 照实报没装、算红。
+#   只在本机（别的机器没装这个目标）。目标没装 ⇒ 照实报没装、算红。
 win_target=x86_64-pc-windows-gnu
 win_check_step() {
   local_only_skipped win-check && return 0
@@ -226,8 +217,17 @@ win_check_step() {
   if [ -z "$sysroot" ] || [ ! -d "$sysroot/lib/rustlib/$win_target" ]; then
     printf '  红   %-16s 本机工具链没装 %s 目标（rustup target add %s）—— 判不了\n' win-check "$win_target" "$win_target"; fails+=(win-check); return
   fi
-  step win-check env -u CCM_BUILD_REMOTE_OK "${build_lock[@]}" bash "$HERE/session-scrub.sh" "${box_env[@]}" env TMPDIR="$ctmp" nice -n 10 bash -c '
+  step win-check runcargo bash -c '
     (cd src/backend && cargo check --target "$1" -p cc-monitor-backend --lib) && (cd src/frontend/shell && cargo check --target "$1" --workspace --lib)' _ "$win_target"
+}
+# 便宜的静态格：只读盘上文本，合计十来秒（shellcheck 按核数并起）。名单只住 ci.yml `static-gate` 那个 job 的 GATE_ONLY。
+#   远端那台没有 shellcheck ⇒ 整段远端跳过，本机 --only static 补。
+static_step() {
+  local static
+  static=$(awk '/^  static-gate:/{f=1} f&&/GATE_ONLY:/{sub(/.*GATE_ONLY:[[:space:]]*/,""); print; exit}' .github/workflows/ci.yml 2>/dev/null)
+  [ -n "$static" ] || { printf '  红   %-16s ci.yml 里读不到 static-gate 那个 job 的 GATE_ONLY（job 改名了？）\n' static; fails+=(static); return 0; }
+  if ! command -v shellcheck >/dev/null 2>&1 && local_only_skipped static; then return 0; fi
+  step static run env GATE_ONLY="$static" bash tests/scripts/gate.sh
 }
 # 修剪（见头注）：同组（路径去掉末尾 `-<哈希>`）最新那一份往前 6 小时之外的删掉
 prune_step() {
@@ -263,7 +263,7 @@ backend_step() {
   t0=$SECONDS
   # 只编各包的测试库：带上 bin 与 bench 会让主库再按非测试形编一遍。bin 与 bench 编不编得过由 clippy `--all-targets` 守，
   # bench 的冒烟档（要 spawn 真二进制，进不了库的测试段）由门禁与 CI 的 `cargo test --workspace` 跑。`--workspace` 带上拆出的几个包。
-  out=$(buildcargo "${timed[@]}" bash -c 'cd src/backend && cargo test --workspace --lib --no-fail-fast -- -Z unstable-options --report-time' 2>&1); rc=$?
+  out=$(runcargo "${timed[@]}" bash -c 'cd src/backend && cargo test --workspace --lib --no-fail-fast -- -Z unstable-options --report-time' 2>&1); rc=$?
   { echo "════ backend（rc=$rc）"; printf '%s\n' "$out"; } >> "$log"
   printf '%s\n' "$out" | cargo_times backend
   n=$(printf '%s' "$out" | grep -oE '([0-9]+) passed' | grep -oE '[0-9]+' | paste -sd+ | bc 2>/dev/null)
@@ -278,7 +278,7 @@ backend_step() {
 }
 shell_step() {
   seg_go shell || return 0
-  step shell buildcargo "${timed[@]}" bash -c 'cd src/frontend/shell && cargo test --workspace --lib --no-fail-fast -- -Z unstable-options --report-time'
+  step shell runcargo "${timed[@]}" bash -c 'cd src/frontend/shell && cargo test --workspace --lib --no-fail-fast -- -Z unstable-options --report-time'
 }
 vitest_step() {
   seg_go vitest || return 0
@@ -293,10 +293,7 @@ step fmt          runcargo bash -c 'cd src/frontend/shell && cargo fmt --all --c
 # 后端那棵的包名单从 `cargo metadata --no-deps` 现取（手机嵌的 `mobcore` 除外；与门禁 `fmt-backend` 那一格同一条取法）。
 step fmt-backend  runcargo bash -c 'cd src/backend && pkgs=$(cargo metadata --no-deps --offline --format-version 1 | python3 -c "import json, sys; print(\" \".join(\"-p \" + p[\"name\"] for p in json.load(sys.stdin)[\"packages\"] if p[\"name\"] != \"mobcore\"))") && [ -n "$pkgs" ] || { echo "fmt-backend: cargo metadata 一个包都没取到"; exit 1; }; cargo fmt --check $pkgs'
 step tsc          run node_modules/.bin/tsc --noEmit
-# 便宜的静态格：只读盘上文本，合计十来秒（shellcheck 按核数并起）。名单只住 ci.yml `static-gate` 那个 job 的 GATE_ONLY。
-static=$(awk '/^  static-gate:/{f=1} f&&/GATE_ONLY:/{sub(/.*GATE_ONLY:[[:space:]]*/,""); print; exit}' .github/workflows/ci.yml 2>/dev/null)
-if [ -n "$static" ]; then step static run env GATE_ONLY="$static" bash tests/scripts/gate.sh
-else printf '  红   %-16s ci.yml 里读不到 static-gate 那个 job 的 GATE_ONLY（job 改名了？）\n' static; fails+=(static); fi
+static_step
 
 backend_step
 clippy_step clippy-backend src/backend 后端那棵 clippy_pkgs
@@ -305,7 +302,11 @@ clippy_step clippy-shell src/frontend/shell 壳那棵 shell_clippy_pkgs
 win_check_step
 doc_step
 # 凭据那份共享 crate 开 `harden` 那一档（壳那棵不开它，后端那棵不跑它的测试）
-step creds-harden buildcargo bash -c 'cd src/frontend/shell && cargo test -p creds-core --features harden --lib -q'
+step creds-harden runcargo bash -c 'cd src/frontend/shell && cargo test -p creds-core --features harden --lib -q'
+# 开发调度那一棵（src/devsched：自己一个 workspace，不进后端与壳）：排版 · 全部单测与集成测 · clippy（与门禁 fmt-devsched · devsched · clippy-devsched 同一条命令）
+step fmt-devsched runcargo bash -c 'cd src/devsched && cargo fmt --all --check'
+step devsched     runcargo bash -c 'cd src/devsched && cargo test --workspace --offline --no-fail-fast -q'
+step clippy-devsched runcargo bash -c 'cd src/devsched && cargo clippy --workspace --all-targets --offline -- -D warnings'
 vitest_step
 mobile_step
 # 生成物：上面几步现写过的 generated/ 与 HEAD 比，逐份印出

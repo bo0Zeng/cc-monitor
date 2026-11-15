@@ -6,6 +6,8 @@
  * **状态只读后端给的那一份**，面板不自己判（「有结果 ⇒ 完成」「会话不忙 ⇒ 中止」这类判断一条都没有）。
  *
  * 列哪些（有上界）照后端写好的三组（`groups`：在跑的全列 · 最近结束的几个 · 其余含状态不明的收进「更早的」，点开才列）；chip 的字照抄 `summary`。
+ * 三组只列第一层；每行底下挂它派出的那几个（`kids`，后端排好先后），按层缩进。页一打开开不开照后端给的 `kids_open`（第一层开、第二层起收），
+ * 收着的那一行写后端写好的汇总（`kids_text`）；下层有事也不自动开。手动开合只在这一页开着时算数：页关了、换了会话就回默认。
  * 每行：图标 · [类别] · 标签 ·（「窗口已开」）· 状态 · 最近：…；点一行 ⇒ 开这个子运行自己的窗口（已开着 ⇒ 拉到前面，宿主管）。
  *
  * 行样式 .agent-* 自有。
@@ -14,6 +16,8 @@
 import { copyText } from "./copy-table";
 import { chip } from "./kit/chip";
 import type { IconName } from "./kit/icon";
+import { button } from "./kit/button";
+import { foldCaret } from "./kit/fold";
 import { emptyState } from "./kit/empty";
 import { place } from "./kit/morph";
 import { tag } from "./kit/badge";
@@ -48,6 +52,8 @@ export class AgentsPanel {
   private activeSid: string | null = null;
   /** 「更早的」那一组展开着没有（换会话就收起）。 */
   private olderOpen = false;
+  /** 手动开合过、跟后端给的默认（`kids_open`）反着的那几个运行（页关了、换会话就清）。 */
+  private readonly flipped = new Set<string>();
   /** 上一次画出来的样子（行字没变就不重画：流里每段文字都会叫一次 `refresh`）。 */
   private drawn = "";
   /** 画出来的每一个列表项（组头 · 行 · 「更早的」）按身份留着：重画时原地改字、按需挪位，不整表重建 ⇒ 键盘焦点不丢。 */
@@ -78,12 +84,19 @@ export class AgentsPanel {
   /** 抽屉开到 / 离开这一页（宿主调）：chip 的「开着」跟着变。 */
   setVisible(on: boolean): void {
     this.summaryElement.setAttribute("aria-expanded", String(on));
+    if (!on && this.flipped.size > 0) {
+      this.flipped.clear();
+      this.render(true);
+    }
   }
 
   /** 当前会话与它的运行表（切 tab / 运行表到了时调）。 */
   setSession(sid: string | null, table: RunTable): void {
     const switched = sid !== this.activeSid;
-    if (switched) this.olderOpen = false;
+    if (switched) {
+      this.olderOpen = false;
+      this.flipped.clear();
+    }
     this.activeSid = sid;
     this.table = table;
     // 同一个会话的运行表又来一帧：样子没变就不动（换了会话才整份重画）。
@@ -119,14 +132,16 @@ export class AgentsPanel {
     const byId = new Map(this.table.runs.map((r) => [r.run, r]));
     const pick = (ids: string[]): RunInfo[] => ids.flatMap((id) => byId.get(id) ?? []);
     const g = { running: pick(this.table.groups.running), recent: pick(this.table.groups.recent), older: pick(this.table.groups.older) };
-    const shown = [...g.running, ...g.recent, ...(this.olderOpen ? g.older : [])];
+    const tree = (rs: RunInfo[]): Branch[] => rs.flatMap((r) => this.branch(r, 0, byId, new Set()));
+    const t = { running: tree(g.running), recent: tree(g.recent), older: tree(g.older) };
+    const shown = [...t.running, ...t.recent, ...(this.olderOpen ? t.older : [])];
     const sid = this.activeSid;
     const sig = JSON.stringify([
       this.table.summary,
       this.olderOpen,
-      shown.map((r) => (sid !== null && this.host?.isOpen(sid, r.run)) === true),
+      shown.map((b) => (sid !== null && this.host?.isOpen(sid, b.r.run)) === true),
       this.table.groups.older_text,
-      shown.map((r) => [r.run, r.state, r.label, r.kind, this.lastOf(r)]),
+      shown.map((b) => [b.r.run, b.depth, b.open, b.r.kids_text, b.r.state, b.r.label, b.r.kind, this.lastOf(b.r)]),
     ]);
     if (!force && sig === this.drawn) return;
     this.drawn = sig;
@@ -137,15 +152,25 @@ export class AgentsPanel {
     this.onLabel?.(this.label);
 
     const items: HTMLElement[] = [];
-    if (g.running.length > 0) items.push(this.head("running", copyText("runs.state.running")), ...g.running.flatMap((r) => this.row(r)));
-    if (g.recent.length > 0) items.push(this.head("recent", copyText("agentsPanel.group.recent")), ...g.recent.flatMap((r) => this.row(r)));
-    if (g.older.length > 0) {
+    if (t.running.length > 0) items.push(this.head("running", copyText("runs.state.running")), ...t.running.map((b) => this.row(b)));
+    if (t.recent.length > 0) items.push(this.head("recent", copyText("agentsPanel.group.recent")), ...t.recent.map((b) => this.row(b)));
+    if (t.older.length > 0) {
       items.push(this.olderToggle(this.table.groups.older_text ?? ""));
-      if (this.olderOpen) items.push(...g.older.flatMap((r) => this.row(r)));
+      if (this.olderOpen) items.push(...t.older.map((b) => this.row(b)));
     }
     place(this.list, items);
     const keep = new Set<HTMLElement>(items);
     for (const [id, el] of this.nodes) if (!keep.has(el)) this.nodes.delete(id);
+  }
+
+  /** 一行连它底下看得见的那几行（开着才往下走；走过的不再走）。 */
+  private branch(r: RunInfo, depth: number, byId: Map<string, RunInfo>, seen: Set<string>): Branch[] {
+    if (seen.has(r.run)) return [];
+    seen.add(r.run);
+    const kids = (r.kids ?? []).flatMap((id) => byId.get(id) ?? []);
+    const open = kids.length > 0 && (r.kids_open === true) !== this.flipped.has(r.run);
+    const me: Branch = { r, depth, fold: kids.length > 0, open };
+    return open ? [me, ...kids.flatMap((k) => this.branch(k, depth + 1, byId, seen))] : [me];
   }
 
   /** 按身份取一个列表项（没有就建）。 */
@@ -189,8 +214,28 @@ export class AgentsPanel {
     return li;
   }
 
+  /** 开合那一枚：点了只开合，不开窗口。 */
+  private foldButton(b: Branch): HTMLElement {
+    const btn = button({
+      label: b.open ? copyText("kit.dock.close") : copyText("askBlock.fold.expand"),
+      kind: "icon",
+      size: "compact",
+      onClick: (e) => {
+        e.stopPropagation();
+        if (!this.flipped.delete(b.r.run)) this.flipped.add(b.r.run);
+        this.render(true);
+      },
+    });
+    btn.classList.add("agent-fold");
+    btn.prepend(foldCaret());
+    btn.setAttribute("aria-expanded", String(b.open));
+    btn.addEventListener("keydown", (e) => e.stopPropagation());
+    return btn;
+  }
+
   /** 一行。行节点按运行留着，字原地换。 */
-  private row(r: RunInfo): HTMLElement[] {
+  private row(b: Branch): HTMLElement {
+    const r = b.r;
     const k = this.keyOf(r.run);
     const row = this.node(`row\u0000${k}`, () => {
       const el = document.createElement("li");
@@ -211,6 +256,7 @@ export class AgentsPanel {
     });
     row.className = `agent-row agent-${r.state} agent-row-clickable`;
     row.dataset.run = r.run;
+    row.style.setProperty("--agent-depth", String(b.depth));
 
     const spans: HTMLElement[] = [];
     const span = (cls: string, text: string): HTMLElement => {
@@ -220,6 +266,7 @@ export class AgentsPanel {
       spans.push(s);
       return s;
     };
+    if (b.fold) spans.push(this.foldButton(b));
     span("agent-icon", "").appendChild(runStateMark(r.state));
     if (r.kind) span("agent-type", r.kind);
     const label = runLabel(r);
@@ -234,8 +281,17 @@ export class AgentsPanel {
     span("agent-state", runStateText(r));
     const last = this.lastOf(r);
     if (last !== null) span("agent-last one-line", copyText("agentsPanel.row.last", { last }));
+    if (b.fold && !b.open && r.kids_text !== undefined) span("agent-below", r.kids_text);
     row.replaceChildren(...spans);
     row.title = opened ? copyText("agentsPanel.row.openedHint") : `${label}${copyText("kit.text.sep")}${copyText("agentsPanel.row.openHint")}`;
-    return [row];
+    return row;
   }
+}
+
+/** 画出来的一行：哪个运行 · 第几层 · 有没有开合 · 此刻开着没有。 */
+interface Branch {
+  r: RunInfo;
+  depth: number;
+  fold: boolean;
+  open: boolean;
 }

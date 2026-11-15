@@ -65,7 +65,7 @@ fn a_failed_save_says_the_reason_and_keeps_the_raw_words_in_the_detail() {
 /// ★**`auto-launch.json` 的线上名，两种语言两向相等。**
 ///
 /// 要求住址：`INVARIANTS §2.1` 那一行逐字「`enabled`=真相；`monitor_exe_path`=派生」—— 写它的是 monitor（Rust，
-/// `auto_launch.rs::save`），读它的是 PowerShell 别名块里的 `__ccm_bind`（`src/shared/cc.ps1.tpl`，monitor 没在跑时据它拉起 monitor）。
+/// `auto_launch.rs::save`），读它的是 PowerShell 别名块里的 `__ccm_bind`（`src/shared/cc.ps1.tpl`，据它带 `--background` 起 monitor；已在跑的那个收到后什么都不做）。
 /// 两边各自改名，今天**哪一边都不会红**（字段改线上名那一刀两族都放过）——而读的那一侧读不到就是
 /// 「开关开着却永远不自启」，没有任何报错。
 ///
@@ -110,18 +110,21 @@ fn the_wire_names_are_the_same_in_the_powershell_reader_and_the_rust_writer() {
         read, written,
         "PowerShell 那一侧读的字段 ≠ monitor 写出去的字段：改名要两边同拍改（读不到 = 开关开着却永远不自启、不报错）"
     );
-    // 文件名：模板 `Join-Path $ccmDir '<名>'` == 生产段 `const FILE: &str = "<名>"`。
+    // 文件名：模板 `Join-Path $ccmDir '<名>'` == monitor 写的那一份（名字住契约包 `relay_route_core::AUTO_LAUNCH_FILE`）。
     let key = "Join-Path $ccmDir '";
     let at = TPL
         .find(&format!("{key}auto"))
         .expect("模板里找不到 auto-launch 那个文件名");
     let tail = &TPL[at + key.len()..];
     let file = &tail[..tail.find('\'').expect("文件名没收尾")];
-    let prod = guard_core::production_code(include_str!(
-        "../../../src/frontend/shell/src/auto_launch.rs"
-    ));
-    assert!(
-        prod.contains(&format!("const FILE: &str = \"{file}\";")),
-        "模板读 `{file}`，monitor 生产段里那份文件名不是 `{file}` —— 文件名两边对不上"
+    assert_eq!(
+        file,
+        super::FILE,
+        "模板读 `{file}`，monitor 写的那份不是它 —— 文件名两边对不上"
+    );
+    assert_eq!(
+        super::FILE,
+        relay_route_core::AUTO_LAUNCH_FILE,
+        "monitor 写的那份名字只取契约包那一处"
     );
 }

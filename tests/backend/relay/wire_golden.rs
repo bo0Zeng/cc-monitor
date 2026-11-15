@@ -40,7 +40,7 @@ use crate::accounts::upstream_select::Accounts;
 use crate::relay::test_support::{
     listen, serve, DOWNSTREAM_DEADLINE, INFLIGHT_BODY_CAP, UPSTREAM_DEADLINE,
 };
-use comms_outward::{Base, Relay, TapEvent, TapPort, TeeSink};
+use comms_outward::{Relay, TapEvent, TapPort, TeeSink};
 use creds_core::store::AuthStyle;
 use creds_core::SecretKey;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -349,7 +349,7 @@ const GOLDEN_AGENT: &str = "agentA";
 fn spawn_relay(up: SocketAddr) -> (SocketAddr, TeeTap) {
     let buf = Arc::new(Mutex::new(Vec::new()));
     let (tick, rx) = mpsc::channel();
-    let base = Base::parse(&format!("http://127.0.0.1:{}", up.port())).expect("base");
+    let base = crate::relay::base_of(&format!("http://127.0.0.1:{}", up.port())).expect("base");
     // ⚠ 走的是**生产段那条真实的装表路** `RoutingTable::build`，不是另造一个同构的表。
     let table = RoutingTable::build([
         (

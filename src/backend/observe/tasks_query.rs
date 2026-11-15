@@ -22,6 +22,7 @@
 //! 那个 sid 的目录**不存在** ⇒ 空表（诚实的空：这个会话没用过任务）。
 //! 目录**在但读不了** ⇒ 命令级 `failed`：回空表就与上一行长得一模一样。
 
+use crate::agents::AgentHome;
 use crate::common::said::Said;
 use crate::platform::fs::Ro;
 use cap_core::{Cap, Over};
@@ -35,14 +36,41 @@ pub(crate) const TASK_FILE_CAP: Cap = Cap {
     over: Over::SkipAndSay,
 };
 
-/// 后端盯着的那一家的任务列表那一面（注册表 `LocalFace.tasks`）；那一家没有任务列表 ⇒ `None`。
-fn tasks_face() -> Option<crate::agents::TasksFace> {
-    crate::agents::tree_local_face().and_then(|f| f.tasks)
+/// `kind` 那一家的任务列表那一面（注册表 `LocalFace.tasks`）；那一家没有任务列表 ⇒ `None`。
+fn tasks_face(kind: &str) -> Option<crate::agents::TasksFace> {
+    crate::agents::local_face_among(crate::agents::REGISTRY, kind).and_then(|f| f.tasks)
 }
 
-/// 任务列表的根：后端盯着的那一家的。那一家没有任务列表 ⇒ 家目录下一个不会有任务的位置（读出零条）。
-pub fn tasks_root(home: &Path) -> std::path::PathBuf {
-    tasks_face().map_or_else(|| home.join(NO_TASKS), |f| (f.dir)(home))
+/// 任务列表的根：`home` 里有任务列表的那一家在它家下的那一个（交一个目录 ⇒ 那几家都住这里，[`crate::agents::IntoHomes`]）。
+/// 哪一家都没有任务列表 ⇒ 家目录下一个不会有任务的位置（读出零条）。
+pub fn tasks_root(home: impl crate::agents::IntoHomes) -> std::path::PathBuf {
+    let homes = home.into_homes();
+    homes
+        .iter()
+        .find_map(|h| tasks_face(h.kind).map(|f| (f.dir)(&h.home)))
+        .or_else(|| homes.first().map(|h| h.home.join(NO_TASKS)))
+        .unwrap_or_else(|| std::path::PathBuf::from(NO_TASKS))
+}
+
+/// 这一批文件事件落在哪几个会话的任务目录里（`<tasks>/<sid>/…` 的第一段；`<tasks>` 自己不算）：watcher 照它逐个推 `changed {tasks}`。
+/// 批内去重、按名排（同一个 sid 动了几次都只报一帧）。**纯函数**（判据直接喂路径）。
+pub(crate) fn tasks_touched<'a>(
+    paths: impl Iterator<Item = &'a Path>,
+    tasks: &Path,
+) -> Vec<String> {
+    let mut out: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for p in paths {
+        if let Some(sid) = p
+            .strip_prefix(tasks)
+            .ok()
+            .and_then(|rel| rel.components().next())
+            .and_then(|c| c.as_os_str().to_str())
+            .filter(|s| !s.is_empty())
+        {
+            out.insert(sid.to_string());
+        }
+    }
+    out.into_iter().collect()
 }
 
 /// 注册表里没有任务列表那一家时 [`tasks_root`] 指的那个名字（不建、不写，只读出零条）。
@@ -61,7 +89,7 @@ fn check_sid(sid: &str) -> Result<(), Said> {
 }
 
 /// 一个会话的任务，按任务号升序、每条一行（原样的 JSON 对象，压成一行）。
-pub(crate) fn session_task_lines(home: &Path, sid: &str) -> Result<Vec<String>, Said> {
+pub(crate) fn session_task_lines(home: &AgentHome, sid: &str) -> Result<Vec<String>, Said> {
     check_sid(sid)?;
     let dir = tasks_root(home).join(sid);
     if !dir.is_dir() {
@@ -130,20 +158,25 @@ pub(crate) use cmd_wire::tasks::{Task, TaskStatus, TasksList};
 
 /// 一个任务对象 → **成品**（`tasks-list` 的 `tasks` 里的一格）：那一家读成码（`TasksFace::task`），状态字在这里照码写（[`status_text`]）；
 /// 那一家没有任务列表 · 解不成任务 ⇒ `None`。
-pub(crate) fn task_entry(v: &serde_json::Value) -> Option<Task> {
-    let mut t = (tasks_face()?.task)(v)?;
+pub(crate) fn task_entry(kind: &str, v: &serde_json::Value) -> Option<Task> {
+    let mut t = (tasks_face(kind)?.task)(v)?;
     t.status_text = status_text(t.status);
     Some(t)
 }
 
 /// 一个会话的任务**成品**：[`session_task_lines`] 读出的每个对象过 [`task_entry`]，解不成任务的跳过（`trace!`），
-/// 顺序原样（任务号升序）。
-pub fn session_tasks(home: &Path, sid: &str) -> Result<Vec<Task>, Said> {
-    Ok(session_task_lines(home, sid)?
+/// 顺序原样（任务号升序）。`homes` 里有任务列表的每一家各读一遍，并成一份（家序）。
+pub fn session_tasks(homes: impl crate::agents::IntoHomes, sid: &str) -> Result<Vec<Task>, Said> {
+    let homes = homes.into_homes();
+    let mut lines = Vec::new();
+    for h in &homes {
+        lines.extend(session_task_lines(h, sid)?.into_iter().map(|l| (h.kind, l)));
+    }
+    Ok(lines
         .iter()
-        .filter_map(|l| {
+        .filter_map(|(kind, l)| {
             let v: serde_json::Value = serde_json::from_str(l).ok()?;
-            let t = task_entry(&v);
+            let t = task_entry(kind, &v);
             if t.is_none() {
                 tracing::trace!("任务对象缺必填格或类型不对，跳过：{l}");
             }

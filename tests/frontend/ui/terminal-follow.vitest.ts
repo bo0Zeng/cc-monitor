@@ -226,7 +226,7 @@ describe("持有者随帧", () => {
     const holders: unknown[] = [];
     startFollow("devbox", "t-1", { ...r.events, screen: (s, h) => void (r.screens.push(s), holders.push(h)) }, r.port);
     await flush();
-    const held = { kind: "held", holder: { who: "terminal-window", mine: false, said: "S-held" } };
+    const held = { kind: "held", holder: { mine: false, said: "S-held" } };
     r.subs[0].sink([frame(0, { seq: 1, view: VIEW, input: held }), frame(1, { seq: 2, view: VIEW, input: { kind: "shared" } })]);
     expect(holders).toEqual([{ said: "S-held", mine: false }, undefined]);
   });

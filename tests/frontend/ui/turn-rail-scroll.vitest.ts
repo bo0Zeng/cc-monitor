@@ -101,3 +101,15 @@ describe("轮次刻度跟滚动：一帧量一次、二分", () => {
     expect(r.viewportTick()).toBe(expected(50, 3000));
   });
 });
+
+describe("轮次刻度的悬停头", () => {
+  it("一轮一格：头一行照抄后端写好的 tipText（第几轮 · 钟面 · 工具数都是它的），不自己拼", () => {
+    const { rail } = rig(3, 0);
+    const turns = [...rail.el.querySelectorAll<HTMLElement>(".turn-tick")];
+    const tick = turns.find((t) => t.dataset.from === t.dataset.to)!;
+    const from = Number(tick.dataset.from);
+    (rail as unknown as { host: { turns(): TurnRow[] } }).host.turns()[from].tipText = "核心·第几轮那一句";
+    const card = (rail as unknown as { tip(t: HTMLElement): HTMLElement | null }).tip(tick)!;
+    expect(card.querySelector(".turn-tip-head")!.textContent).toBe("核心·第几轮那一句");
+  });
+});

@@ -10,7 +10,6 @@ use crate::common::said::Said;
 use crate::faces::accounts_face::{test_support::answer, KeyDoor};
 use serde_json::{json, Value};
 use std::io::{Read, Write};
-use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 
 const CLAUDE_MCP: &str = include_str!("../../__fixtures__/fake-claude-mcp-login.sh");
@@ -124,15 +123,12 @@ impl Rig {
                 .unwrap_or(0)
         ));
         let rig = Rig { root };
-        rig.write(
-            "bin/claude",
+        // 马上被起 ⇒ 经 `write_exe` 写（本进程写的写端会漏进别的判据线程 fork 出来的子进程 ⇒ ETXTBSY）。
+        std::fs::create_dir_all(rig.root.join("bin")).unwrap();
+        test_home::write_exe(
+            &rig.root.join("bin/claude"),
             &CLAUDE_MCP.replacen("\n", &format!("\nAUTH={auth}\n"), 1),
         );
-        std::fs::set_permissions(
-            rig.root.join("bin/claude"),
-            std::fs::Permissions::from_mode(0o755),
-        )
-        .unwrap();
         rig.write(".claude/.credentials.json", "{\"fake\":\"cred\"}");
         rig.write(".claude/settings.json", "{}");
         rig.write(
@@ -263,9 +259,10 @@ fn a_mcp_login_in_one_account_lands_there_and_the_sync_carries_it_to_every_accou
         rig.json(&creds_rel("b"))["mcpOAuth"].is_null(),
         "b 是同步之后才有"
     );
-    let synced = crate::accounts::manage::mcp_logins_exec::sync(
+    let synced = crate::accounts::manage::mcp_logins_exec::sync_among(
         &rig.door(),
         &crate::platform::fs::Own::for_tests(),
+        crate::agents::REGISTRY,
     )
     .unwrap();
     assert_eq!(synced.changed, vec!["b".to_string()]);

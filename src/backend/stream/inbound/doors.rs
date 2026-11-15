@@ -64,7 +64,7 @@ impl crate::wire::typed::Here for LocalFrames {
         let spec = REGISTRY
             .iter()
             .find(|s| s.name == cmd && crate::assets::hub_inner::NAMES.contains(&s.name))
-            .ok_or_else(|| Said::new("unknown_command", cmd.to_string()))?;
+            .ok_or_else(|| Said::new(cmd_wire::UNKNOWN_COMMAND, cmd.to_string()))?;
         let req = Request {
             id: "in-process".to_string(),
             cmd: cmd.to_string(),
@@ -74,7 +74,7 @@ impl crate::wire::typed::Here for LocalFrames {
         };
         // 内层那几条都在阻塞档（读 · 带码的读 · 写装记录）；枢纽在阻塞线程上问，异步档不问。
         let Some(Prepared::Blocking(run)) = invoke(spec.run, &super::hands(Some(&self.own))) else {
-            return Err(Said::new("unknown_command", cmd.to_string()));
+            return Err(Said::new(cmd_wire::UNKNOWN_COMMAND, cmd.to_string()));
         };
         run(req).map(|v| v.unwrap_or(serde_json::Value::Null))
     }
@@ -93,4 +93,35 @@ pub(super) fn hub_here(
         tz: tz.clone(),
         own: own.clone(),
     })
+}
+
+/// 桌面附件草稿那一圈问**这台自己**的那一跳（会话就在本机：`control/attach_upload.rs`）：本进程那几条命令本身（阻塞档，原样调它们的 `run`）。
+/// 限 [`ATTACH_HERE`] 那几条 —— 不是一扇通到任意命令的门。进程起来时装给那一圈（`stream/entry.rs`）。
+pub(crate) struct AttachHere;
+
+/// 附件那一圈问这台自己放行的那几条（都在阻塞档）。
+const ATTACH_HERE: &[&str] = &[
+    "session-attachment-check",
+    "session-attachment-commit",
+    "session-attachment-drop",
+    "files-stage-chunk",
+];
+
+impl crate::control::attach_upload::Here for AttachHere {
+    fn ask(&self, cmd: &str, args: serde_json::Value) -> Result<serde_json::Value, Said> {
+        let spec = REGISTRY
+            .iter()
+            .find(|s| s.name == cmd && ATTACH_HERE.contains(&s.name))
+            .ok_or_else(|| Said::new(cmd_wire::UNKNOWN_COMMAND, cmd.to_string()))?;
+        let req = Request {
+            id: "in-process".to_string(),
+            cmd: cmd.to_string(),
+            args,
+            ..Default::default()
+        };
+        let Some(Prepared::Blocking(run)) = invoke(spec.run, &super::hands(None)) else {
+            return Err(Said::new(cmd_wire::UNKNOWN_COMMAND, cmd.to_string()));
+        };
+        run(req).map(|v| v.unwrap_or(serde_json::Value::Null))
+    }
 }

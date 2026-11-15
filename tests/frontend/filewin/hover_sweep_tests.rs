@@ -283,7 +283,9 @@ fn sweeping_two_sides_never_flips_a_frame() {
 /// ★ 右键菜单开着（照真的点一下右键）；扫完菜单还开着。
 #[test]
 fn sweeping_with_the_context_menu_open_never_flips_a_frame() {
-    let mut ws = Workspace::new(pane("/srv/m"));
+    let mut w = pane("/srv/m");
+    let _ = crate::find::testing::wire_menu(&mut w, "sweep-menu");
+    let mut ws = Workspace::new(w);
     let mut s = Sweep::new();
     s.frame(&mut ws, Vec::new());
     let at = {
@@ -305,6 +307,13 @@ fn sweeping_with_the_context_menu_open_never_flips_a_frame() {
         modifiers: egui::Modifiers::NONE,
     };
     s.frame(&mut ws, vec![press(true), press(false)]);
+    for _ in guard_core::wall::rounds() {
+        if ws.pane_on(0).menu().is_some() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        s.frame(&mut ws, Vec::new());
+    }
     assert!(ws.pane_on(0).menu().is_some(), "量具：右键没把菜单摆出来");
     let flips = s.run("右键菜单", &mut ws);
     assert!(

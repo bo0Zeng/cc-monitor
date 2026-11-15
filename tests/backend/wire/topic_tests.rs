@@ -154,7 +154,7 @@ fn each_arm_has_the_cells_the_table_says() {
     let decl = <crate::wire::Changed as ts_rs::TS>::decl(&ts_rs::Config::default());
     for t in ALL {
         let s = t.spec();
-        let arm = crate::wire::Changed::bare(t, Some("k".into())).expect("每个主题都有那一臂");
+        let arm = crate::wire::bare_changed(t, Some("k".into())).expect("每个主题都有那一臂");
         assert_eq!(arm.topic(), t, "{t:?} 那一臂说的是别的主题");
         let head = format!("{{ \"topic\": \"{}\",", s.name);
         let at = decl

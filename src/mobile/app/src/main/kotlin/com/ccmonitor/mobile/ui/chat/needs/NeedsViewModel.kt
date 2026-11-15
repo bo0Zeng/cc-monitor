@@ -20,7 +20,7 @@ class NeedsViewModel(
     sid: Flow<String?>,
     machine: String,
 ) : ViewModel() {
-    val desk = NeedsDesk(feed, board.state.map { it[hostId] }, { board.reask(hostId) }, sid, machine, viewModelScope, now = ::monoMs)
+    val desk = NeedsDesk(feed, board.state.map { it.merged }, hostId, board::reask, sid, machine, viewModelScope, now = ::monoMs)
 }
 
 /** 本机单调钟（毫秒）：「已等」接着走表用，不受改系统时间影响。 */

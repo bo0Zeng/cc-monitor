@@ -3,7 +3,7 @@ import type { BusAct } from "./BusAct";
 import type { Machine } from "./Machine";
 
 /**
- * `bus-send` 的入参：发信人要发的那一封（`cc-bus send` 组好交来）。各格的规矩在 [`cc_bus_envelope`]。
+ * `bus-send` 的入参：发信人要发的那一封（`cc-bus send` 组好交来）。各格的规矩在 [`envelope`]。
  */
 export type BusEnvelopeReq = { 
 /**

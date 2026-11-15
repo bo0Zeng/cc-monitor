@@ -25,15 +25,16 @@ fn cells(
     f: &ForkFacts,
     rec: &Record,
 ) {
-    kind(&h.agent);
-    kind(&g.agent);
-    kind(&r.agent);
+    maybe(&h.agent);
+    maybe(&g.agent);
+    maybe(&r.agent);
     kind(&s.agent);
     if let ManualItem::AccountLogin { agent, .. } = m {
         kind(agent);
     }
     match l {
-        LoginStartReq::Account { agent, .. } | LoginStartReq::Mcp { agent, .. } => kind(agent),
+        LoginStartReq::Account { agent, .. } => maybe(agent),
+        LoginStartReq::Mcp { agent, .. } => kind(agent),
     }
     maybe(&t.agent);
     kind(&f.agent);

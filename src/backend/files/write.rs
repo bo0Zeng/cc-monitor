@@ -37,9 +37,9 @@ pub(crate) fn as_long_as(want: &[u8]) -> Cap {
     }
 }
 
-// 路径解析住 `common/root_path.rs`：传输台（原生那一块）写本机落点也过它，两块各引各的。
+// 路径解析住 `common/root_path.rs`：两台之间复制（原生那一块）写本机落点也过它，两块各引各的。
 pub use crate::common::root_path::{lexical_in_root, walk_in_root, Last};
-// 换上内容（落进用户目录）那一下住 `common/staging.rs`：传输台的下载落地也调它，两块各引各的。
+// 换上内容（落进用户目录）那一下住 `common/staging.rs`：两台之间复制的下载落地也调它，两块各引各的。
 use crate::common::staging::{land, own_mode, Content, LandErr, Was, SWAP_SEQ};
 
 /// 一次落盘没成，**是谁拦的**。

@@ -214,7 +214,7 @@ fn error_type(sig: &str) -> Option<String> {
     None
 }
 
-/// 回通道那一形 `Fail` 的壳命令（失败照 `chan.ts::decodeFail` 解回三层）：`chan_call` · 聊天附件逐块送进那台暂存区那一条（每一问就是 `call_via`）。
+/// 回通道那一形 `Fail` 的壳命令（失败照 `chan.ts::decodeFail` 解回三层）：`chan_call` · 聊天附件字节放进本机暂存区那一条（没成只回本侧 `ours` 那一层）。
 const FAILING_AS_CHANNEL: [&str; 2] = ["chan_call", "attach_stage"];
 
 /// 壳命令的失败只一形：签名回 `Result` 的，错型只许交出去那一形 `cmd_wire::failed::Failed`（[`FAILING_AS_CHANNEL`] 那两条回通道那一形 `Fail`）。不合的那几条。
@@ -257,7 +257,7 @@ fn every_shell_command_fails_as_said_and_names_itself() {
             }
         }
     }
-    assert!(seen >= 26, "人群只扫到 {seen} 条 —— 取法坏了");
+    assert!(seen >= 25, "人群只扫到 {seen} 条 —— 取法坏了");
     assert!(
         bad.is_empty(),
         "这几条壳命令失败时复制详情里没有命令名：{bad:?}"

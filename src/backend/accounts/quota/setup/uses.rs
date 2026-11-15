@@ -134,7 +134,7 @@ pub(crate) fn watch(own: &Own) -> Result<crate::platform::watch_file::Watching, 
                 .iter()
                 .any(|n| name == Some(n))
                 || (p.parent() == Some(sdir_for.as_path())
-                    && p.extension().and_then(|x| x.to_str()) == Some("rhai"))
+                    && p.extension().and_then(|x| x.to_str()) == Some(super::shelf::EXT))
         },
         "rotation-watch",
         move |hit| {
@@ -148,7 +148,7 @@ pub(crate) fn watch(own: &Own) -> Result<crate::platform::watch_file::Watching, 
             }
             if hit
                 .iter()
-                .any(|p| p.extension().and_then(|x| x.to_str()) == Some("rhai"))
+                .any(|p| p.extension().and_then(|x| x.to_str()) == Some(super::shelf::EXT))
             {
                 nodes::emit(nodes::bus(), Source::Strategies, None);
             }

@@ -29,6 +29,7 @@ import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.core.wire.gen.BatchAnswer
+import com.ccmonitor.mobile.core.wire.gen.ClashChoice
 import com.ccmonitor.mobile.core.wire.gen.ClashRow
 import com.ccmonitor.mobile.core.wire.gen.Decide
 
@@ -43,6 +44,7 @@ fun ConflictSheet(
     title: String,
     said: String?,
     rows: List<ClashRow>,
+    whole: List<ClashChoice>,
     go: String?,
     onAnswer: (BatchAnswer?) -> Unit,
 ) {
@@ -84,8 +86,8 @@ fun ConflictSheet(
                 if (each) {
                     SecondaryButton(onClick = { onAnswer(BatchAnswer.Each(picks.toMap())) }) { Text(go.orEmpty()) }
                 } else {
-                    // 字与先后照核心（每行的 choices 已按跳过 · 保留两份 · 覆盖排好）；清单里没有一项给的答不画。
-                    rows.flatMap { it.choices }.distinctBy { it.decide }.forEach { o ->
+                    // 整组那几颗与先后照核心（[whole]：各行给了的答并起来，跳过 · 保留两份 · 覆盖）。
+                    whole.forEach { o ->
                         SecondaryButton(onClick = { onAnswer(BatchAnswer.All(o.decide)) }, danger = o.decide == Decide.OVERWRITE) { Text(o.label) }
                     }
                 }

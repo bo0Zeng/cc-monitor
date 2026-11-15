@@ -71,13 +71,6 @@ impl<O: Clone> Lane<O> {
         }
     }
 
-    /// 新的一格（新的一趟），敲窗口的那只手照抄这一格的。
-    pub fn fresh_like(&self) -> Lane<O> {
-        let next = Lane::default();
-        next.attach(self.ctx());
-        next
-    }
-
     fn ctx(&self) -> Option<egui::Context> {
         match self.ctx.lock() {
             Ok(g) => g.clone(),

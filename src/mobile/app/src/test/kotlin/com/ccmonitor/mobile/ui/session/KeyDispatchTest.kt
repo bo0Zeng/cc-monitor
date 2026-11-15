@@ -8,7 +8,6 @@ import com.ccmonitor.mobile.core.data.db.KeyMod
 import com.ccmonitor.mobile.core.data.db.KeyPress
 import com.ccmonitor.mobile.core.data.db.SpecialKey
 import com.ccmonitor.mobile.core.data.db.defaultKeys
-import com.ccmonitor.mobile.core.data.db.keyBytes
 import com.ccmonitor.mobile.core.terminal.KeyModifiers
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals

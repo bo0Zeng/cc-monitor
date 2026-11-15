@@ -1,21 +1,20 @@
-//! 「这条命令能不能回落」的唯一判定（monitor 侧走后端的所有控制命令共用）。`CallError`（问后端失败的原因）与在等应答的上限 [`MAX_PENDING`]
-//! 也住这里：客户端（壳里 `inbound_client.rs`）造它们，分流规则读它们 —— 一套词一个家。
+//! 问后端一条命令失败了怎么分层、交什么码、说哪一句的唯一一份（monitor 侧走后端的所有控制命令 · 手机核心 · 常驻转发共用）。
+//! `CallError`（问后端失败的原因）、它的码（[`CallError::code`]，只取 `cmd_wire` 常量）与在等应答的上限 [`MAX_PENDING`]
+//! 也住这里：客户端（`resident-client`）造它们，分层与那一句读它们 —— 一套词一个家。
+//! 码不另写表：桌面 · 手机 · 常驻转发都读 [`CallError::code`]；壳里的发送端只走这里的出口，由 `every_backend_sender_is_registered_and_uses_the_one_router` 钉住（它遍历目录发现发送端，不靠手写清单）。
 //!
-//! 只能有一份：两份实现会漂，而漂开的后果是静默的权限旁路 —— 把后端的一次 `wrong_owner` 当成「backend 不可用」回落到另一条路再做一次，
-//! 等于把一次被门拒绝洗成成功。由 `every_backend_sender_is_registered_and_uses_the_one_router` 钉住（它遍历目录发现发送端，不靠手写清单）。
-//!
-//! # 分界线是「能不能证明这条命令根本没发出去」
+//! # 分界线是「能不能证明这条命令根本没发出去」（[`provably_not_sent`]）
 //!
 //! | 档 | 在 `call` 里的位置 | 判定 |
 //! |---|---|---|
-//! | `local_client() == None` | 连 client 都没有，一个字节没发 | 证明没发出去 ⇒ 可回落 |
-//! | `Unsupported` | `call` 第一行 `if !self.accepts(cmd)`，早于 `next_id`/`register`/`send` | 证明没发出去 ⇒ 可回落（旧后端） |
-//! | `TooManyPending` | `register(&id)` 失败，仍早于 `writes.send` | 证明没发出去 ⇒ 可回落 |
-//! | `Disconnected` | 两个产地：写队列 send 失败（没入队）或 等应答时 `rx` 掉了（已发出） | 分不开 ⇒ 按最坏算 ⇒ 不回落 |
-//! | `Timeout` | 两个产地：写入段超时或 等应答段超时（可能已执行） | 分不开 ⇒ 按最坏算 ⇒ 不回落 |
-//! | `Cancelled` / `Remote(..)` | backend 说过话了 | 不回落 |
+//! | `local_client() == None` | 连 client 都没有，一个字节没发 | 证明没发出去 |
+//! | `Unsupported` | `call` 第一行 `if !self.accepts(cmd)`，早于 `next_id`/`register`/`send` | 证明没发出去（旧后端） |
+//! | `TooManyPending` | `register(&id)` 失败，仍早于 `writes.send` | 证明没发出去 |
+//! | `Disconnected` | 两个产地：写队列 send 失败（没入队）或 等应答时 `rx` 掉了（已发出） | 分不开 ⇒ 按最坏算 ⇒ 说不准 |
+//! | `Timeout` | 两个产地：写入段超时或 等应答段超时（可能已执行） | 分不开 ⇒ 按最坏算 ⇒ 说不准 |
+//! | `Cancelled` / `Remote(..)` | backend 说过话了 | 那台的话照交 |
 //!
-//! `Timeout` 与 `Disconnected` 的两个产地类型上分不开 ⇒ 一次写入段超时会让用户拿到错误而不是回落；要修得在 `inbound_client` 那边分成两个变体。
+//! 说不准的那几档，本侧写的那一句外面套「说不准」（[`route_call_error`]）；界面那一份 `chan-caller.ts::provablyNotSent` 照同一条线判。
 
 use crate::chan::wire::{self as w, Withdraw};
 use copy_core::copy_text;
@@ -56,6 +55,22 @@ pub enum CallError {
     Timeout { after: Duration, withdraw: Withdraw },
     /// backend 回了 `ok:false`：它那一份失败原样透出（码 · 那一句 · 复制详情 · 按码定形的 `data`，同帧面失败应答）。
     Remote(cmd_wire::failed::Failed),
+}
+
+impl CallError {
+    /// 这次失败交出去的码：本侧的那几种只取 `cmd_wire` 常量；那台交来码的（握手时说做不到 · 事后答失败）原样交那台的码。
+    pub fn code(&self) -> &str {
+        match self {
+            CallError::Unsupported { .. } => cmd_wire::UNKNOWN_COMMAND,
+            CallError::Differs { .. } => cmd_wire::SHAPE_DIFFERS,
+            CallError::Unavailable { code, .. } => code,
+            CallError::TooManyPending => cmd_wire::TOO_MANY_PENDING,
+            CallError::Disconnected => cmd_wire::DISCONNECTED,
+            CallError::Timeout { .. } => cmd_wire::TIMEOUT,
+            CallError::Cancelled => cmd_wire::CANCELLED,
+            CallError::Remote(r) => &r.code,
+        }
+    }
 }
 
 impl std::fmt::Display for CallError {
@@ -111,18 +126,8 @@ impl std::fmt::Display for CallError {
     }
 }
 
-/// 一条走后端的控制命令**失败时**的结局，分界线见模块头注（成功那一态由调用方的 `Ok` 自己装，这里不另设）。
-#[derive(Debug, PartialEq, Eq)]
-pub enum Routed {
-    /// 证明这条命令没发出去 ⇒ 调用方可以回落。带上原因只为诊断，不参与分流判断。
-    NoChannel(String),
-    /// backend 说了话（拒绝 / 失败），**或者**我们无法证明它没执行 ⇒
-    /// **不许回落**，把这句话原样交给用户。
-    Refused(String),
-}
-
 /// 分层判定的唯一一份：`inbound_client::CallError` ⇒ 三层（传输错 · 对端错 · 我们自己错）＋ `reach` 三档 ＋ `why`。
-/// 全仓唯一 `match` `inbound_client::CallError` 的地方：三态的 [`route_call_error`] 从它收拢出来，通道的生产句柄（`chan/host.rs`）直接用它。
+/// 分层只此一份：给人看的那一句 [`route_call_error`] 建在它上面，通道的生产句柄（`chan/host.rs`）直接用它。
 /// `hop` 是调用方那一侧给这一跳的编号（`HopId.idx`）。
 ///
 /// | 进来的 | 分层结果 | 理由（与模块头注那张表逐档对应） |
@@ -130,7 +135,7 @@ pub enum Routed {
 /// | `Unsupported` | `Peer{Unsupported}` | 对端事前就说不认（`hello.commands`），一个字节没发 |
 /// | `Unavailable{code}` | `Peer{Refused{body}}`，body = `{"code","said","detail"}`（详情空） | 对端握手时说过这台做不到（`hello.unavailable`），本侧没发；同对端事后回那个码 |
 /// | `Differs{said}` | `Peer{Refused{body}}`，body = `{"code": "backend_differs", "said", "detail"}`（详情空） | typed 命令两端形状指纹对不上，本侧没发；那一句本层写好 |
-/// | `TooManyPending` | `Hop{write, NotSent, Overrun}` | 本侧在飞上限顶满，早于入队 |
+/// | `TooManyPending` | `Hop{write, NotSent, Full}` | 本侧在等的满了，早于入队 |
 /// | `Disconnected` | `Hop{read, Unknown, Dropped}` | 两个产地分不开 ⇒ 拿不准一律 `Unknown` |
 /// | `Timeout` | `Hop{wait, Unknown, Overrun}` | 同上 |
 /// | `Cancelled` | `Ours{Cancelled}` | 撤单源自本侧（后端只是确认了它）；副作用状态未知，不是回滚 |
@@ -148,7 +153,7 @@ pub fn layer_call_error(e: &CallError, hop: u8) -> Layered {
             detail: Detail::BackendOld,
         },
         // 那台握手时说过做不到、本侧没发：对端的话（只是来得早）⇒ 与它事后回同一个码时同形，
-        //   调用方按码说人话；不回落（换条路也做不到）。
+        //   调用方按码说人话。
         CallError::Unavailable { code, .. } => Layered {
             error: w::CallError::Peer {
                 why: w::PeerFault::Refused {
@@ -184,7 +189,7 @@ pub fn layer_call_error(e: &CallError, hop: u8) -> Layered {
             error: w::CallError::Hop {
                 at: at("write"),
                 reach: w::Reach::NotSent,
-                why: w::HopFault::Overrun,
+                why: w::HopFault::Full,
             },
             detail: text(copy_text("rsBackendRoute.layer.tooMany", &[]).into()),
         },
@@ -259,21 +264,9 @@ pub fn layer_no_channel(hop: u8) -> w::CallError {
     }
 }
 
-/// `CallError` → 三态 —— **建在 [`layer_call_error`] 上的一层收拢**，自己不再看 inbound 的枚举。
-/// `machine` 是问的那一台给人看的称呼（本机 ⇒ `copy_core::local_machine()`）：那台不认这条命令时说「{machine} 后端要更新」。
-/// `refusal` 只负责把 `(code, said)` 翻成用户看的话 ——
-/// **分流本身不许由调用方决定**，那就是本模块存在的全部意义。
-///
-/// 收拢规则只有一条：分层结果**能证明没发出去**（`reach: NotSent`，或对端事前就说不认）
-/// ⇒ `NoChannel`（可回落）；其余一律 `Refused`（不回落）。
-/// 收拢前后逐字节不变由 `the_collapse_to_three_states_is_byte_identical_to_the_table_before_layering` 钉着。
-pub fn route_call_error(
-    e: &CallError,
-    machine: &str,
-    refusal: impl Fn(&str, &str) -> String,
-) -> Routed {
-    let Layered { error, detail } = layer_call_error(e, 0);
-    let provably_not_sent = match error {
+/// 分层结果**能不能证明这条命令没发出去**（`reach: NotSent`，或对端事前就说不认）。与界面那一份 `chan-caller.ts::provablyNotSent` 对拍。
+pub fn provably_not_sent(error: &w::CallError) -> bool {
+    match error {
         w::CallError::Hop { reach, .. } => match reach {
             w::Reach::NotSent => true,
             w::Reach::Sent | w::Reach::Unknown => false,
@@ -283,22 +276,31 @@ pub fn route_call_error(
             w::PeerFault::Refused { .. } => false,
         },
         w::CallError::Ours { .. } => false,
-    };
-    match (provably_not_sent, detail) {
-        (_, Detail::BackendOld) => Routed::NoChannel(copy_core::backend_old(machine)),
-        (true, Detail::Text(s)) => Routed::NoChannel(s),
-        (true, Detail::Remote { code, said }) => Routed::NoChannel(refusal(&code, &said)),
-        (false, Detail::Text(s)) => Routed::Refused(copy_text(
-            "rsBackendRoute.route.unsure",
-            &[("s", &s.to_string())],
-        )),
-        (false, Detail::Remote { code, said }) => Routed::Refused(refusal(&code, &said)),
     }
 }
 
-/// 没有控制通道（`local_client` 回 `None`）—— **一个字节都没发出去**，可回落。
-pub fn no_channel(origin: &str) -> Routed {
-    Routed::NoChannel(crate::chan::said::offline(origin))
+/// `CallError` → 给人看的那一句 —— **建在 [`layer_call_error`] 上**，自己不再看 inbound 的枚举。
+/// `machine` 是问的那一台给人看的称呼（本机 ⇒ `copy_core::local_machine()`）：那台不认这条命令时说「{machine} 后端要更新」。
+/// `refusal` 只负责把对端的 `(code, said)` 翻成用户看的话。
+///
+/// 本侧写好的那一句：能证明没发出去（[`provably_not_sent`]）⇒ 原样；拿不准发没发出去 ⇒ 套「说不准」那一句。
+pub fn route_call_error(
+    e: &CallError,
+    machine: &str,
+    refusal: impl Fn(&str, &str) -> String,
+) -> String {
+    let Layered { error, detail } = layer_call_error(e, 0);
+    match detail {
+        Detail::BackendOld => copy_core::backend_old(machine),
+        Detail::Text(s) if provably_not_sent(&error) => s,
+        Detail::Text(s) => copy_text("rsBackendRoute.route.unsure", &[("s", &s)]),
+        Detail::Remote { code, said } => refusal(&code, &said),
+    }
+}
+
+/// 没有控制通道（`local_client` 回 `None`）—— **一个字节都没发出去**：那台离线那一句。
+pub fn no_channel(origin: &str) -> String {
+    copy_core::offline(origin)
 }
 
 #[cfg(test)]

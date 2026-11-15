@@ -61,15 +61,16 @@ mod bind;
 mod ui_contract;
 // 要让用户知道的出错：壳推给界面只这一种（码 ＋ 文案键 ＋ 那句话 ＋ 复制详情），日志行不上屏。
 mod app_restart; // 设置窗「现在重启」：重起 cc-monitor 自己
-mod attach_stage; // 聊天附件的分块传：壳替界面走 `chunk_core::stage`（界面只交字节与进度通道）
+mod attach_stage; // 聊天附件那一份的字节放进本机暂存区、回路径（分块 · 问那台都是本机后端的事）
 mod chan;
 mod clipboard; // 写系统剪贴板那一条命令（回真成败）：全产品的复制只这一口
 mod config;
-mod data_paths;
+mod data_paths; // 壳取家目录的唯一住址（数据位置那几行由本机后端 `data-report` 答）
 mod diagnostics_report; // 日志页「复制诊断信息」：一个命令出整段诊断文本
 mod event_replay;
 mod footprint_client;
-mod ui_error; // 「足迹」里 monitor 自己那台那几行（`HostScope::Client`）只有 monitor 知道的事实：它自己进程的家目录 · agent 家 · PATH（stat 在本机后端）
+mod main_close; // 关主窗那一下：壳自己问会打断什么、自己弹框、自己销毁（不经网页 JS）
+mod ui_error; // 「足迹」里 monitor 自己那台那几行（`HostScope::Client`）只有 monitor 知道的事实：它自己进程的家目录 · PATH · 网页引擎的数据目录（stat 在本机后端）
               // 🔴原生文件管理窗口。进程形态＝**同进程**、
               // egui 事件循环住次线程；住址为什么是 monitor 的一个模块而不是新 crate——两条理由
               // （同进程要链进这个二进制 · 门禁 `cargo` 格把包数恒等钉在 9）逐条写在它的头注里。
@@ -158,11 +159,6 @@ mod session_book;
 // 住宿主知识层是硬的：平台原语进不了 `backend/`（那侧的禁针 + 递减棘轮），
 // `backend/` 的两个落点收注入参数（`ManagedSpawn`）。
 mod spawn_managed;
-// devbench F02：skill 接入面（一份声明 + 通用宿主）。
-// ⚠ **今天零生产消费者**（UI 归 F03）—— 照 `tool_registry` 的先例如实登记并写处置条件：
-// F03 接上之后删掉那个模块级 `#[allow(dead_code)]`；若 F03 收工时它仍零消费者，
-// 就该删掉整个模块，而不是让它当装饰。
-mod transfer_relay;
 // 远端自部署：照本机常驻后端出的计划往那台放字节（issue #29 自动部署 F08 · 手动安装 / 卸载 · `ccm` 入口）。
 mod deploy;
 // 会话流只读本机后端那一条：各台的常驻流归本机后端，那台流上的事由它原样转来（`relayed`），
@@ -272,6 +268,14 @@ fn nested_env_markers() -> Vec<&'static str> {
 pub(crate) const SETTINGS_WINDOW_LABEL: &str = "settings";
 /// 主窗的标签（`tauri.conf.json` 里那一个）。
 pub(crate) const MAIN_WINDOW_LABEL: &str = "main";
+
+/// 这一次启动要不要把主窗拉到前面（照那一次启动的参数）：带 `--background`（终端里 `cc` 起 monitor 那一下 · 开机自启）⇒ 不拉；
+/// 不带（双击）⇒ 拉。两处问它：第一个实例起来时要不要补一次 set_focus；第二个实例来了要不要把已在跑的那个主窗
+/// 还原 · 显示 · 拉前（带 `--background` ⇒ 什么都不做，藏在托盘里的主窗留着藏）。
+/// PowerShell 接入块（`src/shared/cc.ps1.tpl`）不扫进程判 monitor 在不在：照样起一个带 `--background` 的，由这一判收住。
+pub(crate) fn wants_front(args: &[String]) -> bool {
+    !args.iter().any(|a| a == "--background")
+}
 
 /// ST1「关窗改隐藏」的生命周期缝：**`destroyed` 这个窗口刚销毁、`alive` 是此刻还在的窗口，
 /// 要跟着 destroy 掉哪几个。**
@@ -429,19 +433,22 @@ pub fn run() {
 
     // issue #9：single-instance lock。**必须是第一个 plugin**（第二个实例在别的插件起来之前就退）。各平台都注册
     // （Windows / macOS：`tauri-plugin-single-instance`；Linux：自己占会话总线上的名字，连同激活令牌一起交 —— `platform/single_instance.rs`）。
-    // 第二个 cc-monitor 实例启动 → 本回调在第一个实例里跑 → 主窗口还原 · 显示 · 拉前（带令牌）→ 第二个实例立即退出。详 src/doc/INVARIANTS.md § 16。
+    // 第二个 cc-monitor 实例启动 → 本回调在第一个实例里跑 → 不带 `--background` 才把主窗口还原 · 显示 · 拉前（带令牌；判法 `wants_front`）→ 第二个实例立即退出。详 src/doc/INVARIANTS.md § 16。
     let mut builder = tauri::Builder::default();
     builder = builder.plugin(crate::platform::single_instance::plugin(|app, second| {
-        // 第二个实例若带 --background（开机自启竞态下偶发）→ 只 show 不抢焦点；普通双击照常置前。
-        let background = second.args.iter().any(|a| a == "--background");
+        let raise = wants_front(&second.args);
         tracing::info!(
-            "second cc-monitor instance detected (background={background}, token={})",
+            "second cc-monitor instance detected (raise={raise}, token={})",
             second.token.is_some()
         );
-        crate::platform::window::raise_main(app, second.token, !background);
+        if raise {
+            crate::platform::window::raise_main(app, second.token);
+        }
     }));
     // Windows 那一件（WebView2 最大化 / 全屏后内容错位的修复）住壳的平台层：别处原样返回。
     builder = crate::platform::window::desktop_fixes(builder);
+    // 关主窗那一下归壳一处（问会打断什么 · 弹框 · 销毁都在壳里，不经网页 JS）。
+    builder = crate::main_close::install(builder);
 
     // ST1「关窗改隐藏」的另一半：设置窗关窗 = **隐藏**，永不自己销毁
     // ⇒ 它会把进程吊住（Tauri 是「最后一个窗口销毁才退出」）。主窗一销毁，就把它一起 destroy 掉，
@@ -514,7 +521,7 @@ pub fn run() {
             // 窗口 config `focus=false` → 创建时不激活、不抢前台（cc 集成 auto-launch 带
             // `--background` 启动时正好不打断当前终端）。但**手动**启动（双击 exe，无该参数）
             // 仍应置前，这里补一次 set_focus 还原默认体验。
-            if !std::env::args().any(|a| a == "--background") {
+            if wants_front(&std::env::args().collect::<Vec<_>>()) {
                 if let Some(window) = app.get_webview_window("main") {
                     window.set_focus().discard(Why::WindowBestEffort);
                 }
@@ -712,12 +719,9 @@ pub fn run() {
             chan::webview::chan_subscribe,
             chan::webview::chan_want,
             chan::webview::chan_stop,
-            // 聊天附件的分块传（逐块 · 摘要 · 暂存键都是 `chunk_core`）：界面只交字节与进度通道。
+            // 聊天附件那一份的字节放进本机暂存区、回路径（交 `attach-draft-put`）。
             attach_stage::attach_stage,
-            attach_stage::attach_stage_stop,
             // issue #6: 历史全文搜索那三条命令（本机索引）删了：本机远端都经通道说 `history-search`。
-            // v2.3.0 issue #3 (A 透明化): 设置面板「数据」区列出所有持久路径
-            data_paths::get_data_paths,
             // issue #15 Tier 1: SSH 连接 UX —— 测试连接 + 指纹固化。`~/.ssh/config` 导入那三条搬进后端（`ssh-config-*`）。
         ])
         .build(tauri::generate_context!())
@@ -1351,7 +1355,7 @@ fn get_log_file_info(
     r.map_err(|s| s.named("get_log_file_info"))
 }
 
-/// 「用系统程序打开 / 在文件夹中显示」交给壳的那一样（界面经 `commands.os_open`）。日志那两样只交名字：日志在哪只壳知道。
+/// 「用系统程序打开 / 在文件夹中显示」交给壳的那一样（界面经 `commands.os_open`）。日志那一样只交名字：日志在哪只壳知道。
 #[derive(serde::Deserialize, Debug)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -1365,8 +1369,6 @@ enum OsOpen {
     Url { url: String },
     /// monitor 此刻在写的那份日志（`rolling::daily` 写入的 mtime 最新那个）。
     LogFile,
-    /// monitor 的日志目录（还没有就先建）。
-    LogDir,
 }
 
 /// 壳起本机程序「打开 / 在文件夹中显示」的唯一一门：界面不拿 opener 插件，打开路径 · 网址 · 日志都经这里；挑程序住 `platform/proc.rs`。
@@ -1397,23 +1399,6 @@ async fn os_open(app: tauri::AppHandle, what: OsOpen) -> Result<(), cmd_wire::fa
                     .current_log_file()
                     .ok_or_else(|| Said::of("rsLib.log.none", &[]))?;
                 (false, path.to_string_lossy().into_owned())
-            }
-            OsOpen::LogDir => {
-                let state = app.state::<Arc<logging::LoggingState>>().inner().clone();
-                let dir = state.log_dir();
-                // 目录可能还不存在（log_enabled=false 时不创建）
-                if !dir.exists() {
-                    platform::own_fs::log_dir(&dir).map_err(|e| {
-                        Said::with_raw(
-                            copy_text(
-                                "rsShellCmd.logDir.createFailed",
-                                &[("why", &copy_core::reason::io_reason(e.kind()))],
-                            ),
-                            format!("{}\n{e}", dir.display()),
-                        )
-                    })?;
-                }
-                (false, dir.to_string_lossy().into_owned())
             }
         };
         Ok(tokio::task::spawn_blocking(move || {

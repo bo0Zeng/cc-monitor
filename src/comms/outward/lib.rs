@@ -103,7 +103,7 @@
 
 //! # 边界：中转认识谁
 //!
-//! 中转是一个独立的 crate，普通依赖只有 `copy-core` · `relay-route-core` · `upstream-url-core` · `rustls` · `webpki-roots`
+//! 中转是一个独立的 crate，普通依赖只有 `copy-core` · `relay-route-core` · `cap-core` · `rustls` · `webpki-roots`
 //! （边界判据按依赖图判，第一方业务 crate 一个都不许出现）⇒ 后端的观测面 · 控制面 · 适配层 · 调用口它在编译期就够不着。
 //! 它要的东西都由宿主递进来（`Relay::new`：上游选择那只手 · 钥匙 · tee 落点 · 开上游 TCP 的那一口（后端的出网口）· 两个期限值 · 在途请求体合计的上限）。
 //! 本 crate 自己不开 TCP：直连还是经代理（代理永远在最外层）是出网口的事，TLS 在它交回的那条 TCP 里面。
@@ -138,7 +138,7 @@ mod upstream;
 pub use door::{KeyCheck, Keys};
 pub use server::{apply_downstream_deadline, refuse_busy, serve_one, FailedAt, Relay};
 
-/// 去上游那一跳的读数（[`Relay::hop`] 那一份记账出的）与那一句（[`HopFacts::line`]）：宿主把它归到本机那台。
+/// 去上游那一跳的读数（[`Relay::hop`] 那一份记账出的）：宿主写成那一句、归到本机那台。
 pub use hop::{HopFacts, HopMeter, Last};
 
 /// tee 的第二个落点的口与它交出去的那件事（宿主 `stream::tap` 实现口、把事件拼成活卡）；
@@ -222,7 +222,7 @@ pub(crate) struct StreamId<'a> {
 ///   客户端自带的 `Authorization` 必须被丢掉，不许和我们写上去的 `x-api-key` 并存
 ///   （HTTP 允许同名头出现多次 ⇒ 上游看见两个鉴权头时谁赢**没有定义**）。
 ///   把它缩成「只丢要写的那一个」是**行为变更**，不是优化。
-/// - [`Self::write`]：这一趟要写的那一条，`(头名, **完整**头值)`。
+/// - [`Self::write`]：这一趟要写的那几条，`(头名, **完整**头值)`（一家换号可能要写不止一个头）。
 ///   值里的前缀（`Bearer ` 那一类）**已经由上游选择拼好** ⇒ 中转不知道也不需要知道
 ///   「这一家上游要什么形状的鉴权头」。
 ///
@@ -236,8 +236,8 @@ pub(crate) struct StreamId<'a> {
 pub struct AuthSwap<'a> {
     /// 换头前要整条丢掉的下游头名（**全集**，比对走 `eq_ignore_ascii_case`）。
     pub clear: &'a [&'static str],
-    /// 这一趟要写的那一条：`(头名, 完整头值)`。`None` = 剥掉之后一个头都不写。
-    pub write: Option<(&'static str, &'a str)>,
+    /// 这一趟要写的那几条：`(头名, 完整头值)`，照给的先后各写一条。空 = 剥掉之后一个头都不写。
+    pub write: &'a [(&'static str, &'a str)],
 }
 
 /// 上游选择给中转的答案。**中转拿到就照做**。
@@ -263,7 +263,7 @@ pub enum Destination<'a> {
     /// 第三种是「把下游那几份鉴权头丢掉，而且一个头都不写」（本地部署那一格）。
     /// 它不是 `Passthrough`（那一支逐字是「原样转发」），也没有 key 可代入。
     /// ⇒ 把 `Substitute` 的含义写准：「**这一行的鉴权由表说了算**（先把下游那份剥掉）」，
-    /// [`AuthSwap::write`] 给 `None` 表示「剥掉之后什么都不写」。
+    /// [`AuthSwap::write`] 给空表示「剥掉之后什么都不写」。
     /// 整张对照表住 `accounts` 那一侧那个派发函数的头注。
     Substitute {
         upstream: &'a Base,

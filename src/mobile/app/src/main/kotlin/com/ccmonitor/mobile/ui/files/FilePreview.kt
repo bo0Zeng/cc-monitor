@@ -4,7 +4,6 @@ import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.ProseHl
 import com.ccmonitor.mobile.core.claude.link.RemotePath
 import com.ccmonitor.mobile.core.claude.link.Reply
-import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.wire.gen.HlCode
 import com.ccmonitor.mobile.core.wire.gen.PreviewGate
 import com.ccmonitor.mobile.core.wire.gen.TextPreview
@@ -33,16 +32,15 @@ class FilePreview(
         val undecodable: String,
     ) : Shown
 
-    /** 照 [gate] 预览；门不许 · 门不明（那一行不在这一屏）⇒ 那一句，不读；读不成 ⇒ 那台 / 核心那一句（[FileOps.Failed]）。 */
+    /** 照 [gate] 预览；门不许 ⇒ 那台那一句，不读；读不成 ⇒ 那台 / 核心那一句（[FileOps.Failed]）。 */
     suspend fun show(
         path: RemotePath,
-        gate: PreviewGate?,
+        gate: PreviewGate,
     ): Result<Shown> =
         when (gate) {
             is PreviewGate.Text -> text(path, gate.value)
             is PreviewGate.Image -> FileOps(feed, machine).readBytes(path, gate.value).map { Image(it.bytes, it.undecodable) }
             is PreviewGate.No -> Result.failure(IllegalStateException(gate.value))
-            null -> Result.failure(IllegalStateException(copyText("rsFilewinSource.gates.unlisted")))
         }
 
     /** 读不成 ⇒ 那台那一句（[FileOps.Failed]）；上色没问成不算读不成。 */

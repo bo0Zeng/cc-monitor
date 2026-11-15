@@ -92,20 +92,24 @@ fn the_model_is_read_back_from_the_local_command_output() {
 /// ★ 换模型送的那一行：`/model <值>`。
 #[test]
 fn the_model_command_is_slash_model_and_the_value() {
-    assert_eq!(super::model_command("opus"), "/model opus");
-    assert_eq!(super::model_command("sonnet[1m]"), "/model sonnet[1m]");
+    assert_eq!(super::model_command("opus", None), "/model opus");
+    assert_eq!(
+        super::model_command("sonnet[1m]", None),
+        "/model sonnet[1m]"
+    );
 }
 
 /// ★ 每一档都有字：起会话可选的 ∪ 只会显示的那几档 == 记录里会写的那七个值（`recognize::facts::tests` 那七个：六个真值 ＋ 别名 `manual`），
-/// 两向；每一档经同一处（[`crate::agents::permission_mode_text`]）给字、字取自文案表；屏底认得出的档都在里面。认不出的档不猜字。
+/// 两向；每一档经这一家的权限档那一处（[`crate::agents::PermissionFace::text_of`]）给字，就是用户看到的那几个字；屏底认得出的档都在里面。认不出的档不猜字。
 #[test]
 fn every_mode_the_session_can_be_in_has_its_words() {
     use std::collections::BTreeSet;
-    let text = |m: &str| crate::agents::permission_mode_text("claude", m);
+    let permission = super::super::LAUNCH.permission.unwrap();
+    let text = |m: &str| permission.text_of(m);
     let known: BTreeSet<&str> = super::PERMISSION_MODES
         .iter()
-        .chain(super::SHOWN_MODES)
-        .map(|c| c.value)
+        .map(|m| m.value)
+        .chain(super::SHOWN_MODES.iter().map(|c| c.value))
         .collect();
     let in_records = BTreeSet::from([
         "default",
@@ -117,50 +121,42 @@ fn every_mode_the_session_can_be_in_has_its_words() {
         "manual",
     ]);
     assert_eq!(known, in_records, "有字的档与记录里会写的档不是同一组");
-    for m in &known {
-        let t = text(m).unwrap_or_else(|| panic!("`{m}` 没有字"));
-        assert!(
-            !t.is_empty() && !t.contains(m),
-            "`{m}` 的字不像文案表里的：{t}"
-        );
+    // 期望的字照键直接从文案表取（不经这一家给字的那条链）。
+    let table: serde_json::Value = serde_json::from_str(copy_core::TABLE_JSON).unwrap();
+    let said = |key: &str| table["entries"][key]["zh"].as_str().map(str::to_owned);
+    for (m, key) in [
+        ("default", "beAsk.choice.planManual"),
+        ("manual", "beAsk.choice.planManual"),
+        ("acceptEdits", "beAsk.choice.planEdits"),
+        ("plan", "beSessionNew.mode.plan"),
+        ("auto", "beAsk.choice.planAuto"),
+        ("bypassPermissions", "beSessionMode.mode.bypassPermissions"),
+        ("dontAsk", "beSessionMode.mode.dontAsk"),
+    ] {
+        assert!(said(key).is_some(), "表里没有 `{key}`");
+        assert_eq!(text(m), said(key), "`{m}` 的字");
     }
     for (_, m) in super::MODE_MARKS {
         assert!(known.contains(m), "屏底认得出的 `{m}` 没有字");
     }
-    assert_eq!(
-        text("manual"),
-        text("default"),
-        "别名 `manual` 与 `default` 该是同一句"
-    );
     assert_eq!(text("noSuchMode"), None);
-    assert_eq!(
-        crate::agents::permission_mode_text("codex", "default"),
-        None
-    );
 }
 
 /// 记录里的模型原值 ⇒ 写给人看的名字：系列名同起会话那张表的字，版本取一两位的数段（日期段不算）；认不出 ⇒ 没有字，不猜。
 #[test]
 fn the_model_written_in_the_record_reads_as_its_name() {
-    let family = |v: &str| {
-        super::MODEL_ALIASES
-            .iter()
-            .find(|c| c.value == v)
-            .map(|c| (c.text)())
-            .unwrap()
-    };
-    let text = |m: &str| crate::agents::model_text("claude", m);
+    let text = super::super::LAUNCH.model_text.unwrap();
     assert_eq!(
-        text("claude-opus-4-5-20251101"),
-        Some(format!("{} 4.5", family("opus")))
+        text("claude-opus-4-5-20251101").as_deref(),
+        Some("Opus 4.5")
     );
     assert_eq!(
-        text("claude-sonnet-4-20250514"),
-        Some(format!("{} 4", family("sonnet")))
+        text("claude-sonnet-4-20250514").as_deref(),
+        Some("Sonnet 4")
     );
     assert_eq!(
-        text("claude-3-5-haiku-20241022"),
-        Some(format!("{} 3.5", family("haiku")))
+        text("claude-3-5-haiku-20241022").as_deref(),
+        Some("Haiku 3.5")
     );
     for m in [
         "<synthetic>",
@@ -171,23 +167,17 @@ fn the_model_written_in_the_record_reads_as_its_name() {
     ] {
         assert_eq!(text(m), None, "`{m}` 不该有字");
     }
-    assert_eq!(
-        crate::agents::model_text("codex", "claude-opus-4-5"),
-        None,
-        "没考据过模型名的那一家不给字"
-    );
 }
 
 /// ★ 记录里的模型原值认成换模型清单里唯一对得上的那一项：`claude-opus-…` ⇒ `opus`；`claude-sonnet-…` 在清单里有 `sonnet` 与
-/// `sonnet[1m]` 两项、记录里分不出 ⇒ 不认；不是这一家的值 ⇒ 不认；Codex 没考据过 ⇒ 不认。
+/// `sonnet[1m]` 两项、记录里分不出 ⇒ 不认；不是这一家的值 ⇒ 不认。
 #[test]
 fn the_record_model_is_picked_only_when_one_item_matches() {
-    let pick = |m: &str| crate::agents::model_pick("claude", m);
+    let pick = super::super::LAUNCH.model_pick.unwrap();
     assert_eq!(pick("claude-opus-4-1-20250805"), Some("opus"));
     assert_eq!(pick("claude-haiku-4-5-20251001"), Some("haiku"));
     assert_eq!(pick("claude-sonnet-4-5"), None);
     assert_eq!(pick("gpt-5"), None);
-    assert_eq!(crate::agents::model_pick("codex", "claude-opus-4-5"), None);
 }
 
 /// 真 Claude Code 2.1.302 上、对话里已有回复时 `/model sonnet` 之后那一屏（工作目录与第一句换成了中性的）。

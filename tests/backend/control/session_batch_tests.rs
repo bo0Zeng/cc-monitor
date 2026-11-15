@@ -38,11 +38,13 @@ fn with_accounts<T>(f: impl FnOnce(&la::Facts) -> T) -> T {
     let library = || {
         crate::accounts::manage::library::test_support::list(vec![
             crate::accounts::manage::library::test_support::row_with("work", |a| {
-                a.config_dir = Some("/h/.cc/work".into())
+                a.agent = Some(crate::agents::default_kind().into());
+                a.config_dir = Some("/h/.cc/work".into());
             }),
         ])
     };
     f(&la::Facts {
+        agent: crate::agents::default_kind().into(),
         has_accounts: true,
         library: &library,
         last: &|_| None,
@@ -602,8 +604,9 @@ fn a_listing_that_ran_out_of_time_answers_child_timed_out_not_unobservable() {
     ] {
         let mut rig = Rig::new(Some(vec![row("a-cc", Some(A), true)]));
         rig.list_err = Some(err);
-        let code =
-            |r: Result<Value, Said>| r.expect_err("该整条失败").code_or_fallback().to_string();
+        let code = |r: Result<Value, Said>| {
+            cmd_wire::failed::Failed::code_or_fallback(r.expect_err("该整条失败").code.clone())
+        };
         assert_eq!(
             code(rig.run(|d| where_(&json!({ "sids": [A] }), d))),
             want,

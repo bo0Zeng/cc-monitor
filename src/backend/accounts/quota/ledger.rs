@@ -49,6 +49,10 @@ pub struct Observed {
     /// [`Observed::window_grid`]）。只在账上，不上 `quota-read`。
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub history: BTreeMap<String, History>,
+    /// 到点重读没成的那几窗（窗口名 → 它过了的那个重置时刻）：显示照它写「已重置」、不再写「读取中」，到点那一处也不再问。
+    /// 只对那一刻作数：窗口读到了新的重置时刻 ⇒ 并账时那一记不留（[`merge`]）。只在账上，不上 `quota-read`。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub reread_failed: BTreeMap<String, u64>,
 }
 
 /// 一个窗口换窗的历史：旧窗最后读到的用量（[`ENDS_KEPT`] 次）· 新窗头一次看到的时刻（[`OPENS_KEPT`] 次）；都照重置时刻排、旧的在前。
@@ -308,6 +312,11 @@ impl Observed {
         }
     }
 
+    /// 这一窗过了 `resets_at` 那一刻之后，到点重读没成（[`record_reread_failed`] 记的）。
+    pub fn reread_failed_for(&self, name: &str, resets_at: Option<u64>) -> bool {
+        resets_at.is_some_and(|t| self.reread_failed.get(name) == Some(&t))
+    }
+
     /// 一个窗口几点、从哪看到的（没列 ⇒ 这一条的时刻、回包头）。
     pub fn window_seen(&self, name: &str) -> WindowSeen {
         self.windows_seen.get(name).copied().unwrap_or(WindowSeen {
@@ -318,6 +327,7 @@ impl Observed {
 }
 
 /// ★ 合并的唯一判法：`add` 的窗口逐个并进 `into`（同名窗口看到得晚的那份留下，一样晚 ⇒ `add` 的；「1% ≈ 多少」同样量得晚的留下）；
+/// `into` 里 `add` 没带的窗口照留，只有过了它自己的重置时刻、又不晚于 `add` 看到的那几格不留；
 /// `headers` ⇒ 状态 · 被拒 · 卡在哪 · 超额那几格也换成 `add` 的（只有回包头说得出它们）。
 pub(crate) fn merge(into: &mut Observed, add: &Observed, headers: bool) {
     let mut meta: BTreeMap<String, WindowSeen> = into
@@ -358,9 +368,36 @@ pub(crate) fn merge(into: &mut Observed, add: &Observed, headers: bool) {
             }
         }
     }
+    // 过了它自己的重置时刻、这一份新读数里又没有的窗口不再留（之后也没再见到它）：
+    // 误记进来的一格（别的号的回包头）不会变成永久状态；换窗的历史照留。这里只管账上存不存；
+    // 显示与事实取哪几格只照 [`super::facts::current`]（它按此刻判、分来源），不照这里。
+    let gone: Vec<String> = into
+        .reading
+        .windows
+        .iter()
+        .filter(|w| !add.reading.windows.iter().any(|x| x.name == w.name))
+        .filter(|w| super::reset_since_seen(w.resets_at, add.seen_at))
+        .filter(|w| meta.get(&w.name).is_none_or(|m| m.at <= add.seen_at))
+        .map(|w| w.name.clone())
+        .collect();
+    into.reading.windows.retain(|w| !gone.contains(&w.name));
+    for n in &gone {
+        meta.remove(n);
+        into.trend.remove(n);
+    }
     for (k, h) in &add.history {
         absorb(into.history.entry(k.clone()).or_default(), h);
     }
+    // 「这一窗这一刻重读没成」只对那一刻作数：窗口换了重置时刻（读到了新数）· 不在了 ⇒ 那一记不留。
+    for (k, at) in &add.reread_failed {
+        into.reread_failed.insert(k.clone(), *at);
+    }
+    let windows = &into.reading.windows;
+    into.reread_failed.retain(|k, at| {
+        windows
+            .iter()
+            .any(|w| w.name == *k && w.resets_at == Some(*at))
+    });
     for (k, p) in &add.per_pct {
         if into.per_pct.get(k).is_none_or(|q| q.at <= p.at) {
             into.per_pct.insert(k.clone(), *p);
@@ -577,6 +614,7 @@ pub fn record_seen(
         trend: BTreeMap::new(),
         per_pct,
         history: BTreeMap::new(),
+        reread_failed: BTreeMap::new(),
     };
     let (changed, persist, entry) = {
         let mut g = ledger.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -658,6 +696,7 @@ pub fn record_probe(
         trend: BTreeMap::new(),
         per_pct: BTreeMap::new(),
         history: BTreeMap::new(),
+        reread_failed: BTreeMap::new(),
     };
     let before = ledger.entry(agent, account);
     let (written, at) = write_merged(own, &probed, false)?;
@@ -667,6 +706,46 @@ pub fn record_probe(
         ledger.ring(None);
     }
     Ok(written)
+}
+
+/// 记「这几窗过了那一刻之后到点重读没成」（`reread` 那一处的写口）：窗口与数一格不动，只添那几记；一定落盘（落不了 ⇒ `Err`）。
+/// 并账时把它当成看到于时刻 0 的一份（不带窗口）：不挤掉任何一窗、不推「看到的时刻」。
+pub fn record_reread_failed(
+    ledger: &Ledger,
+    own: &Own,
+    agent: &str,
+    account: &str,
+    failed: BTreeMap<String, u64>,
+) -> Result<(), Said> {
+    if ledger.path.is_none() {
+        return Err(Said::from(copy_text("beQuotaLedger.read.noHome", &[])));
+    }
+    // 账上已没有这个号（问着的时候删了）⇒ 不记：这一记只并进已有的那一条，不凭它造出一个号。
+    if ledger.entry(agent, account).is_none() {
+        return Ok(());
+    }
+    let mark = Observed {
+        agent: agent.to_string(),
+        account: account.to_string(),
+        seen_at: 0,
+        reading: QuotaReading {
+            status: None,
+            refused: false,
+            limiting: None,
+            resets_at: None,
+            windows: Vec::new(),
+            overage: None,
+        },
+        windows_seen: BTreeMap::new(),
+        trend: BTreeMap::new(),
+        per_pct: BTreeMap::new(),
+        history: BTreeMap::new(),
+        reread_failed: failed,
+    };
+    let (written, at) = write_merged(own, &mark, false)?;
+    ledger.landed(written, at);
+    ledger.ring(None);
+    Ok(())
 }
 
 /// 读一次盘。三态：没有（还没看到过）/ 读得懂 / 读不懂（不覆盖）。
@@ -687,10 +766,10 @@ fn write_merged(
     add: &Observed,
     headers: bool,
 ) -> Result<(Observed, Option<Stamp>), Said> {
-    let file = own.path(FILE_NAME)?;
     let dir = own
         .root()
         .ok_or_else(|| Said::from(copy_text("beQuotaLedger.read.noHome", &[])))?;
+    let file = path_under(dir.as_path());
     let path = file.as_path();
     own.ensure_dir(&dir).map_err(|e| {
         Said::with_raw(
@@ -747,7 +826,8 @@ fn merge_trend_fresh(o: &mut Observed) {
     }
 }
 
-/// 帧命令 `quota-read` 的底子：现读这台的额度账（不读内存 —— 一次性 CLI 那一形里内存是空的）；显示态由帧面宿主补上。
+/// 帧命令 `quota-read` 的底子：现读这台的额度账（不读内存 —— 一次性 CLI 那一形里内存是空的），每个号的窗口照
+/// [`super::facts::current`] 此刻取到的那几格；显示态由帧面宿主补上。
 pub fn answer_of(path: Option<&Path>, now: u64) -> LedgerRead {
     let (state, why, accounts) = match path.map(read_at) {
         None => (
@@ -766,10 +846,12 @@ pub fn answer_of(path: Option<&Path>, now: u64) -> LedgerRead {
         detail,
         path: path.map(|p| p.display().to_string()),
         now,
+        // 窗口照轮换事实那一处取（[`super::facts::current`]：显示与事实不各判一份）；
         // 走势 · 历史只在账上（估「几点到」· 周剩几点 · 开窗取整用），不上线。
         accounts: accounts
             .into_iter()
-            .map(|mut o| {
+            .map(|o| {
+                let mut o = super::facts::current(&o, now);
                 o.trend.clear();
                 o.history.clear();
                 o

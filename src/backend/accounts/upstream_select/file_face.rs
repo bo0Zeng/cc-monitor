@@ -56,9 +56,33 @@ pub fn machine_path() -> Result<PathBuf, String> {
     super::creds::resolve_path(&|k| std::env::var(k).ok())
 }
 
+/// [`machine_path`]，推不出 ⇒ `None`：只拿落点往下交的那几处（清单成品 · 轮换 · 需手动）都问这一口。
+pub fn machine_key_path() -> Option<PathBuf> {
+    machine_path().ok()
+}
+
 /// 这台那份表里有哪几行（[`rows_at`]）。推不出路径 ⇒ 零条，同「读不动」那一形。
-pub fn machine_rows() -> Vec<String> {
-    machine_path().map(|p| rows_at(&p)).unwrap_or_default()
+pub fn machine_rows() -> RoutedRows {
+    machine_key_path().map(|p| rows_at(&p)).unwrap_or_default()
+}
+
+/// 表里有哪几行，连同它们挂在哪一家名下（路由名；那份文件的行只属于一家，[`super::Upstreams::file_agent`]）。
+/// 读者照自己那一家问（[`Self::of`]）：别家 ⇒ 零条。零条那一形（读不动 · 推不出路径）不挂在任何一家名下。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RoutedRows {
+    pub agent: &'static str,
+    pub ids: Vec<String>,
+}
+
+impl RoutedRows {
+    /// `agent`（路由名）那一家在表里有哪几行。
+    pub fn of(&self, agent: &str) -> &[String] {
+        if agent == self.agent {
+            &self.ids
+        } else {
+            &[]
+        }
+    }
 }
 
 /// `apikey-key-set` 的入参。明文只在 `key` 里（帧面：长连接入方向；派生 CLI 面：stdin），解码那一刻就是 `SecretKey`。
@@ -272,25 +296,29 @@ pub fn check_inputs(key: &SecretKey, base_url: Option<&str>) -> Result<(), Said>
 /// 是拿一个能用的状态去换一条报错。
 /// ⚠ 与中转的一处差别（照实写）：中转遇到坏文件**保留上一张表**（`Accounts::refresh_if_changed`），这里答零条。
 /// 默认上游的环境旋钮认不出（那一刻中转也起不来）⇒ 同样零条。
-pub(crate) fn rows_at(path: &Path) -> Vec<String> {
+pub fn rows_at(path: &Path) -> RoutedRows {
     rows_at_with(path, &|k| std::env::var(k).ok())
 }
 
 /// [`rows_at`] 的本体：环境取值器注入（判据不改进程环境）。
-pub(crate) fn rows_at_with(path: &Path, get: &dyn Fn(&str) -> Option<String>) -> Vec<String> {
+pub(crate) fn rows_at_with(path: &Path, get: &dyn Fn(&str) -> Option<String>) -> RoutedRows {
     let mut loaded = super::creds::load(path);
     if loaded.problem.is_some() {
-        return Vec::new();
+        return RoutedRows::default();
     }
     let Some(upstreams) = super::Upstreams::from_env(get) else {
-        return Vec::new();
+        return RoutedRows::default();
     };
+    let agent = upstreams.file_agent();
     let (table, _, _) = super::table::build(
         std::mem::take(&mut loaded.accounts),
-        super::CREDENTIALS_FILE_AGENT,
+        agent,
         upstreams.of_credentials_file(),
     );
-    table.ids_of(super::CREDENTIALS_FILE_AGENT)
+    RoutedRows {
+        agent,
+        ids: table.ids_of(agent),
+    }
 }
 
 /// 这台那份表里一行的**给人看的那两格**：账号 id · 掩码（[`SecretKey::masked`]，只留末四位）· 端点。key 本体不出本函数。
@@ -301,13 +329,8 @@ pub struct KeyFact {
     pub base_url: Option<String>,
 }
 
-/// 这台那份表里每一行的 [`KeyFact`]（`accounts-list` 给每个 API 号带出去）。推不出路径 / 读不动 / 解析不了 ⇒ 零条
-/// （坏文件不出声，同上）。
-pub fn machine_key_facts() -> Vec<KeyFact> {
-    machine_path().map(|p| key_facts_at(&p)).unwrap_or_default()
-}
-
-/// [`machine_key_facts`] 的本体，路径是参数。
+/// `path` 那份表里每一行的 [`KeyFact`]（`accounts-list` 给每个 API 号带出去；这台那一份的路径是 [`machine_path`]）。
+/// 读不动 / 解析不了 ⇒ 零条（坏文件不出声，同上）。
 pub fn key_facts_at(path: &Path) -> Vec<KeyFact> {
     let Ok(Some(doc)) = read_doc(path) else {
         return Vec::new();

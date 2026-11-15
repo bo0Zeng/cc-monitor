@@ -1,11 +1,13 @@
 /**
- * 在 app 里登录那几条帧命令（`login-start` · `login-finish` · `login-cancel`）；会话外的需手动清单在各台 `sessions-needs` 那一份里（`needs-book.ts`）。
+ * 在 app 里登录那几条帧命令（`login-start` · `login-finish` · `login-cancel`）· 退出 · 状态（`login-out` · `login-status`）；会话外的需手动清单在各台 `sessions-needs` 那一份里（`needs-book.ts`）。
  *
  * | 做什么 | 帧命令 |
  * |---|---|
  * | 起一趟登录（回登录链接 · 粘什么 · 会不会自己登完） | `login-start`（帧面硬臂：跟着发起它的那条连接走） |
  * | 把登录页给的那一段交回去 | `login-finish` |
  * | 撤掉这一趟 | `login-cancel` |
+ * | 退出一个号的登录 | `login-out` |
+ * | 问一个号登没登 | `login-status` |
  *
  * 判 · 拼句 · 能不能接着粘全在后端：失败回包的 `data.again` 说「接着粘 · 重新开始 · 没法再来」，这里只把它原样交出去，不按码分。
  */
@@ -25,6 +27,8 @@ const START_BUDGET_MS = 40_000;
 /** 交码：后端至多等 60 秒（`sign_in::FINISH_WITHIN`）。 */
 const FINISH_BUDGET_MS = 70_000;
 const CANCEL_BUDGET_MS = 10_000;
+/** 退出 · 问状态：后端那一条至多跑 30 秒（`sign_in::ONCE_WITHIN`），这里多给一点。 */
+const ONCE_BUDGET_MS = 40_000;
 
 /** 登录那几条没成：那一句（后端写好）· 原话 · 还能怎么办（后端 `data.again`）· 终端窗口那条路在不在（后端 `data.terminal`）。 */
 export class LoginFailed extends Error {
@@ -75,4 +79,27 @@ export async function loginCancel(origin: Machine, job: string): Promise<void> {
   } catch (e) {
     console.warn("[login] login-cancel 没成：", e);
   }
+}
+
+/** 退出一个号的登录（只交号名，家由那台照号表认；那一家声明了退出那一条才给这颗按钮：账号行 `signOut`）⇒ 后端写好的那一句。没成 ⇒ 抛 [`LoginFailed`]（那一句后端写好）。 */
+export async function loginOut(origin: Machine, account: string): Promise<string> {
+  try {
+    return (await callTyped(origin, "login-out", { account }, budgetWithin(ONCE_BUDGET_MS))).said;
+  } catch (e) {
+    throw onceFailed(e);
+  }
+}
+
+/** 问一个号登没登（只交号名；账号行 `status` 才给这颗按钮）⇒ 后端写好的那一句（已登录 · 未登录）。读不出 ⇒ 抛 [`LoginFailed`]。 */
+export async function loginStatus(origin: Machine, account: string): Promise<string> {
+  try {
+    return (await callTyped(origin, "login-status", { account }, budgetWithin(ONCE_BUDGET_MS))).said;
+  } catch (e) {
+    throw onceFailed(e);
+  }
+}
+
+/** 退出 · 状态没成 ⇒ [`LoginFailed`]（没有作业，`again` 恒「重新开始」：再点一次就是）。 */
+function onceFailed(e: unknown): LoginFailed {
+  return new LoginFailed(saidOf(e), detailOf(e), "restart");
 }

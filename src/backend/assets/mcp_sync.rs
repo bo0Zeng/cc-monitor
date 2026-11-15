@@ -30,6 +30,7 @@
 //! 必须是同一个读法）· 不写盘 · 不改写任何一条配置（写的内容由 monitor 从原文里原样取）。
 //! 事实只有两种：`stat` 一条绝对路径 · 在起会话那一份 `PATH`（`platform::shell::probe_path`）上找一个名字。
 
+use crate::accounts::manage::mcp_share_exec::store_key;
 use crate::common::said::Said;
 use crate::platform::fs::Ro;
 use copy_core::copy_text;
@@ -261,11 +262,16 @@ pub(crate) fn judge(cands: &[Candidate], facts: &dyn Facts) -> Vec<Suspect> {
     out
 }
 
-/// 一份原文里的 `mcpServers`。`None`（那份文件不存在）⇒ 空表。
+/// 用户级那几份 JSON 原文里的服务器表：那一格的键与共享集合同一个（账号域的 [`store_key`] 在生产注册表上）。
+/// `None`（那份文件不存在）⇒ 空表。项目级那一份不经这里，照那一家的格式读（`mcp_edit::project_servers`）。
 ///
-/// 解析不了 / 根不是对象 / `mcpServers` 不是对象 ⇒ 拒（`bad_file`）—— **不拿骨架比、更不拿骨架盖**
-/// （与单条写 `mcp_edit.rs::plan_project_mcp` 同一句承诺）。`side` 是给人看的「哪一份」。
+/// 解析不了 / 根不是对象 / 服务器表不是对象 ⇒ 拒（`bad_file`）—— **不拿骨架比、更不拿骨架盖**。`side` 是给人看的「哪一份」。
 pub(crate) fn servers_of(text: Option<&str>, side: &str) -> Result<Map<String, Value>, Said> {
+    servers_at(text, side, store_key(crate::agents::REGISTRY))
+}
+
+/// [`servers_of`] 的本体，服务器表那一格的键是参数（判据拿替身家的注册表喂）。
+fn servers_at(text: Option<&str>, side: &str, key: &str) -> Result<Map<String, Value>, Said> {
     let Some(t) = text else {
         return Ok(Map::new());
     };
@@ -284,7 +290,7 @@ pub(crate) fn servers_of(text: Option<&str>, side: &str) -> Result<Map<String, V
             copy_text("beMcpSync.serversOf.notObject", &[("side", side)]),
         )
     })?;
-    match root.get(super::mcp_servers_key()) {
+    match root.get(key) {
         None => Ok(Map::new()),
         Some(Value::Object(m)) => Ok(m.clone()),
         Some(_) => Err(Said::new(

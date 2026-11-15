@@ -218,22 +218,22 @@ fn a_sub_run_card_lives_under_its_run_and_cards_keep_their_arrival_order() {
 }
 
 #[test]
-fn dropping_a_session_or_clearing_says_which_places_changed() {
+fn clearing_says_which_places_changed() {
     let mut b = Board::default();
     b.apply(&card("s1", 1, "m", &[], None)[0]);
     b.apply(&card("s1", 2, "m", &[], Some("a1"))[0]);
     b.apply(&card("s2", 3, "m", &[], None)[0]);
-    let mut gone = b.drop_session("s1");
+    let mut gone = b.clear();
     gone.sort();
     assert_eq!(
         gone,
         [
             ("s1".to_string(), None),
-            ("s1".to_string(), Some("a1".to_string()))
+            ("s1".to_string(), Some("a1".to_string())),
+            ("s2".to_string(), None)
         ]
     );
-    assert_eq!(b.len(), 1);
-    assert_eq!(b.clear(), [("s2".to_string(), None)]);
+    assert_eq!(b.len(), 0);
     assert!(b.clear().is_empty(), "空板再清 ⇒ 没有哪处变了");
 }
 
@@ -280,4 +280,15 @@ fn each_card_comes_with_its_head_body_and_last_line_written() {
         "截过头先说一句；工具没名字 ⇒ 「?」；还没字的文字块不出"
     );
     assert_eq!(c.last, None, "最后一块认不出 ⇒ 没有那一截");
+}
+
+/// ★ 折一帧回要推的那一格（各处推活卡成品只调它）：变了的那一处 ＋ 那一处此刻整份；没变 ⇒ 不推。
+#[test]
+fn a_step_hands_back_the_change_with_that_spot_whole() {
+    let mut b = Board::default();
+    let open = &card("s1", 1, "m", &[], None)[0];
+    let got = b.step(open).expect("开卡 ⇒ 推一格");
+    assert_eq!(got.change.at(), ("s1".to_string(), None));
+    assert_eq!(got.whole, b.cards_of("s1", None));
+    assert_eq!(got.whole.cards.len(), 1);
 }

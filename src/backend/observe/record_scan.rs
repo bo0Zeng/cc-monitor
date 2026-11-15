@@ -5,8 +5,10 @@
 //!   [`super::recognize::index_row::index_row_of`] · [`super::recognize::user_inputs::user_input_of`] · [`super::recognize::turns::TurnScan`] ·
 //!   [`super::recognize::facts::note_record`] · [`super::lines::counts`]）。
 //! - 留着：没变 ⇒ 那一张；变长了 ⇒ 核游标前那几个字节（见证），对得上就从那一张接着扫追加的那一截（还没收尾那一轮的扫描状态
-//!   也留着）、对不上 ⇒ 整份重扫；条数与估算字节各有上限，超了先淘汰最久没用的；单张比字节上限还大 ⇒ 照留、别的全挤掉
-//!   （问的时候它本来就整张在内存里；不留就每问回盘重读）。常驻上界 = 字节上限与界面问过的最大那一张取大。
+//!   也留着）、对不上 ⇒ 整份重扫；条数与估算字节各有上限，超了先淘汰最久没用的；单张比字节上限还大 ⇒ 不进缓存、一张都不挤
+//!   （只留事实尾巴；装了骨架的家时下一问 [`RecordScans::get`] 照骨架起步 —— 每问解析一次骨架，没变不读记录，
+//!   [`RecordScans::peek`] 拿不到它；没装 ⇒ 每问整份重扫）。
+//!   缓存常驻上界 = 字节上限（取法见 [`MAX_BYTES`]）；超的那一张只在调用方用着 · 旁线程落骨架攥着时在内存里。
 //! - 只有界面问的才留：收下在跑的会话那一路（预读）只借那一张（[`RecordScans::lend`]），取完就放、只留事实尾巴；
 //!   之后界面再开照骨架起步。预读与界面撞在同一趟扫上 ⇒ 照界面的留。
 //! - 落盘：大记录扫完落一份骨架（[`super::skeleton`]）；进程里没有那一张时照骨架起步 —— 没变 ⇒ 不读，变长了 ⇒ 只读追加的那一截。
@@ -15,6 +17,8 @@
 //! - 只扫到问的那一刻的长度：之后写进来的不在这一张里（键对得上内容）。
 //! - 事实尾巴：一张图被挤掉时按路径留下它的事实累加器（游标 · 见证 · 累加器），至多 [`TAIL_KEEP`] 条；
 //!   之后问事实（[`RecordScans::facts`]）图不在、尾巴在且见证对得上 ⇒ 只认事实地接着读追加的那一截，不读骨架、不整份重扫。
+//!   尾巴里另有一张稀疏的行起点表（每 [`MARK_EVERY`] 个可计行一个起点）：按行号取正文找起点（[`RecordScans::seek_line`]）照它跳，
+//!   不为一个起点重建整张图（超字节上限那一份每问重建要照骨架整份解析一遍）。
 
 use super::recognize::facts::{ContextLimits, SessionFacts};
 use super::recognize::index_row::IndexRow;
@@ -108,13 +112,34 @@ struct SkelView<'a> {
     scan: ScanView<'a>,
 }
 
+/// 一份记录归的那一家：家名与它的记录面，从调用方手里那一根上一并取（同一个来源，扫描图里不再照路径另认）。
+/// 实时那一路（watcher 手里那一根）· 按 sid 找到的那一条（[`crate::agents::SessionAt`]）· 过围栏的那个家各交各的。
+#[derive(Clone, Copy)]
+pub struct Family {
+    pub(crate) kind: &'static str,
+    pub(crate) face: crate::agents::RecordFace,
+}
+
+impl Family {
+    /// 注册表上 `kind` 那一家（手里只有家名的调用方用）。注册表上没有它 ⇒ `None`。
+    pub fn of(kind: &'static str) -> Option<Self> {
+        crate::agents::record_face(kind).map(|face| Family { kind, face })
+    }
+}
+
+/// 一行照那一家读（它不读的行只留它给的几格，[`crate::agents::Line::whole`]）；说不出是哪一家的 ⇒ 不问哪一家。
+fn line_of<'a>(family: Option<&Family>, text: &'a str, start: u64) -> crate::agents::Line<'a> {
+    crate::agents::Line::whole(family.map(|f| &f.face), text, start)
+}
+
 /// 这一家那条把一行翻成通用记录的函数（[`crate::agents::RecordFace::parse`]）。
 type Translate = fn(&crate::agents::Line<'_>) -> Result<Option<crate::agents::Translated>, String>;
 
 /// 一行的骨架索引行（扫描图 · 从中间起的那一截同一处）：类 · 画法 · 人说的取自整条翻译出的那条通用记录（吃同一份解析）。
 /// 不算一行（[`super::lines::counts`] 口径）⇒ `None`。那条通用记录一并交回（通知组吃它）。
+/// 认不出是哪一家的（`kind` 缺）⇒ 不问哪一家：那一行只有起点与长度。
 fn index_row(
-    kind: &str,
+    kind: Option<&str>,
     translate: Option<Translate>,
     line: &crate::agents::Line<'_>,
     beat: Option<&crate::agents::beat::Beat<'_>>,
@@ -124,9 +149,18 @@ fn index_row(
     if !super::lines::counts(body) {
         return None;
     }
+    let Some(kind) = kind else {
+        let row = IndexRow {
+            o: line.start(),
+            n: read,
+            ..IndexRow::default()
+        };
+        return Some((row, None));
+    };
     let rec = translate
         .and_then(|parse| parse(line).ok().flatten())
-        .and_then(|t| t.record);
+        .and_then(|t| t.record)
+        .map(|b| b.rec);
     let row = super::recognize::index_row::index_row_of(
         kind,
         line.value(),
@@ -144,15 +178,20 @@ impl Scan {
         &mut self,
         r: R,
         upto: u64,
-        kind: &str,
-        face: Option<crate::agents::RecordFace>,
+        family: Option<Family>,
     ) -> std::io::Result<()> {
+        // 家与面取自同一根（调用方手里那一根）：链 · 此刻在干什么 · 子运行 · 骨架行翻译 · 一拍照这张面；
+        // 骨架行的类 · 用户输入 · 轮次 · 事实那几处仍照家名回注册表取那一家（`recognize` 那几问按家名问）。
+        let kind = family.map(|f| f.kind);
+        let face = family.map(|f| f.face);
         let chain = face.and_then(|f| f.chain);
         let said = face.and_then(|f| f.activity);
         let run_of = face.and_then(|f| f.run_of);
-        let runs = crate::agents::run_faces(kind);
-        // 骨架行翻译照这份记录那一家（同 `runs`，按 `kind` 取）。
-        let translate = crate::agents::record_face(kind).map(|f| f.parse);
+        // 说不出是哪一家的（`family` 缺）⇒ 不问哪一家：每行只占一行骨架索引，别的一样不认。
+        let runs = face
+            .as_ref()
+            .map_or(crate::agents::RunFaces::NONE, crate::agents::RunFaces::of);
+        let translate = face.map(|f| f.parse);
         let mut lines = super::lines::Lines::new(r, self.end).upto(upto);
         while let Some(row) = lines.next()? {
             let (start, buf) = (row.at, row.whole);
@@ -160,9 +199,9 @@ impl Scan {
             self.end = start + read as u64;
             slide(&mut self.rest.witness, buf);
             let body = row.body();
-            // 一行只解一次：链事实与下面那四样吃同一份；那一家不读的行不整行建树（[`crate::agents::Line::of`]）。
+            // 一行只解一次：链事实与下面那四样吃同一份；那一家不读的行不整行建树（[`line_of`]）。
             let text = String::from_utf8_lossy(body);
-            let line = crate::agents::Line::of(kind, &text, start);
+            let line = line_of(family.as_ref(), &text, start);
             let v = line.value();
             if let Some(f) = chain.and_then(|c| c(&line)) {
                 self.rest.chain.load(f);
@@ -177,7 +216,7 @@ impl Scan {
                 }
             }
             // 一拍也只算一次：骨架索引 · 用户输入 · 轮次 · 事实吃同一拍。
-            let beat = v.and_then(|v| crate::agents::beat_of(kind, v));
+            let beat = face.zip(v).and_then(|(f, v)| f.beat(v));
             let row = index_row(kind, translate, &line, beat.as_ref(), body, read as u64);
             // 这一行的行号（不算一行的那几行与下一行同号，它们解析不出记录、用不上）。
             let line = self.starts.len() as u64;
@@ -188,7 +227,7 @@ impl Scan {
                 self.starts.push(start);
                 self.index.push(row);
             }
-            let (Some(v), Some(beat)) = (v, beat) else {
+            let (Some(kind), Some(v), Some(beat)) = (kind, v, beat) else {
                 continue;
             };
             if let Some(mut row) = super::recognize::user_inputs::user_input_given(kind, v, &beat) {
@@ -387,14 +426,31 @@ struct Flight {
     keep: std::sync::atomic::AtomicBool,
 }
 
-/// 一张图被挤掉时留下的事实累加器：从 `end` 接着读（读之前核游标前的见证）。
+/// 一张图被挤掉 · 不留时留下的：事实累加器与稀疏的行起点表，从 `end` 接着读（读之前核游标前的见证）。
 #[derive(Clone)]
 struct Tail {
     path: PathBuf,
     end: u64,
     witness: Vec<u8>,
     facts: SessionFacts,
+    /// 第 `i * MARK_EVERY` 个可计行的起点（[`MARK_EVERY`]）。
+    marks: Vec<u64>,
+    /// 到 `end` 为止一共几个可计行。
+    lines: u64,
     used: u64,
+}
+
+impl Tail {
+    /// 照行起点表答 [`RecordScans::seek_line`]：跳到不晚于第 `want - 1` 行的最近那个起点。
+    fn seek(&self, want: u64) -> (u64, u64) {
+        match want.min(self.lines).checked_sub(1) {
+            Some(k) => {
+                let i = k / MARK_EVERY;
+                (self.marks[i as usize], i * MARK_EVERY)
+            }
+            None => (0, 0),
+        }
+    }
 }
 
 struct Inner {
@@ -413,6 +469,13 @@ impl Inner {
             end: map.end,
             witness: map.rest.witness.clone(),
             facts: map.facts.clone(),
+            marks: map
+                .starts
+                .iter()
+                .step_by(MARK_EVERY as usize)
+                .copied()
+                .collect(),
+            lines: map.lines(),
             used: self.tick,
         });
         if self.tails.len() > TAIL_KEEP {
@@ -436,15 +499,27 @@ pub struct RecordScans {
     writes: Mutex<Vec<(PathBuf, std::thread::JoinHandle<()>)>>,
 }
 
-/// 全进程那一份的上限：条数（同时开着的大会话）与估算字节（单张超了照留、独占，见 [`RecordScans::evict`]）。
+/// 全进程那一份的上限：条数（同时开着的大会话）与估算字节（[`ScanMap::bytes`] 那一路的估算，合起来算）。
+///
+/// 字节上限 64 MiB 的取法：这是后端给「留着的扫描图」划的常驻预算，按合起来许常驻多少定，不按最大那一份记录定 ——
+/// 后端常驻里别的几样各有自己的一份（事实尾巴 [`TAIL_KEEP`] 条约 9 MB · 正文高亮缓存 8 MiB），扫描图这一份比它们大一档；
+/// 摊到条数上限 [`MAX_ENTRIES`] 上是一张平均 4 MiB。一张就比整份预算还大的，留它就得把别的全挤掉、别的会话问事实只好回盘重读，
+/// 所以它不进缓存（[`RecordScans::fetch`]）：问的那一趟照样整张交给调用方、用完就放；问事实走事实尾巴；
+/// 下一问照骨架起步（每问解析一次骨架 · 没变不读记录 · 变长了只读骨架之后追加的；追加的攒够骨架的最小门槛才整份重落一次，
+/// 写的量跟着读的量走、不跟着问的次数走）。没装骨架的家 ⇒ 每问整份重扫。
+/// 不随单张调大：调大只是把「多大算超」往后推，常驻上界跟着最大那份记录涨。
 const MAX_ENTRIES: usize = 16;
 const MAX_BYTES: cap_core::Cap = cap_core::Cap {
     bytes: 64 << 20,
     over: cap_core::Over::IndexTrim,
 };
 
-/// 事实尾巴至多留几条：每个开着的 tab（桌面）/ 会话页（手机）占一条；一条最大约 140 KB（改动文件 1000 条封顶），64 条封顶约 9 MB。
+/// 事实尾巴至多留几条：每个开着的 tab（桌面）/ 会话页（手机）占一条；一条最大约 140 KB（改动文件 1000 条封顶）
+/// ＋ 行起点表每 [`MARK_EVERY`] 行 8 字节（30 万行的那份约 37 KB），64 条封顶约 9 MB 加上各份的行起点表。
 pub(crate) const TAIL_KEEP: usize = 64;
+
+/// 不留整张图的那一份，尾巴里每这么多个可计行记一个起点（[`RecordScans::seek_line`] 照它跳，跳到之后至多往后数这么多行）。
+pub(crate) const MARK_EVERY: u64 = 64;
 
 /// 全进程那一份。
 pub fn global() -> &'static RecordScans {
@@ -509,6 +584,28 @@ impl RecordScans {
         self.read.load(Ordering::Relaxed)
     }
 
+    /// `path` 里第 `want` 个可计行（行号从 0 数；比一共几行多 ⇒ 按一共几行算）的前一行从哪开始：回（起点字节 · 那一行的行号），
+    /// 按行号取正文从它往后数。`want` 是 0 ⇒ `(0, 0)`。
+    pub(crate) fn seek_line(
+        &self,
+        path: &Path,
+        family: Option<Family>,
+        want: u64,
+    ) -> std::io::Result<(u64, u64)> {
+        // 图不留的那一份（一张就超字节上限）：照尾巴里的行起点表跳，追加了只读追加的那一截 —— 不为找一个起点重建整张图。
+        if let Some(t) = self.loose_tail(path) {
+            if let Some(t) = self.follow(t, family)? {
+                return Ok(t.seek(want));
+            }
+        }
+        let map = self.get(path, family)?;
+        let k = want.min(map.lines());
+        Ok(match k.checked_sub(1) {
+            Some(k) => (map.starts[k as usize], k),
+            None => (0, 0),
+        })
+    }
+
     fn skeletons(&self) -> Option<&Skeletons> {
         self.home.as_ref()
     }
@@ -541,12 +638,13 @@ impl RecordScans {
     pub(crate) fn index_rows(
         &self,
         path: &Path,
+        family: Option<Family>,
         from: u64,
         mut take: impl FnMut(&IndexRow) -> bool,
     ) -> std::io::Result<u64> {
         let held = from == 0 || self.lock().slots.iter().any(|s| s.path == path);
         if held {
-            let map = self.get(path)?;
+            let map = self.get(path, family)?;
             let start = map.index.partition_point(|r| r.o < from);
             for r in &map.index[start..] {
                 if !take(r) {
@@ -561,15 +659,15 @@ impl RecordScans {
         file.seek(SeekFrom::Start(from))?;
         self.read
             .fetch_add(len.saturating_sub(from), Ordering::Relaxed);
-        let kind = crate::agents::record_kind_of(path).unwrap_or_default();
-        let translate = crate::agents::record_face(kind).map(|f| f.parse);
+        let kind = family.map(|f| f.kind);
+        let translate = family.map(|f| f.face.parse);
         let mut lines = super::lines::Lines::new(std::io::BufReader::new(file), from).upto(len);
         while let Some(row) = lines.next()? {
             let (start, read) = (row.at, row.whole.len() as u64);
             let body = row.body();
             let text = String::from_utf8_lossy(body);
-            let line = crate::agents::Line::of(kind, &text, start);
-            let beat = line.value().and_then(|v| crate::agents::beat_of(kind, v));
+            let line = line_of(family.as_ref(), &text, start);
+            let beat = family.zip(line.value()).and_then(|(f, v)| f.face.beat(v));
             if let Some((r, _)) = index_row(kind, translate, &line, beat.as_ref(), body, read) {
                 if !take(&r) {
                     return Ok(start);
@@ -582,9 +680,14 @@ impl RecordScans {
     /// `path` 那一份此刻的扫描图（同 [`Self::get`]）借给 `f` 用一下：用完就放，缓存里不为它添一张 —— 只留事实尾巴
     /// （[`Inner::leave_tail`]）。收下在跑的会话那一路（预读）用它：没人开界面，整张图不该常驻。
     /// 进程里本来留着这一份（界面问过）⇒ 用的就是那一张、照样留着；同一趟扫有界面在等 ⇒ 照界面的留。
-    pub(crate) fn lend<T>(&self, path: &Path, f: impl FnOnce(&ScanMap) -> T) -> std::io::Result<T> {
+    pub(crate) fn lend<T>(
+        &self,
+        path: &Path,
+        family: Option<Family>,
+        f: impl FnOnce(&ScanMap) -> T,
+    ) -> std::io::Result<T> {
         let read_before = self.bytes_read();
-        let map = self.fetch(path, false)?;
+        let map = self.fetch(path, family, false)?;
         let out = f(&map);
         drop(map);
         // 借完放掉的那一张（几十 MB）还给系统；还在落骨架的那条旁线程落完自己放、自己还（[`Self::store_later`]）。
@@ -594,12 +697,18 @@ impl RecordScans {
 
     /// `path` 那一份此刻的扫描图：没变 ⇒ 留着的那张；变长了 ⇒ 从留着的那张（或盘上的骨架）接着扫追加的那一截；
     /// 别的 ⇒ 现扫整份（同一份正在扫 ⇒ 等它）。界面问的走这里：扫出来的那张留着（之后几问共用）。
-    pub fn get(&self, path: &Path) -> std::io::Result<Arc<ScanMap>> {
-        self.fetch(path, true)
+    /// `family` ＝ 这份记录归的那一家（调用方手里那一根上取的，[`Family`]）；说不出 ⇒ `None`，不问哪一家。
+    pub fn get(&self, path: &Path, family: Option<Family>) -> std::io::Result<Arc<ScanMap>> {
+        self.fetch(path, family, true)
     }
 
     /// [`Self::get`] · [`Self::lend`] 共用的那一趟：`keep` ⇒ 扫出来的那张留在缓存里；不留 ⇒ 只留事实尾巴。
-    fn fetch(&self, path: &Path, keep: bool) -> std::io::Result<Arc<ScanMap>> {
+    fn fetch(
+        &self,
+        path: &Path,
+        family: Option<Family>,
+        keep: bool,
+    ) -> std::io::Result<Arc<ScanMap>> {
         let file = Ro::open(path)?;
         let meta = file.metadata()?;
         let stamp: Stamp = (meta.len(), meta.modified().ok());
@@ -640,7 +749,7 @@ impl RecordScans {
         }
         let read_before = self.bytes_read();
         let scanned = self
-            .build(path, file, &meta, base, keep)
+            .build(path, family, file, &meta, base, keep)
             .map(|(map, mark)| {
                 let map = Arc::new(map);
                 if let Some(mark) = mark {
@@ -652,7 +761,9 @@ impl RecordScans {
             let mut g = self.lock();
             g.flights.retain(|(p, _)| p != path);
             g.slots.retain(|s| s.path != path);
-            if let (Ok(map), false) = (&scanned, flight.keep.load(Ordering::Relaxed)) {
+            // 不留：只有预读借 · 一张就比字节上限大（留它就得把别的全挤掉，取法见 [`MAX_BYTES`]）⇒ 只留事实尾巴。
+            let keep = |m: &ScanMap| flight.keep.load(Ordering::Relaxed) && self.fits(m);
+            if let Some(map) = scanned.as_ref().ok().filter(|m| !keep(m)) {
                 g.leave_tail(path, map);
             } else if let Ok(map) = &scanned {
                 let tick = g.tick;
@@ -682,6 +793,7 @@ impl RecordScans {
     fn build(
         &self,
         path: &Path,
+        family: Option<Family>,
         mut file: RoFile,
         meta: &crate::platform::fs::Metadata,
         base: Option<Arc<ScanMap>>,
@@ -723,17 +835,17 @@ impl RecordScans {
         file.seek(SeekFrom::Start(scan.end))?;
         self.read
             .fetch_add(len.saturating_sub(scan.end), Ordering::Relaxed);
-        let face = crate::agents::record_face_of(path);
-        let kind = crate::agents::record_kind_of(path).unwrap_or_default();
-        scan.feed(std::io::BufReader::new(file), len, kind, face)?;
+        scan.feed(std::io::BufReader::new(file), len, family)?;
         let mut map = scan.done(len);
         map.stored = stored;
         // 盘上那份照的是 `stored`：没落过 · 接着扫过了门槛 ⇒ 落一份新的（落了就记成照到此刻）；没过门槛 ⇒ 不重写几十 MB。
-        // 借完不留的（`keep` 否）读过新的就落：进程里不留这一张，下一问只能照骨架起步，不落就要再读一遍这一截（每趟起来只借一次）。
+        // 不留的（借完就放 · 一张就超字节上限）读过的攒够落盘的最小门槛（`rewrite_after(0)`）就落：进程里不留这一张，下一问只能照骨架起步，
+        // 不落就要再读一遍这一截；不攒 ⇒ 每问都整份重写，写的量跟着问的次数涨。
+        let keep = keep && self.fits(&map);
         let due = home.filter(|h| {
             stored == 0
                 || map.end >= stored + h.rewrite_after(stored)
-                || (!keep && map.end > stored)
+                || (!keep && map.end >= stored + h.rewrite_after(0).max(1))
         });
         let mark = due.map(|_| Mark {
             len,
@@ -793,7 +905,12 @@ impl RecordScans {
         }
     }
 
-    /// 条数或字节超了 ⇒ 从最久没用的开始扔；刚放进来的 `kept` 那张不扔。它一张就比字节上限大 ⇒ 别的全扔、它独留，说一声。
+    /// 这一张单独放得进字节上限没有（放不进的不进缓存，见 [`MAX_BYTES`]）。
+    fn fits(&self, map: &ScanMap) -> bool {
+        map.bytes <= self.max_bytes
+    }
+
+    /// 条数或字节超了 ⇒ 从最久没用的开始扔；刚放进来的 `kept` 那张不扔（它单独放得进字节上限，[`Self::fits`]）。
     fn evict(&self, g: &mut Inner, kept: &Path) {
         loop {
             let bytes: usize = g.slots.iter().map(|s| s.map.bytes).sum();
@@ -808,12 +925,6 @@ impl RecordScans {
                 .min_by_key(|(_, s)| s.used)
                 .map(|(i, _)| i)
             else {
-                tracing::warn!(
-                    "扫描图 {} MiB 超过缓存上限 {} MiB：照留，别的扫描图全挤掉 —— {}",
-                    bytes >> 20,
-                    self.max_bytes >> 20,
-                    kept.display()
-                );
                 return;
             };
             let gone = g.slots.remove(oldest);
@@ -826,32 +937,37 @@ impl RecordScans {
     pub(crate) fn facts(
         &self,
         path: &Path,
+        family: Option<Family>,
         limits: &ContextLimits,
         relay: Option<bool>,
     ) -> std::io::Result<SessionFacts> {
-        let tail = {
-            let g = self.lock();
-            let held =
-                g.slots.iter().any(|s| s.path == path) || g.flights.iter().any(|(p, _)| p == path);
-            (!held)
-                .then(|| g.tails.iter().find(|t| t.path == path).cloned())
-                .flatten()
+        let followed = match self.loose_tail(path) {
+            Some(t) => self.follow(t, family)?,
+            None => None,
         };
-        let mut facts = match tail {
-            Some(t) => match self.follow(t)? {
-                Some(f) => f,
-                None => self.get(path)?.facts.clone(),
-            },
-            None => self.get(path)?.facts.clone(),
+        let mut facts = match followed {
+            Some(t) => t.facts,
+            None => self.get(path, family)?.facts.clone(),
         };
         super::recognize::facts::settle_limit(&mut facts, limits, relay);
         Ok(facts)
     }
 
-    /// 从尾巴的游标接着读到此刻的长度（只认事实），读完换下那一条；变短了 · 见证对不上 ⇒ `None`。
-    fn follow(&self, mut t: Tail) -> std::io::Result<Option<SessionFacts>> {
+    /// 图不留着、也没在扫的那一份留下的尾巴（有图 ⇒ 照图，不走尾巴）。
+    fn loose_tail(&self, path: &Path) -> Option<Tail> {
+        let g = self.lock();
+        let held =
+            g.slots.iter().any(|s| s.path == path) || g.flights.iter().any(|(p, _)| p == path);
+        (!held)
+            .then(|| g.tails.iter().find(|t| t.path == path).cloned())
+            .flatten()
+    }
+
+    /// 从尾巴的游标接着读到此刻的长度（只认事实 ＋ 数可计行、记行起点），读完换下那一条、交回读完的那一份；
+    /// 变短了 · 见证对不上 ⇒ `None`。
+    fn follow(&self, mut t: Tail, family: Option<Family>) -> std::io::Result<Option<Tail>> {
         let mut file = Ro::open(&t.path)?;
-        let kind = crate::agents::record_kind_of(&t.path).unwrap_or_default();
+        let kind = family.map(|f| f.kind);
         let len = file.metadata()?.len();
         if len < t.end {
             return Ok(None);
@@ -865,18 +981,24 @@ impl RecordScans {
         let mut lines = super::lines::Lines::new(std::io::BufReader::new(file), t.end).upto(len);
         while let Some(row) = lines.next()? {
             slide(&mut t.witness, row.whole);
+            // 可计行同扫描图那一口径（[`index_row`]：`counts` 那一判）。
+            if super::lines::counts(row.body()) {
+                if t.lines % MARK_EVERY == 0 {
+                    t.marks.push(row.at);
+                }
+                t.lines += 1;
+            }
             super::recognize::facts::note_line(&mut t.facts, kind, row.body(), row.at);
         }
         t.end = lines.end();
-        let facts = t.facts.clone();
         let mut g = self.lock();
         if !g.slots.iter().any(|s| s.path == t.path) {
             g.tick += 1;
             t.used = g.tick;
             g.tails.retain(|x| x.path != t.path);
-            g.tails.push(t);
+            g.tails.push(t.clone());
         }
-        Ok(Some(facts))
+        Ok(Some(t))
     }
 }
 

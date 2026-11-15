@@ -14,6 +14,6 @@ origin: Machine, localPort: number, remoteHost: string, remotePort: number,
  */
 state: "running" | "error", 
 /**
- * 累计接进的连接数。
+ * 列表里那一行给人看的字（那台 · 本机口 → 远端 · 连接数），界面照抄。
  */
-connCount: number, };
+said: string, };

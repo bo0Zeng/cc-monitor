@@ -46,10 +46,11 @@ export type OpHandler = (origin: string, req: Record<string, unknown>, world: Wo
 export class Refuse {
   constructor(
     readonly code: string,
-    readonly message: string,
+    /** 那台写好的那一句（拒绝体的 `said`，线上类型 `Failed`）。 */
+    readonly said: string,
     /** 按码定形的那几个码带的 `data`（例：`account_unavailable`）。 */
     readonly data?: unknown,
-    /** 下层原话（进复制详情的「原话」那一项；`message` 是那台写好的那一句）。 */
+    /** 下层原话（进复制详情的「原话」那一项；`said` 是那台写好的那一句）。 */
     readonly raw?: string,
   ) {}
 }
@@ -130,6 +131,8 @@ export interface ShotsHandle {
   afterDrag?: () => Promise<string | null>;
   /** 会话到了几个：世界宣告的 · 假后端已经交出 `live` 那一格的。等 tab 等不到时拿它分「后端没交」与「交了界面没收」。 */
   sessions?: () => { declared: number; sent: number };
+  /** 假后端手上还有没落定的事（在途的问 · 还没报完清单的会话流）⇒ 说是哪样；都落定了 ⇒ `null`。场景的等照它判「不会来了」（`scenes/helpers.ts`）。 */
+  busy?: () => string | null;
 }
 
 export interface SceneCtx {

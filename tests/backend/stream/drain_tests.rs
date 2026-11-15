@@ -11,6 +11,10 @@
 //! |---|---|---|
 //! | D1 | 闸本体：有票时 `drained()` 不完成、最后一张票落下即完成；关闸之后 `enter()` 取不到；`close()` 回的数 == 在飞票数 | 两向，逐拍 poll（不靠睡） |
 //! | D2 | 真子进程 ＋ 真信号：SIGTERM 之后在飞的阻塞命令没做完，进程就**不退**、新来的阻塞命令回 `shutting_down`；放开它 ⇒ 退 0。另一趟：再补一次 SIGTERM ⇒ 不等了 | re-exec 测试二进制当子进程；PATH 上一个假 `tmux` 卡在一根 FIFO 上 |
+//! | D5 | 同 D2 的台架（写者是生产那一个）：在飞那条在排空末尾做完 ⇒ 它的应答写到了 stdout 才退 0 | 压一百趟，趟趟要到 |
+//! | D6 | 同 D4 的台架，另登记一个不返回的写者：命令做完、写者没写完就到期限 ⇒ 照实说「还有 1 个写者没写完，排着的应答没写出」再退 0 | 一趟 |
+//! | D7 | 闸的写者那一半：`finishing()` 叫收尾之前不完成、之后完成；`writers_done()` 有写者时不完成、最后一个落下即完成 | 逐拍 poll |
+//! | D8 | 同 D2 的台架跑常驻那条连接的收场 `stream_ends`：对端关了写半边、读还开着 ⇒ 已收的那条阻塞命令做完，应答照样写到 stdout，流随后自己收场 | 一趟 |
 //! | D3 | 接线：取票恰好一处、在 `SpawnBlocking` 那一支、在 `spawn_blocking(` 之前；`stream/entry.rs` 流模式那几段 `exit(` 零处（流模式的 exit 只住 `exit_after_drain`），`exit_after_drain(` 调用点 == 登记的五处 | 文本，两向 ＋ 正控 |
 
 use super::*;
@@ -77,6 +81,50 @@ fn d1_the_gate_waits_for_every_ticket_and_refuses_after_close() {
     assert_eq!(d.close(), 0, "关过再关：回此刻在飞数");
 }
 
+// ── D7 ────────────────────────────────────────────────────────────────────
+
+#[test]
+fn d7_writers_finish_only_when_told_and_the_gate_waits_for_the_last() {
+    let d: &'static Drain = Box::leak(Box::new(Drain::new()));
+    {
+        let w = d.writers_done();
+        tokio::pin!(w);
+        assert!(polled_ready(w.as_mut()), "没有写者，writers_done 却不完成");
+    }
+    let a = d.writer();
+    let b = d.writer();
+    assert_eq!(d.writers(), 2);
+    let f = d.finishing();
+    tokio::pin!(f);
+    assert!(!polled_ready(f.as_mut()), "没叫收尾，finishing 就完成了");
+    let w = d.writers_done();
+    tokio::pin!(w);
+    assert!(
+        !polled_ready(w.as_mut()),
+        "还有 2 个写者，writers_done 就完成了"
+    );
+    d.finish_writers();
+    assert!(polled_ready(f.as_mut()), "叫了收尾，finishing 仍不完成");
+    {
+        let late = d.finishing();
+        tokio::pin!(late);
+        assert!(
+            polled_ready(late.as_mut()),
+            "叫过收尾之后才来等的写者等不到"
+        );
+    }
+    drop(a);
+    assert!(
+        !polled_ready(w.as_mut()),
+        "还有 1 个写者，writers_done 就完成了"
+    );
+    drop(b);
+    assert!(
+        polled_ready(w.as_mut()),
+        "最后一个写者落下之后 writers_done 仍不完成"
+    );
+}
+
 // ── D2 ────────────────────────────────────────────────────────────────────
 
 const CHILD_MARK: &str = "CCM_HX1_DRAIN_CHILD";
@@ -84,6 +132,10 @@ const CHILD_TEST_NAME: &str = "stream::inbound::drain_tests::d2_child_harness";
 const READY_LINE: &str = "HX1-HARNESS-READY";
 /// D4：交给子进程的短期限（毫秒）。
 const CHILD_DEADLINE_MS: &str = "CCM_HX1_DRAIN_DEADLINE_MS";
+/// 子进程跑哪一形：`stuck` ＝ D6（另登记一个一直不返回的写者）· `halfclose` ＝ D8（常驻那条连接的收场 `stream_ends`）· 别的 ＝ 收信号排空。
+const CHILD_MODE: &str = "CCM_HX1_DRAIN_MODE";
+/// D8：子进程里那条流收场之后说的那一句。
+const HALFCLOSE_ENDED: &str = "HX1-HALFCLOSE-ENDED";
 
 /// 子进程那一半：与 `stream/entry.rs::run_over_stdio` 收信号那一支同形 —— stdin 进 `inbound::spawn`、应答写 stdout，
 /// 收到停机信号 ⇒ `exit_after_drain`（写者照常跑）。**跑的全是生产那几样**：取票的门 · 闸 · 收场函数 · 信号监听 ·
@@ -104,29 +156,53 @@ fn d2_child_harness() {
         .expect("runtime");
     rt.block_on(async {
         use tokio::io::AsyncWriteExt as _;
-        let (tx, mut rx) = mpsc::channel::<Frame>(REPLY_CHANNEL_CAPACITY);
-        let _reader = spawn(
+        let (tx, rx) = mpsc::channel::<Frame>(REPLY_CHANNEL_CAPACITY);
+        let reader = spawn(
             tokio::io::stdin(),
-            tx,
+            tx.clone(),
             crate::stream::inbound::WatchDesk::new(|_| {
                 tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>().1
             }),
             crate::platform::fs::Own::for_tests(),
             crate::wire::HelloFlushed::for_tests(),
         );
+        let mode = std::env::var(CHILD_MODE).unwrap_or_default();
+        // D6：一个写者一直不返回（替卡在不读的对端上的那一个）—— 登记了就握到退出。
+        let _stuck = (mode == "stuck").then(|| crate::wire::drain::DRAIN.writer());
         let stop = shutdown_listener();
         let mut out = tokio::io::stdout();
         out.write_all(format!("{READY_LINE}\n").as_bytes())
             .await
             .expect("写就绪行");
         out.flush().await.expect("flush");
+        // 写者是生产那一个（`stream/writer.rs::writer_task`）：出方向一直开着（`_line_tx` 握到退出，同 stdio 收信号那一支握着这条流在 watcher 上的那一份），
+        //   tap 那一路一直没有东西。
+        let (_line_tx, line_rx) = crate::observe::watcher::frame_channel(
+            crate::observe::watcher::CHANNEL_MAX_BYTES.as_len(),
+        );
+        if mode == "halfclose" {
+            // D8：常驻那条连接的收场（`stream/entry.rs::stream_ends`），读写两半都是生产那一个。
+            //   应答那一路的发送端只留读循环与在飞命令手里的（同生产那一支：起收场之前放掉自己那一份）。
+            drop(tx);
+            crate::stream::entry::stream_ends(
+                crate::stream::writer::writer_task(
+                    out,
+                    line_rx,
+                    rx,
+                    NoTap,
+                    Default::default(),
+                    None,
+                ),
+                reader,
+            )
+            .await;
+            tracing::info!("{HALFCLOSE_ENDED}");
+            return;
+        }
+        drop(tx);
         let writer = async move {
-            while let Some(f) = rx.recv().await {
-                let line = crate::wire::to_line(&f).expect("serialize");
-                if out.write_all(line.as_bytes()).await.is_err() || out.flush().await.is_err() {
-                    return;
-                }
-            }
+            crate::stream::writer::writer_task(out, line_rx, rx, NoTap, Default::default(), None)
+                .await;
         };
         tokio::pin!(writer);
         // 期限：生产那一个（`DRAIN_DEADLINE`）；D4 那一趟交一个短的（量「到点就退」）。
@@ -142,6 +218,15 @@ fn d2_child_harness() {
             }
         }
     });
+}
+
+/// 子进程台架的 tap 那一路：一直没有东西（生产是活卡 hub）。
+struct NoTap;
+
+impl crate::stream::tap::TapSource for NoTap {
+    async fn next(&mut self) -> Option<Frame> {
+        std::future::pending().await
+    }
 }
 
 /// 一台假 `tmux`：头一次被起来就先往 `ready` 那根 FIFO 说一声，再卡在 `gate` 那根 FIFO 上，直到父进程放开。
@@ -180,9 +265,8 @@ impl Rig {
             gate.display()
         );
         let tmux = bin.join("tmux");
-        std::fs::write(&tmux, script).expect("写假 tmux");
-        use std::os::unix::fs::PermissionsExt as _;
-        std::fs::set_permissions(&tmux, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        // 马上被起 ⇒ 经 `write_exe` 写（本进程写的写端会漏进别的判据线程 fork 出来的子进程 ⇒ ETXTBSY）。
+        test_home::write_exe(&tmux, &script);
         Rig { dir, ready, gate }
     }
 
@@ -213,7 +297,8 @@ impl Drop for Rig {
 /// 子进程 ＋ 它两根输出管子的逐行收集。
 struct Child {
     proc: std::process::Child,
-    stdin: std::process::ChildStdin,
+    /// 入方向；D8 放掉它 ＝ 关上对端的写半边。
+    stdin: Option<std::process::ChildStdin>,
     out: std::sync::mpsc::Receiver<String>,
     err: std::sync::mpsc::Receiver<String>,
     err_all: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
@@ -252,7 +337,7 @@ fn lines_of<R: std::io::Read + Send + 'static>(
     rx
 }
 
-fn start_child_with(rig: &Rig, deadline_ms: Option<u64>) -> Child {
+fn start_child_with(rig: &Rig, deadline_ms: Option<u64>, mode: &str) -> Child {
     let path = format!(
         "{}:{}",
         rig.dir.join("bin").display(),
@@ -274,6 +359,7 @@ fn start_child_with(rig: &Rig, deadline_ms: Option<u64>) -> Child {
             CHILD_DEADLINE_MS,
             deadline_ms.map(|v| v.to_string()).unwrap_or_default(),
         )
+        .env(CHILD_MODE, mode)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -285,7 +371,7 @@ fn start_child_with(rig: &Rig, deadline_ms: Option<u64>) -> Child {
     let err = lines_of(proc.stderr.take().expect("stderr"), Some(err_all.clone()));
     let c = Child {
         proc,
-        stdin,
+        stdin: Some(stdin),
         out,
         err,
         err_all,
@@ -313,9 +399,10 @@ fn wait_line(
 
 fn send_line(c: &mut Child, line: &str) {
     use std::io::Write as _;
-    c.stdin.write_all(line.as_bytes()).expect("写命令");
-    c.stdin.write_all(b"\n").expect("写换行");
-    c.stdin.flush().expect("flush");
+    let w = c.stdin.as_mut().expect("入方向还开着");
+    w.write_all(line.as_bytes()).expect("写命令");
+    w.write_all(b"\n").expect("写换行");
+    w.flush().expect("flush");
 }
 
 fn sigterm(c: &Child) {
@@ -352,12 +439,12 @@ const CAPTURE_B: &str = r#"{"id":"b","cmd":"terminal-preview","args":{"sid":"hx1
 
 /// 起子进程 → 发一条会卡住的阻塞命令 → 等假 tmux 真起来 → SIGTERM → 等到「收尾：还有 1 条」那句。
 fn up_to_draining(tag: &str) -> (Rig, Child) {
-    up_to_draining_with(tag, None)
+    up_to_draining_with(tag, None, "drain")
 }
 
-fn up_to_draining_with(tag: &str, deadline_ms: Option<u64>) -> (Rig, Child) {
+fn up_to_draining_with(tag: &str, deadline_ms: Option<u64>, mode: &str) -> (Rig, Child) {
     let rig = Rig::new(tag);
-    let mut c = start_child_with(&rig, deadline_ms);
+    let mut c = start_child_with(&rig, deadline_ms, mode);
     send_line(&mut c, CAPTURE_A);
     rig.wait_started();
     sigterm(&c);
@@ -399,7 +486,11 @@ fn d2_a_second_sigterm_stops_waiting() {
         "第一次 SIGTERM 就退了 —— 没有排空"
     );
     sigterm(&c);
-    let err = said_through(&c, "又收到一次停机信号", "「又收到一次停机信号」那句");
+    let err = said_through(
+        &c,
+        "还有 1 条没做完",
+        "「又收到一次停机信号」之后说还剩什么那句",
+    );
     let st = wait_exit(&mut c);
     assert_eq!(st.code(), Some(0), "{st:?}；stderr：{err}");
     assert!(
@@ -418,8 +509,8 @@ fn d2_a_second_sigterm_stops_waiting() {
 /// 子进程自己退 0，stderr 里那一行点名 `terminal-preview（id=a）`；对照：D2 那一趟（期限是生产的 30 秒）放开之前一直在。
 #[test]
 fn d4_the_drain_deadline_names_what_was_left_and_exits() {
-    let (rig, mut c) = up_to_draining_with("deadline", Some(800));
-    let err = said_through(&c, "排空期限", "「排空期限到了」那句");
+    let (rig, mut c) = up_to_draining_with("deadline", Some(800), "drain");
+    let err = said_through(&c, "还有 1 条没做完", "「排空期限到了」之后说还剩什么那句");
     let st = wait_exit(&mut c);
     assert_eq!(st.code(), Some(0), "{st:?}；stderr：{err}");
     assert!(
@@ -428,6 +519,208 @@ fn d4_the_drain_deadline_names_what_was_left_and_exits() {
     );
     assert!(!err.contains("都做完了"), "{err}");
     rig.release();
+}
+
+// ── D5 ────────────────────────────────────────────────────────────────────
+
+/// 压几趟。
+const D5_ROUNDS: usize = 100;
+/// 同时跑几个子进程。
+const D5_LANES: usize = 8;
+
+/// 一趟：在飞那条在排空末尾做完 ⇒ 子进程退之前它的应答写到了 stdout。回：没到的话那一趟的 stderr。
+fn d5_round(tag: &str) -> Result<(), String> {
+    let (rig, mut c) = up_to_draining(tag);
+    rig.release();
+    let st = wait_exit(&mut c);
+    // 子进程退了 ⇒ stdout 那根管子关上，收行的线程读完就断开：把它写出去的每一行都收齐。
+    let mut got_a = false;
+    loop {
+        match c.out.recv_timeout(PATIENCE) {
+            Ok(l) => got_a |= l.contains(r#""id":"a""#),
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+            Err(e) => panic!("等子进程的 stdout 关上没等到（{e:?}）"),
+        }
+    }
+    if got_a && st.code() == Some(0) {
+        return Ok(());
+    }
+    Err(format!(
+        "退出码 {st:?}，a 的应答{}；stderr：{:?}",
+        if got_a { "到了" } else { "没到" },
+        c.err_all.lock().unwrap()
+    ))
+}
+
+/// **排空完成之后，最后一条应答写出去了才退**。
+/// 守的：在飞的阻塞命令在排空末尾做完 ⇒ 它的最终应答经写者到了对端，进程才退 —— 不是「票落就退、应答来不来得及写看运气」。
+/// 形状：同 D2 的真子进程台架（写者是生产那一个）；放开 gate ⇒ 子进程退 0，stdout 上收得到 `id=a` 那一帧。
+/// 旧次序（票在阻塞闭包里先落、应答后送，排空一完就 `exit`）是个窗口，单趟多半撞不上 ⇒ 压 [`D5_ROUNDS`] 趟、趟趟要到。
+#[test]
+fn d5_the_last_reply_is_written_before_the_drained_exit() {
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let lost: Vec<String> = std::thread::scope(|s| {
+        let lanes: Vec<_> = (0..D5_LANES)
+            .map(|_| {
+                s.spawn(|| {
+                    let mut lost = Vec::new();
+                    loop {
+                        let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        if i >= D5_ROUNDS {
+                            return lost;
+                        }
+                        if let Err(e) = d5_round(&format!("last{i}")) {
+                            lost.push(format!("第 {i} 趟：{e}"));
+                        }
+                    }
+                })
+            })
+            .collect();
+        lanes
+            .into_iter()
+            .flat_map(|h| h.join().expect("压测线程"))
+            .collect()
+    });
+    assert!(
+        lost.is_empty(),
+        "{D5_ROUNDS} 趟里有 {} 趟排空完就退、最后一条应答没写出去：\n{}",
+        lost.len(),
+        lost.join("\n")
+    );
+}
+
+// ── D6 ────────────────────────────────────────────────────────────────────
+
+/// **命令都做完了、写者没写完就到期限 ⇒ 照实说还有写者没写完、排着的应答没写出，然后退**（不说成「都写出去了」）。
+/// 形状：同 D4 的台架，子进程里另登记一个一直不返回的写者（替卡在不读的对端上的那一个），期限 3 秒（够放开之后命令做完）；放开 gate ⇒
+/// 命令做完、生产写者照收尾返回，那一个不返回 ⇒ 到点退 0，stderr 那一行说「还有 1 个写者没写完」。
+#[test]
+fn d6_the_deadline_says_replies_were_left_unwritten() {
+    let (rig, mut c) = up_to_draining_with("unwritten", Some(3000), "stuck");
+    rig.release();
+    let err = said_through(&c, "排着的应答没写出", "「排空期限到了」之后说还剩什么那句");
+    let st = wait_exit(&mut c);
+    assert_eq!(st.code(), Some(0), "{st:?}；stderr：{err}");
+    assert!(
+        err.contains("还有 1 个写者没写完，排着的应答没写出"),
+        "命令做完、写者没写完就到点，应当照实说应答没写出：{err}"
+    );
+    assert!(!err.contains("应答都写出去了"), "{err}");
+}
+
+// ── D8 ────────────────────────────────────────────────────────────────────
+
+/// **对端关了写半边、读还开着 ⇒ 已收的命令的应答照样写到**（常驻那条连接的收场 `stream_ends`）。
+/// 形状：同 D2 的台架，子进程跑 `stream_ends`（读写两半都是生产那一个）；发一条会卡住的阻塞命令 → 等假 tmux 起来 →
+/// 关上子进程的 stdin（对端关写）→ 等它说读到 EOF → 放开 gate ⇒ stdout 上收得到 `id=a` 那一帧，流随后自己收场。
+#[test]
+fn d8_a_half_closed_stream_still_gets_its_replies() {
+    let rig = Rig::new("halfclose");
+    let mut c = start_child_with(&rig, None, "halfclose");
+    send_line(&mut c, CAPTURE_A);
+    rig.wait_started();
+    drop(c.stdin.take());
+    wait_line(
+        &c.err,
+        |l| l.contains("入方向读到 EOF"),
+        "「入方向读到 EOF」那句",
+    );
+    rig.release();
+    let got = wait_line(
+        &c.out,
+        |l| l.contains(r#""id":"a""#),
+        "a 的应答（对端只关了写半边）",
+    );
+    assert!(got.contains(r#""id":"a""#), "{got}");
+    let err = said_through(&c, HALFCLOSE_ENDED, "流收场那一句");
+    let st = wait_exit(&mut c);
+    assert_eq!(st.code(), Some(0), "{st:?}；stderr：{err}");
+}
+
+// ── D9 · D10 ──────────────────────────────────────────────────────────────
+//
+// 常驻那条连接读到 EOF 之后要等在飞命令都交了应答才收场（D8）⇒ 连接撤了之后才登记上的那一条不许留着、握着应答那一路：
+// 不然这条流永远不收场，常驻的连接计数不归零。登记发生在处理器过了闸门之后（别的任务 · 阻塞线程里），撤可能先到。
+
+/// 一条挂上等答的批准（替身家）。
+fn d9_ask(sid: &str) -> crate::agents::AskIn {
+    crate::agents::AskIn {
+        sid: sid.into(),
+        kind: crate::agents::AskKind::Approve,
+        tool: "Bash".into(),
+        what: Some("touch a".into()),
+        detail: "touch a".into(),
+        suggestions: vec![],
+        questions: vec![],
+        agent_id: None,
+        agent_type: None,
+        blocks_terminal: false,
+        input: serde_json::json!({"command": "touch a"}),
+    }
+}
+
+/// **连接撤了之后才挂上的请求：不挂，等答的那一头当场收到「撤了」**（`control::asks` 的登记表）。
+#[test]
+fn d9_an_ask_hung_after_its_connection_withdrew_is_not_kept() {
+    let sid = "d9-late";
+    let desk = crate::control::asks::Desk::new();
+    let conn = desk.conn();
+    drop(desk); // 读循环读到 EOF、先撤了
+    let (_id, mut rx) = crate::control::asks::open_id(crate::agents::fake::ASK, d9_ask(sid), conn);
+    assert!(
+        crate::control::asks::pending(sid).is_empty(),
+        "连接撤了之后挂上的那一条留在了登记表里"
+    );
+    assert_eq!(
+        crate::control::asks::ended(sid),
+        None,
+        "界面从没见过的那一条，不该改这条会话「上一条请求怎么了」那一格"
+    );
+    assert!(
+        matches!(
+            rx.try_recv(),
+            Err(tokio::sync::oneshot::error::TryRecvError::Closed)
+        ),
+        "等答的那一头没当场收到「撤了」—— 处理器会一直握着应答那一路"
+    );
+}
+
+/// **连接撤了之后才起的登录作业：不留，当场回「本次登录不存在」**（`accounts::sign_in` 的作业表）。
+/// 替身家的登录程序一起来就退（不印链接）：撤销没认上时，作业照留、回的是「退了」那一句。
+#[test]
+fn d10_a_login_started_after_its_connection_withdrew_is_not_kept() {
+    let face = crate::agents::fake::NO_PASTE_FACE;
+    let root = std::env::temp_dir().join(format!(
+        "ccm-d10-login-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    std::fs::create_dir_all(root.join("bin")).expect("台架目录");
+    test_home::write_exe(&root.join("bin").join(face.program), "#!/bin/sh\nexit 0\n");
+    let conn = crate::control::asks::Desk::new().conn();
+    drop(crate::accounts::sign_in::Desk::of(conn)); // 读循环读到 EOF、先撤了
+    let got = crate::accounts::sign_in::start(
+        &crate::accounts::sign_in::SignInAsk {
+            face,
+            target: "d10-late",
+            dir: None,
+            then: &[],
+            conn,
+            cwd: Some(root.clone()),
+            path: Some(format!("{}:/usr/bin:/bin", root.join("bin").display())),
+        },
+        Box::new(|_, _| {}),
+    );
+    let _ = std::fs::remove_dir_all(&root);
+    let said = got.expect_err("连接撤了之后还起得来登录作业");
+    assert_eq!(
+        said.said,
+        copy_core::copy_text("beLogin.finish.noJob", &[]),
+        "连接撤了之后起的作业应当当场回「本次登录不存在」：{said:?}"
+    );
 }
 
 // ── D3 ────────────────────────────────────────────────────────────────────
@@ -509,6 +802,20 @@ fn d3_the_ticket_is_taken_once_before_the_blocking_spawn_and_every_stream_exit_d
         ),
         Ok(within[0]),
         "生产入口交的期限不是 DRAIN_DEADLINE"
+    );
+
+    // 常驻那条连接（D8 的台架自己放 sender，钉不到生产那一句）：起收场之前放掉自己那一份应答 sender ——
+    //   放在收场之后，读到 EOF 时写者等不到「应答那一路没人再送」，这条流永远不收场。
+    let ends: Vec<usize> = call_sites(&main, "stream_ends")
+        .into_iter()
+        .filter(|i| !main[..*i].ends_with("fn "))
+        .collect();
+    assert_eq!(ends.len(), 1, "`stream_ends(` 应恰好一处调用：{ends:?}");
+    let before = main[..ends[0]].trim_end();
+    assert!(
+        before.ends_with("drop(reply_tx);"),
+        "常驻那条连接进 `stream_ends` 之前没先放掉自己那一份应答 sender：{:?}",
+        before.lines().last()
     );
 }
 

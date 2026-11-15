@@ -219,7 +219,6 @@ fn the_file_speaks_exactly_the_command_lines_words() {
         flag::CCM_HELP,
         flag::CCM_VERSION,
         flag::CCM_PROBE,
-        flag::CCM_SID,
         flag::ACCOUNT_DIR,
         // 往 tmux 里那一趟交下去的（别名在那一趟的命令行里已经没有了）：写进配置没意义。
         flag::TAB_FROM,
@@ -578,4 +577,27 @@ fn a_hosted_profile_and_its_account_child_resolve_hosted() {
     assert!(o.hosted, "cch 的托管要传下来");
     assert_eq!(o.account, "lab");
     assert_eq!(origin_of(&r, flag::HOSTED), "cch");
+}
+
+/// ccm 那一趟读配置文件：家说不出（空家）⇒ 照实拒（判只在 `platform::paths::under_home`），不拿根目录兜底去读
+/// `/.cc-monitor/profiles.toml`；家名里有非 UTF-8 的字节（替身家）⇒ 照那个家原样读，不经字符串转一道读成另一个目录。
+#[test]
+fn reading_the_book_refuses_an_empty_home_and_reads_an_odd_home_as_it_is() {
+    let said = read_at(std::path::Path::new("")).expect_err("空家拿根目录兜底去读了");
+    assert_eq!(
+        said,
+        crate::platform::paths::under_home(None, relay_route_core::PROFILES_REL).unwrap_err()
+    );
+    assert_eq!(path_in(""), Err(said), "两处拒的不是同一句");
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        let home = test_home::scratch("profbytes").join(std::ffi::OsStr::from_bytes(b"h\xffome"));
+        let file = path_in(&home).unwrap();
+        assert!(file.starts_with(&home), "非 UTF-8 的家拼偏了：{file:?}");
+        std::fs::create_dir_all(file.parent().unwrap()).expect("建目录");
+        std::fs::write(&file, BOOK).expect("写配置");
+        let book = read_at(&home).expect("读得出");
+        assert!(book.find("teamcct").is_some(), "非 UTF-8 的家读偏了");
+    }
 }

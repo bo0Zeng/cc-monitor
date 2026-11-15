@@ -18,6 +18,8 @@
 //! | 解析本机 home | `$CLAUDE_CONFIG_DIR` 否则 `$HOME/.claude`（**恒有值**） | `$CCM_FAKE_AGENT_HOME`，**没有默认** | `Adapter.home` · `LocalFace.home_at` |
 //! | resume 默认命令 | `claude` | `fakeagent` | `LaunchFace.default_launcher` |
 //! | resume 命令形 | `--resume`（flag） | `revive`（子命令） | `LaunchFace.resume_token` |
+//! | 项目里的 skill 根 | `<项目>/.claude/skills` | `<项目>/.fake-agent/abilities` | `AssetFace.project_skills_root` |
+//! | 各号的 MCP 配置 | `.claude.json` 顶层 `mcpServers`（JSON） | `fake-mcp.conf` 一行一个 `server <名> <定义>`（行式） | `AccountsFace.mcp` |
 //!
 //! 不同形是要紧的：照抄 Claude 的布局的话，通用层拿 Claude 的知识去解释它的 home 恰好也能读出东西，
 //! 「走通」就证明不了通用层容得下第二种布局。
@@ -52,118 +54,35 @@ pub mod rewind;
 
 pub const AGENT_KIND: &str = "fake";
 
-/// 解析本机 home 的环境变量。⚠ **刻意没有默认值**（Claude 那家恒有值）——
-/// 少了这个差别，`visible_among` 里 `None` 那条分支就永远不会被这家走一遍。
-pub const HOME_ENV: &str = "CCM_FAKE_AGENT_HOME";
+// 各面的填法住各自一份（对着 `src/backend/agents/<面>_face.rs`）；本份只留那一行的拼法 · 能力表 · `walk`。
+mod accounts;
+mod ask;
+mod assets;
+// 两家替身的足迹面（足迹汇总认多家 · 按号申报的判据拿它跑）。
+pub mod footprint;
+mod launch;
+mod local;
+mod record;
+// 报用量那一形（往 stdin 喂两行、读够就收）：通用层的报用量判据直接拿它跑。
+pub mod upstream;
 
-/// 能力 8：解析本机 home。`None` = 连候选路径都说不出。
-pub fn home() -> Option<PathBuf> {
-    std::env::var_os(HOME_ENV).map(PathBuf::from)
-}
-
-/// 能力 1：会话记录根。**`convos` 不是 `projects`**。
-pub fn records_root(home: &Path) -> PathBuf {
-    home.join("convos")
-}
-
-/// 能力 2：这个路径是不是一份会话记录。**`.ndjson` 不是 `.jsonl`**。
-pub fn is_session_file(p: &Path) -> bool {
-    p.extension().is_some_and(|e| e == "ndjson")
-        && p.file_name()
-            .and_then(|n| n.to_str())
-            .is_some_and(|n| n.starts_with("sess-"))
-}
-
-/// 能力 3：会话 id → 记录文件名。**带前缀**，与 Claude 的裸 `<sid>.<ext>` 不同形。
-pub fn session_file_name(sid: &str) -> String {
-    format!("sess-{sid}.ndjson")
-}
-
-/// 按 sid 找记录：`<记录根>/<项目>/sess-<sid>.ndjson`（项目目录按名字次序问）。
-fn find_session(root: &Path, sid: &str) -> Result<PathBuf, String> {
-    if !shell_quote_core::session_id_ok(sid) {
-        return Err(format!("fake: invalid session id {sid:?}"));
-    }
-    let name = session_file_name(sid);
-    let mut projects: Vec<PathBuf> = Ro::read_dir(root)
-        .map_err(|e| e.to_string())?
-        .flatten()
-        .map(|e| e.path())
-        .collect();
-    projects.sort();
-    projects
-        .into_iter()
-        .map(|p| p.join(&name))
-        .find(|f| f.is_file())
-        .ok_or_else(|| format!("fake: no {name}"))
-}
-
-/// 能力 4：pidfile 目录。**`live` 不是 `sessions`**。
-pub fn pidfile_root(home: &Path) -> PathBuf {
-    home.join("live")
-}
-
-/// 能力 5：账号（配置根）环境变量名。
-pub const ACCOUNT_DIR_ENV: &str = "CCM_FAKE_ACCOUNT_DIR";
-
-/// 能力 6：某个配置根下、对某个 cwd 的信任判定。
-///
-/// 形状与 Claude 那家**不同**：文件名不同、字段路径不同（`trusted[cwd]` 而不是
-/// `projects[cwd].hasTrustDialogAccepted`）。
-pub fn trust_of_config(root: &Path, cwd: &str) -> Result<bool, String> {
-    let p = root.join("fake-config.json");
-    let bytes =
-        Ro::read_capped(&p, FAKE_FILE_CAP).map_err(|e| format!("fake_config_unreadable: {e}"))?;
-    let v: serde_json::Value =
-        serde_json::from_slice(&bytes).map_err(|e| format!("fake_config_invalid: {e}"))?;
-    Ok(v.get("trusted")
-        .and_then(|t| t.get(cwd))
-        .and_then(serde_json::Value::as_bool)
-        .unwrap_or(false))
-}
-
-/// 能力 7：判活时"这个 cmdline 看起来像不像本 agent"。
-///
-/// ⚠ 与 Claude 那家**方向相同但词表不同**（那边是「明显不像才判冒名」，含 `claude`/`node`）。
-pub fn cmdline_may_be_agent(lower: &str) -> crate::agents::CmdlineSays {
-    use crate::agents::CmdlineSays;
-    if lower.trim().is_empty() || lower.contains("fakeagent") {
-        CmdlineSays::Session
-    } else {
-        CmdlineSays::Unlike
-    }
-}
-
-/// 能力 10：默认启动器。
-pub const DEFAULT_COMMAND: &str = "fakeagent";
-
-/// 能力 11：resume 那个字面量 —— **子命令形，且动词与 Codex 也不同**。
-pub const RESUME_TOKEN: &str = "revive";
-
-/// 起会话事实（`Adapter.launch` 那一格）。**组合与两家都不同**：Claude 是「有身份面 · 留 pidfile」，
-/// Codex 是「两样都没有」；这一家是「有身份面 · 判不了活」。
-/// 通用层若在哪一格上按名字认人，喂这一家就会答错（`fake_tests.rs` 的 ccm 规划那几条）。
-pub const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
-    adapter_id: AGENT_KIND,
-    display_name: "Fake",
-    speaker_name: "Fake",
-    default_launcher: DEFAULT_COMMAND,
-    launcher_alias: None,
-    resume_token: RESUME_TOKEN,
-    preset_sid: None,
-    // 夹具家同两家：起的时候就交。
-    first_prompt_arg: true,
-    permission: None,
-    self_sid_env: None,
-    launch_args: &[],
-    nested_env: &["FAKEAGENT_PARENT"],
-    is_default: false,
-    models: None,
-    model_default: None,
-    model_text: None,
-    model_pick: None,
-    model_switch: None,
-    rewind: Some(rewind::FACE),
+use accounts::accounts_face;
+pub use accounts::{
+    trust_of_config, ACCOUNT_DIR_ENV, LINE_TRUST_CELLS, MCP_CELLS, MCP_FILE, NO_PASTE_FACE,
+    SHOW_CODE_FACE, TRUST_CELLS,
+};
+pub use ask::{ASK, ASK_PLUGIN, GATE, TABLE_FLAG};
+pub use assets::{
+    project_skills_root, second_project_skills_root, two_families, ASSETS, ASSETS_B,
+    ASSETS_USER_SKILLS, MCP, MCP_NO_LOGIN, PLUGINS, USER_SKILLS,
+};
+pub use launch::{attach_rows, DEFAULT_COMMAND, LAUNCH, PLAIN_KIND, RESUME_TOKEN};
+use local::local_face;
+pub use local::{cmdline_may_be_agent, home, pidfile_root, HOME_ENV};
+use record::records_face;
+pub use record::{
+    chain_fact, found_in_the_other, is_session_file, own_fork_calls, records_root,
+    session_file_name,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -280,52 +199,11 @@ pub enum Stop {
     },
 }
 
-/// 假 agent 的 MCP 读面（夹具家那一份布局）：只认 `<项目>/.fake-mcp.json` 的 `servers` 表，一律记成 project 段。
-/// 它要证的是「通用层经注册表那一格读 MCP、不认识任何一家的文件名」—— 判据 `fake_tests.rs::the_fake_agents_mcp_face_is_read_through_the_generic_layer`。
-pub const MCP: crate::agents::McpFace = crate::agents::McpFace {
-    read: read_mcp,
-    login_command: "/fake-mcp",
-    sign_in: None,
-    needs_login_file: None,
-};
-
-fn read_mcp(project_dir: Option<&Path>, _look: &crate::agents::McpLook) -> crate::agents::McpRead {
-    let mut out = crate::agents::McpRead::default();
-    let Some(dir) = project_dir else { return out };
-    let file = dir.join(".fake-mcp.json");
-    let Ok(text) = Ro::read_string_capped(&file, FAKE_FILE_CAP) else {
-        return out;
-    };
-    match serde_json::from_str::<serde_json::Value>(&text) {
-        Ok(v) => {
-            for (name, server) in v
-                .get("servers")
-                .and_then(|s| s.as_object())
-                .into_iter()
-                .flatten()
-            {
-                out.entries.push(crate::agents::McpEntry {
-                    scope: "project",
-                    name: name.clone(),
-                    server: server.clone(),
-                    source: file.display().to_string(),
-                    status: Default::default(),
-                    login_in: Vec::new(),
-                    seen_ms: None,
-                });
-            }
-        }
-        Err(e) => out
-            .problems
-            .push(format!("读 {} 失败：{e}", file.display())),
-    }
-    out
-}
-
 /// 只带 home 的一行（其余各面都没有）；各段在它上面补那一段要的面。
 pub(crate) fn bare_row(home: fn() -> Option<PathBuf>) -> crate::agents::Adapter {
     crate::agents::Adapter {
         kind: AGENT_KIND,
+        display_name: None,
         home,
         account_env: None,
         assets: None,
@@ -349,7 +227,9 @@ pub(crate) fn bare_row(home: fn() -> Option<PathBuf>) -> crate::agents::Adapter 
 /// 一整行：本假 agent 的全部面（判据「同一批通用判据对三家各跑一遍」用）。
 pub fn full_row(home: fn() -> Option<PathBuf>) -> crate::agents::Adapter {
     crate::agents::Adapter {
+        display_name: Some("Fake"),
         account_env: Some(ACCOUNT_DIR_ENV),
+        assets: Some(ASSETS),
         mcp: Some(MCP),
         records: Some(records_face(
             records_root,
@@ -366,133 +246,45 @@ pub fn full_row(home: fn() -> Option<PathBuf>) -> crate::agents::Adapter {
     }
 }
 
-/// 记录解释面：只带记录树与文件判定（本假 agent 的记录内容通用判据用不到 ⇒ 解析恒「这一行不出成品」）。
-fn records_face(
-    root: fn(&Path) -> PathBuf,
-    is_session_file: fn(&Path) -> bool,
-    file_name: fn(&str) -> String,
-) -> crate::agents::RecordFace {
-    crate::agents::RecordFace {
-        parse: |_| Ok(None),
-        sid: session_id_of,
-        is_session_file,
-        tree: Some(crate::agents::RecordTree { root, file_name }),
-        activity: None,
-        chain: Some(chain_fact),
-        find_session,
-        branch: None,
-        drift: None,
-        text: None,
-        delete: None,
-        response_id: None,
-        run_of: None,
-        child_link: None,
-        background: None,
-        children: None,
-        project_dir: None,
-        mcp_said: None,
-        quiet_unread: None,
-        skim: None,
-        beats: None,
-    }
-}
-
-/// 链事实（与 Claude 每一格都不同名）：`{"node", "up", "when", "role": human | bot | note, "cut": bool, "words"}`；
-/// 排队那句是 `{"queued": "…"}`。只有 `human` / `bot` 进界面。
-pub(crate) fn chain_fact(
-    line: &crate::agents::Line<'_>,
-) -> Option<crate::agents::mainline::ChainFact> {
-    use crate::agents::mainline::{ChainFact, Link, Words};
-    let v = line.value()?;
-    let s = |k: &str| {
-        v.get(k)
-            .and_then(serde_json::Value::as_str)
-            .map(str::to_string)
-    };
-    if let Some(q) = s("queued") {
-        return Some(ChainFact::Queued(Words::of(&q)));
-    }
-    let role = s("role")?;
-    Some(ChainFact::Node(Link {
-        id: s("node")?,
-        parent: s("up"),
-        at: s("when")?,
-        said: role == "human",
-        reply: role == "bot",
-        interrupt: v.get("cut").and_then(serde_json::Value::as_bool) == Some(true),
-        text: (role == "human").then(|| Words::of(&s("words").unwrap_or_default())),
-        shown: role != "note",
-    }))
-}
-
-/// `sess-<sid>.ndjson` ⇒ sid。
-fn session_id_of(p: &Path) -> Option<String> {
-    let name = p.file_name()?.to_str()?;
-    Some(
-        name.strip_prefix("sess-")?
-            .strip_suffix(".ndjson")?
-            .to_string(),
-    )
-}
-
-/// 本机布局面。家目录：给了账号配置目录就是它，否则 [`home`]（没有默认 ⇒ 空路径）。
-fn local_face(
-    pidfile_dir: fn(&Path) -> PathBuf,
-    cmdline_may_be_agent: fn(&str) -> crate::agents::CmdlineSays,
-) -> crate::agents::LocalFace {
-    crate::agents::LocalFace {
-        home_at: |config_dir, _| {
-            config_dir
-                .map(Path::to_path_buf)
-                .or_else(home)
-                .unwrap_or_default()
-        },
-        pidfile_dir,
-        cmdline_may_be_agent,
-        // 假的那一家有任务目录、不认任何任务文件（任务的读法在真那一家的判据里钉）。
-        tasks: Some(crate::agents::TasksFace {
-            dir: |h| h.join("todo"),
-            task: |_| None,
+/// 另一家替身（判「两家各有号」那几条用）：本假 agent 的全部面，换一个 `kind`、叫法、号载体与 wrapper 名；`is_default` ⇒ 它是默认起的那一家
+/// （清单里没写是哪一家的号归它）。两家同形、只差这几格：通用层若不按号的家取，两家的号就会串；叫法各家各一个（[`said_of`]），
+/// 读错了注册表或串了家，说出来的名字就对不上。
+pub fn family_row(
+    kind: &'static str,
+    account_env: &'static str,
+    wrapper: &'static str,
+    is_default: bool,
+    home: fn() -> Option<PathBuf>,
+) -> crate::agents::Adapter {
+    crate::agents::Adapter {
+        kind,
+        display_name: Some(said_of(kind)),
+        account_env: Some(account_env),
+        accounts: Some(accounts_face(account_env)),
+        launch: Some(crate::agents::LaunchFace {
+            adapter_id: kind,
+            launcher_alias: Some(wrapper),
+            is_default,
+            ..LAUNCH
         }),
-        proc_of: |v| crate::agents::ProcFact {
-            kind: AGENT_KIND,
-            sid: v
-                .get("sid")
-                .and_then(serde_json::Value::as_str)
-                .map(str::to_string),
-            background: v.get("bg").and_then(serde_json::Value::as_bool) == Some(true),
-            ..Default::default()
-        },
+        ..full_row(home)
     }
 }
 
-/// 账号库面：只带通用判据会问的那两格（会话进程环境的键 · 信任预检），其余空着。
-fn accounts_face(account_env: &'static str) -> crate::agents::AccountsFace {
-    crate::agents::AccountsFace {
-        identity: &[],
-        shared: &[],
-        shared_on_demand: &[],
-        config_file: "fake-config.json",
-        user_mcp_key: "servers",
-        shared_root: |h| h.join("shared"),
-        email_in: |_| None,
-        login: None,
-        sign_in: None,
-        session_env: crate::agents::SessionEnvKeys {
-            config_dir: account_env,
-            base_url: "CCM_FAKE_UPSTREAM",
-            settings_may_set_base_url: |_, _, _| false,
-        },
-        trust: Some(TRUST_CELLS),
-    }
+/// [`family_row`] 那一家行头上的叫法：`替身<kind>`（各家各一个，判据照它断言「各家认各家」）。
+pub fn said_of(kind: &str) -> &'static str {
+    Box::leak(format!("替身{kind}").into_boxed_str())
 }
 
-/// 信任那一格：`fake-config.json` → `trusted[<目录>] = true`（目录那一项本身就是那个布尔；键原样）。
-pub const TRUST_CELLS: crate::agents::TrustCells = crate::agents::TrustCells {
-    table: "trusted",
-    flag: None,
-    dir_keys: |cwd| vec![cwd.to_string()],
-};
+/// 不由我们起的一家（没有起会话面）：行头的叫法是 `said`（`None` ＝ 没声明），其余各面同 [`full_row`]。
+pub fn unlaunched_row(kind: &'static str, said: Option<&'static str>) -> crate::agents::Adapter {
+    crate::agents::Adapter {
+        kind,
+        display_name: said,
+        launch: None,
+        ..full_row(home)
+    }
+}
 
 /// 账号域那一份信任判定（各号同步信任的本体，住适配层之上）：调用方交进来，`walk` 第④段经它读。
 pub type TrustJudge = fn(&crate::agents::TrustCells, &serde_json::Value) -> BTreeSet<String>;

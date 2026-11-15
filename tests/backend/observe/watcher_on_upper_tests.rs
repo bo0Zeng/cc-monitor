@@ -1,13 +1,72 @@
 //! 跟读判据里引到上层的那几条：控制面真打标那一手（`control::identity_tag::tag_seen`）· 帧面宿主 · 进后端的口。
 //! 观测面是独立的包（`backend-observe`）、够不到上层 ⇒ 挂在主 crate（经 `cross/observe.rs`）；读者经 `watcher::test_support` 驱动。
-//! tmux 一律是假的：打标的口注入一个有状态的假 tmux 脚本，真 tmux 一次都不碰（§48.3）。
+//! 打标的口注入一个有状态的假 tmux 脚本（§48.3）；「claude」各自坐在私有 tmux server 的一个窗口里（[`Ttys`]），只为有个真终端。
 
-use crate::observe::watcher::test_support::{
-    claude_in_pane, kind_of, pidfile_of, write_pidfile, LiveEar, Reader,
-};
+use crate::observe::watcher::test_support::{kind_of, pidfile_of, write_pidfile, LiveEar, Reader};
 use crate::observe::watcher::Reconciled;
 use crate::wire::Frame;
 use std::path::{Path, PathBuf};
+
+/// 给每个「claude」一个真终端：私有 tmux server（`tmux_sandbox`：`-L` ＋ 私有 `TMUX_TMPDIR`）上一个窗口，前台就是它，
+/// 它是那个窗格的根进程，环境里的 `TMUX_PANE` 改成假 tmux 那一头的窗格。
+/// 打标只认窗格前台的进程（控制终端 · 前台进程组 · 终端首领写着这个窗格），没控制终端的 `sleep` 冒充不了窗格进程。
+struct Ttys {
+    sbx: crate::platform::tmux_sandbox::SandboxTmux,
+}
+
+impl Ttys {
+    fn new(tag: &str) -> Ttys {
+        let sbx = crate::platform::tmux_sandbox::SandboxTmux::new(&format!("wup-{tag}"));
+        sbx.ok(&["set-environment", "-g", "-u", "CLAUDE_CONFIG_DIR"]);
+        Ttys { sbx }
+    }
+    /// 起一个前台在私有窗格里、环境里写着 `pane` 的「claude」（`sleep`），等它换好身、环境读得出；回它的 pid。
+    fn claude(&self, pane: &str) -> u32 {
+        let pid: u32 = self
+            .sbx
+            .out(&[
+                "new-window",
+                "-d",
+                "-P",
+                "-F",
+                "#{pane_pid}",
+                &format!("exec env -u TMUX TMUX_PANE={pane} sleep 600"),
+            ])
+            .parse()
+            .expect("pane_pid");
+        let up = guard_core::wall::rounds().any(|_| {
+            let c = std::fs::read_to_string(format!("/proc/{pid}/comm")).unwrap_or_default();
+            let env = std::fs::read(format!("/proc/{pid}/environ")).unwrap_or_default();
+            let hit = c.trim() == "sleep" && !env.is_empty();
+            if !hit {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            hit
+        });
+        assert!(up, "窗格里的 sleep 没起来");
+        pid
+    }
+    /// [`Ttys::claude`] ＋ 在 `sessions` 下写它的 pidfile（`sid` · `status`）。
+    fn claude_with_pidfile(&self, sessions: &Path, pane: &str, sid: &str, status: &str) -> u32 {
+        let pid = self.claude(pane);
+        write_pidfile(sessions, pid, sid, status);
+        pid
+    }
+    /// 结束那个「claude」（按 pid 发 TERM，等它从 `/proc` 消失：私有 server 替它收尸）。
+    fn end(&self, pid: u32) {
+        let _ = std::process::Command::new("kill")
+            .arg(pid.to_string())
+            .status();
+        let gone = guard_core::wall::rounds().any(|_| {
+            let alive = crate::platform::proc::pid_alive(pid);
+            if alive {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            !alive
+        });
+        assert!(gone, "pid {pid} 一直没走");
+    }
+}
 
 /// 一个 tmux 会话里两个窗格各跑一个 claude：各自的标签打在各自的窗格上，对账一轮就稳 —— 之后每一轮一次都不写。
 /// 标签若还是会话级单值，两个 claude 每一轮都把对方改回来，而每次「真写了」都会再起一次探测（探测 ↔ 打标死循环）。
@@ -44,18 +103,12 @@ exit 1
     )
     .unwrap();
     let _iso = crate::control::identity_tag::door::isolate_with(&script);
-    let mut kids: Vec<std::process::Child> = ["%1", "%2"]
-        .iter()
-        .map(|pane| {
-            crate::platform::proc::test_support::spawn_settled_sleep(|c| {
-                c.env("TMUX_PANE", pane).env_remove("TMUX");
-            })
-        })
-        .collect();
+    let ttys = Ttys::new("two-in-one");
+    let kids: Vec<u32> = ["%1", "%2"].iter().map(|pane| ttys.claude(pane)).collect();
     let files: Vec<PathBuf> = kids
         .iter()
         .zip(["two-a", "two-b"])
-        .map(|(k, sid)| pidfile_of(&sessions, k.id(), sid))
+        .map(|(k, sid)| pidfile_of(&sessions, *k, sid))
         .collect();
     // 这几条要真打标（落假 tmux）。
     let mut reader = Reader::new(
@@ -64,10 +117,7 @@ exit 1
     );
     let first: Vec<bool> = files.iter().map(|f| reader.session_added(f)).collect();
     let rounds = [reader.retag(None), reader.retag(None)];
-    for k in kids.iter_mut() {
-        let _ = k.kill();
-        let _ = k.wait();
-    }
+    drop(ttys);
     std::fs::remove_dir_all(&root).ok();
     assert_eq!(
         first,
@@ -84,7 +134,7 @@ exit 1
 // ═══ 身份标签对账 ═══════════════════════════════════════════════
 //
 // 夹具：一个有状态的假 tmux（一个会话 `$7`，`@ccm_sid` 存在一份文件里；`display-message` 读它、`set-option` 写它）＋
-// 一个带 `TMUX_PANE` 的 `sleep` 当 claude（pidfile 带它的真 procStart）。真 tmux 一次都不碰（§48.3）。
+// 私有 tmux 窗口里一个前台 `sleep` 当 claude（[`Ttys`]，pidfile 带它的真 procStart）；打标只经假 tmux（§48.3）。
 
 /// 回（假 tmux 脚本，标签文件）。
 fn fake_tmux_world(dir: &Path) -> (PathBuf, PathBuf) {
@@ -111,17 +161,18 @@ fn an_externally_changed_identity_tag_is_put_back() {
     let (script, label) = fake_tmux_world(&dir.join("tmux"));
     let _iso = crate::control::identity_tag::door::isolate_with(&script);
     let sessions = dir.join("sessions");
-    let mut kid = claude_in_pane(&sessions, "%5", "resync-a", "busy");
+    let ttys = Ttys::new("retag");
+    let kid = ttys.claude_with_pidfile(&sessions, "%5", "resync-a", "busy");
     // 这几条要真打标（落假 tmux）。
     let mut reader = Reader::new(dir.join("projects"), crate::control::identity_tag::tag_seen);
-    let pidfile = sessions.join(format!("{}.json", kid.id()));
+    let pidfile = sessions.join(format!("{kid}.json"));
     reader.session_added(&pidfile);
     let read = || std::fs::read_to_string(&label).unwrap_or_default();
     assert_eq!(read(), "resync-a", "首次宣告就该打上");
 
     // ① 外部改掉 ⇒ pidfile 重写（sid 没变，只换了状态）⇒ 纠正。
     std::fs::write(&label, "bg-sid").unwrap();
-    write_pidfile(&sessions, kid.id(), "resync-a", "idle");
+    write_pidfile(&sessions, kid, "resync-a", "idle");
     reader.session_added(&pidfile);
     let after_rewrite = read();
 
@@ -130,8 +181,7 @@ fn an_externally_changed_identity_tag_is_put_back() {
     let wrote = reader.retag(None);
     let after_batch = read();
     let wrote_again = reader.retag(None);
-    let _ = kid.kill();
-    let _ = kid.wait();
+    drop(ttys);
     let _ = std::fs::remove_dir_all(&dir);
     assert_eq!(
         after_rewrite, "resync-a",
@@ -154,20 +204,20 @@ fn resync_reconciles_the_table_against_the_disk_and_emits_only_the_difference() 
     let (script, label) = fake_tmux_world(&dir.join("tmux"));
     let _iso = crate::control::identity_tag::door::isolate_with(&script);
     let sessions = dir.join("sessions");
-    let mut a = claude_in_pane(&sessions, "%1", "sid-a", "idle");
-    let mut b = claude_in_pane(&sessions, "%2", "sid-b", "idle");
-    let mut c = claude_in_pane(&sessions, "%5", "sid-c", "idle");
+    let ttys = Ttys::new("recon");
+    let a = ttys.claude_with_pidfile(&sessions, "%1", "sid-a", "idle");
+    let b = ttys.claude_with_pidfile(&sessions, "%2", "sid-b", "idle");
+    let c = ttys.claude_with_pidfile(&sessions, "%5", "sid-c", "idle");
     // 这几条要真打标（落假 tmux）。
     let mut reader = Reader::new(dir.join("projects"), crate::control::identity_tag::tag_seen);
-    for k in [&a, &b, &c] {
-        reader.session_added(&sessions.join(format!("{}.json", k.id())));
+    for k in [a, b, c] {
+        reader.session_added(&sessions.join(format!("{k}.json")));
     }
     reader.frames();
-    std::fs::remove_file(sessions.join(format!("{}.json", a.id()))).unwrap();
-    let _ = b.kill();
-    let _ = b.wait();
+    std::fs::remove_file(sessions.join(format!("{a}.json"))).unwrap();
+    ttys.end(b);
     std::fs::write(&label, "bg-sid").unwrap();
-    let mut d = claude_in_pane(&sessions, "%9", "sid-d", "idle");
+    ttys.claude_with_pidfile(&sessions, "%9", "sid-d", "idle");
     let frames = |reader: &mut Reader| {
         let mut v: Vec<String> = reader
             .frames()
@@ -196,10 +246,7 @@ fn resync_reconciles_the_table_against_the_disk_and_emits_only_the_difference() 
     std::fs::write(&label, "bg-sid").unwrap();
     let all = reader.reconcile(&sessions, None);
     let all_frames = frames(&mut reader);
-    for k in [&mut a, &mut c, &mut d] {
-        let _ = k.kill();
-        let _ = k.wait();
-    }
+    drop(ttys);
     let _ = std::fs::remove_dir_all(&dir);
     assert_eq!(
         (one, one_frames, one_label.as_str()),
@@ -270,10 +317,11 @@ fn resync_face_reply_matches_the_cross_language_golden() {
     /// 照分派那一层解入参（`typed::take`）再跑；回包投成线上那一份，失败只留码。
     fn answer(args: &serde_json::Value) -> Result<serde_json::Value, String> {
         use crate::wire::typed::{Codes as _, Handle as _};
-        let req = crate::wire::typed::take(args).map_err(|f| f.code_or_fallback().to_string())?;
+        let req = crate::wire::typed::take(args)
+            .map_err(|f| cmd_wire::failed::Failed::code_or_fallback(f.code.clone()))?;
         let cx = crate::wire::typed::Cx::default();
         let got = crate::wire::spec::finish(crate::stream::resync_face::ResyncCmd::run(req, cx))
-            .map_err(|e| e.into_said().code_or_fallback().to_string())?;
+            .map_err(|e| cmd_wire::failed::Failed::code_or_fallback(e.into_said().code.clone()))?;
         Ok(serde_json::to_value(got).expect("回包总能序列化"))
     }
     let golden: serde_json::Value =
@@ -285,8 +333,9 @@ fn resync_face_reply_matches_the_cross_language_golden() {
         k
     };
     assert_eq!(keys(&got), keys(&golden["reply"]), "成品的键与金样不一致");
-    // 五格计数 ＋ 那一格能力事实（与 hello 同形：`[{command, code}]`）。
-    for k in ["added", "removed", "retagged", "caught_up", "watchers"] {
+    // 两格计数 ＋ 那一句 ＋ 那一格能力事实（与 hello 同形：`[{command, code}]`）。
+    assert!(got["said"].is_string(), "`said` 不是字：{got}");
+    for k in ["added", "removed"] {
         assert!(got[k].as_u64().is_some(), "`{k}` 不是计数：{got}");
     }
     let facts = got["unavailable"]
@@ -309,4 +358,32 @@ fn resync_face_reply_matches_the_cross_language_golden() {
             "{bad}"
         );
     }
+}
+
+/// `resync` 回包的 `said`：那一句由后端写好，界面照抄（不再拿几格计数自己拼）。
+/// 没人在看 ⇒ 只那一句；否则「补读了几条」接「差异」，计数为 0 各换成那一形。
+#[test]
+fn resync_said_is_written_by_the_backend() {
+    use crate::stream::resync_face::said;
+    use copy_core::copy_text;
+    assert_eq!(said(1, 2, 3, 4, 0), copy_text("resync.done.nobody", &[]));
+    assert_eq!(
+        said(0, 0, 0, 0, 1),
+        format!(
+            "{}{}",
+            copy_text("resync.done.caughtNone", &[]),
+            copy_text("resync.done.same", &[])
+        )
+    );
+    assert_eq!(
+        said(1, 2, 3, 4, 2),
+        format!(
+            "{}{}",
+            copy_text("resync.done.caughtUp", &[("n", "4")]),
+            copy_text(
+                "resync.done.diff",
+                &[("added", "1"), ("removed", "2"), ("retagged", "3")]
+            )
+        )
+    );
 }

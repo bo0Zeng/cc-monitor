@@ -37,7 +37,7 @@ You run `claude` in a terminal — often several at once: one or two on your lap
 - "Reload" on the tab bar re-syncs every tab with the records on disk
 - Answer in the message stream: approve a step · deny with a reason · answer a question · approve a plan; the terminal still works too, and whichever answers first wins. A question can be set to get an automatic reply after a few minutes with no answer; the answer block can be collapsed
 - While a turn is running and the input box is empty, ➤ turns into ■, which stops the turn
-- The "needs attention" overlay and `Ctrl+J` put the riskiest items first; tabs and the window title show the count
+- Things that need a person come in two columns, "pending requests" (answerable in the app) and "needs attention"; each has its own button and overlay in the tab bar, riskiest first; `Ctrl+J` jumps to the next pending request, and the window title shows the count
 - The session header can switch the model and the permission mode; sub-sessions started from inside a session stay out of the tab bar by default, and any session can be hidden or shown again
 - Attachments: drop a file anywhere on the main area and it goes with the next message, or upload it into the session's working directory
 - Input queue: a message first joins that session's queue and is sent in order once the session is idle; unsent ones can be withdrawn. While the machine is offline it waits as a draft and is delivered on reconnect

@@ -64,8 +64,8 @@ export interface FindStripHost {
 export interface FindStripOptions {
   /** 停多少毫秒自己找；不给 ⇒ 回车才找。 */
   autoMs?: number;
-  /** 命中行的头一行（谁 · 第几轮 · 时刻；范围「用户」⇒ 不写谁）；不给 ⇒ 只一行片段。 */
-  meta?: (h: FindHit, scope: FindScope) => string;
+  /** 命中行摆不摆头一行（那台按范围写好的 `meta`：谁 · 第几轮 · 时刻）；不给 ⇒ 只一行片段。 */
+  meta?: boolean;
   /** 面板摆法（见头注）。 */
   panel?: boolean;
 }
@@ -483,11 +483,10 @@ export class FindStrip {
     el.setAttribute("aria-selected", "false");
     // 🔴 与「你说过的话」清单行同一条纪律：**不叫 `data-id`**（那个名字在本仓只指「一张渲染出来的消息卡」）。
     el.dataset.hitUuid = h.uuid;
-    el.dataset.kind = h.kind;
     if (this.opts.meta) {
       const meta = document.createElement("div");
       meta.className = s.fsMeta;
-      meta.textContent = this.opts.meta(h, windowScope);
+      meta.textContent = h.meta;
       el.appendChild(meta);
     }
     const t = plainSnippet(h);

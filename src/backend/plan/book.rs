@@ -109,7 +109,6 @@ impl Book {
                                     said: Some(error),
                                     raw: None,
                                     since: *at,
-                                    since_text: None,
                                 });
                                 *sl = kept;
                             }
@@ -141,7 +140,6 @@ impl Book {
                             said: Some(said),
                             raw,
                             since: prev.doc.read_at,
-                            since_text: None,
                         });
                         Ok(out)
                     }

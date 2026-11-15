@@ -43,6 +43,40 @@ pub use comms_outward::{
     Mode, Opened, Ready, RouteKey, Startup, TapBody, TapEvent, TapPort,
 };
 
+/// 一条 `base_url` 的形状 ⇒ 中转要的 `Base`；形状不对 ⇒ 那一句（不问明文许不许：那是宿主装表时的事）。
+/// 「长什么样」全仓只有一份，住共享 crate `upstream_url_core`（协议闭集 `SCHEMES` 也在那儿）；这里只把它的结论装成 `Base`、把理由翻成一句话。
+pub fn base_of(url: &str) -> Result<Base, &'static str> {
+    upstream_url_core::parse(url)
+        .map(base_from)
+        .map_err(shape_said)
+}
+
+/// 读好的那一条装成 `Base`（已经问过 `upstream_url_core::usable` 的调用方不必再解析一遍）。
+pub fn base_from(u: upstream_url_core::UpstreamUrl) -> Base {
+    Base {
+        tls: u.tls,
+        host: u.host,
+        port: u.port,
+        path: u.path,
+    }
+}
+
+/// 形状那几形各一句（句子住文案表；判定住 `upstream_url_core::parse`）。那句话是 `&'static str`（不含文件内容）⇒ 进日志安全。
+pub fn shape_said(i: upstream_url_core::ShapeIssue) -> &'static str {
+    use upstream_url_core::ShapeIssue as S;
+    match i {
+        S::Whitespace => copy_core::copy_static!("beRelayUpstream.parse.whitespace"),
+        S::NotUrl => copy_core::copy_static!("beRelayUpstream.parse.notUrl"),
+        S::BadScheme => copy_core::copy_static!("beRelayUpstream.parse.badScheme"),
+        S::NoHost => copy_core::copy_static!("beRelayUpstream.parse.noHost"),
+        S::HasQuery => copy_core::copy_static!("beRelayUpstream.parse.hasQuery"),
+        S::BadPort => copy_core::copy_static!("beRelayUpstream.parse.badPort"),
+        S::DoubleSlash => {
+            copy_core::copy_static!("beRelayUpstream.normalizePrefix.doubleSlash")
+        }
+    }
+}
+
 /// 开上游 TCP 的那一口：照这台的出网描述经出网口（直连或经代理）。后端自己发的那几发（续登录令牌）交它；
 /// 中转转发的那一发经 [`open_for`]（先按那条会话的描述）。
 pub fn open_here(host: &str, port: u16, deadline: std::time::Duration) -> std::io::Result<Opened> {
@@ -90,6 +124,10 @@ fn open_by(
 pub mod test_support;
 
 // ── 判据：读的是中转 crate 与上游选择的源码；引到账号域的挂 `accounts/mod.rs`，引到更上层的挂主 crate（`tests/backend/cross/relay.rs`）──
+// 逐块转发多出来的时延：每块在上游吐下一块之前到客户端（攒块就红）· 印首字节与逐块的差
+#[cfg(test)]
+#[path = "../../../tests/backend/relay/latency_tests.rs"]
+mod latency_tests;
 #[cfg(test)]
 #[path = "../../../tests/backend/relay/table_guard.rs"]
 mod table_guard; // 决定点那几条腿（焊接点 · 开上游连接点 · 中转无默认上游）

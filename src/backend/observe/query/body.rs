@@ -26,7 +26,7 @@ use crate::wire::stamp::RecordExt as _;
 pub use cmd_wire::record::{ReadRow, RecordLine};
 use copy_core::copy_text;
 use serde_json::{json, Value};
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
 
 /// 一行正文（不含 `\n`、去掉行尾 `\r`）的摘要：FNV-1a 64。
@@ -108,17 +108,14 @@ impl<'a> Reader<'a> {
         self
     }
 
-    /// 一行交适配层解成通用记录（钟面写好）：解析不出（连 JSON 都不是）与不进界面同一个结局 —— 照占号、不出成品。
-    fn parse(&self, body: &[u8], start: u64) -> Option<(Record, Option<String>)> {
+    /// 一行交适配层解成通用记录（钟面写好）＋ cwd ＋ 读文件那一类结果的调用 id（[`crate::agents::Unsent::reads`]，配用时那一下用）：
+    /// 解析不出（连 JSON 都不是）与不进界面同一个结局 —— 照占号、不出成品。
+    fn parse(&self, body: &[u8], start: u64) -> Option<(Record, Option<String>, BTreeSet<String>)> {
         match (self.face.parse)(&crate::agents::Line::new(
             &String::from_utf8_lossy(body),
             start,
         )) {
-            Ok(Some(t)) => {
-                let mut rec = t.record?;
-                rec.stamp(&self.tz);
-                Some((rec, t.cwd))
-            }
+            Ok(Some(t)) => Some((t.record?.stamp(&self.tz), t.cwd, t.unsent.reads)),
             Ok(None) => None,
             Err(e) => {
                 tracing::debug!("record_page: 解析不出的一行（照占号、不出成品）: {e}");
@@ -134,7 +131,7 @@ impl<'a> Reader<'a> {
         }
         let mut recs: Vec<_> = lines.iter().map(|&(b, s)| self.parse(b, s)).collect();
         let mut missing: Vec<String> = Vec::new();
-        for (r, _) in recs.iter().flatten() {
+        for (r, _, _) in recs.iter().flatten() {
             match &r.body {
                 Body::Reply { blocks, .. } => {
                     for b in blocks {
@@ -161,9 +158,9 @@ impl<'a> Reader<'a> {
         }
         recs.iter_mut()
             .map(|slot| {
-                let (mut rec, cwd) = slot.take()?;
+                let (mut rec, cwd, reads) = slot.take()?;
                 self.clock.note(&rec);
-                self.clock.time(&mut rec);
+                self.clock.time(&mut rec, &reads);
                 Some((serde_json::to_value(rec).ok()?, cwd))
             })
             .collect()
@@ -209,7 +206,7 @@ impl<'a> Reader<'a> {
             .filter(|(body, _)| ids.iter().any(|id| contains(body, id.as_bytes())))
             .filter_map(|(body, start)| self.parse(body, start))
             .collect();
-        for (rec, _) in &hits {
+        for (rec, _, _) in &hits {
             self.clock.note(rec);
         }
     }
@@ -399,13 +396,15 @@ pub fn run_rows(reader: &mut Reader<'_>, offset: u64, bytes: &[u8]) -> Vec<RunRo
 /// 错误是 `(code, message)`：`refused`（围栏拒）· `failed`（读失败）· `oversized_line`
 /// （不叫 `line_too_long`：那是入方向信封的**协议级** code，命令级不许撞名）。
 pub fn read_page(
-    agent_home: &Path,
+    agent_home: impl crate::agents::IntoHomes,
     jsonl_path: &str,
     offset: u64,
     until: Option<u64>,
     page: usize,
     line_cap: usize,
 ) -> Result<ReadPage, Said> {
+    let agent_home_v = crate::agents::IntoHomes::into_homes(agent_home);
+    let agent_home: &[crate::agents::AgentHome] = &agent_home_v;
     use std::io::{Read, Seek, SeekFrom};
     let target =
         validate_session_path(agent_home, jsonl_path).map_err(|e| Said::new("refused", e))?;
@@ -484,12 +483,14 @@ pub fn read_page(
 /// 没写完的残尾不交）；`from` 切在行头、不超过 `page` 字节往前 —— 一页里连一个行头都没有（一行比 `page` 还长）⇒ 往前续读到那一行的行头，
 /// 但那一行不超过 `line_cap`（超了回 `oversized_line`，同 [`read_page`]）。往前再读一页拿 `from` 当 `before`；`from` ＝ 0 ⇒ 到头了。
 pub fn read_back(
-    agent_home: &Path,
+    agent_home: impl crate::agents::IntoHomes,
     jsonl_path: &str,
     before: Option<u64>,
     page: usize,
     line_cap: usize,
 ) -> Result<BackPage, Said> {
+    let agent_home_v = crate::agents::IntoHomes::into_homes(agent_home);
+    let agent_home: &[crate::agents::AgentHome] = &agent_home_v;
     use std::io::{Read, Seek, SeekFrom};
     let target =
         validate_session_path(agent_home, jsonl_path).map_err(|e| Said::new("refused", e))?;
@@ -622,28 +623,104 @@ pub struct ReadPage {
 ///
 /// # 代价（写清楚）
 ///
-/// **O(第 `from` 行之前的字节)**：后端零状态，每次从文件头数。本机最大一份会话（111 MB / 4.2 万行）
-/// 热缓存从头数到尾 ≈ 22 ms；取回只在用户往上翻过了前端手里最老那一条时才发生，一次一批。
-/// 真撞上「弱设备上超大会话翻得卡」的读数时再加锚，不先加。
+/// **O(取的那一段)**：按行号照冷开那一张扫描图（[`super::locate::cold_scan`]：留着且没变 ⇒ 那一张；变长了只扫追加的那一截；
+/// 不在了照骨架起步）找到要的那一段前一个可计行的起点，从那里读。不从文件头数：一份 990 MB 的记录上每次从头数，
+/// 后端几天读掉几个 TB。
 ///
 /// 错误同 [`read_page`]：`refused` · `failed` · `oversized_line`。
 pub fn read_lines(
-    agent_home: &Path,
+    agent_home: impl crate::agents::IntoHomes,
     jsonl_path: &str,
     from: u64,
     until: Option<u64>,
     page: usize,
     line_cap: usize,
 ) -> Result<LinesPage, Said> {
-    let target =
-        validate_session_path(agent_home, jsonl_path).map_err(|e| Said::new("refused", e))?;
-    let f = Ro::open(&target).map_err(|e| Said::new("failed", format!("open failed: {e}")))?;
-    read_lines_from(std::io::BufReader::new(f), from, until, page, line_cap)
+    let agent_home_v = crate::agents::IntoHomes::into_homes(agent_home);
+    read_lines_counted(&agent_home_v, jsonl_path, from, until, page, line_cap).map(|(p, _)| p)
 }
 
-/// [`read_lines`] 的内核：读 `r`（从文件头起）。**纯 I/O 泛型**，单测直接喂字节。
-pub fn read_lines_from<R: std::io::BufRead>(
+/// [`read_lines`] 连同这一趟从记录文件里读了几个字节（判据数它）。
+fn read_lines_counted(
+    agent_home: &[crate::agents::AgentHome],
+    jsonl_path: &str,
+    from: u64,
+    until: Option<u64>,
+    page: usize,
+    line_cap: usize,
+) -> Result<(LinesPage, u64), Said> {
+    use super::locate::SeekError;
+    // 从要的那一段前一个可计行（或它之前最近的那个行起点）起读（交出的 `end` 照它定：一行不交时 ＝ 那一行之后），行号从它数起。
+    // 围栏只在取起点那一下校（它交回放行的那一份）。
+    let (target, seek) =
+        super::locate::line_seek(agent_home, jsonl_path, from.min(until.unwrap_or(u64::MAX)))
+            .map_err(|e| match e {
+                SeekError::Refused(e) => Said::new("refused", e),
+                SeekError::Failed(e) => Said::new("failed", e),
+            })?;
+    read_lines_after(&target, seek, from, until, page, line_cap)
+}
+
+/// 照取到的起点 `(at, n0)` 读 `target`。记录只追加是前提；取图以后文件被截短或整份换掉，`at` 可能越过当前末尾或落在一行中间
+/// ⇒ 那个起点作废、照实从文件头数（不从过时的起点读出错行）。
+fn read_lines_after(
+    target: &Path,
+    (at, n0): (u64, u64),
+    from: u64,
+    until: Option<u64>,
+    page: usize,
+    line_cap: usize,
+) -> Result<(LinesPage, u64), Said> {
+    let mut f = Ro::open(target).map_err(|e| Said::new("failed", format!("open failed: {e}")))?;
+    let (at, n0) = if at_line_start(&mut f, at)
+        .map_err(|e| Said::new("failed", format!("read failed: {e}")))?
+    {
+        (at, n0)
+    } else {
+        (0, 0)
+    };
+    std::io::Seek::seek(&mut f, std::io::SeekFrom::Start(at))
+        .map_err(|e| Said::new("failed", format!("seek failed: {e}")))?;
+    let mut counted = Counted { inner: f, read: 0 };
+    let r = std::io::BufReader::new(&mut counted);
+    let got = read_lines_at(r, (at, n0), from, until, page, line_cap)?;
+    Ok((got, counted.read))
+}
+
+/// `at` 此刻还是 `f` 里的一个行起点（文件头 · 或前一个字节是 `\n`，且不越过末尾）。
+fn at_line_start(f: &mut crate::platform::fs::RoFile, at: u64) -> std::io::Result<bool> {
+    use std::io::{Read as _, Seek as _};
+    if at == 0 {
+        return Ok(true);
+    }
+    if f.metadata()?.len() < at {
+        return Ok(false);
+    }
+    f.seek(std::io::SeekFrom::Start(at - 1))?;
+    let mut b = [0u8; 1];
+    f.read_exact(&mut b)?;
+    Ok(b[0] == b'\n')
+}
+
+/// 数从里面读出了几个字节的读者。
+struct Counted<R> {
+    inner: R,
+    read: u64,
+}
+
+impl<R: std::io::Read> std::io::Read for Counted<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let n = self.inner.read(buf)?;
+        self.read += n as u64;
+        Ok(n)
+    }
+}
+
+/// [`read_lines`] 的内核：`r` 已定位在字节 `at`，那里起的头一个可计行是第 `n0` 行（`n0 <= from`；从文件头读 ＝ `(0, 0)`）。
+/// **纯 I/O 泛型**，单测直接喂字节。
+pub fn read_lines_at<R: std::io::BufRead>(
     r: R,
+    (at, n0): (u64, u64),
     from: u64,
     until: Option<u64>,
     page: usize,
@@ -654,9 +731,9 @@ pub fn read_lines_from<R: std::io::BufRead>(
     let mut starts: Vec<u64> = Vec::new();
     let mut ends: Vec<u64> = Vec::new();
     let mut bytes: usize = 0;
-    let mut n: u64 = 0; // 下一个可计行的行号
-    let mut end: u64 = 0; // 最后一个数到的可计行之后
-    let mut rows = super::super::lines::Lines::new(r, 0);
+    let mut n: u64 = n0; // 下一个可计行的行号
+    let mut end: u64 = at; // 最后一个数到的可计行之后
+    let mut rows = super::super::lines::Lines::new(r, at);
     let eof = loop {
         if n >= until {
             break false;

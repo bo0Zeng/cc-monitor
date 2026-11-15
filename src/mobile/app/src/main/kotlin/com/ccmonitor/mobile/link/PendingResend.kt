@@ -21,10 +21,12 @@ import java.util.concurrent.ConcurrentHashMap
 interface HostOutbox {
     suspend fun due(): List<Pending>
 
+    /** 记回交的结局；那台拒了 ⇒ [refusedSaid] 是它那一句（同一下落库），别的 ⇒ `null`。 */
     suspend fun settle(
         id: String,
         outcome: String,
         attempts: Int,
+        refusedSaid: String?,
     )
 
     fun attachments(id: String): List<String>
@@ -43,7 +45,8 @@ fun hostOutbox(
             id: String,
             outcome: String,
             attempts: Int,
-        ) = cache.settle(id, outcome, attempts)
+            refusedSaid: String?,
+        ) = cache.settle(id, outcome, attempts, refusedSaid)
 
         override fun attachments(id: String) = attach.sentOf(id)
     }
@@ -51,7 +54,7 @@ fun hostOutbox(
 /**
  * 待发重交挂在「那台接上」那一下（进程级一份）：起着的每条常驻流一接上，就把那台名下各会话还没回执的待发照原编号再交一遍，
  * 不等打开那条会话（被杀重开后没打开的会话里的待发也照样在送）。开着的那几条（[open]）归各自的会话交、改屏上那一排，这里跳过：同一个编号只一处交。
- * 回执到了 ⇒ 记成已投（打开那条会话时它在流里）；那台拒了 ⇒ 记成没送到（不再交，打开时标出来）；没回执 ⇒ 留着等下一回接上。
+ * 回执到了 ⇒ 记成已投（打开那条会话时它在流里）；那台拒了 ⇒ 记成没送到、连那台那一句（不再交，打开时照那一句标出来）；没回执 ⇒ 留着等下一回接上。
  * 编辑已发的那几句（带 `rewind`）住编辑草稿、不在这里：打开那条会话时照旧重交。
  */
 class PendingResend(
@@ -91,8 +94,8 @@ class PendingResend(
             val sid = p.sid?.takeIf { it !in held } ?: continue
             val r = link.call(SessionQueuePut.COMMAND, SessionQueuePut.args(sid, p.id, p.text, System.currentTimeMillis(), box.attachments(p.id)), INPUT_MS)
             when {
-                r is Reply.Ok && SessionQueuePut.of(r.data) != null -> box.settle(p.id, PendingOutcome.DELIVERED, p.attempts)
-                r is Reply.Failed && r.failure.code != OFFLINE -> box.settle(p.id, PendingOutcome.REFUSED, p.attempts)
+                r is Reply.Ok && SessionQueuePut.of(r.data) != null -> box.settle(p.id, PendingOutcome.DELIVERED, p.attempts, null)
+                r is Reply.Failed && r.failure.code != OFFLINE -> box.settle(p.id, PendingOutcome.REFUSED, p.attempts, r.failure.said)
                 else -> Unit
             }
         }

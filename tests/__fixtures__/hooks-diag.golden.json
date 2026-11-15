@@ -1,13 +1,22 @@
 {
   "supported": true,
-  "diagnosis": {
-    "stop": {
-      "kind": "installed-at-path",
-      "command": "\"$HOME/.local/bin/cc-bus\" stop-hook",
-      "path": "$HOME/.local/bin/cc-bus"
-    },
-    "note": ""
-  },
-  "snippet": "{\n  \"hooks\": {\n    \"Stop\": [\n      {\n        \"hooks\": [\n          {\n            \"command\": \"\\\"$HOME/.claude/skills/cc-bus/scripts/cc-bus\\\" stop-hook\",\n            \"type\": \"command\"\n          }\n        ]\n      }\n    ]\n  }\n}",
-  "source": "/HOME/.claude/settings.json"
+  "families": [
+    {
+      "kind": "claude",
+      "name": "Claude Code",
+      "diagnosis": {
+        "stop": {
+          "kind": "installed-at-path",
+          "command": "\"$HOME/.local/bin/cc-bus\" stop-hook",
+          "path": "$HOME/.local/bin/cc-bus"
+        },
+        "said": "已装 · 显式路径 $HOME/.local/bin/cc-bus",
+        "tone": "ok",
+        "note": ""
+      },
+      "snippet": "{\n  \"hooks\": {\n    \"Stop\": [\n      {\n        \"hooks\": [\n          {\n            \"command\": \"\\\"$HOME/.claude/skills/cc-bus/scripts/cc-bus\\\" stop-hook\",\n            \"type\": \"command\"\n          }\n        ]\n      }\n    ]\n  }\n}",
+      "source": "/HOME/.claude/settings.json",
+      "trust": null
+    }
+  ]
 }

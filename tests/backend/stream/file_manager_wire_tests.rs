@@ -36,21 +36,40 @@ fn run(cmd: &str, args: Value) -> Result<Value, String> {
             .block_on(f(req)),
         None => panic!("`{cmd}` 是内建档"),
     };
-    got.map(|v| v.unwrap_or(Value::Null))
-        .map_err(|f| format!("{}: {}", f.code_or_fallback(), f.said))
+    got.map(|v| v.unwrap_or(Value::Null)).map_err(|f| {
+        format!(
+            "{}: {}",
+            cmd_wire::failed::Failed::code_or_fallback(f.code.clone()),
+            f.said
+        )
+    })
 }
 
 fn hex(b: &[u8]) -> String {
     b.iter().map(|x| format!("{x:02x}")).collect()
 }
 
-/// 沙箱根 ⇒ 占位；属主名 ⇒ 占位。
+/// 夹具根落在家底下时，回包里给人看的那一形（`shown`）照家缩写成 `~/…`：那一形也是夹具根。
+fn root_under_home(root: &str) -> Option<String> {
+    let home = crate::platform::paths::home_dir()?;
+    let home = home.to_string_lossy();
+    root.strip_prefix(&format!("{}/", home.trim_end_matches('/')))
+        .map(|rest| format!("~/{rest}"))
+}
+
+/// 沙箱根（连照家缩写的那一形）⇒ 占位；属主名 ⇒ 占位。
 fn scrub(v: &mut Value, root: &str) {
     match v {
         Value::String(s) => {
-            *s = s
+            let mut t = s
                 .replace(root, "<ROOT>")
                 .replace(&hex(root.as_bytes()), "<ROOTHEX>");
+            if let Some(short) = root_under_home(root) {
+                t = t
+                    .replace(&short, "<ROOT>")
+                    .replace(&hex(short.as_bytes()), "<ROOTHEX>");
+            }
+            *s = t;
         }
         Value::Array(a) => a.iter_mut().for_each(|x| scrub(x, root)),
         Value::Object(m) => {
@@ -59,6 +78,9 @@ fn scrub(v: &mut Value, root: &str) {
                 && m.contains_key("size")
             {
                 m.insert("size".to_string(), json!("<DIRSIZE>"));
+                if m.contains_key("size_text") {
+                    m.insert("size_text".to_string(), json!("<DIRSIZE>"));
+                }
             }
             // 带键集合那一形的记号（进程号 · 备忘号 · 修订）每个进程不同，不是契约。
             if let Some(h) = m.get_mut("held") {
@@ -96,11 +118,12 @@ fn pin_time(p: &Path) {
     f.set_modified(t).expect("设时刻");
 }
 
+/// 在 `base` 底下现铺夹具（`tag` 让同一进程里几条判据各铺各的）。
 #[cfg(unix)]
-fn plant() -> PathBuf {
+fn plant(base: &Path, tag: &str) -> PathBuf {
     use std::os::unix::ffi::OsStrExt;
     use std::os::unix::fs::PermissionsExt;
-    let root = std::env::temp_dir().join(format!("ccm-files-wire-{}", std::process::id()));
+    let root = base.join(format!("ccm-files-wire{tag}-{}", std::process::id()));
     std::fs::remove_dir_all(&root).ok();
     // 每个目录只放一项：目录项的次序不是契约，字节才稳。
     for d in [
@@ -121,7 +144,7 @@ fn plant() -> PathBuf {
     .unwrap();
     pin_time(&root.join("one-file/a.txt"));
     std::os::unix::fs::symlink(root.join("target"), root.join("one-link-dir/to-dir")).unwrap();
-    std::fs::set_permissions(root.join("target"), std::fs::Permissions::from_mode(0o750)).unwrap();
+    test_home::set_dir_mode(&root.join("target"), 0o750);
     pin_time(&root.join("target"));
     std::os::unix::fs::symlink(root.join("nowhere"), root.join("one-link-gone/gone")).unwrap();
     let odd = std::ffi::OsStr::from_bytes(b"odd-\xff.bin");
@@ -219,7 +242,22 @@ fn pinned() -> BTreeMap<String, String> {
 #[test]
 #[cfg(unix)]
 fn the_replies_the_file_window_reads_keep_their_wire_bytes() {
-    let root = plant();
+    reads_keep_their_wire_bytes(&std::env::temp_dir(), "");
+}
+
+/// 临时目录落在家底下（TMPDIR=$HOME/tmp）时也一样：回包里照家缩写成 `~/…` 的那一形也是夹具根，同换 `<ROOT>`。
+#[test]
+#[cfg(unix)]
+fn the_read_bytes_hold_when_the_sandbox_sits_under_home() {
+    let home = crate::platform::paths::home_dir().expect("沙箱家");
+    let base = home.join("tmp");
+    std::fs::create_dir_all(&base).unwrap();
+    reads_keep_their_wire_bytes(&base, "-home");
+}
+
+#[cfg(unix)]
+fn reads_keep_their_wire_bytes(base: &Path, tag: &str) {
+    let root = plant(base, tag);
     let home = crate::platform::paths::home_dir().expect("沙箱家");
     let root_s = root.to_string_lossy().to_string();
     let mut got = BTreeMap::new();

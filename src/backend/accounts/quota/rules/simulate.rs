@@ -3,7 +3,7 @@
 //! 事件只有事实（重置 · 被拒到期 · 用到 100）和策略约的叫醒（时刻 · 读数 —— 量得到用速的号按用速换算成时刻，量不到不编数）。
 //! 回放台架（判据那一侧，`replay_tests.rs`）用同一个 [`turn`] 与这里的开窗 · 作废两步。
 
-use super::decide::{turn, Pick, Sigma, Strategy};
+use super::decide::{fact, fact_mut, mine, turn, Pick, Sigma, Strategy};
 use super::rollout::rate_of;
 use super::standing;
 use super::{Acct, WINDOW_SECS};
@@ -124,7 +124,7 @@ pub fn simulate(
             Pick::Hold { .. } => None,
         };
         if let Some(a) = &using {
-            if let Some(x) = f.iter_mut().find(|x| &x.id == a) {
+            if let Some(x) = fact_mut(&mut f, &s.agent, a) {
                 open_windows(x, t);
             }
         }
@@ -135,7 +135,8 @@ pub fn simulate(
         // 用速照 [`rate_of`]：量得到的号照它涨、照它换算用到 100 · 读数叫醒的时刻；
         // 量不到 ⇒ 不编数，那一窗的这几个时刻不换算，只排确定的事件。在用的号量不到 ⇒ 这一段标「用到上限的时刻还不知道」。
         let mut unknown = false;
-        for x in f.iter().filter(|x| !x.api) {
+        // 只推会话那一家的号（别家的号只为认出策略选错家，推它白算）。
+        for x in mine(&f, &s.agent).filter(|x| !x.api) {
             let in_use = using.as_deref() == Some(x.id.as_str());
             for w in 0..2 {
                 let open = in_use || x.resets[w].is_some_and(|r| r > t);
@@ -184,7 +185,7 @@ pub fn simulate(
             skipped: d.skipped.clone(),
         });
         // 推进到 te：量得到用速的号照它涨（窗口开着的；在用的号上面已经开窗）。
-        for x in f.iter_mut().filter(|x| !x.api) {
+        for x in f.iter_mut().filter(|x| !x.api && x.agent == s.agent) {
             let in_use = using.as_deref() == Some(x.id.as_str());
             for w in 0..2 {
                 let r = rate_of(x, w, in_use, sigma.me.pace);
@@ -211,8 +212,8 @@ pub fn simulate(
         }
     }
     let end = t;
-    let lanes = facts
-        .iter()
+    // 只画会话那一家的号（号按（家, 号名）认）。
+    let lanes = mine(facts, &sigma.agent)
         .map(|a0| {
             let a = &a0.id;
             let off = sigma.off.contains(a);
@@ -220,7 +221,7 @@ pub fn simulate(
             let mut prev: Option<[f64; 2]> = None;
             for (i, (at, fs)) in points.iter().enumerate() {
                 let to = points.get(i + 1).map_or(end, |p| p.0);
-                let Some(x) = fs.iter().find(|x| &x.id == a) else {
+                let Some(x) = fact(fs, &a0.agent, a) else {
                     continue;
                 };
                 let used = [standing::used_at(x, 0, *at), standing::used_at(x, 1, *at)];

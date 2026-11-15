@@ -12,8 +12,9 @@ import type { AttachIo } from "../../../src/frontend/ui/attach-draft";
 import type { QueuePut } from "../../../src/frontend/ui/generated/QueuePut";
 import { ChanError } from "../../../src/comms/inward/chan";
 import { copyText } from "../../../src/frontend/ui/copy-table";
-import type { AttachItem } from "../../../src/frontend/ui/generated/AttachItem";
-import type { SessionAttachmentCommitReq } from "../../../src/frontend/ui/generated/SessionAttachmentCommitReq";
+import type { AttachDraftCard } from "../../../src/frontend/ui/generated/AttachDraftCard";
+import type { AttachDraftShown } from "../../../src/frontend/ui/generated/AttachDraftShown";
+import type { AttachDraftShownCard } from "../../../src/frontend/ui/generated/AttachDraftShownCard";
 
 const TAB = { origin: "devbox", sessionId: "s-1", face: liveFace("idle", true), label: "web-console", title: "web-console", background: false, forkedFromSessionId: null } as unknown as Tab;
 
@@ -24,25 +25,36 @@ const flush = async (): Promise<void> => {
 function rig(opts: { hold?: boolean; put?: () => Promise<QueuePut>; tab?: Tab } = {}) {
   let release: () => void = () => {};
   const held = new Promise<void>((r) => (release = r));
+  // 本机后端那一排的替身：put 进来先是传输中，放行（不 hold 时当场）之后逐张落好、编号按先后；每变一次经 watch 推整排。
   let n = 0;
+  const cards: AttachDraftShownCard[] = [];
+  let push: (s: AttachDraftShown | null) => void = () => {};
+  const shown = (draft: string): AttachDraftShown => ({ draft, cards: cards.map((c) => ({ ...c })), note: null, offline: false, ready: cards.every((c) => c.phase.kind === "landed") });
   const io: AttachIo = {
-    check: async (_sid: string, items: AttachItem[]) => items.map((it) => ({ ok: true, class: it.name.endsWith(".png") ? ("image" as const) : ("code" as const), class_text: "kind-code" })),
-    stage: (b: Blob) => ({
-      done: (async () => {
+    stage: async () => "/home/u/.cc-monitor/staging/p.part",
+    put: async (draft: string, _sid: string, added: AttachDraftCard[]) => {
+      for (const a of added) cards.push({ key: a.key, name: a.name, phase: { kind: "moving" }, done: 0, bytes: a.bytes, id: null, line: null, remove: "x", class: a.name.endsWith(".png") ? "image" : "code", class_text: "kind-code" });
+      void (async () => {
         if (opts.hold) await held;
-        return { key: "0".repeat(32), chunks: 1, bytes: b.size, sha256: "ab".repeat(32) };
-      })(),
-      stop: () => {},
-    }),
-    commit: async (req: SessionAttachmentCommitReq) => ({ id: `1027-1200-000${++n}`, name: req.name, path: "/p", rel: "r", bytes: req.bytes, sha256: req.expect.sha256, class: "code" as const }),
-    drop: async () => {},
-    offline: () => false,
+        for (const c of cards) if (c.phase.kind === "moving") Object.assign(c, { phase: { kind: "landed" }, id: `1027-1200-000${++n}` });
+        push(shown(draft));
+      })();
+      return shown(draft);
+    },
+    drop: async (draft: string) => shown(draft),
+    retry: async (draft: string) => shown(draft),
+    take: async () => (cards.every((c) => c.phase.kind === "landed") ? cards.map((c) => c.id ?? "") : null),
+    view: async (draft: string) => shown(draft),
+    watch: (_draft: string, on: (s: AttachDraftShown | null) => void) => {
+      push = on;
+      return () => {};
+    },
   };
   const say = vi.fn(opts.put ?? (async (): Promise<QueuePut> => ({ outcome: "queued", seq: 1, said: "q-1" })));
   const reads: ComposerReads = {
     io: () => io,
     read: async () => ({ items: [], sent: [] }),
-    cancel: async () => ({ cancelled: false, queue: { items: [], sent: [] } }),
+    cancel: async () => ({ cancelled: false, said: copyText("beQueue.cancel.sent"), queue: { items: [], sent: [] } }),
     watch: () => () => {},
   };
   const outbox = new Outbox(say);

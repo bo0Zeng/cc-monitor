@@ -1,63 +1,11 @@
 use super::*;
+use crate::agents::drift::MAX_KEYS;
 
-/// **一律用局部账本**（见 `record_into` 头注）—— 全局账本会被任何跑过 `parse_line`
-/// 的测试污染，在它上面断言整表形状必然 flaky（实测 6 次全量跑红 4 次）。
-fn fresh() -> Ledger {
-    Ledger::new()
-}
+// 计数 · 封顶 · 空键 · 排序的判据住通用那一份（`agents/drift_tests.rs`）；这里只判这一家交的面与它那一本账接没接上。
 
+/// 全局那两个入口接的是这一家那一本账 —— 至少走一次。
 #[test]
-fn counts_each_key() {
-    let mut led = fresh();
-    record_into(&mut led, DriftFace::UnknownRecordType, "mode");
-    record_into(&mut led, DriftFace::UnknownRecordType, "mode");
-    record_into(&mut led, DriftFace::UnknownRecordType, "pr-link");
-    let snap = snapshot_of(&led);
-    assert_eq!(snap.len(), 1);
-    let f = &snap[0];
-    assert_eq!(f.face, DriftFace::UnknownRecordType.word());
-    assert_eq!(f.entries[0].key, "mode"); // count 降序
-    assert_eq!(f.entries[0].count, 2);
-    assert_eq!(f.entries[1].key, "pr-link");
-}
-
-/// ★ **有界**：键数触顶后新键并进 `<overflow>`，内存不随 CC 的想象力增长。
-#[test]
-fn the_key_count_is_bounded() {
-    let mut led = fresh();
-    for i in 0..(MAX_KEYS + 30) {
-        record_into(&mut led, DriftFace::UnknownRecordType, &format!("t{i}"));
-    }
-    let f = snapshot_of(&led).remove(0);
-    assert_eq!(
-        f.entries.len(),
-        MAX_KEYS + 1,
-        "键数应当是上限 + 一个 <overflow>，实得 {}",
-        f.entries.len()
-    );
-    let ov = f
-        .entries
-        .iter()
-        .find(|e| e.key == OVERFLOW_KEY)
-        .expect("有溢出键");
-    assert_eq!(ov.count, 30, "溢出的 30 个应当全部并进 <overflow>");
-    // 已经在表里的老键仍然正常累加（溢出不影响它们）。
-    record_into(&mut led, DriftFace::UnknownRecordType, "t0");
-    let f2 = snapshot_of(&led).remove(0);
-    assert_eq!(f2.entries.iter().find(|e| e.key == "t0").unwrap().count, 2);
-}
-
-/// 空键不许变成空行。
-#[test]
-fn an_empty_key_is_labelled() {
-    let mut led = fresh();
-    record_into(&mut led, DriftFace::UnknownRecordType, "");
-    assert_eq!(snapshot_of(&led)[0].entries[0].key, "<empty>");
-}
-
-/// 全局那两个入口只是纯函数的薄壳 —— 至少走一次，别让它们成为未覆盖的分叉。
-#[test]
-fn the_global_entry_points_delegate_to_the_pure_ones() {
+fn the_global_entry_points_delegate_to_the_ledger() {
     // 用一个**本测试专属**的键：全局账本会被别的测试写，只断言「我这条在」。
     let key = "u-cc1-delegation-probe";
     record(DriftFace::KnownTypeParseFailed, key);
@@ -65,7 +13,7 @@ fn the_global_entry_points_delegate_to_the_pure_ones() {
         .into_iter()
         .find(|f| f.face == DriftFace::KnownTypeParseFailed.word())
         .and_then(|f| f.entries.into_iter().find(|e| e.key == key));
-    let e = found.expect("全局 record/snapshot 没接上纯函数");
+    let e = found.expect("全局 record/snapshot 没接上账本");
     assert!(e.count >= 1);
     // 帧命令那一形：各家的面并成一份，面名是那一家的词。
     let v = crate::agents::drift_report();
@@ -124,22 +72,36 @@ fn every_face_word_is_its_variant_in_snake_case() {
 /// 两个面 · 一个溢出 · 同数按键名排。
 #[test]
 fn the_drift_reply_the_ui_reads_keeps_its_wire_bytes() {
-    let mut led = fresh();
-    record_into(&mut led, DriftFace::UnknownSessionKind, "bg");
-    record_into(&mut led, DriftFace::UnknownSessionKind, "bg");
-    record_into(&mut led, DriftFace::UnknownSessionKind, "aa");
+    // 局部账本：全局那一本会被任何跑过解析的判据写进去。
+    let mut led: DriftLedger<DriftFace> = DriftLedger::new();
+    led.record(DriftFace::UnknownSessionKind, "bg");
+    led.record(DriftFace::UnknownSessionKind, "bg");
+    led.record(DriftFace::UnknownSessionKind, "aa");
     for i in 0..=MAX_KEYS {
-        record_into(&mut led, DriftFace::UnknownRecordType, &format!("t{i:02}"));
+        led.record(DriftFace::UnknownRecordType, &format!("t{i:02}"));
     }
-    let reply = crate::agents::drift::DriftReport {
-        faces: snapshot_of(&led),
-    };
+    let reply = crate::agents::drift::DriftReport::of(led.snapshot());
+    // 机器页那一格在这里写好（出口照抄）：各面加起来几个键。
+    assert_eq!(
+        reply.said,
+        copy_core::copy_text(
+            "backend.cc.driftSome",
+            &[("n", &(MAX_KEYS + 1 + 2).to_string())]
+        )
+    );
+    assert_eq!(
+        crate::agents::drift::DriftReport::of(Vec::new()).said,
+        copy_core::copy_text("hostKey.compare.none", &[])
+    );
     let wire = serde_json::to_string(&serde_json::to_value(&reply).unwrap()).unwrap();
     assert!(
         wire.starts_with(r#"{"faces":[{"entries":[{"count":1,"key":"<overflow>"},"#),
         "{wire}"
     );
-    let tail = r#"{"count":1,"key":"t63"}],"face":"unknown_record_type"},{"entries":[{"count":2,"key":"bg"},{"count":1,"key":"aa"}],"face":"unknown_session_kind"}]}"#;
-    assert!(wire.ends_with(tail), "{wire}");
+    let tail = r#"{"count":1,"key":"t63"}],"face":"unknown_record_type"},{"entries":[{"count":2,"key":"bg"},{"count":1,"key":"aa"}],"face":"unknown_session_kind"}],"said":"#;
+    assert!(
+        wire.ends_with(&format!("{tail}{}}}", serde_json::json!(reply.said))),
+        "{wire}"
+    );
     assert_eq!(wire.matches(r#""count":1,"key":"t"#).count(), MAX_KEYS);
 }

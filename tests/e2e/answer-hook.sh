@@ -96,6 +96,27 @@ wall_until '[ -n "$(ask_id)" ]' && ok "对照：没有嵌套标记的那一发�
 kill -TERM "$(cat "$WORK/hook.pid")" 2>/dev/null; wait "$SHPID" 2>/dev/null
 wall_until '[ -z "$(ask_id)" ]' || bad "对照那一发没撤"
 
+echo "== 经环境来的 hook、包一层：便条在那一跳上，发问的是它的直接子进程（带着嵌套标记）⇒ 常驻照那一跳的便条认得是 ccm 起的、照常挂上"
+# 那一跳 ＝ 外层 sh：先写好托管事实（住这个托管终端的那一跳是它，包不包一层照 $2）与它自己的起会话便条，再起里层 sh 当会话进程
+#   （住在那个托管终端里 ＋ 带嵌套标记）；里层 sh 把 hook 放后台、记下 pid、等它（hook 的父进程 ＝ 会话进程）；外层末尾的 `:` 让它留着当里层的父进程。
+HOP_SH='
+d="$HOME/.cc-monitor/hosts/e2e-hop"; n="$HOME/.cc-monitor/launch-pending"
+mkdir -p "$d" "$n"; chmod 700 "$HOME/.cc-monitor/hosts" "$d"
+printf "{\"version\":1,\"id\":\"e2e-hop\",\"name\":\"e2e-hop\",\"host_pid\":%s,\"started_ms\":0,\"hop_pid\":%s,\"hop_wrapped\":%s,\"cwd\":\"/w\"}\n" $$ $$ "$2" > "$d/facts.json"
+printf "{\"version\":1,\"account\":\"\",\"at\":%s,\"plugin\":true}\n" $(( $(date +%s) + 1 )) > "$n/$$.json"
+CCM_HOST=e2e-hop CLAUDECODE=1 sh -c "exec 3<&0; \"\$0\" -- --answer-hook claude <&3 & echo \$! > \"\$1\"; wait" "$0" "$1"
+:'
+# 对照：那一跳没记「包一层」⇒ 它的子进程不认它的便条，带着嵌套标记 ⇒ 不挂、空手退。
+out="$(hook_input | env CLAUDE_CODE_PLUGIN_DIRS="$PLUG" timeout "$WALL_CEILING_S" sh -c "$HOP_SH" "$BACKEND" "$WORK/hook.pid" false)"; rc=$?
+[ "$rc" -eq 0 ] && [ -z "$out" ] && ok "对照：没记包一层的那一跳，子进程那一发空手退" || bad "rc=$rc out=$out"
+[ -z "$(ask_id)" ] && ok "对照：needs 里没有它" || bad "对照：没记包一层的那一跳，子进程那一发挂进了 needs"
+hook_input | env CLAUDE_CODE_PLUGIN_DIRS="$PLUG" sh -c "$HOP_SH" "$BACKEND" "$WORK/hook.pid" true > /dev/null 2>&1 & SHPID=$!
+wall_until '[ -n "$(ask_id)" ] || ! kill -0 "$SHPID" 2>/dev/null'
+[ -n "$(ask_id)" ] && ok "包一层：认那一跳的便条、照常挂上" || bad "包一层：常驻没认出那一跳的便条，没挂上"
+kill -TERM "$(cat "$WORK/hook.pid")" 2>/dev/null; wait "$SHPID" 2>/dev/null
+wall_until '[ -z "$(ask_id)" ]' || bad "包一层那一发没撤"
+rm -rf -- "$HOME/.cc-monitor/hosts/e2e-hop"
+
 echo "== 挂上 ⇒ needs 出 ask ⇒ 答 ⇒ hook 打出决定"
 hook_input | "$BACKEND" -- --answer-hook claude > "$WORK/out1" & HOOKPID=$!
 wall_until '[ -n "$(ask_id)" ]' && ok "needs 里出了 ask" || bad "needs 里没有 ask"

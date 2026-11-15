@@ -574,7 +574,10 @@ fn live_bytes_reading() {
         for k in 0..200 {
             s.say(&mut l, &format!("word{k} "));
             for f in drain(&mut l, id) {
-                bytes += crate::wire::to_line(&Frame::LiveCard(f)).unwrap().len() + 1;
+                bytes += crate::wire::to_line(&crate::wire::WireFrame::LiveCard(f))
+                    .unwrap()
+                    .len()
+                    + 1;
                 frames += 1;
             }
         }
@@ -582,7 +585,10 @@ fn live_bytes_reading() {
         s.end(&mut l, false);
     }
     for f in drain(&mut l, id) {
-        bytes += crate::wire::to_line(&Frame::LiveCard(f)).unwrap().len() + 1;
+        bytes += crate::wire::to_line(&crate::wire::WireFrame::LiveCard(f))
+            .unwrap()
+            .len()
+            + 1;
         frames += 1;
     }
     println!("READING after: frames={frames} bytes={bytes}");

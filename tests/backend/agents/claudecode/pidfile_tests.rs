@@ -1,4 +1,5 @@
 use super::*;
+use crate::agents::drift::DriftFaceWord;
 use crate::agents::{SessionActivity, WaitOn};
 use serde_json::json;
 
@@ -106,7 +107,6 @@ fn one_pidfile_becomes_one_fact_row() {
             activity: Some(SessionActivity::NeedsYou),
             status_word: Some("waiting".into()),
             wait: Some(WaitOn::Input),
-            waiting_word: Some("input needed".into()),
             attachable: Some(false),
             status_since_ms: Some(1_700_000_000_123),
             started_ms: Some(1_700_000_000_000),

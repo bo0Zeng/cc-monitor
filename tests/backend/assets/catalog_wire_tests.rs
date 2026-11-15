@@ -31,6 +31,7 @@ fn sample() -> Catalog {
         gen: 2,
         seen_at: 1002,
         assets: vec![Asset {
+            agent: None,
             kind: ExtKind::Skill,
             name: "a".into(),
             project: None,
@@ -56,6 +57,7 @@ fn sample() -> Catalog {
         seen_at: 1005,
         assets: vec![
             Asset {
+                agent: None,
                 kind: ExtKind::Skill,
                 name: "a".into(),
                 project: None,
@@ -65,6 +67,7 @@ fn sample() -> Catalog {
                 off: false,
             },
             Asset {
+                agent: None,
                 kind: ExtKind::Mcp,
                 name: "m".into(),
                 project: Some("/p".into()),

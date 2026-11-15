@@ -20,7 +20,15 @@ fn via<R: serde::de::DeserializeOwned, T: serde::Serialize>(
 }
 
 fn answer_read_at(root: Option<&Path>, args: &Value) -> Result<Value, crate::common::said::Said> {
-    via(args, |r| super::answer_read_at(root, r))
+    via(args, |r| {
+        super::answer_read_at(
+            crate::assets::skill_install::Roots {
+                registry: crate::agents::REGISTRY,
+                user: root,
+            },
+            r,
+        )
+    })
 }
 
 fn answer_plan_with(
@@ -28,7 +36,16 @@ fn answer_plan_with(
     root: Option<&Path>,
     args: &Value,
 ) -> Result<Value, crate::common::said::Said> {
-    via(args, |r| super::answer_plan_with(facts, root, r))
+    via(args, |r| {
+        super::answer_plan_with(
+            facts,
+            crate::assets::skill_install::Roots {
+                registry: crate::agents::REGISTRY,
+                user: root,
+            },
+            r,
+        )
+    })
 }
 
 fn suspects_of(text: Option<&str>, exec: bool, facts: &dyn Facts) -> Vec<Value> {
@@ -354,7 +371,7 @@ fn ledger_with(d: &Path, name: &str, files: Value) -> (PathBuf, String) {
     let root = d.join("skills");
     crate::assets::skill_ledger::record_at(
         &own_at(&file),
-        Some(&root),
+        crate::assets::skill_install::Roots::here_with(Some(&root)),
         &crate::wire::typed::take(&json!({"op": "add", "name": name, "files": files})).unwrap(),
     )
     .expect("记");
@@ -505,7 +522,9 @@ fn the_uninstall_gate_refuses_the_whole_trip() {
             &json!({"dir": dir, "take": take, "confirm": confirm}),
         )
     };
-    let code = |r: Answer| r.expect_err("该拒的被放行").code_or_fallback().to_string();
+    let code = |r: Answer| {
+        cmd_wire::failed::Failed::code_or_fallback(r.expect_err("该拒的被放行").code.clone())
+    };
     assert_eq!(
         code(ask(json!(["intact.md", "edited.md"]), Value::Null)),
         "needs_consent",
@@ -597,7 +616,7 @@ fn what_the_install_plan_says_to_record_is_what_the_uninstall_plan_recognizes() 
     let file = d.join(relay_route_core::SKILL_LEDGER_REL);
     crate::assets::skill_ledger::record_at(
         &own_at(&file),
-        Some(&root),
+        crate::assets::skill_install::Roots::here_with(Some(&root)),
         &crate::wire::typed::take(&json!({"op": "add", "name": "demo", "files": plan["ledger"]}))
             .unwrap(),
     )
@@ -611,4 +630,162 @@ fn what_the_install_plan_says_to_record_is_what_the_uninstall_plan_recognizes() 
         ])
     );
     let _ = std::fs::remove_dir_all(&d);
+}
+
+// ───────────────────────── 照请求里的家取根（两个替身家） ─────────────────────────
+
+// 两个替身家（`fake` · `fake2`，各有各的资产面）由替身那边给。
+use crate::agents::fake::{second_project_skills_root as second_family_root, two_families};
+
+/// ★ 第二家替身的资产面是它自己的：项目级 skill 根与默认那一家、与注册表里任何一家都不同名；用户级根说不出（不读真环境）。
+/// 借了别家的布局 ⇒ 判据量的其实是那一家；用户级根照真环境现解 ⇒ 判据跟着跑它的那台机器变。
+#[test]
+fn the_second_family_has_its_own_asset_face() {
+    let reg = two_families();
+    let proj = Path::new("/p/demo");
+    let second = skill_root_among(reg, Some("fake2"), Some(proj))
+        .unwrap()
+        .expect("第二家说不出项目级根");
+    assert_ne!(second, crate::agents::fake::project_skills_root(proj));
+    for a in crate::agents::REGISTRY {
+        assert_ne!(
+            crate::agents::skill_root_among(crate::agents::REGISTRY, a.kind, Some(proj)),
+            Some(second.clone()),
+            "第二家借了 {} 的项目级根",
+            a.kind
+        );
+    }
+    assert_eq!(
+        skill_root_among(reg, Some("fake2"), None).unwrap(),
+        None,
+        "第二家的用户级根读了真环境"
+    );
+}
+
+/// ★ 取 skill 根只此一处：请求指名第二家 ⇒ 第二家那一份；不指名 ⇒ 默认那一家；认不出的家 ⇒ `bad_args`（不退回默认那一家）；
+/// 只一家声明资产面 ⇒ 不指名就是它。
+#[test]
+fn the_skill_root_is_the_requested_familys() {
+    let reg = two_families();
+    let proj = Path::new("/p/demo");
+    assert_eq!(
+        skill_root_among(reg, Some("fake2"), Some(proj)).unwrap(),
+        Some(second_family_root(proj)),
+        "指名第二家却落到了别处"
+    );
+    assert_eq!(
+        skill_root_among(reg, None, Some(proj)).unwrap(),
+        Some(crate::agents::fake::project_skills_root(proj)),
+        "不指名不是默认那一家"
+    );
+    assert_eq!(
+        skill_root_among(reg, Some("fake"), Some(proj)).unwrap(),
+        skill_root_among(reg, None, Some(proj)).unwrap(),
+        "指名默认那一家与不指名不同"
+    );
+    let e =
+        skill_root_among(reg, Some("nope"), Some(proj)).expect_err("认不出的家退回了默认那一家");
+    assert_eq!(e.code.as_deref(), Some("bad_args"));
+    // 没有默认起的那一家 ⇒ 不指名说不出（不另找「恰一家」）；指名照旧是它。
+    assert_eq!(
+        skill_root_among(&reg[1..], None, Some(proj)).unwrap(),
+        None,
+        "没有默认那一家时不指名却落到了某一家"
+    );
+    assert_eq!(
+        skill_root_among(&reg[1..], Some("fake2"), Some(proj)).unwrap(),
+        Some(second_family_root(proj)),
+        "只剩一家时指名它却不是它"
+    );
+    // 用户级：假 agent 没有用户级 skill 根 ⇒ 说不出（不猜）。
+    assert_eq!(skill_root_among(reg, Some("fake"), None).unwrap(), None);
+}
+
+/// ★ 读 · 判照请求里的家：同一个项目里两家各有一份同名 skill，指名第二家 ⇒ 读到 · 判的是第二家那一份；不指名 ⇒ 默认那一家
+/// （旧对端不带 `agent` 的帧照收）；不指名那一形发出去不多出 `agent`（对面拒多出来的键）。
+#[test]
+fn read_and_plan_follow_the_requested_family() {
+    let reg = two_families();
+    let proj = std::env::temp_dir().join(format!("skill-two-families-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&proj);
+    let first = crate::agents::fake::project_skills_root(&proj).join("demo");
+    let second = second_family_root(&proj).join("demo");
+    for (d, t) in [(&first, "first\n"), (&second, "second\n")] {
+        std::fs::create_dir_all(d).unwrap();
+        std::fs::write(d.join("SKILL.md"), t).unwrap();
+    }
+    let p = proj.display().to_string();
+    let read = |args: Value| {
+        via(&args, |r| {
+            super::answer_read_at(
+                Roots {
+                    registry: reg,
+                    user: None,
+                },
+                r,
+            )
+        })
+        .unwrap()
+    };
+    let got = read(json!({ "name": "demo", "project": p, "agent": "fake2" }));
+    assert_eq!(
+        (got["dir"].clone(), got["files"][0]["text"].clone()),
+        (json!(second.display().to_string()), json!("second\n")),
+        "指名第二家读到的不是第二家那一份"
+    );
+    let got = read(json!({ "name": "demo", "project": p }));
+    assert_eq!(
+        (got["dir"].clone(), got["files"][0]["text"].clone()),
+        (json!(first.display().to_string()), json!("first\n")),
+        "不带 agent 读到的不是默认那一家"
+    );
+    let plan = |agent: Option<&str>| {
+        let mut a = json!({ "name": "demo", "project": p, "source": [{ "path": "SKILL.md", "text": "second\n" }] });
+        if let Some(k) = agent {
+            a["agent"] = json!(k);
+        }
+        via(&a, |r| {
+            super::answer_plan_with(
+                &no_facts(),
+                Roots {
+                    registry: reg,
+                    user: None,
+                },
+                r,
+            )
+        })
+        .unwrap()
+    };
+    let v = plan(Some("fake2"));
+    assert_eq!(
+        (v["dir"].clone(), v["rows"][0]["state"].clone()),
+        (json!(second.display().to_string()), json!("same")),
+        "指名第二家判的不是第二家那一份"
+    );
+    let v = plan(None);
+    assert_eq!(
+        (v["dir"].clone(), v["rows"][0]["state"].clone()),
+        (json!(first.display().to_string()), json!("differs"))
+    );
+    // 线上形：不指名 ⇒ 不写 `agent`。
+    let read_req = SkillReadReq {
+        name: "demo".into(),
+        project: None,
+        agent: None,
+    };
+    let plan_req = SkillPlanReq {
+        name: "demo".into(),
+        source: Vec::new(),
+        project: None,
+        take: None,
+        overwrite: None,
+        agent: None,
+    };
+    for v in [
+        serde_json::to_value(&read_req).unwrap(),
+        serde_json::to_value(&plan_req).unwrap(),
+    ] {
+        assert!(v.get("agent").is_none(), "不指名也写出了 agent：{v}");
+    }
+    let _ = std::fs::remove_dir_all(&proj);
 }

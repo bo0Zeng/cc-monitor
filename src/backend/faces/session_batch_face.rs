@@ -53,7 +53,7 @@ fn with_deps_on<T>(
     f: impl FnOnce(&Deps) -> T,
 ) -> T {
     let record = |sid: &str, dir: Option<&str>| -> Result<(bool, String), String> {
-        crate::observe::query::locate::record_for(&crate::history::listing::agent_home(), dir, sid)
+        crate::observe::query::locate::record_for(&crate::agents::local_homes(), dir, sid)
             .map(|p| (p.present, p.root))
     };
     let end = |terminal: &str| {
@@ -94,9 +94,8 @@ fn with_deps_on<T>(
     let mint = |base: batch::NameBase| {
         crate::control::ccm::terminal_name_mint_with(base, crate::host::snapshot())
     };
-    let writers = |sid: &str| {
-        crate::history::live_table::now(&crate::history::listing::agent_home()).writers(sid)
-    };
+    let writers =
+        |sid: &str| crate::history::live_table::now(&crate::agents::local_homes()).writers(sid);
     let pretrust = |dir: &str, cwd: &str| pretrust_with(files, agent, dir, cwd);
     let open_shell = |name: &str, cwd: Option<&str>, host: crate::wire::TerminalHost| match host {
         crate::wire::TerminalHost::Tmux => crate::control::launch::open_shell(name, cwd, client),
@@ -209,19 +208,15 @@ impl crate::wire::typed::Handle for SessionsStop {
     }
 }
 
-/// 停之前问的会话脸与称呼（生产那一份）：活不活照这台的活会话表（`live_table::life_of`），容器照这台名单 ⇒ 会话脸（`SessionFaceExt::of`）上 `can.end` 那一格；
+/// 停之前问的会话脸与称呼（生产那一份）：活不活照这台的活会话表（`live_table::life_of`），容器照这台名单 ⇒ 会话脸（`SessionFaceExt::listed`）上 `can.end` 那一格；
 /// 称呼照 `sessions_batch_face::title_here`（一批会话各样共用那一份）。活会话表与注解一趟各读一次。
 fn with_stop_faces<T>(f: impl FnOnce(&batch::StopFaces) -> T) -> T {
-    use crate::wire::{Life, SessionFace, SessionFaceExt as _, WireLife};
-    let home = crate::history::listing::agent_home();
+    use crate::wire::{SessionFace, SessionFaceExt as _};
+    let home = crate::agents::local_homes();
     let live = crate::history::live_table::now(&home);
     let notes = crate::faces::sessions_batch_face::notes();
     let can_end = |sid: &str, c: &crate::wire::SessionContainer| {
-        let life = match live.life_of(sid) {
-            WireLife::Live { activity } => Life::live(activity, Some(c)),
-            other => Life::of_wire(&other),
-        };
-        SessionFace::of(life).can.end
+        SessionFace::listed(&live.life_of(sid), Some(c)).can.end
     };
     let title = |sid: &str| crate::faces::sessions_batch_face::title_here(&home, &notes, sid);
     f(&batch::StopFaces {

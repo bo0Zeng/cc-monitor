@@ -88,7 +88,7 @@ def ask_tool(said):
 
 
 def wait_answer(hook, request, readline):
-    """框挂着：hook 先给了决定 ⇒ 它（dict）；终端里先敲了一行 ⇒ None。hook 空手退了（改到终端里答 · 别处关了）⇒ 等终端。"""
+    """框挂着：hook 先给了决定 ⇒ 它（dict）；终端里先敲了一行 ⇒ None。hook 空手退了（挡着终端的那一条记下就放手 · 别处关了）⇒ 等终端。"""
     import select
     import subprocess
     proc = None

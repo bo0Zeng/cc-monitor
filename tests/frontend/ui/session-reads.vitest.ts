@@ -74,9 +74,10 @@ describe("〔C4b〕会话读面三问：按形状收", () => {
     expect(outlineSeedFromIndex({ available: true, end: index.end, pages: [index] })).toEqual({ entries: ui.entries, end: ui.end });
     const f = golden["history-find"] as HistoryFind;
     expect(f.total).toBe(2);
-    expect(f.hits.map((h) => [h.uuid, h.line, h.kind, h.before, h.matched, h.after, h.turn])).toEqual([
-      ["in-1", 0, "user", "alpha", "zqx", "beta", 1],
-      ["out-1", 1, "assistant", "gamma", "zqx", "", 1],
+    // 谁 · 第几轮 · 时刻都在那台写好的头一行 `meta` 里（夹具记录不带时刻 ⇒ 不写时刻），线上不另带种类与时刻。
+    expect(f.hits.map((h) => [h.uuid, h.line, h.meta, h.before, h.matched, h.after, h.turn])).toEqual([
+      ["in-1", 0, "用户 · 轮 1", "alpha", "zqx", "beta", 1],
+      ["out-1", 1, "Claude · 轮 1", "gamma", "zqx", "", 1],
     ]);
   });
 
@@ -183,6 +184,7 @@ describe("〔STC〕第五问：会话事实", () => {
     expect(f).toEqual({
       forkedLine: "分叉自「src-0」",
       touchedFiles: ["/w/a.ts"],
+      touchedText: "改过的文件 1",
       usage: {
         model: "m-g",
         limit: 1_000_000,

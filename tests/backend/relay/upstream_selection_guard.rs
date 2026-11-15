@@ -75,14 +75,13 @@ pub(super) mod tests {
         "sign_in.rs",
         "manage/aliases.rs",
         "manage/exec.rs",
-        // 各号共用的用户级 MCP：只换一个键 · 三方对照（纯）· 读改写 · 文件事件触发。账号库管理的一部分，与上游选择零引用。
-        "manage/json_key.rs",
         "manage/layout.rs",
         // 账号库的只读那一面：账号清单成品 · 会话归属哪个号。
         "manage/library.rs",
         // 各号的 MCP 登录：三态对照（纯）· 在那一家的锁里逐条比对、只换那一条。与上游选择零引用（凭据文件的写口在 `oauth/store`）。
         "manage/mcp_logins.rs",
         "manage/mcp_logins_exec.rs",
+        // 各号共用的用户级 MCP：三方对照（纯）· 读改写 · 文件事件触发。账号库管理的一部分，与上游选择零引用。
         "manage/mcp_share.rs",
         "manage/mcp_share_exec.rs",
         "manage/mcp_share_watch.rs",
@@ -110,6 +109,8 @@ pub(super) mod tests {
         "quota/nodes.rs",
         // quota-probe 的本体：起官方客户端报一次用量、记进额度账（帧面那一半住 faces）。
         "quota/probe.rs",
+        // 到点重读：额度账上一窗过了重置时刻，用那个号的用量查询重读一次（唯一一处）。
+        "quota/reread.rs",
         // 轮换的基础功能层（纯）：rotation.json 第四版的形 · 一判 · 推演 · 策略代码在沙箱里的调用 · 事实上发不发得出去。不认识上游选择与账号库管理。
         "quota/rules/book.rs",
         "quota/rules/code.rs",
@@ -184,6 +185,10 @@ pub(super) mod tests {
         "our_relay_listening",
         // `run`（`--relay` 进程的中转入口）随那一形删了。
         "segment_is_safe",
+        // 装表时读一条 `base_url`：形状判定住共享 crate `upstream_url_core`，装成 `Base` 与形状那几句住中转宿主（同一份，oauth 令牌端点也读它）。
+        "base_of",
+        "base_from",
+        "shape_said",
     ];
 
     // ── 语料 ────────────────────────────────────────────────────────────────

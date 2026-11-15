@@ -84,6 +84,36 @@ impl SessionLedger {
         self.pending.values().any(|armed| !armed)
     }
 
+    /// 宣告一条活会话那一下、它那一帧发出去之前：pidfile 说接进去有没有意义（`Some(false)` ⇒ 没有；这一格不上线，不在帧上）。
+    pub(crate) fn announced(&mut self, sid: &str, attachable: Option<bool>) {
+        if attachable == Some(false) {
+            self.unattachable.insert(sid.to_string());
+        } else {
+            self.unattachable.remove(sid);
+        }
+    }
+
+    /// 认定的那个进程带出的那几格（容器 · 号）：宣告那一帧，与之后改认 · 容器变了（不另发宣告帧）都经这一处记。
+    pub(crate) fn held(
+        &mut self,
+        sid: &str,
+        container: Option<&SessionContainer>,
+        account: Option<&str>,
+    ) {
+        if matches!(
+            container,
+            Some(SessionContainer::None | SessionContainer::Managed { .. })
+        ) {
+            self.outside.insert(sid.to_string());
+        } else {
+            self.outside.remove(sid);
+        }
+        match account {
+            Some(a) => self.accounts.insert(sid.to_string(), a.to_string()),
+            None => self.accounts.remove(sid),
+        };
+    }
+
     /// 一帧要发出去之前：`(它自己发不发, 紧跟它之后补发的帧)`。
     pub(crate) fn on_frame(&mut self, f: &Frame) -> (bool, Vec<Frame>) {
         match f {
@@ -92,27 +122,10 @@ impl SessionLedger {
                 path,
                 face,
                 container,
-                attachable,
                 ..
             }) => {
                 self.live.insert(sid.clone());
-                if *attachable == Some(false) {
-                    self.unattachable.insert(sid.clone());
-                } else {
-                    self.unattachable.remove(sid);
-                }
-                if matches!(
-                    container,
-                    Some(SessionContainer::None | SessionContainer::Managed { .. })
-                ) {
-                    self.outside.insert(sid.clone());
-                } else {
-                    self.outside.remove(sid);
-                }
-                match &face.account {
-                    Some(a) => self.accounts.insert(sid.clone(), a.clone()),
-                    None => self.accounts.remove(sid),
-                };
+                self.held(sid, container.as_ref(), face.account.as_deref());
                 self.ended.remove(sid);
                 if let Some(p) = path {
                     self.paths.insert(sid.clone(), p.clone());

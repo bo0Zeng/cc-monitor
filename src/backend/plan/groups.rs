@@ -64,7 +64,7 @@ pub fn here_ties() -> Result<GroupsRead, String> {
         ))
     })?;
     let half = here_of(&table, &book, |_| {
-        unlisted(None, crate::wire::WireLife::Ended { by: None })
+        unlisted(None, crate::wire::WireLife::Ended { by: None }, None)
     });
     Ok(merge(
         &[(cmd_wire::Machine::local(), Half::Now(half))],

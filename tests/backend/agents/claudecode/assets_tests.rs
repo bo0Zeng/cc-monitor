@@ -348,6 +348,8 @@ fn plugins_are_read_from_the_install_record_and_the_skills_dir_with_six_settings
                 from: PluginFrom| PluginSeen {
         project: project.map(|p| p.display().to_string()),
         name: name.into(),
+        // 那一家的写法照安装记录的键（skills 目录里的那几个 ⇒ `enabledPlugins` 里那一形）。
+        key: format!("{name}@{market}"),
         market: market.into(),
         root: root.to_path_buf(),
         version: Some(version.into()),
@@ -462,4 +464,51 @@ fn an_unmentioned_plugin_follows_its_manifest_and_an_unknown_record_is_said() {
         out.problems
     );
     let _ = std::fs::remove_dir_all(&d);
+}
+
+/// Claude 那一行的插件装删那一格：`claude plugin install <名>@<市场>` · `claude plugin uninstall <名>@<市场>` · `claude plugin list --json`；
+/// 列的输出（数组，每条 `{id, version, scope, enabled}`）只留 `scope` 是 `user` 的，写法取 `id` 原样、光名字取它最后一个 `@` 前那一截、
+/// `"unknown"` 的版本记成缺；不是那一形（缺 `scope` 也算）⇒ 读不懂。
+#[test]
+fn the_plugin_cells_speak_claudes_plugin_commands() {
+    let c = PLUGIN_CELLS;
+    let argv = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    assert_eq!(
+        (c.install)("lint@market"),
+        argv(&["claude", "plugin", "install", "lint@market"])
+    );
+    assert_eq!(
+        (c.remove)("lint@market"),
+        argv(&["claude", "plugin", "uninstall", "lint@market"])
+    );
+    assert_eq!((c.list)(), argv(&["claude", "plugin", "list", "--json"]));
+    let got = (c.read_list)(
+        r#"[{"id":"lint@market","version":"1.2.0","scope":"user","enabled":true},
+            {"id":"fmt@market","version":"unknown","scope":"user","enabled":false},
+            {"id":"only-here@market","version":"1","scope":"project","enabled":true}]"#,
+    );
+    assert_eq!(
+        got,
+        Some(vec![
+            crate::agents::PluginListed {
+                key: "lint@market".into(),
+                name: "lint".into(),
+                version: Some("1.2.0".into()),
+                on: true,
+            },
+            crate::agents::PluginListed {
+                key: "fmt@market".into(),
+                name: "fmt".into(),
+                version: None,
+                on: false,
+            },
+        ])
+    );
+    assert_eq!((c.read_list)(r#"{"installed":[]}"#), None);
+    assert_eq!((c.read_list)(r#"[{"version":"1"}]"#), None);
+    assert_eq!(
+        (c.read_list)(r#"[{"id":"lint@market","enabled":true}]"#),
+        None,
+        "缺 scope 也是读不懂"
+    );
 }

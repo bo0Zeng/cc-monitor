@@ -26,11 +26,13 @@ abstract class HandDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     protected abstract suspend fun insertPending(p: PendingSend)
 
-    @Query("UPDATE pending SET outcome = :outcome, attempts = :attempts WHERE id = :id")
+    /** 记回一句交的结局；[refusedSaid] 是那台拒时那一句（拒了才有，别的结局 ⇒ `null`），同一下落库。 */
+    @Query("UPDATE pending SET outcome = :outcome, attempts = :attempts, refusedSaid = :refusedSaid WHERE id = :id")
     abstract suspend fun settle(
         id: String,
         outcome: String,
         attempts: Int,
+        refusedSaid: String?,
     )
 
     /** 新建会话起成了：那几句归到这条会话。 */

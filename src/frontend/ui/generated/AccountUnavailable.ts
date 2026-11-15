@@ -17,6 +17,10 @@ pinned: boolean,
  */
 listKnown: boolean, 
 /**
- * 给的显式替代（这台的默认号）；`null` ⇒ 只能「不指定号」。
+ * 给的显式替代（这台的默认号，与起的那一家同家才给）；`null` ⇒ 只能「不指定号」。
  */
-alternative: string | null, };
+alternative: string | null, 
+/**
+ * 给不给［登录 {号}］：要的号在清单里、与起的那一家同家、那一行可登录（成品那一格 `login`）⇒ `true`；界面照它给。
+ */
+login: boolean, };

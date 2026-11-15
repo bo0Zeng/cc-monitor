@@ -397,8 +397,9 @@ fn read_handshake_line(mut sock: &own_chan::BlockingStream) -> Result<String, Sa
     }
 }
 
-// attach 行（「我要流」＋ 时区 ＋ 手上这一版 ＋ 在看名单）住 `resident-client`（本机 · 远端 · 手机同一处拼）；本机不带这一版（换装只认同一版，`hello_verdict`）。
-pub(crate) use resident_client::attach::attach_line;
+// attach 行（「我要流」＋ 时区 ＋ 手上这一版 ＋ 在看名单 ＋ 要不要成品）住 `resident-client`（本机 · 远端 · 手机同一处拼）；本机不带这一版（换装只认同一版，`hello_verdict`），
+// 要本机后端折好的成品（会话整条 · 活卡那一处：壳不折）。
+pub(crate) use resident_client::attach::{attach_line, folded_attach_line};
 
 /// 交 attach 行（带在看名单），换一句「可以」。门在连上那一刻（套接字只给本人 ＋ 对端 uid），这一行只是「我要流」。
 fn send_attach(
@@ -408,7 +409,7 @@ fn send_attach(
     use std::io::Write;
     let mut w = sock;
     let tz = crate::inbound_client::viewer_tz();
-    w.write_all(attach_line(tz.as_deref(), None, Some(watch.clone())).as_bytes())
+    w.write_all(folded_attach_line(tz.as_deref(), watch.clone()).as_bytes())
         .and_then(|()| w.flush())
         .map_err(|e| {
             Said::with_raw(
@@ -497,23 +498,16 @@ fn spawn_detached(
     //   它在 **153 毫秒**内 broken-pipe 退出（`backend_policy.rs` 头注实测）。
     //   stdin/stdout 那两根在上面一行，stderr 这一根由策略说了算。
     let spawn = managed_spawner(ConsolePolicy::Hidden, Lifetime::Detached, StderrSink::Null);
-    // ★★ 与 `supervise_with_stdio` **同一份分类**（住 `local_backend`，不各写一份）。
-    //    这条路 exec 的正是 `resolve_backend_bin` 刚拿到的那个文件 —— 而它可能是
-    //    `extract_embedded_to` 刚写出来的那一份（经 `resolve_or_extract` 走）
-    //    ⇒ 它是本仓两处「写了一个文件、随后 exec 它」的落点之一。
-    local_backend::spawn_with_etxtbsy_retry(&mut cmd, &*spawn).map_err(|f| match f {
-        // 这一刻恰好撞上了会自己过去的竞态 —— 那句话也是共用的那一份。
-        local_backend::SpawnFailure::TransientBusy { tries, last } => {
-            local_backend::etxtbsy_gave_up(bin, tries, &last)
-        }
-        // 别的错 ⇒ **今天那句照旧，一个字不改**。
-        local_backend::SpawnFailure::Broken(e) => Said::with_raw(
+    // 起一次：这条路起的可能是 `extract_embedded_to` 刚放下来的那一份，它由 `own_fs::OwnBin::stage` 经子进程写，
+    // 本进程从没有它的写端 ⇒ 起它不撞 ETXTBSY。
+    spawn(&mut cmd).map_err(|e| {
+        Said::with_raw(
             copy_text(
                 "rsLocalBackendHost.spawn.failed",
                 &[("bin", &(bin.display()).to_string())],
             ),
             &e,
-        ),
+        )
     })
 }
 
@@ -815,8 +809,6 @@ fn attach_stream(
         client.note_read_end();
         // 告诉本机内容消费者这条流结束了。
         crate::local_lines::stream_ended().await;
-        // 流没了 ⇒ 经它开的传输一律带原因收场（后端的票表随那条流一起撤了；不让看的人干等到超时）。
-        crate::transfer_relay::fail_owned_by(&client, &copy_text("reason.local.linkLost", &[]));
         // 流结束 ⇒ 摘掉登记，别在表里留一个写不进去的 client。monitor 不再存 tmux 原文（没有要清的陈旧证据了）。
         crate::inbound_client::unregister(&client);
         // 收尸：`process_group` 不改父子关系，不 `wait` 就留 `Z`。**事件驱动，不是轮询。**
@@ -1643,7 +1635,7 @@ pub(crate) fn backend_env_from(get: &dyn Fn(&str) -> Option<String>) -> Vec<(Str
 /// `stop()` 之后那个句柄就是死的（`stopping` 永久置位），留着只会让下一次「起」
 /// 误以为还在跑。
 pub fn stop_local_backend() -> Result<crate::remote_resident::StopAnswer, Said> {
-    use crate::remote_resident::{StopAnswer, StopWord};
+    use crate::remote_resident::StopAnswer;
     // 起停串行：一趟停从头到尾攥着它（句柄表只在读写那一下拿）。
     let _life = LIFECYCLE
         .lock()
@@ -1663,10 +1655,7 @@ pub fn stop_local_backend() -> Result<crate::remote_resident::StopAnswer, Said> 
             let pid = h.current_pid();
             h.stop();
             *SUPERVISED_BIN.lock().unwrap_or_else(|e| e.into_inner()) = None;
-            Ok(StopAnswer {
-                stopped: StopWord::Killed,
-                pid,
-            })
+            Ok(StopAnswer::killed_here(pid))
         }
         // 两样句柄都没有：口上仍可能有人在听（上一版 app 留下的、起的时候被拒没接上的那一份）⇒ 照样停它，不谎报「没在跑」。
         None => match crate::config::resolve_monitor_data_dir() {
@@ -1675,10 +1664,7 @@ pub fn stop_local_backend() -> Result<crate::remote_resident::StopAnswer, Said> 
                 &this_version_bin,
                 RESIDENT_STOP_DEADLINE,
             ),
-            None => Ok(StopAnswer {
-                stopped: StopWord::NotRunning,
-                pid: None,
-            }),
+            None => Ok(StopAnswer::not_running_here()),
         },
     }
 }
@@ -1691,12 +1677,9 @@ fn stop_listener_on(
     bin: &dyn Fn() -> Result<std::path::PathBuf, Said>,
     deadline: std::time::Duration,
 ) -> Result<crate::remote_resident::StopAnswer, Said> {
-    use crate::remote_resident::{StopAnswer, StopWord};
+    use crate::remote_resident::StopAnswer;
     if own_chan::connect_blocking(sock).is_err() {
-        return Ok(StopAnswer {
-            stopped: StopWord::NotRunning,
-            pid: None,
-        });
+        return Ok(StopAnswer::not_running_here());
     }
     let answer = run_resident_stop_within(&bin()?, deadline)?;
     note_local_foreign(None);
@@ -1781,10 +1764,11 @@ pub(crate) fn local_backend_now() -> LocalBackend {
 /// 本机后端起没起来：通道在 ⇒ 连着；正在起 ⇒ 正在起（到「启动 cc-monitor」那一步）；
 /// 不在而口上占着别的构建 ⇒ 按两边构建的序说旧 / 新（解不出序 · 手上没带后端字节 ⇒ 照没起来说）；别的 ⇒ 没起来。
 /// 被拒那一句下一步只在没连着时带。`mine` 是手上这一版的构建标识。
+/// 这里只交关系与原因：点 · 语气 · 词 · 句 · 按钮字照同一张字表（[`copy_core::machine`]），壳不自己挑。
 pub(crate) fn local_backend(channel: bool, mine: Option<&str>) -> LocalBackend {
     use cmd_wire::attach::Relation;
-    use cmd_wire::cells::Tone;
-    use cmd_wire::machine::MachineDot;
+    use cmd_wire::machine::{FixButton, MachineFix};
+    use copy_core::machine::{label, local, Local};
     if channel {
         return LocalBackend::Up;
     }
@@ -1793,17 +1777,12 @@ pub(crate) fn local_backend(channel: bool, mine: Option<&str>) -> LocalBackend {
     };
     let machine = copy_core::local_machine();
     if LOCAL_STARTING.load(std::sync::atomic::Ordering::SeqCst) {
+        let l = local(Local::Starting, &machine);
         return LocalBackend::Starting {
-            dot: MachineDot::Pending,
-            tone: Tone::Busy,
-            word: copy_text("machineState.word.connecting", &[]),
-            said: copy_text(
-                "machineState.busy.connecting",
-                &[
-                    ("machine", &machine),
-                    ("stage", &copy_text("machineState.stage.attach", &[])),
-                ],
-            ),
+            dot: l.dot,
+            tone: l.tone,
+            word: l.word,
+            said: l.said,
         };
     }
     let next = lock(&LOCAL_REFUSED);
@@ -1816,41 +1795,50 @@ pub(crate) fn local_backend(channel: bool, mine: Option<&str>) -> LocalBackend {
         _ => Relation::Incomparable,
     };
     // 住我们这个家的上一版 ⇒ 只有［更新］＝ 用这一版的落点停掉它（[`stop_local_backend`]）再起这一版，不叫人去结束进程；
-    // 别的起不来那几样只有一颗：［重试］＝ 再起一次本机后端。
+    // 别的起不来那几样只有一颗：［重试］＝ 再起一次本机后端（带被拒那一句下一步）。
     let ours_older = matches!(relation, Relation::Older) && foreign.is_some_and(|f| f.same_home);
-    let (fixes, next) = if ours_older {
-        let label = copy_text("front.act.update", &[]);
-        let fix = cmd_wire::machine::MachineFix::Update;
-        (vec![cmd_wire::machine::FixButton { fix, label }], None)
+    let (fix, next) = if ours_older {
+        (MachineFix::Update, None)
     } else {
-        let label = copy_text("front.act.retry", &[]);
-        let fix = cmd_wire::machine::MachineFix::Retry;
-        (vec![cmd_wire::machine::FixButton { fix, label }], next)
+        (MachineFix::Retry, next)
     };
+    let fixes = vec![FixButton {
+        fix,
+        label: label(fix),
+    }];
+    let failed = lock(&LOCAL_FAILED);
+    let case = match relation {
+        Relation::Older => Local::Older,
+        Relation::Newer => Local::Newer,
+        // 起不来过 ⇒ 说起不来的那一句（没带后端 · 释放失败 · 起了接不上 · 被拒）；没有 ⇒ 只说没在跑。
+        Relation::Same | Relation::Incomparable => Local::Down {
+            failed: failed.as_deref(),
+        },
+    };
+    let l = local(case, &machine);
+    let (dot, tone, word, said) = (l.dot, l.tone, l.word, l.said);
     match relation {
         Relation::Older => LocalBackend::Older {
-            dot: MachineDot::Warn,
-            tone: Tone::Warn,
-            word: copy_text("machineState.word.needsUpdate", &[]),
-            said: copy_text("front.title.update", &[("machine", &machine)]),
+            dot,
+            tone,
+            word,
+            said,
             fixes,
             next,
         },
-        // 口上那一份比这一版新也是没连着：点画成没连着（`Newer` 那一态是连着的点），与出错那一句对上。
         Relation::Newer => LocalBackend::Newer {
-            dot: MachineDot::Failed,
-            tone: Tone::Fail,
-            word: copy_text("machineState.word.newer", &[]),
-            said: copy_text("machineState.problem.newer", &[("machine", &machine)]),
+            dot,
+            tone,
+            word,
+            said,
             fixes,
             next,
         },
-        // 起不来过 ⇒ 说起不来的那一句（没带后端 · 释放失败 · 起了接不上 · 被拒）；没有 ⇒ 只说没在跑。
         Relation::Same | Relation::Incomparable => LocalBackend::Down {
-            dot: MachineDot::Failed,
-            tone: Tone::Fail,
-            word: copy_text("machinePage.state.down", &[]),
-            said: lock(&LOCAL_FAILED).unwrap_or_else(|| copy_text("machineState.down.local", &[])),
+            dot,
+            tone,
+            word,
+            said,
             fixes,
             next,
         },

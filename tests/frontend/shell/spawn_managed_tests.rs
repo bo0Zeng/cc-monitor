@@ -7,10 +7,10 @@ fn me() -> String {
     ))
 }
 
-/// `command` 造的是还没起的那一个：程序就是给的那个，argv 空，交注入的 `ManagedSpawn` 起得出来、同一个能起两次。
+/// `command` 造的是还没起的那一个：程序就是给的那个，argv 空，交注入的 `ManagedSpawn` 起得出来。
 #[cfg(unix)]
 #[test]
-fn a_built_command_is_unstarted_and_can_be_started_twice_through_the_injected_spawn() {
+fn a_built_command_is_unstarted_and_starts_through_the_injected_spawn() {
     let mut cmd = command("true");
     assert_eq!(cmd.get_program(), "true");
     assert_eq!(cmd.get_args().count(), 0);
@@ -19,10 +19,8 @@ fn a_built_command_is_unstarted_and_can_be_started_twice_through_the_injected_sp
         Lifetime::JobKillOnClose,
         StderrSink::Null,
     );
-    for _ in 0..2 {
-        let mut child = spawn(&mut cmd).expect("起得来");
-        assert!(child.wait().expect("收尸").success());
-    }
+    let mut child = spawn(&mut cmd).expect("起得来");
+    assert!(child.wait().expect("收尸").success());
 }
 
 /// ★★ **三个策略一个都不许有 `Default`。**

@@ -210,7 +210,7 @@ fn fleet_over(t: &BTreeMap<String, Entry>, hosts: &[(String, bool)], links: &Lin
     deploy::machine::fleet(&all)
 }
 
-/// 本机那一行：问得到这个后端 ⇒ 连着、与手上同一份字节；版本号是这份二进制出自的那一版（`common::id::VERSION`）。
+/// 本机那一行：问得到这个后端 ⇒ 连着、与手上同一份字节；版本号是这份二进制出自的那一版（`common::id::VERSION`），系统名是这份二进制所在那台的。
 /// 不经 SSH ⇒ 没有「怎么连过去的」；本进程起的中转去上游那一跳（连接表里本机那一项）进复制详情末尾那一段。
 fn local_row(links: &Links) -> MachineState {
     let mut e = Entry::default();
@@ -222,6 +222,15 @@ fn local_row(links: &Links) -> MachineState {
                 differs: Vec::new(),
             },
             version: Some(crate::common::id::VERSION.to_string()),
+        },
+    );
+    // 系统名与远端部署收了记的同一个词（`Os::label`）：界面机器页只照成品的 `os` 写。
+    fold(
+        &mut e,
+        Fact::Deployed {
+            os: deploy_contract::Key::this_machine()
+                .ok()
+                .map(|k| k.os.label().to_string()),
         },
     );
     let mut p = product(&e, &copy_core::local_machine(), true, true);

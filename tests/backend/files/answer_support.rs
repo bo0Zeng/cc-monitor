@@ -40,6 +40,9 @@ impl Named for w::ReadChunkReq {
 impl Named for w::GrepReq {
     const CAPABILITY: &'static str = "files.grep";
 }
+impl Named for w::FilesMenuReq {
+    const CAPABILITY: &'static str = "files.menu";
+}
 
 /// 本族的能力名单（每条 [`Ask`] 的 [`Named::CAPABILITY`]）。与 [`answer`] 的分派两向对得上由
 /// `inbound_structure_guards::the_files_read_family_is_online_exactly_as_it_is_declared` 钉（上线的那组 == 本表，且每条不落 `unknown_capability`）。
@@ -56,6 +59,7 @@ pub const CAPABILITIES: &[&str] = &[
     <w::GrepReq as Named>::CAPABILITY,
     <w::HomeReq as Named>::CAPABILITY,
     <w::IndexStatusReq as Named>::CAPABILITY,
+    <w::FilesMenuReq as Named>::CAPABILITY,
 ];
 
 /// 判据里交浏览名单用的那条连接号（帧面那一侧每条连接一个号，从 1 起）。
@@ -114,6 +118,7 @@ pub fn answer(
         n if n == <w::GrepReq as Named>::CAPABILITY => one::<w::GrepReq>(args, tz),
         n if n == <w::HomeReq as Named>::CAPABILITY => one::<w::HomeReq>(args, tz),
         n if n == <w::IndexStatusReq as Named>::CAPABILITY => one::<w::IndexStatusReq>(args, tz),
+        n if n == <w::FilesMenuReq as Named>::CAPABILITY => one::<w::FilesMenuReq>(args, tz),
         other => Err(Said::new(
             "unknown_capability",
             crate::common::contract::malformed(&format!("unknown capability `{other}`")),

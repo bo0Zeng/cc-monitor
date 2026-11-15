@@ -4,6 +4,7 @@
 //! - 令牌一律包成秘密（`creds_core::SecretKey`）：不进日志、不进 argv、不进帧、不进报错原文。
 //! - 那一家的文件格式、令牌端点、锁的名字住适配层（[`LoginFace`]）；这里只有「怎么读、怎么续、怎么写回」。
 //! - 续失败照实说（哪个号、为什么），不静默跳过、不猜。
+//! - 一家声明账号 0 不续不写（[`crate::agents::BaseLogin`]）⇒ 它的账号 0 只读：令牌没过期照用；要续的那一下不续、照实说，不拿锁、不写，不记成续不上；号载体那几个号照续。
 //! - 续成了而写回碰上那一家正在存盘（它的整份写锁在）⇒ 新令牌不丢：先在内存里照用，等锁放开再写回（[`writeback`]）。
 
 pub(crate) mod missed;
@@ -26,16 +27,28 @@ pub struct TokenEndpoint {
 }
 
 impl TokenEndpoint {
-    /// 那一家登记的令牌端点。
+    /// 那一家登记的缺省令牌端点（写不出 ⇒ `None`）。
     pub fn of(face: &LoginFace, deadline: std::time::Duration) -> Option<Self> {
-        let (scheme_host, rest) = split_url(face.token_url)?;
+        Self::at(face.token_url, deadline)
+    }
+
+    /// 一个令牌端点地址（写不出 ⇒ `None`）。
+    pub fn at(url: &str, deadline: std::time::Duration) -> Option<Self> {
+        let (scheme_host, rest) = split_url(url)?;
         Some(Self {
-            base: Base::parse(scheme_host).ok()?,
+            base: crate::relay::base_of(scheme_host).ok()?,
             rest: rest.to_string(),
             deadline,
         })
     }
 }
+
+/// 续登录令牌那一发的期限（全仓只这一份：换号那一路给缺省端点 · 只有出处那一形都用它）。
+#[expect(
+    clippy::disallowed_methods,
+    reason = "续订阅号令牌那一发的 socket 读写期限（`oauth::TOKEN_DEADLINE`，交给 `TokenEndpoint` → 中转的一问一答原语）：一次阻塞的上限，到点那一发报错返回、不重试"
+)]
+pub(crate) const TOKEN_DEADLINE: std::time::Duration = std::time::Duration::from_millis(15_000);
 
 fn split_url(url: &str) -> Option<(&str, &str)> {
     let after = url.find("://")? + 3;
@@ -66,9 +79,21 @@ pub(crate) enum Unusable {
     NotRenewed(crate::common::said::Said),
     /// 续好了，写不回那份文件（一句原因词 ＋ 原话）。
     WriteFailed(crate::common::said::Said),
+    /// 那一家没给全续期要的那几格（令牌端点写不出、凭据里也没记出处）⇒ 不替它续。
+    CannotRenew,
+    /// 这是那一家的账号 0，它声明了账号 0 不由我方续、写（[`crate::agents::BaseLogin::Untouched`]）。
+    BaseUntouched,
 }
 
 impl Unusable {
+    /// 这一次没拿到算不算那个号的事实（记成「续不上」· 发额度节点都只问它）：别人正在续 · 那一家给不全 · 账号 0 不归我方续 ⇒ 不算。
+    pub(crate) fn is_account_fact(&self) -> bool {
+        !matches!(
+            self,
+            Unusable::Busy | Unusable::CannotRenew | Unusable::BaseUntouched
+        )
+    }
+
     /// 对外那一句（点名是哪个号）＋ 下层原话（只进日志：换号那一路 `rotate.rs` 记 `logged()`）。
     pub(crate) fn said(&self, account: &str) -> crate::common::said::Said {
         let plain = |s: String| crate::common::said::Said::from(s);
@@ -105,6 +130,14 @@ impl Unusable {
                     &[("account", account), ("why", w)],
                 )
             }),
+            Unusable::CannotRenew => plain(copy_text(
+                "beOauth.unusable.cannotRenew",
+                &[("account", account)],
+            )),
+            Unusable::BaseUntouched => plain(copy_text(
+                "beOauth.unusable.baseUntouched",
+                &[("account", account)],
+            )),
         }
     }
 }
@@ -128,10 +161,13 @@ fn now_of(read: store::Read, face: &LoginFace) -> Result<Now, Unusable> {
         store::Read::Unreadable(why) => return Err(Unusable::Unreadable(why)),
         store::Read::Present(d) => d,
     };
-    let expires_ms = doc
-        .get(face.section)
-        .and_then(|s| s.get(face.expires_ms))
-        .and_then(Value::as_u64);
+    let expires_ms = match face.expiry {
+        crate::agents::Expiry::Cell(cell) => doc
+            .get(face.section)
+            .and_then(|s| s.get(cell))
+            .and_then(Value::as_u64),
+        crate::agents::Expiry::Read(read) => read(&doc),
+    };
     Ok(Now {
         access: secret_in(&doc, face.section, face.access),
         refresh: secret_in(&doc, face.section, face.refresh),
@@ -147,35 +183,122 @@ fn fresh(n: &Now, face: &LoginFace, now_ms: u64) -> bool {
             .is_none_or(|e| e > now_ms.saturating_add(face.margin_ms))
 }
 
+/// 这个号什么时候由我方续：那一家声明的（`AccountsFace.renew`）＋ 此刻有没有活会话在用这个号（`Idle` 才问，问的是账号库那一侧）。
+#[derive(Clone, Copy)]
+pub(crate) struct When {
+    pub renew: crate::agents::Renew,
+    /// 号目录此刻有没有活会话在用（`Idle` 才问）。
+    pub in_use: fn(&Path) -> bool,
+    /// 这个号是不是那一家的账号 0（不设号载体时那份配置）：是 ⇒ 照那一家的 [`LoginFace::base_login`] 续或不续。
+    pub base: bool,
+}
+
+impl When {
+    /// `kind` 那一家的号在这台上：那一家声明的续期条件（`agents::renew_of`）＋ 进程入口接上的「号目录此刻有没有活会话在用」（[`on_dir_in_use`]）
+    /// ＋ 这个号是不是账号 0（`base`）。
+    pub(crate) fn here(kind: &str, base: bool) -> When {
+        When {
+            renew: crate::agents::renew_of(kind),
+            in_use: dir_in_use_here,
+            base,
+        }
+    }
+}
+
+/// 「号目录此刻有没有活会话在用」那一手：判法在账号库那一侧（`accounts::manage::library::dir_in_use_here`），服务这一块不引它，由进程入口接上。
+static DIR_IN_USE: std::sync::OnceLock<fn(&Path) -> bool> = std::sync::OnceLock::new();
+
+/// 进程入口接上那一手；接过一次 ⇒ `Err`（第一次那一手留着）。
+pub fn on_dir_in_use(f: fn(&Path) -> bool) -> Result<(), fn(&Path) -> bool> {
+    DIR_IN_USE.set(f)
+}
+
+/// 没接上 ⇒ 说不出有谁在用：当没人在用（同原来那一形，照常续）。
+fn dir_in_use_here(dir: &Path) -> bool {
+    DIR_IN_USE.get().is_some_and(|f| f(dir))
+}
+
 /// 这个号此刻能用的访问令牌：没过期直接给；快过期就续（加锁、写回）再给。
 /// 拿不到的每一次记一行进后端日志（真去续的那一发是 [`renew_line`]：号 `account` · 成败 · 状态码 · 错误码），并记成那个号的事实（[`missed`]）。
 /// `own`：写自家状态的句柄 —— 续了要写回时从它铸这个号的凭据窄句柄（[`store::creds_of`]）。
+/// `endpoint`：调用方给的令牌端点（那一家登记的缺省那一个；写不出 ⇒ `None`）。凭据里记了出处的号照出处续（[`LoginFace::origin`]）；
+/// 两样都没有 ⇒ [`Unusable::CannotRenew`]。
+/// `when`：那一家的号什么时候由我方续（[`When`]）；是账号 0、那一家声明账号 0 不续不写 ⇒ 没过期照用，要续时 [`Unusable::BaseUntouched`]，不拿锁、不写、不记。
 pub(crate) fn access_token(
     own: &crate::platform::fs::Own,
     dir: &Path,
     face: &LoginFace,
-    endpoint: &TokenEndpoint,
+    endpoint: Option<&TokenEndpoint>,
     now_ms: u64,
     account: &str,
+    when: When,
 ) -> Result<SecretKey, Unusable> {
     let mut logged = false;
-    let r = fetch(own, dir, face, endpoint, now_ms, account, &mut logged);
+    let r = fetch(own, dir, face, endpoint, now_ms, account, when, &mut logged);
     if let Err(u) = &r {
         if !logged {
             tracing::warn!("[auth] {}", u.said(account).logged());
         }
     }
+    // 不归我方续的账号 0 那一句不是号的事实（`Unusable::is_account_fact`），记账那一下照它不记。
     missed::note(dir, face, now_ms / 1000, &r);
     r
 }
 
+/// 这个号是那一家声明不续不写的账号 0（[`crate::agents::BaseLogin::Untouched`]）。
+fn left_to_itself(face: &LoginFace, when: When) -> bool {
+    when.base && face.base_login == crate::agents::BaseLogin::Untouched
+}
+
+/// 盘上那一份此刻拿它怎么办（只读判；[`fetch`] 与 [`unrenewed_base`] 同用这一处）。
+enum Next {
+    /// 没过期：照用。
+    Use(SecretKey),
+    /// 要续。
+    Renew,
+    /// 不续，照实回这一句。
+    Stop(Unusable),
+}
+
+fn next_of(n: &Now, face: &LoginFace, when: When, now_ms: u64) -> Next {
+    if fresh(n, face, now_ms) {
+        return match &n.access {
+            Some(a) => Next::Use(a.clone()),
+            None => Next::Stop(Unusable::NotLoggedIn),
+        };
+    }
+    if n.access.is_none() && n.refresh.is_none() {
+        return Next::Stop(Unusable::NotLoggedIn);
+    }
+    if left_to_itself(face, when) {
+        return Next::Stop(Unusable::BaseUntouched);
+    }
+    Next::Renew
+}
+
+/// ★ 这个号此刻是不是「不归我方续的账号 0、令牌又快过期 / 过期了」（只读：不续、不拿锁、不写；换号判接不接得上问它）。
+pub(crate) fn unrenewed_base(dir: &Path, face: &LoginFace, when: When, now_ms: u64) -> bool {
+    left_to_itself(face, when)
+        && look(dir, face).is_ok_and(|n| {
+            matches!(
+                next_of(&n, face, when, now_ms),
+                Next::Stop(Unusable::BaseUntouched)
+            )
+        })
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "拿令牌那一趟要的几样（写句柄 · 盘 · 那一家的登录面 · 令牌端点 · 时刻 · 号 · 什么时候续 · 记没记过日志）各由调用方给，同 [`access_token`] 一一对应"
+)]
 fn fetch(
     own: &crate::platform::fs::Own,
     dir: &Path,
     face: &LoginFace,
-    endpoint: &TokenEndpoint,
+    endpoint: Option<&TokenEndpoint>,
     now_ms: u64,
     account: &str,
+    when: When,
     logged: &mut bool,
 ) -> Result<SecretKey, Unusable> {
     // 刚续成、写回还在等那一家放写锁 ⇒ 照用内存里那份，不再续一次（等到期限没放开 ⇒ 这里照实报一次写回失败）。
@@ -183,11 +306,13 @@ fn fetch(
         return r;
     }
     let n = look(dir, face)?;
-    if fresh(&n, face, now_ms) {
-        return n.access.ok_or(Unusable::NotLoggedIn);
+    match next_of(&n, face, when, now_ms) {
+        Next::Use(a) => return Ok(a),
+        Next::Stop(u) => return Err(u),
+        Next::Renew => {}
     }
-    if n.access.is_none() && n.refresh.is_none() {
-        return Err(Unusable::NotLoggedIn);
+    if when.renew == crate::agents::Renew::Idle && (when.in_use)(dir) {
+        return Err(Unusable::Busy);
     }
     let creds = store::creds_of(own, dir, face).map_err(Unusable::NotRenewed)?;
     let mut later: Option<Renewed> = None;
@@ -224,7 +349,7 @@ fn fetch(
 fn refresh_locked(
     dir: &Path,
     face: &LoginFace,
-    endpoint: &TokenEndpoint,
+    endpoint: Option<&TokenEndpoint>,
     now_ms: u64,
     account: &str,
     reclaimed: &store::Reclaimed,
@@ -303,6 +428,8 @@ fn renew_line(account: &str, t: &Trail, r: &Result<SecretKey, Unusable>) -> Stri
         Err(Unusable::NotLoggedIn) => Some("not-logged-in".to_string()),
         Err(Unusable::Unreadable(_)) => Some("unreadable".to_string()),
         Err(Unusable::Busy) => Some("busy".to_string()),
+        Err(Unusable::CannotRenew) => Some("cannot-renew".to_string()),
+        Err(Unusable::BaseUntouched) => Some("base-untouched".to_string()),
         Err(Unusable::NotRenewed(_)) => t.why.clone(),
     };
     format!(
@@ -340,7 +467,7 @@ type Writing<'a> = (
 )]
 fn renew(
     face: &LoginFace,
-    endpoint: &TokenEndpoint,
+    endpoint: Option<&TokenEndpoint>,
     now_ms: u64,
     n: &Now,
     posted: &SecretKey,
@@ -348,30 +475,53 @@ fn renew(
     (creds, held): Writing<'_>,
     later: &mut Option<Renewed>,
 ) -> Result<SecretKey, Unusable> {
+    // 凭据里记了出处 ⇒ 照出处（地址认不出就不续：不把这个号的刷新令牌发去缺省那一家）；没记 ⇒ 调用方给的缺省那一个。
+    let origin = face.origin.and_then(|read| read(&n.doc));
+    let from_origin;
+    let endpoint = match &origin {
+        Some(o) => {
+            from_origin = TokenEndpoint::at(
+                &o.token_url,
+                endpoint.map_or(TOKEN_DEADLINE, |e| e.deadline),
+            );
+            from_origin.as_ref()
+        }
+        None => endpoint,
+    };
+    let Some(endpoint) = endpoint else {
+        trail.why = Some("cannot-renew".to_string());
+        return Err(Unusable::CannotRenew);
+    };
     let sec = n.doc.get(face.section);
-    let client = sec
-        .and_then(|s| s.get(face.client_field))
-        .and_then(Value::as_str)
-        .unwrap_or(face.client_id)
-        .to_string();
-    let scope = sec
-        .and_then(|s| s.get(face.scopes))
-        .and_then(Value::as_array)
-        .map(|a| {
-            a.iter()
-                .filter_map(Value::as_str)
-                .collect::<Vec<_>>()
-                .join(" ")
+    let client = origin
+        .as_ref()
+        .and_then(|o| o.client_id.clone())
+        .or_else(|| {
+            sec.and_then(|s| s.get(face.client_field))
+                .and_then(Value::as_str)
+                .map(str::to_string)
         })
-        .unwrap_or_default();
-    let body = refresh_body(
-        &[
-            ("grant_type", "refresh_token"),
-            ("client_id", &client),
-            ("scope", &scope),
-        ],
-        ("refresh_token", posted),
-    );
+        .unwrap_or_else(|| face.client_id.to_string());
+    // 这一家记授权范围 ⇒ 请求带上盘上那一串（读不到发空串）；不记 ⇒ 请求体里没有 `scope` 这一格。
+    let scope = face.scopes.map(|cell| {
+        sec.and_then(|s| s.get(cell))
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter_map(Value::as_str)
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            })
+            .unwrap_or_default()
+    });
+    let mut plain = vec![
+        ("grant_type", "refresh_token"),
+        ("client_id", client.as_str()),
+    ];
+    if let Some(scope) = &scope {
+        plain.push(("scope", scope));
+    }
+    let body = refresh_body(&plain, ("refresh_token", posted));
     let answer = crate::relay::fetch(
         &crate::relay::open_here,
         &endpoint.base,
@@ -406,26 +556,50 @@ fn renew(
         }
     };
     let wrapped = Map::from_iter([(String::from("t"), Value::Object(got.clone()))]);
-    let (Some(access), Some(expires_in)) = (
+    // 回包里的期限（秒）：过期时刻记在一格里的那一形缺它不行；交那一家读的那一形缺了就照它的读法读写回后的那一份。
+    let expires_in = got.get("expires_in").and_then(Value::as_u64);
+    let (Some(access), true) = (
         secret_in(&wrapped, "t", "access_token"),
-        got.get("expires_in").and_then(Value::as_u64),
+        expires_in.is_some() || matches!(face.expiry, crate::agents::Expiry::Read(_)),
     ) else {
         trail.why = Some("missing".to_string());
         return Err(Unusable::NotRenewed(crate::common::said::Said::from(
             copy_text("beOauth.refresh.unparsable", &[]),
         )));
     };
-    let renewed = Renewed {
+    // 这一家声明另换的那几格：回包里没有（null · 空串同）⇒ 那一格不动；有而不是一串、或过不了它的校验 ⇒ 整次不落盘，照实说回包读不懂。
+    let mut cells = Vec::new();
+    for c in face.renewed_cells {
+        let raw = match got.get(c.answer) {
+            None | Some(Value::Null) => continue,
+            Some(Value::String(s)) if s.trim().is_empty() => continue,
+            Some(v) => v.as_str(),
+        };
+        let Some(raw) = raw.filter(|s| c.check.is_none_or(|ok| ok(s))) else {
+            trail.why = Some("bad-cell".to_string());
+            return Err(Unusable::NotRenewed(crate::common::said::Said::from(
+                copy_text("beOauth.refresh.unparsable", &[]),
+            )));
+        };
+        cells.push((c.cell, SecretKey::new(raw)));
+    }
+    let mut renewed = Renewed {
         posted: posted.clone(),
         refresh: secret_in(&wrapped, "t", "refresh_token"),
-        expires_ms: now_ms.saturating_add(expires_in.saturating_mul(1000)),
+        expires_ms: now_ms.saturating_add(expires_in.unwrap_or(0).saturating_mul(1000)),
+        at_ms: now_ms,
+        // 写不写进凭据只在 `renewed_doc` 判（这一家不记授权范围 ⇒ 不写）。
         scopes: got
             .get("scope")
             .and_then(Value::as_str)
             .map(|s| s.split_whitespace().map(Value::from).collect::<Vec<_>>())
             .filter(|l| !l.is_empty()),
+        cells,
         access,
     };
+    if let (None, crate::agents::Expiry::Read(read)) = (expires_in, face.expiry) {
+        renewed.expires_ms = read(&renewed_doc(face, &n.doc, &renewed)).unwrap_or(now_ms);
+    }
     match write_back(creds, face, held, &renewed) {
         Err(why) => Err(Unusable::WriteFailed(why)),
         Ok(store::Locked::Busy) => {
@@ -450,7 +624,11 @@ pub(crate) struct Renewed {
     access: SecretKey,
     refresh: Option<SecretKey>,
     expires_ms: u64,
+    /// 续成的那一刻（毫秒；那一家要另记「几点续的」时写它，[`LoginFace::renewed_at`]）。
+    at_ms: u64,
     scopes: Option<Vec<Value>>,
+    /// 那一家声明另换的几格（[`LoginFace::renewed_cells`]）里收下的：那一节里的格名 ⇒ 新值。
+    cells: Vec<(&'static str, SecretKey)>,
 }
 
 impl Renewed {
@@ -476,14 +654,6 @@ pub(crate) fn write_back(
     held: &crate::platform::fs::CredsLock,
     r: &Renewed,
 ) -> Result<store::Locked<Result<WriteBack, Unusable>>, crate::common::said::Said> {
-    let mut plain: Vec<(&str, Value)> = vec![(face.expires_ms, Value::from(r.expires_ms))];
-    if let Some(list) = &r.scopes {
-        plain.push((face.scopes, Value::Array(list.clone())));
-    }
-    let mut secrets: Vec<(&str, &SecretKey)> = vec![(face.access, &r.access)];
-    if let Some(rt) = r.refresh.as_ref() {
-        secrets.push((face.refresh, rt));
-    }
     store::rewrite(creds, face, held, |read| match now_of(read, face) {
         Err(u) => (None, Err(u)),
         Ok(disk)
@@ -495,10 +665,33 @@ pub(crate) fn write_back(
             (None, Ok(WriteBack::Yielded(disk.access)))
         }
         Ok(disk) => (
-            Some(merge_tokens(&disk.doc, face.section, &secrets, &plain)),
+            Some(renewed_doc(face, &disk.doc, r)),
             Ok(WriteBack::Written),
         ),
     })
+}
+
+/// 续成之后的那一份：整份原样，只换那一节里访问 · 刷新令牌、那一家声明另换的几格（[`LoginFace::renewed_cells`]）、
+/// 声明了才换的授权范围（＋ 那一家要记的「几点续的」那一格）。
+/// 过期时刻记在一格里的那一形才写回那一格；交那一家读的那一形（解令牌）不另写。
+fn renewed_doc(face: &LoginFace, disk: &Map<String, Value>, r: &Renewed) -> Map<String, Value> {
+    let mut plain: Vec<(&str, Value)> = Vec::new();
+    if let crate::agents::Expiry::Cell(cell) = face.expiry {
+        plain.push((cell, Value::from(r.expires_ms)));
+    }
+    if let (Some(cell), Some(list)) = (face.scopes, &r.scopes) {
+        plain.push((cell, Value::Array(list.clone())));
+    }
+    let mut secrets: Vec<(&str, &SecretKey)> = vec![(face.access, &r.access)];
+    if let Some(rt) = r.refresh.as_ref() {
+        secrets.push((face.refresh, rt));
+    }
+    secrets.extend(r.cells.iter().map(|(cell, v)| (*cell, v)));
+    let mut doc = merge_tokens(disk, face.section, &secrets, &plain);
+    if let Some((key, value)) = face.renewed_at {
+        doc.insert(key.to_string(), value(r.at_ms));
+    }
+    doc
 }
 
 #[cfg(test)]

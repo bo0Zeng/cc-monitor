@@ -40,7 +40,8 @@ cmd-wire = { path = "../../common/cmd-wire" }
 copy-core = { path = "../../common/copy-core" }
 # 路径最后一段（项目名）只这一种切法：`plain_path_core::last_segment`。
 plain-path-core = { path = "../../common/plain-path-core" }
-creds-core = { path = "../../common/creds-core" }
+# 这台两份秘密文件各该列的那一项（`perm::verdict_at`，在 `harden` 底下）。
+creds-core = { path = "../../common/creds-core", features = ["harden"] }
 face-core = { path = "../../common/face-core" }
 md-core = { path = "../../common/md-core" }
 # 后端的门牌与家的契约（`~/.cc-monitor/` 下每一样的相对路径）。
@@ -63,7 +64,6 @@ guard-core = { path = "../../common/guard-core" }
 test-meters = { path = "../test-meters" }
 # 拨了必被拒、又不会被别人捡走的本机口（住拨号核心，经它的 `test-support`）。
 ssh-dial = { path = "../../comms/ssh-dial", features = ["test-support"] }
-comms-inward = { path = "../../comms/inward" }
 ts-rs.workspace = true
 cmd-wire = { path = "../../common/cmd-wire", features = ["ts"] }
 backend-platform = { path = "../platform", features = ["test-support", "ts"] }

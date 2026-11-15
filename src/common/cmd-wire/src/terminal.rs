@@ -139,8 +139,4 @@ pub struct TerminalInputReq {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub client: Option<String>,
-    /// `text` 之前各单独粘一次的那几段（投递带附件那一句时的图片绝对路径，由那台按附件编号写好）。不上线：入参里写了它 ⇒ `bad_args`（`deny_unknown_fields`）。
-    #[serde(skip)]
-    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
-    pub pastes: Vec<String>,
 }

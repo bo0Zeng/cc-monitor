@@ -9,8 +9,8 @@
   · `T1` **零数据面**:剥注释后,全 cc-bus 脚本里收件箱 · 已读位置 · 总线家目录的字样(`.jsonl` · `.pos` · `$BUS` ·
         `CC_BUS_HOME` · `inbox/`)零命中;**正控**:同一个认法在一段合成的老脚本上认得出。
   · `T2` **零锁 · 零规矩**:`flock` · `route_` 零命中(正控同上)。
-  · `T3` **只经后端**:各动词本体问后端的动词(`ccbus_ask <动词>`)集合 == 登记表(两向相等);
-        `whoami` 只问 `--session-self`。
+  · `T3` **只经后端**:各动词本体问后端的命令(`ccbus_ask bus-<动词>`)集合 == 登记表(两向相等);
+        `whoami` 只问 `session-self`(同经 `ccbus_ask`)。
   · `T4` **两边对得上**:脚本问的那几个动词 == 后端登记的 `bus-*` 帧命令(读 `src/backend` 各份 `.rs` 里 `bus-*` 的 `NAME`,两向相等)。
   · `T5` **`recv` 就是 peek 接 commit**:入口 `cc-bus` 的 recv 那一臂先调 peek、再调 commit,入口里不渲染。
   · `T6` **手册页写了那几句**:`SKILL.md` 里 commit 的四个码(0 · 2 · 11 · 12)·「照常处理手上那段」· at-least-once。
@@ -52,7 +52,7 @@ def bad(tag, msg):
 # ── 登记:本尺子该打出哪些标签(反空真的锚:两向集合对拍,不只是数数)──────────────
 EXPECTED_TAGS = ["T1", "T2", "T3", "T4", "T5", "T6"]
 
-# 各动词本体问后端的那一个动词(`ccbus_ask <动词>`)。入口 · 库 · 词典 · 安装脚本 · whoami · Stop 钩子不问(钩子经 peek / commit 两个本体)。
+# 各动词本体问后端的那一个动词(`ccbus_ask bus-<动词>`)。入口 · 库 · 词典 · Stop 钩子不问;whoami 只问 session-self;安装脚本直问 `--hooks-diag`(钩子经 peek / commit 两个本体)。
 ASKS = {
     "cc-bus-send.sh": {"send"},
     "cc-bus-peek.sh": {"peek"},
@@ -108,16 +108,21 @@ def check_t3():
     src = scripts()
     got = {}
     for n, t in src.items():
-        verbs = set(re.findall(r"\bccbus_ask\s+([a-z]+)\b", t))
-        if verbs:
-            got[n] = verbs
-    who = src.get("cc-bus-whoami.sh", "")
-    if got != ASKS:
-        bad("T3", f"问后端的动词与登记对不上:现打 {got},登记 {ASKS}")
-    elif "--session-self" not in who or "ccbus_ask" in who:
-        bad("T3", "whoami 不是只问 `--session-self`")
+        asks = set(re.findall(r"\bccbus_ask\s+([a-z][a-z-]*)", t))
+        if asks:
+            got[n] = asks
+    who = got.pop("cc-bus-whoami.sh", set())
+    bare = {n: sorted(a for a in v if not a.startswith("bus-")) for n, v in got.items()}
+    bare = {n: v for n, v in bare.items() if v}
+    bus = {n: {a.removeprefix("bus-") for a in v} for n, v in got.items()}
+    if bare:
+        bad("T3", f"动词本体问了不是 bus-* 的命令:{bare}")
+    elif bus != ASKS:
+        bad("T3", f"问后端的动词与登记对不上:现打 {bus},登记 {ASKS}")
+    elif who != {"session-self"}:
+        bad("T3", f"whoami 不是只问 session-self:现打 {sorted(who)}")
     else:
-        ok("T3", f"{len(ASKS)} 个动词本体各只问后端它自己那一条;whoami 只问 --session-self")
+        ok("T3", f"{len(ASKS)} 个动词本体各只问后端它自己那一条 bus-*;whoami 只问 session-self")
 
 
 def check_t4():

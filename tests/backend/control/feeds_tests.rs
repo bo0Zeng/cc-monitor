@@ -37,6 +37,10 @@ fn hello(build: &str) -> String {
     .to_string()
 }
 
+/// 那台拒时自己写好的复制详情（它那边的时刻空位 · 它的机器 · 命令 · 码）。
+const THEIR_DETAIL: &str =
+    "时刻：{at}\n机器：Linux x86_64 · 后端 their\n命令：history-tail\n码：no_such_file";
+
 /// 那台 hello 自报的版本号（与这一份不同：机器页那台的版本号得是它）。
 const THEIR_VERSION: &str = "0.0.1-their";
 
@@ -60,6 +64,18 @@ enum Peer {
     Talk(String, Vec<String>),
     /// 小中继说常驻还没绑上口。
     Absent,
+    /// 同 `Serve`，接上之后照 attach 行带的时区写一帧 `line`（真出口；记录时刻 [`AT_1845Z`]）就断开。
+    Clock(String),
+}
+
+/// 端到端那一条的记录时刻（2026-11-12 18:45 UTC；洛杉矶那一刻是 10:45）。
+const AT_1845Z: &str = "2026-11-12T18:45:00Z";
+
+/// 判据里看各台会话的人的时区（不随跑测试那台的时区变：UTC 的机器上也分得出带没带）。
+const LA: &str = "America/Los_Angeles";
+
+fn la() -> crate::common::time::Tz {
+    crate::common::time::Tz::iana(LA).expect("认得的 IANA 名")
 }
 
 #[derive(Default)]
@@ -67,6 +83,8 @@ struct Fake {
     opens: Mutex<VecDeque<Peer>>,
     installs: AtomicUsize,
     words: Mutex<Vec<String>>,
+    /// 那台收到的每一行 attach（判据读它带的时区）。
+    attaches: Arc<Mutex<Vec<serde_json::Value>>>,
 }
 
 impl Ssh for Fake {
@@ -84,10 +102,11 @@ impl Ssh for Fake {
             .unwrap()
             .pop_front()
             .unwrap_or(Peer::Absent);
+        let attaches = Arc::clone(&self.attaches);
         Box::pin(async move {
             let (up_w, up_r) = tokio::io::duplex(64 * 1024);
             let (down_w, down_r) = tokio::io::duplex(256 * 1024);
-            tokio::spawn(serve(peer, up_r, down_w));
+            tokio::spawn(serve(peer, up_r, down_w, attaches));
             Ok(tokio::io::join(down_r, up_w))
         })
     }
@@ -115,8 +134,14 @@ impl Ssh for Fake {
     }
 }
 
-async fn serve(peer: Peer, up: DuplexStream, mut down: DuplexStream) {
+async fn serve(
+    peer: Peer,
+    up: DuplexStream,
+    mut down: DuplexStream,
+    attaches: Arc<Mutex<Vec<serde_json::Value>>>,
+) {
     let mut lines = tokio::io::BufReader::new(up).lines();
+    let mut clock = false;
     let (build, talk) = match peer {
         Peer::Absent => {
             let _ = down
@@ -126,6 +151,10 @@ async fn serve(peer: Peer, up: DuplexStream, mut down: DuplexStream) {
         }
         Peer::Serve(b) => (b, None),
         Peer::Talk(b, lines) => (b, Some(lines)),
+        Peer::Clock(b) => {
+            clock = true;
+            (b, None)
+        }
     };
     let _ = down
         .write_all(format!("{}\n", hello(&build)).as_bytes())
@@ -134,12 +163,35 @@ async fn serve(peer: Peer, up: DuplexStream, mut down: DuplexStream) {
         return;
     };
     let attach: serde_json::Value = serde_json::from_str(&attach).unwrap();
+    attaches.lock().unwrap().push(attach.clone());
     let mine = attach["mine"].as_str().unwrap_or_default();
     let reply = serde_json::json!({
         "attach": "ok",
         "relation": deploy_contract::build_relation(&build, mine),
     });
     let _ = down.write_all(format!("{reply}\n").as_bytes()).await;
+    if clock {
+        // 那台照它收到的 attach 行的时区写推送帧的钟面（同生产：`Tz::of` 读那一格，出口 `FrameExit::stamp`）。
+        let tz = crate::common::time::Tz::of(attach["tz"].as_str());
+        let rec = crate::agents::record::record(
+            "fake".into(),
+            "r-clock".into(),
+            Some(AT_1845Z.into()),
+            crate::agents::record::Body::Retry { text: None },
+        );
+        let frame = Frame::Line(crate::wire::Line {
+            session_id: "sid-clock".into(),
+            path: "/p/clock.jsonl".into(),
+            seq: 1,
+            record: Some(crate::agents::record::BackRecord::from(rec)),
+            cwd: None,
+            byte_offset: 0,
+            rid: None,
+        });
+        let line = crate::wire::to_line(&crate::wire::FrameExit::stamp(frame, &tz)).unwrap();
+        let _ = down.write_all(line.as_bytes()).await;
+        return;
+    }
     if let Some(talk) = talk {
         for l in talk {
             let _ = down.write_all(format!("{l}\n").as_bytes()).await;
@@ -162,7 +214,8 @@ async fn serve(peer: Peer, up: DuplexStream, mut down: DuplexStream) {
                 "data": {"relayedSessions": 1, "relayedMaybe": 0, "liveStreams": live, "forwards": 0}})
         } else if asked["args"]["fail"] == true {
             serde_json::json!({"kind": "reply", "id": asked["id"], "ok": false,
-                "code": "no_such_file", "said": "那台说：没有这个文件", "detail": "那台的原话"})
+                "code": "no_such_file", "said": "那台说：没有这个文件", "detail": THEIR_DETAIL,
+                "data": {"path": asked["args"]["path"]}})
         } else {
             serde_json::json!({"kind": "reply", "id": asked["id"], "ok": true,
                 "data": {"cmd": asked["cmd"], "args": asked["args"], "view": asked["view"], "tz": asked["tz"]}})
@@ -250,7 +303,7 @@ async fn the_backend_attaches_a_machine_itself_and_its_product_is_up() {
     let mut changes = machine_state::changes().subscribe();
     let neighbour = table_moved_elsewhere(machine);
     let ssh: Arc<dyn Ssh> = fake.clone();
-    align_in(&[machine.to_string()], &ssh, &quiet());
+    align_in(&[machine.to_string()], &ssh, &quiet(), &la());
     let up = up_pushed(&mut changes, machine).await;
     neighbour.abort();
     assert_eq!(
@@ -259,7 +312,7 @@ async fn the_backend_attaches_a_machine_itself_and_its_product_is_up() {
     );
     assert_eq!(fake.installs.load(Ordering::SeqCst), 0, "这一版 ⇒ 不装");
     assert_eq!(*fake.words.lock().unwrap(), vec!["attach".to_string()]);
-    align_in(&[], &ssh, &quiet());
+    align_in(&[], &ssh, &quiet(), &la());
     assert!(!running(machine), "表里没了 ⇒ 那一条收掉");
 }
 
@@ -276,7 +329,7 @@ async fn a_machine_without_a_resident_is_installed_then_ensured_then_attached() 
     }
     let mut changes = machine_state::changes().subscribe();
     let ssh: Arc<dyn Ssh> = fake.clone();
-    align_in(&[machine.to_string()], &ssh, &quiet());
+    align_in(&[machine.to_string()], &ssh, &quiet(), &la());
     up_pushed(&mut changes, machine).await;
     let words = fake.words.lock().unwrap().clone();
     assert_eq!(
@@ -285,7 +338,7 @@ async fn a_machine_without_a_resident_is_installed_then_ensured_then_attached() 
         "{words:?}"
     );
     assert!(words[2].ends_with("-- --resident-ensure"), "{words:?}");
-    align_in(&[], &ssh, &quiet());
+    align_in(&[], &ssh, &quiet(), &la());
 }
 
 /// 机器页「停」：那一条停下、不再自己接（不然转眼又 ensure 起来）；「起」/［重试］叫醒它。
@@ -300,19 +353,19 @@ async fn a_stopped_machine_stays_stopped_until_it_is_woken() {
         .push_back(Peer::Serve(crate::common::id::BUILD_ID.to_string()));
     let mut changes = machine_state::changes().subscribe();
     let ssh: Arc<dyn Ssh> = fake.clone();
-    align_in(&[machine.to_string()], &ssh, &quiet());
+    align_in(&[machine.to_string()], &ssh, &quiet(), &la());
     up_pushed(&mut changes, machine).await;
     hold(machine);
     assert!(!running(machine), "停了 ⇒ 那一条收掉");
-    align_in(&[machine.to_string()], &ssh, &quiet());
+    align_in(&[machine.to_string()], &ssh, &quiet(), &la());
     assert!(!running(machine), "停着的那一台对齐机器表时也不起");
     fake.opens
         .lock()
         .unwrap()
         .push_back(Peer::Serve(crate::common::id::BUILD_ID.to_string()));
-    resume_in(machine, &[machine.to_string()], &ssh, &quiet());
+    resume_in(machine, &[machine.to_string()], &ssh, &quiet(), &la());
     assert!(running(machine), "起 ⇒ 又有那一条");
-    align_in(&[], &ssh, &quiet());
+    align_in(&[], &ssh, &quiet(), &la());
 }
 
 /// 一问请求（信封照帧面那一形，`within_ms` 给足）。
@@ -337,30 +390,36 @@ async fn a_call_for_a_machine_goes_through_its_resident_stream() {
         .push_back(Peer::Serve(crate::common::id::BUILD_ID.to_string()));
     let mut changes = machine_state::changes().subscribe();
     let ssh: Arc<dyn Ssh> = fake.clone();
-    align_in(&[machine.to_string()], &ssh, &quiet());
+    align_in(&[machine.to_string()], &ssh, &quiet(), &la());
     up_pushed(&mut changes, machine).await;
 
     let view = serde_json::json!({"omit": {"record": ["blocks[type=tool_use].input"]}});
+    let args = serde_json::json!({"path": "/p/s.jsonl", "n": 2, "deep": {"a": [1, "二", null]}});
     let got = forward(
         machine.to_string(),
-        asked(
-            "history-tail",
-            serde_json::json!({"path": "/p/s.jsonl", "n": 2}),
-            view.clone(),
-        ),
+        asked("history-tail", args.clone(), view.clone()),
     )
     .await
     .expect("转过去该成")
     .expect("那台回了体");
     assert_eq!(got["cmd"], "history-tail");
-    assert_eq!(got["args"]["path"], "/p/s.jsonl");
+    assert_eq!(got["args"], args, "入参整份原样到那台");
     assert_eq!(got["view"], view, "出口声明原样带到那台");
+    // 那台回的体一格不多一格不少（假那台把收到的四样装回来）：转回这一跳不往回包里添 · 删东西。
+    let mut keys: Vec<&str> = got
+        .as_object()
+        .expect("回包是那台那一份对象")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    keys.sort_unstable();
+    assert_eq!(keys, ["args", "cmd", "tz", "view"], "回包被改了形：{got}");
 
     let fail = forward(
         machine.to_string(),
         asked(
             "history-tail",
-            serde_json::json!({"fail": true}),
+            serde_json::json!({"fail": true, "path": "/p/gone.jsonl"}),
             serde_json::Value::Null,
         ),
     )
@@ -368,8 +427,20 @@ async fn a_call_for_a_machine_goes_through_its_resident_stream() {
     .expect_err("那台拒了");
     assert_eq!(fail.code.as_deref(), Some("no_such_file"));
     assert_eq!(fail.said, "那台说：没有这个文件");
-    assert_eq!(fail.raw.as_deref(), Some("那台的原话"));
-    align_in(&[], &ssh, &quiet());
+    // 那台写好的复制详情（它的时刻 · 它的机器 · 命令 · 码）原样带回：这台投出去照抄，不当「原话」再包一层本机的。
+    let detail = crate::wire::spec::Settle::settle(fail.clone(), "history-tail").detail;
+    assert_eq!(detail, THEIR_DETAIL, "转回那一跳的详情被改写了");
+    assert_eq!(
+        fail.raw, None,
+        "那台的详情不进这台的「原话」：{:?}",
+        fail.raw
+    );
+    assert_eq!(
+        fail.data,
+        Some(serde_json::json!({"path": "/p/gone.jsonl"})),
+        "那台拒时按码带的那一格原样交回"
+    );
+    align_in(&[], &ssh, &quiet(), &la());
 }
 
 /// 转过去的那一问带着发起方看的人的时区：那台照它写回包里的「几点」（不带 ⇒ 那台按 UTC 写，文件窗口的时间就错到 UTC）。
@@ -385,7 +456,7 @@ async fn a_forwarded_call_carries_the_viewers_tz_to_that_machine() {
         .push_back(Peer::Serve(crate::common::id::BUILD_ID.to_string()));
     let mut changes = machine_state::changes().subscribe();
     let ssh: Arc<dyn Ssh> = fake.clone();
-    align_in(&[machine.to_string()], &ssh, &quiet());
+    align_in(&[machine.to_string()], &ssh, &quiet(), &la());
     up_pushed(&mut changes, machine).await;
 
     let with_tz = |view: serde_json::Value| {
@@ -407,7 +478,65 @@ async fn a_forwarded_call_carries_the_viewers_tz_to_that_machine() {
             .expect("那台回了体");
         assert_eq!(got["tz"], "America/Los_Angeles", "view={view}");
     }
-    align_in(&[], &ssh, &quiet());
+    align_in(&[], &ssh, &quiet(), &la());
+}
+
+/// ★ 接那台的常驻流时 attach 行带着看的人的时区名（生产 ＝ 这台的，[`viewer`]）；
+/// 不带 ⇒ 那台照 UTC 写推送帧的钟面，本机原样转给壳，界面上那台会话的每条消息都是 UTC 的钟面。
+#[tokio::test]
+async fn attaching_a_machine_carries_the_viewers_tz_name() {
+    let _one = one_at_a_time().await;
+    let machine = "feeds-attach-tz";
+    let fake = Arc::new(Fake::default());
+    fake.opens
+        .lock()
+        .unwrap()
+        .push_back(Peer::Serve(crate::common::id::BUILD_ID.to_string()));
+    let mut changes = machine_state::changes().subscribe();
+    let ssh: Arc<dyn Ssh> = fake.clone();
+    align_in(&[machine.to_string()], &ssh, &quiet(), &la());
+    up_pushed(&mut changes, machine).await;
+    align_in(&[], &ssh, &quiet(), &la());
+    let attaches = fake.attaches.lock().unwrap().clone();
+    assert!(!attaches.is_empty(), "那台收到过 attach 行");
+    for a in &attaches {
+        assert_eq!(a["tz"].as_str(), Some(LA), "{a}");
+    }
+}
+
+/// ★ 端到端：那台照它收到的时区写 `line` 帧，本机原样转出 ⇒ 转出去那一行的 `timeText` 是看的人钟上的那一刻
+/// （看的人在洛杉矶：记录 18:45Z ⇒ `10:45`，不是 UTC 的 `18:45`）。
+#[tokio::test]
+async fn a_relayed_line_from_a_machine_reads_on_the_viewers_clock() {
+    use cmd_wire::frame::Relayed;
+    let _one = one_at_a_time().await;
+    let machine = "feeds-clock";
+    let fake = Arc::new(Fake::default());
+    fake.opens
+        .lock()
+        .unwrap()
+        .push_back(Peer::Clock(crate::common::id::BUILD_ID.to_string()));
+    let ssh: Arc<dyn Ssh> = fake.clone();
+    let (relay, got) = caught();
+    align_in(&[machine.to_string()], &ssh, &relay, &la());
+    let line_of = |g: &[Frame]| {
+        g.iter().find_map(|f| match f {
+            Frame::Relayed(Relayed::Line { machine: m, line })
+                if m == machine && line.contains("r-clock") =>
+            {
+                Some(line.clone())
+            }
+            _ => None,
+        })
+    };
+    until("那台写的那一帧 line 转出来", || {
+        line_of(&got.lock().unwrap()).is_some()
+    })
+    .await;
+    align_in(&[], &ssh, &quiet(), &la());
+    let line = line_of(&got.lock().unwrap()).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&line).unwrap();
+    assert_eq!(v["record"]["timeText"].as_str(), Some("10:45"), "{line}");
 }
 
 /// 没有那一台的常驻流（机器表里没有 · 停着）⇒ 不发，说「那一跳断开」，码是协议里那一个。
@@ -469,7 +598,7 @@ async fn a_typed_call_from_this_backend_goes_through_the_same_stream() {
         .push_back(Peer::Serve(crate::common::id::BUILD_ID.to_string()));
     let mut changes = machine_state::changes().subscribe();
     let ssh: Arc<dyn Ssh> = fake.clone();
-    align_in(&[machine.to_string()], &ssh, &quiet());
+    align_in(&[machine.to_string()], &ssh, &quiet(), &la());
     up_pushed(&mut changes, machine).await;
     let within =
         crate::platform::child::Until::after(crate::platform::child::Deadline::millis(30_000));
@@ -485,7 +614,7 @@ async fn a_typed_call_from_this_backend_goes_through_the_same_stream() {
         .await
         .expect("问到了");
     assert_eq!(plain.live_streams, 3);
-    align_in(&[], &ssh, &quiet());
+    align_in(&[], &ssh, &quiet(), &la());
     let fail = call::<MachineInterrupts>("feeds-call-nowhere", &exit, within)
         .await
         .expect_err("没有那一条就不发");
@@ -562,7 +691,7 @@ async fn a_machines_stream_is_relayed_as_is_and_its_version_comes_from_its_hello
     let mut changes = machine_state::changes().subscribe();
     let ssh: Arc<dyn Ssh> = fake.clone();
     let (relay, got) = caught();
-    align_in(&[machine.to_string()], &ssh, &relay);
+    align_in(&[machine.to_string()], &ssh, &relay, &la());
     let ended = |g: &[Frame]| {
         g.iter()
             .any(|f| matches!(f, Frame::Relayed(Relayed::Ended { machine: m }) if m == machine))
@@ -571,12 +700,14 @@ async fn a_machines_stream_is_relayed_as_is_and_its_version_comes_from_its_hello
         ended(&got.lock().unwrap())
     })
     .await;
-    align_in(&[], &ssh, &quiet());
+    align_in(&[], &ssh, &quiet(), &la());
     let seen: Vec<Relayed> = got
         .lock()
         .unwrap()
         .iter()
         .filter_map(|f| match f {
+            // 会话帧后面紧跟的那一格成品另有判据（[`a_machines_session_line_is_followed_by_its_seat_and_a_live_card_goes_out_folded`]）。
+            Frame::Relayed(Relayed::Seats { .. }) => None,
             Frame::Relayed(r) => Some(r.clone()),
             // 接上 · 断了那一声组变了（[`a_machine_attaching_and_dropping_each_pushes_groups_changed`] 看它）。
             Frame::Changed(cmd_wire::frame::Changed::Groups {}) => None,
@@ -640,7 +771,7 @@ async fn a_new_stream_first_gets_the_hello_of_each_machine_attached_now() {
             matches!(&f, Frame::Relayed(Relayed::Line { machine: m, line }) if m == machine && *line == hello(crate::common::id::BUILD_ID))
         })
     };
-    align_in(&[machine.to_string()], &ssh, &relay);
+    align_in(&[machine.to_string()], &ssh, &relay, &la());
     until("那台接上了、它的 hello 转出去了", || {
         got.lock()
             .unwrap()
@@ -649,7 +780,7 @@ async fn a_new_stream_first_gets_the_hello_of_each_machine_attached_now() {
     })
     .await;
     assert!(hello_now(), "那台接着的时候新流拿不到它的 hello");
-    align_in(&[], &ssh, &quiet());
+    align_in(&[], &ssh, &quiet(), &la());
     assert!(!hello_now(), "那台那一条收了，新流还先收它的 hello");
 }
 
@@ -723,7 +854,7 @@ async fn a_lost_machine_has_each_of_its_open_sessions_said_unclear_by_this_backe
     ));
     let ssh: Arc<dyn Ssh> = fake.clone();
     let (relay, got) = caught();
-    align_in(&[machine.to_string()], &ssh, &relay);
+    align_in(&[machine.to_string()], &ssh, &relay, &la());
     until("那台这一条断了 ⇒ 转一帧 ended", || {
         got.lock()
             .unwrap()
@@ -731,12 +862,14 @@ async fn a_lost_machine_has_each_of_its_open_sessions_said_unclear_by_this_backe
             .any(|f| matches!(f, Frame::Relayed(Relayed::Ended { machine: m }) if m == machine))
     })
     .await;
-    align_in(&[], &ssh, &quiet());
+    align_in(&[], &ssh, &quiet(), &la());
     let seen: Vec<Relayed> = got
         .lock()
         .unwrap()
         .iter()
         .filter_map(|f| match f {
+            // 每一行会话帧后面紧跟的那一格成品另有判据（[`a_lost_link_says_each_open_seat_unclear_voids_listed_and_empties_the_board`]）。
+            Frame::Relayed(Relayed::Seats { .. }) => None,
             Frame::Relayed(r) => Some(r.clone()),
             _ => None,
         })
@@ -745,12 +878,10 @@ async fn a_lost_machine_has_each_of_its_open_sessions_said_unclear_by_this_backe
         .iter()
         .position(|r| matches!(r, Relayed::Ended { .. }))
         .unwrap();
-    let unclear = face_core::book::unseen(crate::common::cells::Words(
-        comms_inward::chan::said::offline(machine),
-    ));
+    let unclear = face_core::book::unseen(crate::common::cells::Words(copy_core::offline(machine)));
     let said_left = |sid: &str| Relayed::Line {
         machine: machine.into(),
-        line: serde_json::to_string(&Frame::<serde_json::Value>::SessionLeft(
+        line: serde_json::to_string(&cmd_wire::frame::Frame::<serde_json::Value>::SessionLeft(
             crate::wire::SessionLeft {
                 sid: sid.into(),
                 face: unclear.clone(),
@@ -786,7 +917,7 @@ async fn a_machine_attaching_and_dropping_each_pushes_groups_changed() {
         .push_back(Peer::Talk(crate::common::id::BUILD_ID.to_string(), vec![]));
     let ssh: Arc<dyn Ssh> = fake.clone();
     let (relay, got) = caught();
-    align_in(&[machine.to_string()], &ssh, &relay);
+    align_in(&[machine.to_string()], &ssh, &relay, &la());
     let is_groups = |f: &Frame| matches!(f, Frame::Changed(Changed::Groups {}));
     let is_end =
         |f: &Frame| matches!(f, Frame::Relayed(Relayed::Ended { machine: m }) if m == machine);
@@ -800,7 +931,7 @@ async fn a_machine_attaching_and_dropping_each_pushes_groups_changed() {
         },
     )
     .await;
-    align_in(&[], &ssh, &quiet());
+    align_in(&[], &ssh, &quiet(), &la());
     let tags: Vec<&str> = got
         .lock()
         .unwrap()
@@ -833,7 +964,7 @@ fn wake_row(
     cmd_wire::machine::MachineState {
         name: "nas".into(),
         state: kind,
-        dot: deploy::machine::dot(kind),
+        dot: copy_core::machine::dot(kind),
         linked: deploy::machine::linked(kind),
         offline: false,
         reason: None,
@@ -844,6 +975,8 @@ fn wake_row(
         said: said.into(),
         offline_said: "nas 离线".into(),
         held_said: "nas 离线 · 连上后补交".into(),
+        withdraw_held: "nas w-withdraw".into(),
+        rewind_held: "nas w-rewind".into(),
         fixes: Vec::new(),
         seen_host_key: None,
         expected_host_key: None,
@@ -908,4 +1041,302 @@ fn stopping_a_machine_not_in_the_table_is_refused_before_its_stream_is_held() {
     assert!(held.borrow().is_empty(), "拒了就没 hold");
     stop_in("nas", &table, hold).expect("表里有就停");
     assert_eq!(*held.borrow(), ["nas"]);
+}
+
+// ── 各台的会话簿 · 活卡板由本机后端折好、推成品（壳只换缓存、原样转）──
+
+/// 那张卡的第 `n` 帧（0 ＝ 整卡一块空正文；之后每帧那一段多一个 `x`）。
+fn card(n: u64) -> String {
+    if n == 0 {
+        serde_json::json!({"kind":"live_card","sid":"s-card","card":0,"n":0,"op":"open","rid":"m",
+            "phase":"streaming","clipped":false,"blocks":[{"kind":"text","md":[]}]})
+    } else {
+        serde_json::json!({"kind":"live_card","sid":"s-card","card":0,"n":n,"op":"text","i":0,"keep":0,
+            "tail":[{"t":"p","k":["x".repeat(n as usize)]}]})
+    }
+    .to_string()
+}
+
+/// ★ 先红的那一条：那台流上一行会话帧照原样转，紧跟一格 `seats`（那一条此刻整条）；一帧 `live_card` 不原样转，转的是折好的 `live`。
+#[tokio::test]
+async fn a_machines_session_line_is_followed_by_its_seat_and_a_live_card_goes_out_folded() {
+    use crate::wire::Life;
+    use cmd_wire::frame::{Relayed, Seat};
+    let machine = "feeds-seats";
+    let _one = one_at_a_time().await;
+    let fake = Arc::new(Fake::default());
+    let added = told("session_added", "s-1", Life::live(None, None));
+    fake.opens.lock().unwrap().push_back(Peer::Talk(
+        crate::common::id::BUILD_ID.to_string(),
+        vec![added.clone(), card(0), card(1)],
+    ));
+    let ssh: Arc<dyn Ssh> = fake.clone();
+    let (relay, got) = caught();
+    align_in(&[machine.to_string()], &ssh, &relay, &la());
+    until("那台这一条断了 ⇒ 转一帧 ended", || {
+        got.lock()
+            .unwrap()
+            .iter()
+            .any(|f| matches!(f, Frame::Relayed(Relayed::Ended { machine: m }) if m == machine))
+    })
+    .await;
+    align_in(&[], &ssh, &quiet(), &la());
+    let seen: Vec<Relayed> = got
+        .lock()
+        .unwrap()
+        .iter()
+        .filter_map(|f| match f {
+            Frame::Relayed(r) => Some(r.clone()),
+            _ => None,
+        })
+        .collect();
+    let at = seen
+        .iter()
+        .position(|r| matches!(r, Relayed::Line { line, .. } if *line == added))
+        .expect("会话帧照原样转");
+    let Relayed::Seats { machine: m, seats } = &seen[at + 1] else {
+        panic!("会话帧后面没紧跟一格 seats：{seen:#?}")
+    };
+    assert_eq!(m, machine);
+    assert!(!seats.whole && !seats.listed, "{seats:?}");
+    assert!(
+        matches!(&seats.seats[..], [s] if s.sid == "s-1" && matches!(&s.seat, Some(Seat::Live { meta, .. }) if meta.sid == "s-1")),
+        "{seats:?}"
+    );
+    assert!(
+        !seen.iter().any(|r| matches!(r, Relayed::Line { line, .. }
+                if cmd_wire::frame::kind_of(line).ok().as_deref() == Some("live_card"))),
+        "live_card 原样那一行转出去了：{seen:#?}"
+    );
+    let live: Vec<&cmd_wire::frame::LiveNow> = seen
+        .iter()
+        .filter_map(|r| match r {
+            Relayed::Live { live, .. } => Some(live),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(live.len(), 2, "开卡 · 一段字各一格：{seen:#?}");
+    assert!(matches!(
+        live[0].change,
+        cmd_wire::live::LiveChange::Whole { .. }
+    ));
+    assert!(matches!(
+        live[1].change,
+        cmd_wire::live::LiveChange::Tail { .. }
+    ));
+    assert_eq!(
+        live[1].whole.cards[0].body.len(),
+        1,
+        "整份是那一处此刻的样子"
+    );
+}
+
+/// 那台这一条断的那一刻：说不清的每一条照旧转、各紧跟一格 `seats`（那一条 `left`，清单报完了作废）；板清空 ——
+/// 下一条连接上同一张卡号的增量不接旧卡；簿里的条目还在。
+#[test]
+fn a_lost_link_says_each_open_seat_unclear_voids_listed_and_empties_the_board() {
+    use crate::wire::Life;
+    use cmd_wire::frame::{Relayed, Seat};
+    let m = "feeds-lost";
+    let mut f = Folds::default();
+    for l in [
+        told("session_added", "s-1", Life::live(None, None)),
+        r#"{"kind":"sessions_replayed"}"#.to_string(),
+        card(0),
+    ] {
+        fold_line(&mut f, m, &l);
+    }
+    assert!(f.book.listed);
+    let out = ended_now(&mut f, m);
+    assert!(
+        matches!(&out[..], [Relayed::Line { line, .. }, Relayed::Seats { seats, .. }]
+            if line.contains("session_left")
+                && !seats.listed
+                && matches!(&seats.seats[..], [s] if matches!(&s.seat, Some(Seat::Left { .. })))),
+        "{out:#?}"
+    );
+    assert!(f.book.left.contains_key("s-1"), "簿里的条目随断线丢了");
+    let Relayed::Seats { seats, .. } = &out[1] else {
+        unreachable!()
+    };
+    assert_eq!(seats.seats[0], f.book.seat_now("s-1"));
+    let (next, _) = fold_line(&mut f, m, &card(1));
+    assert!(next.is_empty(), "下一条连接的增量接到了旧卡上：{next:#?}");
+}
+
+/// ★ 那台这一条断的那一刻，未读是那条连接上数的 ⇒ 整份作废：已结束、不再说说不清的那一条也补一格 `seats`（不带未读），壳那一格跟着摘。
+#[test]
+fn a_lost_link_voids_the_unread_of_every_session_even_the_ended_ones() {
+    use crate::wire::Life;
+    use cmd_wire::frame::Relayed;
+    let m = "feeds-lost-unread";
+    let mut f = Folds::default();
+    for l in [
+        told("session_added", "s-1", Life::live(None, None)),
+        told("session_left", "s-2", Life::Ended),
+        r#"{"kind":"session_unread","sid":"s-1","said":"3"}"#.to_string(),
+        r#"{"kind":"session_unread","sid":"s-2","said":"5"}"#.to_string(),
+    ] {
+        fold_line(&mut f, m, &l);
+    }
+    let out = ended_now(&mut f, m);
+    let seated: Vec<(&str, bool)> = out
+        .iter()
+        .filter_map(|r| match r {
+            Relayed::Seats { seats, .. } => Some(seats.seats.iter()),
+            _ => None,
+        })
+        .flatten()
+        .map(|s| (s.sid.as_str(), s.unread.is_some()))
+        .collect();
+    assert_eq!(seated, [("s-1", false), ("s-2", false)], "{out:#?}");
+    assert!(f.book.unread.is_empty());
+}
+
+/// 新连上来的流：每台先 hello、紧跟一格 `seats` 带 `whole`（那台整本）。
+#[tokio::test]
+async fn a_new_stream_gets_each_attached_machines_whole_book_after_its_hello() {
+    use cmd_wire::frame::Relayed;
+    let machine = "feeds-whole";
+    let _one = one_at_a_time().await;
+    let fake = Arc::new(Fake::default());
+    fake.opens
+        .lock()
+        .unwrap()
+        .push_back(Peer::Serve(crate::common::id::BUILD_ID.to_string()));
+    let ssh: Arc<dyn Ssh> = fake.clone();
+    let (relay, got) = caught();
+    align_in(&[machine.to_string()], &ssh, &relay, &la());
+    until("那台接上了", || {
+        got.lock()
+            .unwrap()
+            .iter()
+            .any(|f| matches!(f, Frame::Relayed(Relayed::Line { machine: m, .. }) if m == machine))
+    })
+    .await;
+    // 那台那一本里有一条（照那台流上一行折进去，与转出去的同一处）。
+    let want = {
+        let mut all = lock(folds());
+        let f = all.get_mut(machine).expect("起一台就有它那一份");
+        fold_line(
+            f,
+            machine,
+            &told("session_added", "s-w", crate::wire::Life::live(None, None)),
+        );
+        f.book.seat_now("s-w")
+    };
+    let now: Vec<Relayed> = attached_hellos()
+        .into_iter()
+        .filter_map(|f| match f {
+            Frame::Relayed(r) if r.machine() == machine => Some(r),
+            _ => None,
+        })
+        .collect();
+    align_in(&[], &ssh, &quiet(), &la());
+    assert!(
+        matches!(&now[..], [Relayed::Line { .. }, Relayed::Seats { seats, .. }] if seats.whole && seats.seats == [want.clone()]),
+        "{now:#?}"
+    );
+}
+
+// ── 对齐起收成对 · 停失败交那台的原话 ──
+
+/// ★ 对齐那一下起与收成对：机器表里还是那几台 ⇒ 在跑的那一条不动、不再起第二回（同一条、只接过一次）；
+/// 表里没了 ⇒ 那一条收掉，它的循环放手（没人再握着那一条）。
+#[tokio::test]
+async fn aligning_starts_a_machine_once_and_closes_what_it_started() {
+    let machine = "feeds-pair";
+    let _one = one_at_a_time().await;
+    let fake = Arc::new(Fake::default());
+    fake.opens
+        .lock()
+        .unwrap()
+        .push_back(Peer::Serve(crate::common::id::BUILD_ID.to_string()));
+    let mut changes = machine_state::changes().subscribe();
+    let ssh: Arc<dyn Ssh> = fake.clone();
+    align_in(&[machine.to_string()], &ssh, &quiet(), &la());
+    up_pushed(&mut changes, machine).await;
+    let first = lock(table()).get(machine).cloned().expect("起了那一条");
+    align_in(&[machine.to_string()], &ssh, &quiet(), &la());
+    let again = lock(table()).get(machine).cloned().expect("还在跑");
+    assert!(Arc::ptr_eq(&first, &again), "表没变又起了第二回");
+    drop(again);
+    let attaches = || {
+        fake.words
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|w| *w == "attach")
+            .count()
+    };
+    assert_eq!(attaches(), 1, "表没变又接了一次");
+    align_in(&[], &ssh, &quiet(), &la());
+    assert!(!running(machine), "表里没了 ⇒ 那一条收掉");
+    until("收掉的那一条，循环放手", || {
+        Arc::strong_count(&first) == 1
+    })
+    .await;
+}
+
+/// 一次性 exec 只认 `--resident-stop`、照排好的那一样回（停那台常驻那一下的替身）。
+struct StopSsh(Mutex<Option<Result<Captured, Problem>>>);
+
+impl Ssh for StopSsh {
+    fn open(&self, _: &str, command: String, _: Progress) -> Boxed<'_, Result<Pipe, Problem>> {
+        panic!("停那一下不开长 exec：{command}")
+    }
+    fn capture(&self, _machine: &str, command: String) -> Boxed<'_, Result<Captured, Problem>> {
+        assert!(command.ends_with("-- --resident-stop"), "{command}");
+        let got = self.0.lock().unwrap().take().expect("只跑一次");
+        Box::pin(async move { got })
+    }
+    fn install(&self, _: &str) -> Boxed<'_, bool> {
+        panic!("停那一下不装")
+    }
+    fn far(&self, _: &str) -> bool {
+        false
+    }
+}
+
+/// ★ 停那台常驻没成 ⇒ `stop_failed`，那一句与原话都是那台说的、不改写：那台退非零、stderr 是它的失败那一行 ⇒ 它的 `said` · `detail`；
+/// 那一跳没够着 ⇒ 拨号那一层的那一句与原话。停成了 ⇒ 那台那一行的结局。
+#[tokio::test]
+async fn a_failed_stop_hands_back_that_machines_own_words() {
+    let run = |r: Result<Captured, Problem>| async move {
+        stop_with(&StopSsh(Mutex::new(Some(r))), "feeds-stop").await
+    };
+    let theirs = serde_json::json!({"code": "failed", "said": "那台说：常驻停不下来", "detail": "kill 4242: EPERM"});
+    let e = run(Ok(Captured {
+        ended: cmd_wire::dial::CaptureEnd::Exited { code: 1 },
+        stdout: String::new(),
+        stderr: theirs.to_string(),
+    }))
+    .await
+    .expect_err("那台说停没成");
+    assert_eq!(e.code.as_deref(), Some("stop_failed"));
+    assert_eq!(e.said, "那台说：常驻停不下来");
+    assert_eq!(e.raw.as_deref(), Some("kill 4242: EPERM"));
+
+    let e = run(Err(Problem::new(
+        "够不到 feeds-stop",
+        "ssh: connect refused",
+    )))
+    .await
+    .expect_err("那一跳没够着");
+    assert_eq!(e.code.as_deref(), Some("stop_failed"));
+    assert_eq!(e.said, "够不到 feeds-stop");
+    assert_eq!(e.raw.as_deref(), Some("ssh: connect refused"));
+
+    let ok = run(Ok(Captured {
+        ended: cmd_wire::dial::CaptureEnd::Exited { code: 0 },
+        stdout: r#"{"stopped":"stopped","pid":4242,"said":"那台·已停"}"#.into(),
+        stderr: String::new(),
+    }))
+    .await
+    .expect("停成了");
+    assert_eq!(
+        (ok.stopped.as_str(), ok.pid, ok.said.as_str()),
+        ("stopped", Some(4242), "那台·已停"),
+        "那台写好的那一句原样交上去"
+    );
 }

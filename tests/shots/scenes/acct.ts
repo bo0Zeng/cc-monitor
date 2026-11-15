@@ -10,6 +10,7 @@ import { putAccounts, putBrokenQuota, putLineage, putQuota, putRotation, type Qu
 import type { World } from "../fake/types";
 import { defaultWorld, LOCAL } from "../fake/world";
 import {
+  byText,
   click,
   mainReady,
   openTab,
@@ -360,13 +361,10 @@ export const ACCT_SCENES: Scene[] = [
   ),
   scene(
     "acct-chip-default",
-    "按钮 · 无会话 ⇒ 默认 work ＋ 账号面板",
-    "没有 tab：按钮退成 默认 work，点开即账号面板（只有底栏「新会话默认」那一形）",
+    "按钮 · 无会话 ⇒ 默认 work",
+    "没有 tab：按钮退成「默认 work」（底栏「新会话默认」那一形）；点它开设置窗的账号页（另一扇窗，这里不截）",
     async () => {
-      await waitFor(".status-account");
-      await sleep(1200);
-      await click(".status-account");
-      await waitFor('aside[role="dialog"]');
+      await byText(".status-account", "work");
       await sleep(500);
     },
     world(

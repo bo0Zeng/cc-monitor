@@ -4,7 +4,8 @@
 //!    远端的行带那台的名字、本机的不带；没答上的那几台原样带上。
 //! 2. 真回包那一形（那台扫出来的行，金样 `history-search-row.golden.json`）照类型解得开、合完整数格原样是整数；
 //!    整数格写成 `3000.0` ⇒ 解不开（交进来的一侧得原样写整数）。
-//! 3. 结果头那一句在这里写好（搜的词 · 命中数 · 会话数；截过 ⇒ 截过那一句），两端照摆。
+//! 3. 结果头那一句在这里写好（搜的词 · 命中数 · 会话数；截过 ⇒ 截过那一句），两端照摆；一台都没答上 ⇒ 不写（没问到不当没有），
+//!    答了一台、一处都没中 ⇒ 照写（命中 0）。
 //! 4. 头底下那几句也在这里写好（读不动几份 · 只按标题的那几家），两端照摆。
 
 use super::*;
@@ -117,6 +118,13 @@ fn merging_sorts_newest_first_stably_and_sums_what_each_machine_said() {
         m.sessions[0].row.at_text, "at-rem-new",
         "那台写好的字原样带过来"
     );
+    // 「+N 处」那颗的字合的这一步写好（界面照抄）：还有没摆出来的命中才有。
+    let more: Vec<Option<String>> = m.sessions.iter().map(|s| s.more_text.clone()).collect();
+    let plus2 = Some(copy_core::copy_text(
+        "history.searchSession.more",
+        &[("n", "2")],
+    ));
+    assert_eq!(more, [plus2.clone(), None, None, plus2]);
     let empty = merge("q", vec![], vec![]);
     assert_eq!(
         (empty.total_hits, empty.sessions.len(), empty.truncated),
@@ -168,10 +176,10 @@ fn the_head_line_is_written_here_once_with_the_word_and_the_counts() {
     let (n, m) = args(&plain);
     assert_eq!(
         plain.summary,
-        copy_core::copy_text(
+        Some(copy_core::copy_text(
             "history.search.summary",
             &[("q", "报表"), ("n", &n), ("m", &m)]
-        )
+        ))
     );
     let cut = merge(
         "报表",
@@ -182,12 +190,71 @@ fn the_head_line_is_written_here_once_with_the_word_and_the_counts() {
     assert!(cut.truncated);
     assert_eq!(
         cut.summary,
-        copy_core::copy_text(
+        Some(copy_core::copy_text(
             "history.search.summaryTruncated",
             &[("q", "报表"), ("n", &n), ("m", &m)]
-        ),
+        )),
         "截过 ⇒ 截过那一句"
     );
+}
+
+/// ★ 一台都没答上 ⇒ 不出结果头那一句（没问到不当「命中 0」）；答了一台、一处都没中 ⇒ 照出（命中 0 是真的）。
+/// 两端只照这一格摆，不再自己数没答上的台数。
+#[test]
+fn no_machine_answered_writes_no_head_line() {
+    let down = |name: &str| SearchDown {
+        origin: Machine::named(name),
+        said: format!("{name} 离线"),
+    };
+    let none = merge("报表", vec![], vec![down("pi"), down("nas")]);
+    assert_eq!(none.summary, None, "一台都没答上 ⇒ 没有结果头");
+    assert_eq!(none.down.len(), 2, "没答上的那几台原样带上");
+    let empty = merge(
+        "报表",
+        vec![(Machine::local(), reply(&[], 0, &[]))],
+        vec![down("pi")],
+    );
+    assert_eq!(
+        empty.summary,
+        Some(copy_core::copy_text(
+            "history.search.summary",
+            &[("q", "报表"), ("n", "0"), ("m", "0")]
+        )),
+        "答了一台、一处没中 ⇒ 照出命中 0"
+    );
+}
+
+/// ★ 一行都没有时空态那一句也在这里写好，两端只照它摆：一台都没答上 ⇒「没有一台答上」那一句（没问到不当没有）；
+/// 答了、一处没中 ⇒ 没有匹配那一句；有行 ⇒ 不写。
+#[test]
+fn the_empty_line_says_whether_nobody_answered_or_nothing_matched() {
+    let down = |name: &str| SearchDown {
+        origin: Machine::named(name),
+        said: format!("{name} 离线"),
+    };
+    let none = merge("报表", vec![], vec![down("pi"), down("nas")]);
+    assert_eq!(
+        none.empty,
+        Some(copy_core::copy_text("history.search.noneAnswered", &[])),
+        "一台都没答上 ⇒ 搜不了那一句"
+    );
+    let missed = merge(
+        "报表",
+        vec![(Machine::local(), reply(&[], 0, &[]))],
+        vec![down("pi")],
+    );
+    assert_eq!(
+        missed.empty,
+        Some(copy_core::copy_text("kit.menu.noMatch", &[("q", "报表")])),
+        "答了、一处没中 ⇒ 没有匹配"
+    );
+    let hit = merge(
+        "报表",
+        vec![(Machine::local(), reply(&[("s1", 10, 0, false)], 0, &[]))],
+        vec![],
+    );
+    assert_eq!(hit.empty, None, "有行 ⇒ 不写空态");
+    assert_ne!(none.empty, missed.empty, "两种空不是同一句");
 }
 
 #[test]
@@ -201,4 +268,56 @@ fn nothing_unreadable_and_nothing_skipped_writes_no_note() {
         m.notes.is_empty(),
         "读不动 0 份 · 没有只按标题的 ⇒ 一句都不写"
     );
+}
+
+/// ★ 没答上那台那一句由这里写好、叫出那台（同需手动那一份说法，`needs::missed`）：答了一个错 ⇒「<那台> · <那一句>」；
+/// 断着 ⇒ 离线那一句；回包解不开 ⇒ 读不懂那一句；答了 ⇒ 那一份原样。
+#[test]
+fn a_machine_that_did_not_answer_is_named_in_its_down_sentence() {
+    use cmd_wire::phone::CallEnd;
+    let pi = || Machine::named("pi");
+    let down = search_reply(
+        pi(),
+        "树莓派",
+        CallEnd::Failed {
+            call: 1,
+            code: "failed".into(),
+            said: "读不动".into(),
+            detail: String::new(),
+            data: None,
+        },
+    )
+    .expect_err("答失败");
+    assert_eq!(
+        down,
+        SearchDown {
+            origin: pi(),
+            said: copy_core::copy_text(
+                "kit.text.machineSaid",
+                &[("machine", "树莓派"), ("said", "读不动")]
+            ),
+        }
+    );
+    let off = search_reply(pi(), "树莓派", CallEnd::Down { call: 1 }).expect_err("断着");
+    assert_eq!(off.said, copy_core::offline("树莓派"));
+    let odd = search_reply(
+        pi(),
+        "树莓派",
+        CallEnd::Ok {
+            call: 1,
+            data: json!({"sessions": 1}),
+        },
+    )
+    .expect_err("解不开");
+    assert_eq!(odd.said, copy_core::reply_unreadable("树莓派"));
+    let ok = search_reply(
+        pi(),
+        "树莓派",
+        CallEnd::Ok {
+            call: 1,
+            data: serde_json::from_str(&reply_text(&[("s1", 10, 0, false)], 0, &[])).unwrap(),
+        },
+    )
+    .expect("答了");
+    assert_eq!(ok, reply(&[("s1", 10, 0, false)], 0, &[]));
 }

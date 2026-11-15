@@ -32,8 +32,7 @@ pub(crate) struct Probed {
     session_id: String,
     /// `@ccm_sid` 的值。未设置 ⇒ 空串。
     ///
-    /// 是 `@ccm_sid`，不是 `@ccm_sid_expect`：通道 A（`shared/ccm`）只写意图，通道 B 才写事实，破坏性动作只认事实。
-    /// 通道 B 的写者是后端自己（[`super::identity_tag`]，由 pidfile inotify 驱动，打标前过 `procStart` 冒名检查）。
+    /// 它的唯一写者是后端自己（[`super::identity_tag`]，由 pidfile inotify 驱动，打标前过 `procStart` 冒名检查）；建会话的那一方不写。
     ccm_sid: String,
     /// `#{session_windows}`。**Gate 3 只给破坏性动作用**（见 [`admit_destructive`]）。
     /// 解析不出来 ⇒ `0`，而 Gate 3 要求恰好 `1` ⇒ **fail closed**（不会误杀）。

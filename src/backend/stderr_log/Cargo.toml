@@ -15,7 +15,8 @@ workspace = true
 backend-common = { path = "../common" }
 backend-platform = { path = "../platform" }
 copy-core = { path = "../../common/copy-core" }
-tracing.workspace = true
+# 诊断文件的落点（家目录相对）住布局表。
+relay-route-core = { path = "../../common/relay-route-core" }
 
 [dev-dependencies]
 # 测试档的家一开始就是沙箱（判据碰不到这台用户的真家）。

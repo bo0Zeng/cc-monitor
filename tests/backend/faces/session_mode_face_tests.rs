@@ -56,7 +56,7 @@ impl ModeIo for Fake {
     }
 }
 
-const SW: crate::agents::ModeSwitch = crate::agents::ModeSwitch {
+const SW: crate::agents::ModeCycle = crate::agents::ModeCycle {
     key: "shift-tab",
     cycle_max: 5,
     read: |_| None,
@@ -221,5 +221,124 @@ fn auto_is_offered_and_a_launch_only_mode_says_so() {
     assert_eq!(
         offered(&perm, "yolo").unwrap_err().code.as_deref(),
         Some("bad_args")
+    );
+}
+
+/// ★ 切权限档照按 sid 找到它的那一家认：会话落在 `other` 的记录根下、照路径认不出，`other` 没有权限档 ⇒ 没有（不支持、一个键不按），
+/// 不落到默认那一家的档表；`other` 有 ⇒ 就是它那一份。
+#[test]
+fn the_permission_face_follows_the_family_the_session_was_found_in() {
+    assert!(
+        crate::agents::fake::LAUNCH.permission.is_some(),
+        "默认那一家有权限档"
+    );
+    let (reg, at) =
+        crate::agents::fake::found_in_the_other("mode-none", |f| crate::agents::LaunchFace {
+            permission: None,
+            ..f
+        });
+    assert!(
+        permission_among(&reg, Some(&at), None).is_none(),
+        "那一家没有权限档 ⇒ 没有，不照默认那一家按"
+    );
+    let (reg, at) = crate::agents::fake::found_in_the_other("mode-own", |f| f);
+    assert!(
+        permission_among(&reg, Some(&at), None).is_some(),
+        "有 ⇒ 照那一家的档表"
+    );
+}
+
+/// 替身终端：记下送了哪几句 · 按了哪几个键；送一律送到，屏是空的、不重画。
+#[derive(Default)]
+struct Keys {
+    said: Vec<String>,
+    pressed: Vec<&'static str>,
+}
+
+impl ModelDrive for Keys {
+    fn open(&mut self) -> Result<Option<crate::control::terminals::Refused>, Said> {
+        Ok(None)
+    }
+    fn say(&mut self, line: &str) -> Result<Sent, Said> {
+        self.said.push(line.to_string());
+        Ok(crate::control::terminals::input_reply(
+            SentResult::Delivered,
+            None,
+            None,
+        ))
+    }
+    fn redrawn(&mut self) -> bool {
+        false
+    }
+    fn screen(&mut self) -> Result<Vec<String>, Said> {
+        Ok(Vec::new())
+    }
+    fn press(&mut self, key: &'static str) -> Result<Sent, Said> {
+        self.pressed.push(key);
+        Ok(crate::control::terminals::input_reply(
+            SentResult::Delivered,
+            None,
+            None,
+        ))
+    }
+}
+
+/// 两家替身：默认那一家 `dflt` 投一句命令切档（替身家原样）；`other` 按键轮换、换档键是 `f9`、屏上恒读作 `ask`。
+fn two_families() -> Vec<crate::agents::Adapter> {
+    use crate::agents::fake::family_row;
+    fn no_home() -> Option<std::path::PathBuf> {
+        None
+    }
+    let mut other = family_row("other", "CCM_OTHER_DIR", "other-w", false, no_home);
+    other.launch = other.launch.map(|f| crate::agents::LaunchFace {
+        permission: f.permission.map(|p| crate::agents::PermissionFace {
+            switch: Some(ModeSwitch::Cycle(crate::agents::ModeCycle {
+                key: "f9",
+                cycle_max: 3,
+                read: |_| Some("ask"),
+            })),
+            ..p
+        }),
+        ..f
+    });
+    vec![
+        family_row("dflt", "CCM_DFLT_DIR", "dflt-w", true, no_home),
+        other,
+    ]
+}
+
+/// 这台找不到记录（`at` 为空）时切到 `roam`：`live` 是活会话表认出的那一家。回 结局的码 ＋ 替身终端收到的。
+fn switch_unrecorded(live: Option<&str>) -> (Option<String>, Keys) {
+    let reg = two_families();
+    let req = SessionPermissionReq {
+        sid: "00000000-0000-4000-8000-0000000000c8".parse().expect("sid"),
+        mode: "roam".to_string(),
+        client: None,
+    };
+    let own = crate::platform::Own::issue_at(&std::env::temp_dir().join(format!(
+        "ccm-mode-unrecorded-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    )));
+    let mut keys = Keys::default();
+    let got = answer_among(&reg, None, live, false, &req, &own, &mut keys);
+    (got.err().and_then(|s| s.code), keys)
+}
+
+/// ★ 别家刚起、还没写记录：切权限档照活会话表认出的那一家（按的是它的换档键），不照默认那一家投它那一句；
+/// 活会话表也认不出 ⇒ 不支持，终端一个键都没收到。
+#[test]
+fn an_unrecorded_session_switches_by_the_family_the_live_table_names() {
+    let (err, keys) = switch_unrecorded(Some("other"));
+    assert_eq!(err, None);
+    assert!(keys.said.is_empty(), "照默认那一家投了：{:?}", keys.said);
+    assert_eq!(keys.pressed, vec!["f9"], "按的是那一家的换档键");
+    let (err, keys) = switch_unrecorded(None);
+    assert_eq!(err.as_deref(), Some("unsupported"));
+    assert!(
+        keys.said.is_empty() && keys.pressed.is_empty(),
+        "认不出还送了：{:?} {:?}",
+        keys.said,
+        keys.pressed
     );
 }

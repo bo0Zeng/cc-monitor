@@ -11,6 +11,7 @@ class StatusDotTest {
         val want =
             mapOf(
                 "running" to DotForm.SOLID,
+                "asks" to DotForm.SOLID,
                 "needs-you" to DotForm.SOLID,
                 "background" to DotForm.SOLID,
                 "idle" to DotForm.SOLID,

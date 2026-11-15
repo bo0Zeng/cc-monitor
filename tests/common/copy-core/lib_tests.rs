@@ -23,13 +23,29 @@ fn it_embeds_the_one_table_on_disk() {
     );
 }
 
-/// 表里没有 ⇒ ``（不 panic）；没给的占位符原样留着。
+/// 表里没有 ⇒ `〔键〕`（不 panic）。
 #[test]
 fn a_missing_key_says_its_name_instead_of_panicking() {
     assert_eq!(copy_text("no.such.key", &[]), "〔no.such.key〕");
+}
+
+/// 〔少参当场红〕给的参数名少了一个：调试档（测试都在这一档）当场 panic，说出是哪条、少了哪个 ——
+/// 不再原样留 `{at}` 让一句半成品混过判据（文件窗口两处判据就是这样漏的）。
+#[test]
+#[should_panic(expected = "copy_text(sessionOpen.attached.body): missing args at")]
+fn a_short_call_panics_on_the_spot() {
+    copy_text("sessionOpen.attached.body", &[("machine", "devbox")]);
+}
+
+/// 正控：登记的参数都给了 ⇒ 照常出句子（不是「一律 panic」）；多给的不用、也不红（共用一套参数的几处照给全集）。
+#[test]
+fn a_full_call_still_speaks() {
     assert_eq!(
-        copy_text("sessionOpen.attached.body", &[("machine", "devbox")]),
-        "devbox · {at}"
+        copy_text(
+            "sessionOpen.attached.body",
+            &[("at", "%1"), ("machine", "devbox"), ("host", "x")]
+        ),
+        "devbox · %1"
     );
 }
 
@@ -145,6 +161,25 @@ fn the_two_peer_version_codes_each_say_their_one_line() {
         "认不出那一句不猜版本"
     );
     assert!(backend_old(&local_machine()).starts_with("本机"));
+}
+
+/// 一句话里称呼一台：本机 ⇒ 本机那一词（与 `local_machine` 同一把键）；远端 ⇒ 它的键本身（远端的键就是给人看的名字）。
+#[test]
+fn a_machine_is_called_by_one_word() {
+    assert_eq!(machine_word(&cmd_wire::Machine::local()), local_machine());
+    assert_eq!(machine_word(&cmd_wire::Machine::named("devbox")), "devbox");
+    assert_ne!(machine_word(&cmd_wire::Machine::local()), cmd_wire::LOCAL);
+}
+
+/// 那台离线那一句称呼那台（全产品只这一处取 `link.machine.offline`，扫描在 `tests/comms/inward/chan/said_tests.rs`）。
+#[test]
+fn the_offline_sentence_names_the_machine() {
+    let s = offline("devbox");
+    assert_eq!(
+        s,
+        copy_text("link.machine.offline", &[("machine", "devbox")])
+    );
+    assert!(s.contains("devbox"), "{s}");
 }
 
 /// 测试按键断言用：`copy_matches` 认一段文字里有没有那一条（占位处任意值、接缝空格可有可无）。
@@ -307,4 +342,24 @@ fn short_counts_round_into_k_m_b() {
     ] {
         assert_eq!(crate::count_short(n), want, "{n}");
     }
+}
+
+/// 断着 ⇒ 写类为什么做不了（唯一一处）：那台断着说离线 · 只读；与 cc-monitor 断开说那一段，不说那台离线；连着 ⇒ 不拦。
+#[test]
+fn a_cut_says_which_stretch_is_down_and_a_live_link_says_nothing() {
+    use cmd_wire::files::Cut;
+    assert_eq!(
+        peer::write_refused(Some(Cut::Monitor)),
+        Some(copy_text("rsFilewinChrome.link.severedReadOnly", &[]))
+    );
+    assert_eq!(
+        peer::write_refused(Some(Cut::Machine)),
+        Some(copy_text("link.machine.readOnly", &[]))
+    );
+    assert_ne!(
+        peer::write_refused(Some(Cut::Monitor)),
+        peer::write_refused(Some(Cut::Machine)),
+        "两段断开说的是同一句"
+    );
+    assert_eq!(peer::write_refused(None), None);
 }

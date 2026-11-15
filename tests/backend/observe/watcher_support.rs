@@ -63,8 +63,13 @@ pub fn write_pidfile(sessions: &Path, pid: u32, sid: &str, status: &str) -> Path
     p
 }
 
-/// 起一个住在 `pane` 里的「claude」（环境读得到之后才交回），并在 `sessions` 下写它的 pidfile（`sid` · `status`）。
-pub fn claude_in_pane(sessions: &Path, pane: &str, sid: &str, status: &str) -> std::process::Child {
+/// 起一个 sleep：没有控制终端，只在环境里带 `TMUX_PANE=<pane>`（环境读得到之后才交回）；并在 `sessions` 下替它写一份 pidfile（`sid` · `status`）。
+pub fn pane_env_sleep_with_pidfile(
+    sessions: &Path,
+    pane: &str,
+    sid: &str,
+    status: &str,
+) -> std::process::Child {
     let kid = crate::platform::proc::test_support::spawn_settled_sleep(|c| {
         c.env("TMUX_PANE", pane);
     });
@@ -103,8 +108,8 @@ impl Reader {
     }
 
     /// 对在跟的会话整批（`only` 给了 ⇒ 只那一条）重打标：回真写了几处。
-    pub fn retag(&self, only: Option<&str>) -> usize {
-        retag_tracked(&self.state, only)
+    pub fn retag(&mut self, only: Option<&str>) -> usize {
+        retag_tracked(&mut self.state, &mut self.sink, only)
     }
 
     /// 拿盘上现实对这份读者的表（`only` 给了 ⇒ 只那一条），只对差异发帧。

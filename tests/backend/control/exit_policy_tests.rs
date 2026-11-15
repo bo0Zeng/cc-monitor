@@ -60,10 +60,14 @@ fn three_states_are_told_apart() {
             other => panic!("「{why}」应当是读不出来，实得 {other:?}"),
         }
         assert!(!read_at(&f).kill_on_exit(), "读不出来 ⇒ 按缺省（不结束）办");
-        assert_eq!(read_at(&f).state(), "unreadable");
+        assert_eq!(read_at(&f).state(), cmd_wire::FileState::Unreadable);
     }
-    assert_eq!(Read::Absent.state(), "absent");
-    assert_eq!(Read::Chosen(true).state(), "chosen");
+    assert_eq!(Read::Absent.state(), cmd_wire::FileState::Absent);
+    assert_eq!(
+        Read::Chosen(true).state(),
+        cmd_wire::FileState::Ok,
+        "选过 ⇒ 同一张文件三态里的 ok"
+    );
     let _ = std::fs::remove_dir_all(&d);
 }
 
@@ -166,7 +170,7 @@ fn the_wire_shape_carries_the_three_states() {
     assert_eq!(v["reason"], "坏了");
     assert_eq!(v["killOnExit"], DEFAULT_KILL_ON_EXIT);
     let v = wire(&Read::Chosen(true), None);
-    assert_eq!(v["state"], "chosen");
+    assert_eq!(v["state"], "ok");
     assert_eq!(v["killOnExit"], true);
     assert!(v["reason"].is_null(), "选过的那一态不该带原因");
     let v = wire(&Read::Absent, None);
@@ -181,7 +185,7 @@ fn the_unreadable_said_names_the_reason_and_keeps_the_raw_value_off_the_line() {
     let path = dir.join(FILE_NAME);
     std::fs::write(&path, "{\"killOnExit\":\"zz-raw-value\"}").unwrap();
     let r = read_at(&path);
-    assert_eq!(r.state(), "unreadable");
+    assert_eq!(r.state(), cmd_wire::FileState::Unreadable);
     let v = wire_as(&r, Some(&path), false);
     let said = v["said"].as_str().unwrap();
     let reason = v["reason"].as_str().unwrap();
@@ -239,9 +243,9 @@ fn the_wire_shape_is_exactly_the_registered_fields() {
 /// 判定挪进后端之后判据跟着挪。「无人监护」只许出现在「没勾 ＋ 常驻」那一格（K14）。
 #[test]
 fn the_said_line_is_exact_on_every_cell() {
-    let want = |state: &str, kill: bool, resident: bool| -> &'static str {
+    let want = |state: cmd_wire::FileState, kill: bool, resident: bool| -> &'static str {
         match (state, kill, resident) {
-            ("unreadable", _, _) => "backendPolicy.exit.unreadable",
+            (cmd_wire::FileState::Unreadable, _, _) => "backendPolicy.exit.unreadable",
             (_, true, _) => "backendPolicy.exit.kills",
             (_, false, true) => "backendPolicy.exit.unattended",
             (_, false, false) => "backendPolicy.exit.selfDies",
@@ -265,7 +269,7 @@ fn the_said_line_is_exact_on_every_cell() {
             assert_eq!(
                 v["said"],
                 copy_text(key, args),
-                "（{}/{}/常驻={resident}）说的不是 `{key}` 那一句",
+                "（{:?}/{}/常驻={resident}）说的不是 `{key}` 那一句",
                 r.state(),
                 r.kill_on_exit()
             );

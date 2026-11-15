@@ -3,13 +3,18 @@ import type { AgentKind } from "./AgentKind";
 import type { Can } from "./Can";
 import type { Hidden } from "./Hidden";
 import type { Machine } from "./Machine";
+import type { RowArchive } from "./RowArchive";
 import type { SessionFace } from "./SessionFace";
 import type { Words } from "./Words";
 
 /**
  * 成品的一行。
  */
-export type HistoryRow = { agent: AgentKind, sessionId: string, projectPath: string, projectName: string, aiTitle: string | null, firstUserExcerpt: string, title: string, startedAt: number, updatedAt: number, jsonlPath: string, messageCountApprox: number, isBg: boolean, starred: boolean, customTitle: string | null, 
+export type HistoryRow = { 
+/**
+ * 哪一家的（线上的 kind）；认不出是哪一家的 ⇒ 缺（小牌说那一句，恢复那一项是 `no`）。
+ */
+agent?: AgentKind, sessionId: string, projectPath: string, projectName: string, aiTitle: string | null, firstUserExcerpt: string, title: string, startedAt: number, updatedAt: number, jsonlPath: string, messageCountApprox: number, isBg: boolean, starred: boolean, customTitle: string | null, 
 /**
  * 隐藏那一格（判定只住后端 `history/session_hidden.rs`）；不隐藏 ⇒ `null`（格恒在）。
  */
@@ -26,6 +31,10 @@ untitled: boolean,
  * 那台此刻对这一行的说法（活着的照它的进程状态文件判在干什么；判不了活 ⇒ 状态不明）。
  */
 face: SessionFace, can: Can, 
+/**
+ * 菜单里归档那一项（后端 `history/listing.rs::archive_item` 照那一家的归档面写）；那一家不归档 ⇒ `null`（不出那一项）。
+ */
+archive: RowArchive | null, 
 /**
  * 行上那一家的小牌（对用户的叫法）；默认那一家 ⇒ `null`。
  */

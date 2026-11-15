@@ -7,7 +7,7 @@
  */
 import { appStore, quotaOf, type QuotaSlot, type SessionRotationEntry } from "./app-store";
 import { refreshQuota, refreshSessions } from "./acct-center";
-import { machineLabel } from "./acct-view";
+import { machineName } from "./ipc/chan-caller";
 import { copyText } from "./copy-table";
 import type { Machine } from "./ipc/origin";
 import { el } from "./kit/el";
@@ -64,7 +64,7 @@ export function openAccountPanel(sid: string, origin: Machine, host: AcctPanelHo
   const statusBar = document.getElementById("status-bar");
   const drawer = openDrawer({
     title: copyText("beProfile.slot.account"),
-    sub: copyText("acct.panel.sub", { session: host.sessionTitle(sid), machine: machineLabel(origin) }),
+    sub: copyText("acct.panel.sub", { session: host.sessionTitle(sid), machine: machineName(origin) }),
     body,
     width: 540,
     bottom: statusBar ? Math.round(statusBar.getBoundingClientRect().height) : undefined,

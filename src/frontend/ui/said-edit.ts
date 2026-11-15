@@ -3,13 +3,16 @@
  *
  * - 改动全攒在这一端：编辑 · 改字 · 选怎么退都不碰会话；改字落本地草稿（按那台 ＋ 会话 ＋ 那一句，重开还在）。
  * - 开框那一下就问会话那台 `session-rewind-options`（带那一句），退法就地摆在字下面：「怎么退」那几项（缺省那一项先选上；不能选的灰着、
- *   为什么写在同一行后面）；主 agent 在干活时多一行「什么时候退」（缺省等这一轮跑完）。读中主按钮灰着；回包没有项 · 问不成 ⇒ 只写为什么、
+ *   为什么写在同一行后面）；主 agent 在出字时多一行「什么时候退」（缺省那一项照那台）；那台没给这一行 ⇒ 交现在退（此刻空着就是现在退，不替人选等）。读中主按钮灰着；回包没有项 · 问不成 ⇒ 只写为什么、
  *   没有主按钮。选项的字都是那台写好的，这里不写死。宿主报那条会话的忙闲变了（[`SaidEdit.activity`]）⇒ 再问一次、照新回包重摆
  *   （选过的那一项还在就留着）；界面自己不判在不在干活。
  * - 一个主按钮「回退并发送」（回车同它 · Shift+回车换行 · Esc 收起、草稿留着）⇒ 带 `rewind {to, how, when}` 的那一句交给输入队那一份待发
  *   （宿主给的 [`SaidEditIo.send`]：同编号重交 · 回执才算出去）。等回执时主按钮「发送中」灰着、选项锁住。
- *   回执到了 ⇒ 草稿清掉、编辑框收起；那台拒了 ⇒ 框不收、那一句错误色写在按钮上方；没回执 ⇒ 编辑框收起、草稿留着，
- *   气泡末尾一行小字指向待发那一排（那一句在待发里，这里不另记）。
+ *   回执到了 ⇒ 草稿清掉、编辑框收起；那台拒了 ⇒ 框不收、那一句错误色写在按钮上方；在飞时从那一排撤成了 ⇒ 框不收、字留着；没回执 ⇒ 编辑框收起、草稿留着，
+ *   气泡末尾一行小字指向待发那一排（那一句在待发里，这里不另记）。之后回执到了 · 那台说已送（接上重交的 · 撤没撤成的）⇒ 草稿照样清掉。
+ * - 上一版还撤着（待发里编辑这一句的那一条撤着，见 `outbox.ts`：落盘，重开 · 断过也接着问）⇒ 主按钮灰着、按钮上方照那台成品的 `rewindHeld` 摆
+ *   （成品还没到 ⇒ 只灰着）：那台可能已退过、送过，再交一版说不清（同手机 `SaidEdit.kt`）。那台答了（成没成）当场解开；接着问没答复 ⇒ 仍撤着、仍灰着。
+ *   撤成了的那一版字留在草稿（[`hasEditDraft`]）；草稿已不在（回执先到、照它删了）⇒ 输入框接回那一版的字，不丢。
  * - 卡上那颗「编辑」只往上冒一个 [`SAID_EDIT_EVENT`]（带那一句），由宿主接住开编辑器：卡不认识编辑器，只读窗口不挂它就不出。
  */
 import { copyText } from "./copy-table";
@@ -20,6 +23,7 @@ import { saidOf } from "./kit/detail";
 import { imeComposing } from "./keybindings/ime";
 import { dispatcher, type OverlayHandle } from "./keybindings/registry";
 import { LS_KEYS, safeGetJson, safeSetJson } from "./local-storage";
+import { outbox as mainOutbox, type Outbox } from "./outbox";
 import type { Machine } from "./ipc/origin";
 import type { PutEnd } from "./session-queue";
 import type { Rewind } from "./generated/Rewind";
@@ -60,7 +64,7 @@ export function markEditable(card: HTMLElement, at: SaidAt): void {
 }
 
 /** 草稿那一格的键：那台 ＋ 会话 ＋ 那一句。 */
-const draftKey = (at: SaidAt): string => `${at.origin}\u0000${at.sid}\u0000${at.id}`;
+const draftKey = (at: Omit<SaidAt, "text">): string => `${at.origin}\u0000${at.sid}\u0000${at.id}`;
 
 function drafts(): Record<string, string> {
   const v = safeGetJson<Record<string, unknown>>(LS_KEYS.saidEditDrafts);
@@ -69,7 +73,12 @@ function drafts(): Record<string, string> {
   return out;
 }
 
-function saveDraft(at: SaidAt, text: string | null): void {
+/** 那一句此刻有没有编辑草稿（撤成了的那一版字留在这里；没有 ⇒ 输入框接回那一版的字）。 */
+export function hasEditDraft(at: Omit<SaidAt, "text">): boolean {
+  return draftKey(at) in drafts();
+}
+
+function saveDraft(at: Omit<SaidAt, "text">, text: string | null): void {
   const all = drafts();
   if (text === null) delete all[draftKey(at)];
   else all[draftKey(at)] = text;
@@ -93,14 +102,19 @@ interface Open {
   box: HTMLTextAreaElement;
   pick: HTMLElement;
   refused: HTMLElement;
+  /** 上一版还撤着时按钮上方那一句（那台成品的 `rewindHeld`）。 */
+  held: HTMLElement;
   foot: HTMLElement;
   confirm: HTMLButtonElement;
   overlay: OverlayHandle;
   /** 选上的那一项「怎么退」（回包里没有能选的 ⇒ 不在，没有主按钮）。 */
   how?: Rewind["how"];
-  when: Rewind["when"];
+  /** 选上的那一项「什么时候退」（那台没给这一行 ⇒ 不在，交现在退）。 */
+  when?: Rewind["when"];
   /** 第几问：晚到的旧回包不摆。 */
   asked: number;
+  /** 退法问到过（有能选的）：主按钮不再是「正在读取」灰着。 */
+  loaded: boolean;
   sending: boolean;
 }
 
@@ -111,8 +125,42 @@ export class SaidEdit {
   private open_: Open | null = null;
   /** 各会话上一次报来的「在干什么」（只比变没变，不判它是什么）。 */
   private readonly doing = new Map<string, string | undefined>();
+  /** 各台上一版还撤着时那一句（机器成品 `rewindHeld`）。 */
+  private readonly rewindHeld = new Map<string, string>();
 
-  constructor(private readonly io: SaidEditIo) {}
+  constructor(
+    private readonly io: SaidEditIo,
+    private readonly outbox: Outbox = mainOutbox,
+  ) {
+    // 撤着那一条起落（落盘读回 · 撤完）⇒ 开着的框跟着灰 · 解开。
+    this.outbox.onChange(() => this.gate());
+    // 编辑的那一句之后才有了结局（接上重交的回执 · 名单说已送 · 撤没撤成）⇒ 它的草稿清掉。
+    this.outbox.onSettled((origin, o, end) => {
+      if (o.rewind !== undefined && (end.at === "receipt" || end.at === "sent")) saveDraft({ origin, sid: o.sid, id: o.rewind.to }, null);
+    });
+  }
+
+  /** 一台的状态成品来了（宿主跟着机器条一起交）：记下它的 `rewindHeld`，开着那台的框照它重摆。 */
+  machineChanged(origin: string, m: { readonly rewindHeld: string }): void {
+    if (this.rewindHeld.get(origin) === m.rewindHeld) return;
+    this.rewindHeld.set(origin, m.rewindHeld);
+    if (this.open_?.at.origin === origin) this.gate();
+  }
+
+  /**
+   * 主按钮此刻能不能点：退法还没问到 ⇒「正在读取」灰着；上一版还撤着 ⇒ 灰着、按钮上方摆那台的 `rewindHeld`；都不是 ⇒ 能点。
+   * 交着（发送中）不动它；没有主按钮（退不了）只管那一句。
+   */
+  private gate(o: Open | null = this.open_): void {
+    if (o === null || o !== this.open_ || o.sending) return;
+    const held = this.outbox.editHeld(o.at.origin, o.at.sid, o.at.id);
+    const why = held ? (this.rewindHeld.get(o.at.origin) ?? "") : null;
+    if (why !== null && why !== "") {
+      o.held.textContent = why;
+      if (!o.held.isConnected) o.foot.before(o.held);
+    } else o.held.remove();
+    setDisabled(o.confirm, o.loaded ? why : copyText("saidEdit.pick.loading"));
+  }
 
   /** 宿主报来那条会话此刻在干什么（会话脸上那一格）：开着它的编辑框、值变了 ⇒ 再问一次退法。 */
   activity(sid: string, doing: string | undefined): void {
@@ -137,6 +185,8 @@ export class SaidEdit {
     const pick = el("div", s.pick);
     const refused = el("p", s.error);
     refused.dataset.role = "said-edit-refused";
+    const held = el("p", s.note);
+    held.dataset.role = "said-edit-held";
     const cancel = button({ label: copyText("kit.dialog.cancel"), onClick: () => this.close() });
     cancel.dataset.role = "said-edit-cancel";
     const confirm = button({ label: copyText("saidEdit.pick.confirm"), kind: "primary", onClick: () => void this.submit(o) });
@@ -162,7 +212,7 @@ export class SaidEdit {
       },
       passes: "all",
     };
-    const o: Open = { at, card, editor, body, faded, box, pick, refused, foot, confirm, overlay, when: "after_turn", asked: 0, sending: false };
+    const o: Open = { at, card, editor, body, faded, box, pick, refused, held, foot, confirm, overlay, asked: 0, loaded: false, sending: false };
     box.addEventListener("keydown", (ev) => {
       if (imeComposing(ev)) return;
       if (ev.key === "Enter" && !ev.shiftKey) {
@@ -178,7 +228,7 @@ export class SaidEdit {
     dispatcher.pushOverlay(overlay);
     box.focus();
     pick.replaceChildren(el("p", s.note, copyText("saidEdit.pick.loading")));
-    setDisabled(confirm, copyText("saidEdit.pick.loading"));
+    this.gate(o);
     void this.ask(o);
   }
 
@@ -210,7 +260,7 @@ export class SaidEdit {
     if (got.how.length === 0) return this.only(o, got.said ?? "");
     const can = got.how.filter((r) => r.enabled);
     o.how = (can.find((r) => r.how === o.how) ?? can.find((r) => r.default) ?? can[0])?.how;
-    o.when = (got.when.find((r) => r.when === o.when) ?? got.when.find((r) => r.default) ?? got.when[0])?.when ?? "after_turn";
+    o.when = (got.when.find((r) => r.when === o.when) ?? got.when.find((r) => r.default) ?? got.when[0])?.when;
     const [hows, howOpts] = this.group(copyText("saidEdit.pick.how"));
     for (const r of got.how) {
       const row = radio("said-edit-how", r.text, r.how === o.how, () => (o.how = r.how));
@@ -234,7 +284,8 @@ export class SaidEdit {
     if (o.how === undefined) o.confirm.remove();
     else {
       if (!o.confirm.isConnected) o.foot.appendChild(o.confirm);
-      setDisabled(o.confirm, null);
+      o.loaded = true;
+      this.gate(o);
     }
   }
 
@@ -268,7 +319,7 @@ export class SaidEdit {
     // 没回执时气泡末尾那一行（先建好；交出去之后只决定挂不挂）。
     const mark = el("p", s.pending, copyText("saidEdit.card.pending"));
     mark.dataset.role = "said-edit-pending";
-    const end = await this.io.send(o.at.origin, o.at.sid, text, { to: o.at.id, how, when: o.when });
+    const end = await this.io.send(o.at.origin, o.at.sid, text, { to: o.at.id, how, when: o.when ?? "now" });
     saveDraft(o.at, end.at === "receipt" ? null : text);
     o.sending = false;
     setBusy(o.confirm, null);
@@ -277,8 +328,11 @@ export class SaidEdit {
       // 那台那一句写在按钮上方。
       o.refused.textContent = end.said;
       o.foot.before(o.refused);
+      this.gate(o);
       return;
     }
+    // 撤了（在飞时从那一排撤成了）：不在待发里、也没送出去 ⇒ 框不收、字留着，不挂「待发」。
+    if (end.at === "cancelled") return;
     if (this.open_ === o) this.close();
     if (end.at === "none") o.card.appendChild(mark);
   }

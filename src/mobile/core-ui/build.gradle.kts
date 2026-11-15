@@ -155,8 +155,8 @@ kotlin {
 }
 
 dependencies {
-    // 文案取文口住 core-copy（纯 JVM，上屏有字的模块依赖它）；core-ui 自己的默认文案（如「撤销」）也从那里取。
-    api(project(":core-copy"))
+    // 文案取文口住 core-rs（经 `Core` 调手机那份核心）：上屏有字的模块经本模块拿到它；core-ui 自己的默认文案（如「撤销」）也从那里取。
+    api(project(":core-rs"))
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)
     implementation(libs.androidx.ui.graphics)

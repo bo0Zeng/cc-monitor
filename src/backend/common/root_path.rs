@@ -1,5 +1,5 @@
 //! 「这一段拼到根上之后还在不在根底下」的路径解析：词法（纯路径算术，不碰盘）＋ 从根句柄逐段往下开（[`walk_in_root`]）。
-//! 文件管理那一块的写面（`files/write.rs` 等）与原生那一块的传输台（`control/transfer.rs`，下载的本机落点）
+//! 文件管理那一块的写面（`files/write.rs` 等）与原生那一块两台之间复制的 SFTP 腿（`control/transfer.rs`，下载的本机落点）
 //! 每一处改动的路径都先过它；两块之间零互相依赖（文件管理那一块是独立的包，只引纯工具与平台两层），共用的只许住 `common/`。
 //! 它只答落点在不在根底下，**不问落点是谁的数据**（要求：「文件管理器全部都可以改. 不需要任何围栏」）。
 //! 判据住 `tests/backend/files/write_tests.rs`（经写面的再导出跑）。
@@ -102,7 +102,7 @@ pub fn walk_in_root(last: Last, root: &Path, rel: impl AsRef<Path>) -> Result<Re
     };
     #[expect(
         clippy::disallowed_methods,
-        reason = "「已过路径解析」只由路径解析本身造：从根句柄逐段开（文件管理写面与传输台共用这一处）"
+        reason = "「已过路径解析」只由路径解析本身造：从根句柄逐段开（文件管理写面与两台之间复制共用这一处）"
     )]
     let walked = Resolved::walk(&real_root, inner, name);
     walked.map_err(|e| unresolved(dir, e))

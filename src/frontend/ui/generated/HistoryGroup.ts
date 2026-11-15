@@ -5,13 +5,21 @@ import type { Machine } from "./Machine";
 /**
  * 按项目看时的一组。
  */
-export type HistoryGroup = { key: string, agent: AgentKind, projectName: string, projectPath: string, projectDir: string, count: number, 
+export type HistoryGroup = { key: string, 
+/**
+ * 哪一家的；认不出是哪一家的 ⇒ 缺。
+ */
+agent?: AgentKind, projectName: string, projectPath: string, projectDir: string, count: number, 
+/**
+ * 组头那一格「会话 N」（后端照 `count` 写好，界面照抄）。
+ */
+countText: string, 
 /**
  * 有在跑的 ⇒ `true`；有答不了的 ⇒ `null`；都没在跑 ⇒ `false`。
  */
 hasLive: boolean | null, starred: boolean, 
 /**
- * `last_activity` 写好的字（同行尾那一格的写法）；读不了的那一组 ⇒ `null`。
+ * 组里最近一次动静写好的字（同行尾那一格的写法）；读不了的那一组 ⇒ `null`。
  */
 atText: string | null, 
 /**

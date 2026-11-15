@@ -129,12 +129,9 @@ fn the_answer_is_a_function_of_the_machine_not_of_the_build() {
 
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
+        // 经 `PATH` 被起 ⇒ 经 `write_exe` 写（本进程写的写端会漏进别的判据线程 fork 出来的子进程 ⇒ ETXTBSY）。
         let fake = with.join("tmux");
-        std::fs::write(&fake, b"#!/bin/sh\nexit 0\n").expect("写合成 tmux");
-        let mut perm = std::fs::metadata(&fake).expect("读夹具权限").permissions();
-        perm.set_mode(0o755);
-        std::fs::set_permissions(&fake, perm).expect("给合成 tmux 上执行位");
+        test_home::write_exe(&fake, "#!/bin/sh\nexit 0\n");
 
         assert_eq!(
             tmux_in(Some(with.as_os_str())),
@@ -274,14 +271,10 @@ fn the_windows_answer_is_confirmed_absent_not_unknown() {
     );
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
         let with = root.join("with");
         std::fs::create_dir_all(&with).expect("建夹具目录");
         let fake = with.join("tmux");
-        std::fs::write(&fake, b"#!/bin/sh\nexit 0\n").expect("写合成 tmux");
-        let mut perm = std::fs::metadata(&fake).expect("读夹具权限").permissions();
-        perm.set_mode(0o755);
-        std::fs::set_permissions(&fake, perm).expect("给合成 tmux 上执行位");
+        test_home::write_exe(&fake, "#!/bin/sh\nexit 0\n");
         assert_eq!(
             tmux_present(TmuxPlatform::AskThePath, Some(with.as_os_str())),
             Some(true),

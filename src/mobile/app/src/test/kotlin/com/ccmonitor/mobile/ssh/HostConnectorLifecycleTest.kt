@@ -64,16 +64,22 @@ class HostConnectorLifecycleTest {
             keystoreAlias = "alias-idk", // keystore 身份 → 认证解析不解密、纯 JVM 可跑
         )
 
-    private fun host(id: String = hostId) = Host(id = id, label = "H", host = "h.example", port = 22, username = "u", authRef = "idk")
+    private fun host(
+        id: String = hostId,
+        label: String = "H",
+    ) = Host(id = id, label = label, host = "h.example", port = 22, username = "u", authRef = "idk")
 
     private fun fixture(): Pair<SshConnectionManager, HostConnector> = fixture(listOf(hostId))
 
-    private fun fixture(ids: List<String>): Pair<SshConnectionManager, HostConnector> {
+    private fun fixture(
+        ids: List<String>,
+        hostOf: (String) -> Host = { host(it) },
+    ): Pair<SshConnectionManager, HostConnector> {
         val manager = SshConnectionManager(transportFactory = { LifecycleFakeTransport() })
         val connector =
             HostConnector(
                 manager,
-                HostRepository(LifecycleFakeHostDao(ids.associateWith { host(it) }), PlainCryptoBox),
+                HostRepository(LifecycleFakeHostDao(ids.associateWith(hostOf)), PlainCryptoBox),
                 IdentityRepository(LifecycleFakeIdentityDao(mapOf("idk" to identity())), PlainCryptoBox),
                 { _, target -> DialPlan.Ready(direct(target.id)) },
             )
@@ -105,6 +111,18 @@ class HostConnectorLifecycleTest {
                 manager.connection(hostId),
             )
             assertTrue("放手后会话条目也该摘掉（manager 的既有语义，顺带钉住没被绕过）", manager.sessions.value.isEmpty())
+        }
+
+    /** 交给连接管理的名字是核心照整张表取的那一个（[machineName]）：label 空着那台也有名字，不是空串。 */
+    @Test
+    fun connectHandsTheManagerTheCoreMachineName() =
+        runBlocking {
+            val bare = host(label = "")
+            val (manager, connector) = fixture(listOf(hostId)) { bare }
+            connector.connect(bare, expectedGen = connector.retain(hostId, holder))
+            val name = machineName(listOf(bare), hostId)
+            assertTrue("前提：核心给 label 空着那台取的名字不该是空串", name.isNotBlank())
+            assertEquals(name, manager.sessions.value[hostId]?.label)
         }
 
     /**

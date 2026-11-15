@@ -52,6 +52,23 @@ fn clock_faces_are_written_at_the_answer_by_the_viewer_zone() {
     let mut sh = raw[0].clone();
     sh.stamp(&crate::common::time::Tz::named("Asia/Shanghai").unwrap());
     assert_eq!(sh.start_text, "04:30");
+    // 轮条悬停头也在答的那一下写好（第几轮 · 钟面 · 工具数），界面照抄；扫描那一层不写。
+    assert!(raw[0].tip_text.is_none());
+    // 钟面解不出（空串）⇒ 那一截整段不写，不留「轮 n ·  · 工具 ×k」。
+    let mut faceless = raw[0].clone();
+    faceless.tip(2);
+    assert_eq!(
+        faceless.tip_text.as_deref(),
+        Some(copy_core::copy_text("stream.rail.tipNoTime", &[("n", "2"), ("tools", "1")]).as_str())
+    );
+    sh.tip(7);
+    assert_eq!(
+        sh.tip_text.as_deref().unwrap_or_default(),
+        copy_core::copy_text(
+            "stream.rail.tip",
+            &[("n", "7"), ("time", "04:30"), ("tools", "1")]
+        )
+    );
     assert!(
         sh.folds[0].span.text.contains("04:31"),
         "右端那一截随钟面写：{}",
@@ -519,15 +536,13 @@ fn live_turn_says_what_runs_now_or_what_waits_for_you() {
         tool: Some("Grep".into()),
         call: Some("t1".into()),
         what: Some("from .a import".into()),
-        since_ms: Some(1234),
         text: crate::common::cells::Words(copy_core::copy_text("beSession.needs.approve", &[])),
         head: crate::common::cells::Words(String::new()),
         head_code: None,
-        tone: crate::common::cells::Tone::Need,
         rank: 1,
         waited_ms: Some(1),
-        ask: None,
-        manual_text: None,
+        since_ms: Some(1234),
+        reply: cmd_wire::needs::NeedsReply::Manual(crate::common::cells::Words(String::new())),
     };
     dress_live(&mut awaiting, Some(&needs), true);
     assert_eq!(awaiting.phase, Phase::Awaiting);
@@ -707,15 +722,13 @@ fn a_reply_written_after_the_pidfile_says_waiting_stays_outside() {
         tool: Some("Bash".into()),
         call: Some("b1".into()),
         what: Some("make".into()),
-        since_ms: Some(1234),
         text: crate::common::cells::Words(copy_core::copy_text("beSession.needs.approve", &[])),
         head: crate::common::cells::Words(String::new()),
         head_code: None,
-        tone: crate::common::cells::Tone::Need,
         rank: 1,
         waited_ms: Some(1),
-        ask: None,
-        manual_text: None,
+        since_ms: Some(1234),
+        reply: cmd_wire::needs::NeedsReply::Manual(crate::common::cells::Words(String::new())),
     };
     let head = vec![
         user("u1", t, "q1"),

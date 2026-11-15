@@ -5,7 +5,9 @@ import com.ccmonitor.mobile.core.claude.model.RecordUnits
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.ArriveEnd
 import com.ccmonitor.mobile.core.wire.gen.LineRecord
+import com.ccmonitor.mobile.testing.KotlinSourceScanner
 import com.ccmonitor.mobile.ui.Faces
 import com.ccmonitor.mobile.ui.Wires
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink.Companion.failed
@@ -20,6 +22,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 
 /**
  * 聊天屏的会话：起会话 · 送字 · 正文全走那台核心。
@@ -145,7 +148,7 @@ class ChatSessionTest {
             val o = s.box().single()
             assertTrue(o.failed)
             assertEquals("那一句照那台回包里的 note 原样摆", "N-未送：终端已不在", o.said)
-            s.cancel(o.id)
+            s.withdraw(o.id)
             val back = s.state.value.recall
             assertEquals("★［撤回］⇒ 字回到输入框（没有［重试］）", "你好", back?.text)
             s.send("你好")
@@ -172,7 +175,7 @@ class ChatSessionTest {
             link.arrive("pre")
             advanceTimeBy(ChatSession.ARRIVAL_MS * 3)
             runCurrent()
-            assertNull("记录还没有不是「找不到」", s.state.value.failedWhy)
+            assertNull("记录还没有不是「找不到」", s.state.value.failure)
             assertTrue("不去清单里按点找", link.calls("history-list").isEmpty())
             assertEquals(setOf("pre"), link.watching())
             file.records += human("u1", "你好")
@@ -183,7 +186,7 @@ class ChatSessionTest {
             file.records += reply("a1", "替身收到")
             link.line("pre", 1, reply("a1", "替身收到"))
             runCurrent()
-            assertNull(s.state.value.failedWhy)
+            assertNull(s.state.value.failure)
             assertEquals(
                 listOf("u1", "a1#0"),
                 s.state.value.units
@@ -239,23 +242,64 @@ class ChatSessionTest {
             val s = draft(link)
             s.send("你好")
             runCurrent()
-            assertEquals("目录不在", s.state.value.failedWhy)
+            assertEquals(SessionFailure(null, "目录不在", "detail"), s.state.value.failure)
             assertTrue("那句话留在待发、错误色（［撤回］把字放回输入框再发）", s.box().single().failed)
         }
 
     @Test
-    fun `报到等不到：照那台那一句说，不送字`() =
+    fun `报到等不到：照那台分好的标题 · 那一句上屏，不送字`() =
         runTest {
             val link = FakeCoreLink()
             link.answer = { _, _ -> ok(started) }
             val s = draft(link)
             s.send("你好")
             runCurrent()
-            link.miss("命令已发出 · 会话未报到\n已等 43s 未报到")
+            link.miss("已等 43s 未报到")
             runCurrent()
-            assertEquals("命令已发出 · 会话未报到\n已等 43s 未报到", s.state.value.failedWhy)
+            assertEquals(SessionFailure("命令已发出 · 会话未报到", "已等 43s 未报到", ""), s.state.value.failure)
             assertTrue(link.puts().isEmpty())
         }
+
+    @Test
+    fun `报到等不到、那台读到了画面末几行：上屏标题 · 那一句，末几行是那一格的详情`() =
+        runTest {
+            val link = FakeCoreLink()
+            link.answer = { _, _ -> ok(started) }
+            val s = draft(link)
+            s.send("你好")
+            runCurrent()
+            link.miss("已等 43s 未报到", "\$ claude\n  ╭──")
+            runCurrent()
+            val f = s.state.value.failure!!
+            assertEquals("命令已发出 · 会话未报到\n已等 43s 未报到", failedLines(f))
+            assertEquals("\$ claude\n  ╭──", f.detail)
+        }
+
+    /** ［复制详情］画不画由共用件判（[com.ccmonitor.mobile.ui.common.copyDetailBody]，CopyDetailBodyTest 钉）：FailedLine 只交上屏那几行与详情，自己不判。 */
+    @Test
+    fun `会话那一层失败：FailedLine 只把上屏那几行与详情交给［复制详情］`() {
+        // app 没引 Robolectric、画不出 composable：读源码钉 FailedLine 交的那两样。
+        val screen =
+            File("src/main/kotlin/com/ccmonitor/mobile/ui/chat/ChatScreen.kt").takeIf { it.isFile }
+                ?: File("app/src/main/kotlin/com/ccmonitor/mobile/ui/chat/ChatScreen.kt")
+        val code = KotlinSourceScanner.codeOnlyKeepingLiterals(screen.readText())
+        val at = code.indexOf("fun FailedLine(")
+        assertTrue("前提：ChatScreen 里得找到 FailedLine", at >= 0)
+        val body = code.substring(at, code.indexOf("\n}", at))
+        assertTrue("FailedLine 上屏与交出去的是同一份 failedLines(f)：$body", "val lines = failedLines(f)" in body && "ErrorLine(lines)" in body)
+        assertTrue("FailedLine 交那几行与 f.detail：$body", "CopyDetailButton(lines, f.detail)" in body)
+        assertTrue("ChatScreen 不另判详情空不空", "Blank" !in code)
+    }
+
+    /** 桌面那张卡同一份：标题 · 那一句上屏（各一行，不拆不拼别的），画面末几行进［复制详情］；没有末几行 ⇒ 详情空、不出那颗。 */
+    @Test
+    fun `报到等不到的三格：标题 · 那一句上屏，末几行进复制详情`() {
+        val f = ArriveEnd.Missed("命令已发出 · 会话未报到", "已等 43s 未报到", "\$ claude\n  ╭──", "w-cc").failure()
+        assertEquals(SessionFailure("命令已发出 · 会话未报到", "已等 43s 未报到", "\$ claude\n  ╭──"), f)
+        assertEquals("命令已发出 · 会话未报到\n已等 43s 未报到", failedLines(f))
+        assertEquals("", ArriveEnd.Missed("标题", "那一句", null, null).failure().detail)
+        assertEquals("没分标题 ⇒ 只那一句", "目录不在", failedLines(SessionFailure(null, "目录不在", "")))
+    }
 
     @Test
     fun `已有的那条：读最后一屏，再跟流上这条的新行；读到之前的旧行不重一份`() =
@@ -334,7 +378,7 @@ class ChatSessionTest {
             runCurrent()
             assertEquals(RecordUnits.of(file.records.mapNotNull { Wire.bind<LineRecord>(it) }), s.state.value.units)
             assertTrue("补段走的是按行号取", link.calls("history-lines").isNotEmpty())
-            assertNull(s.state.value.failedWhy)
+            assertNull(s.state.value.failure)
         }
 
     @Test
@@ -449,7 +493,7 @@ class ChatSessionTest {
             link.epoch.value += 1
             runCurrent()
             assertEquals(RecordUnits.of(file.records.mapNotNull { Wire.bind<LineRecord>(it) }), s.state.value.units)
-            assertNull("接上以后那一句撤掉", s.state.value.failedWhy)
+            assertNull("接上以后那一句撤掉", s.state.value.failure)
         }
 
     /** 回执（排着 · 那个编号收过）⇒ 离开待发；期限到了 ⇒ 没回执、那一排写排队 · 无应答（断着时照那台的 heldSaid，见 ChatCacheTest）；那台拒了（码）⇒ 待发里标没送到、那一句照那台写的。 */
@@ -572,7 +616,7 @@ class ChatSessionTest {
             assertEquals(mapOf("kind" to "named", "name" to "personal"), args["account"])
             assertTrue("起不来 ⇒ 选项回来", s.state.value.drafting)
             start = ok(started + ("sid" to "pre"))
-            s.cancel(s.box().single().id)
+            s.withdraw(s.box().single().id)
             s.send("你好")
             link.arrive("pre")
             link.report("pre", "/h/proj/sub")

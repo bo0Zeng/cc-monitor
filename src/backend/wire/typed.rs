@@ -68,7 +68,7 @@ pub trait Codes: Sized {
 /// 同 [`of_fail`]，交成闭包（`map_err` 那一格）：句子后面跟着的契约诊断先拆进原话（[`crate::wire::spec::fail`]）。
 pub fn of_fail_with<E: Codes>(fallback: fn(String) -> E) -> impl Fn(Said) -> E {
     move |f| {
-        let code = f.code_or_fallback().to_string();
+        let code = cmd_wire::failed::Failed::code_or_fallback(f.code.clone());
         of_fail(crate::wire::spec::fail(&code, f), fallback)
     }
 }
@@ -77,7 +77,7 @@ pub fn of_fail_with<E: Codes>(fallback: fn(String) -> E) -> impl Fn(Said) -> E {
 /// （这一条自己的那一格失败：资产域那扇门把文件管理那一族的码原样交上来，外层命令的码表不必都有），那一句照旧，原码与原话进原话。
 /// 原话跟着那一句走（[`crate::common::contract::joined`]），投出去时照原样拆回复制详情。
 pub fn of_fail<E: Codes>(f: Said, fallback: fn(String) -> E) -> E {
-    let code = f.code_or_fallback().to_string();
+    let code = cmd_wire::failed::Failed::code_or_fallback(f.code.clone());
     let (message, raw) = (f.said.clone(), f.raw.clone());
     E::of_code(&code, crate::common::contract::joined(f.said, f.raw)).unwrap_or_else(|_| {
         tracing::warn!("typed: 下层回了码表里没有的码 `{code}`，落这一条自己的那一格");
@@ -96,13 +96,11 @@ pub fn of_fail_said<E: Codes>(
     fallback: fn(String) -> E,
     said: impl FnOnce(&str) -> Option<String>,
 ) -> E {
-    let code = if E::ALL.contains(&f.code_or_fallback()) {
-        f.code_or_fallback().to_string()
+    let code = cmd_wire::failed::Failed::code_or_fallback(f.code.clone());
+    let code = if E::ALL.contains(&code.as_str()) {
+        code
     } else {
-        fallback(String::new())
-            .into_said()
-            .code_or_fallback()
-            .to_string()
+        cmd_wire::failed::Failed::code_or_fallback(fallback(String::new()).into_said().code)
     };
     let f = match said(&code) {
         Some(s) => f.retold(s),

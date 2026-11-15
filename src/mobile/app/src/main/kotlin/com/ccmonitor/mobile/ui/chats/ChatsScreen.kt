@@ -297,7 +297,7 @@ private fun LazyListScope.contentHits(
     }
     when {
         c.searching -> items(SKELETON_HITS) { SkeletonRow() }
-        c.rows.isEmpty() && c.summary != null -> item { Text(copyText("kit.menu.noMatch", "q" to c.query), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(16.dp).testTag(ChatsTags.EMPTY)) }
+        c.empty != null -> item { Text(c.empty, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(16.dp).testTag(ChatsTags.EMPTY)) }
         else -> items(c.rows, key = { "hit-${it.hostId}\n${it.row.sessionId}" }) { HitsBlock(it, act) }
     }
 }
@@ -339,7 +339,7 @@ private fun HitsBlock(
                 modifier = Modifier.fillMaxWidth().clickable { act.openHit(h, hit) }.padding(top = 4.dp),
             )
         }
-        if (r.moreHits > 0) Text(copyText("history.searchSession.more", "n" to r.moreHits), style = MaterialTheme.typography.bodySmall, color = accent, modifier = Modifier.padding(top = 4.dp))
+        r.moreText?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = accent, modifier = Modifier.padding(top = 4.dp)) }
     }
 }
 
@@ -397,7 +397,7 @@ private fun GroupRow(
                 if (h.failed != null) {
                     Text(copyText("history.group.failed"), style = MaterialTheme.typography.bodySmall, color = LocalAppTokens.current.errorText)
                 } else {
-                    Text(copyText("history.group.count", "n" to h.count), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(h.countText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             Text(h.projectPath, style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -471,7 +471,7 @@ private fun ForkToggle(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        Text(copyText("history.row.forks", "n" to r.nest.forks), style = MaterialTheme.typography.bodySmall, color = tint, maxLines = 1)
+        Text(r.nest.forksText.orEmpty(), style = MaterialTheme.typography.bodySmall, color = tint, maxLines = 1)
         PhIcon(if (r.nest.forksOpen) Ph.CaretDown else Ph.CaretRight, contentDescription = null, size = Touch.iconInline, tint = tint)
     }
 }

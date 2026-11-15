@@ -15,6 +15,7 @@ fn known_hosts_posix() -> String {
         crate::dial::known_hosts::terminal_config().as_deref(),
         false,
     )
+    .unwrap()
 }
 
 /// `terminal-ssh`（壳的「在此打开终端」与主界面都读 `prelude` · `line` 两格）：只交名字；跳板 · 地址次序 · 钥匙都照这一端的机器表。
@@ -200,9 +201,6 @@ fn the_deploy_replies_the_shell_reads_keep_their_wire_bytes() {
             }
         ))),
         serde_json::json!({
-            "action": "keep",
-            "build": "p9b",
-            "os": "Linux",
             "said": copy_core::copy_text("rsSftp.deploy.keptNotOlder", &[("why", "w")]),
         })
         .to_string()

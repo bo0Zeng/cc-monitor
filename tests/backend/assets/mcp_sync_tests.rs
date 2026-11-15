@@ -368,3 +368,59 @@ fn this_module_reads_no_file_content() {
     assert_ne!(planted, src, "正控的锚没打中");
     assert_eq!(count(&planted), 1);
 }
+
+/// 共享集合里服务器表那一格的键只判一处（账号域的 `store_key`）：两个替身家各在自己的号里写一个服务器、同步进共享集合，
+/// 资产这一侧照同一格读回缺省那一家的那一条（另一家住 `agents.<家>`，不当顶层那张表读）；生产注册表上读的也是那一格。
+/// 期望的键写字面（替身家资产面声明的 `servers` · Claude 的 `mcpServers`），不从被测的 `store_key` 取。
+#[cfg(unix)]
+#[test]
+fn the_shared_set_is_read_under_the_one_key_the_account_side_writes() {
+    use crate::accounts::manage::mcp_share_exec::sync_among;
+    let home = test_home::scratch("assets-mcp-store-key");
+    let h = home.display().to_string();
+    let write = |rel: &str, body: &str| {
+        let p = home.join(rel);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(p, body).unwrap();
+    };
+    let row = |name: &str, agent: &str| {
+        json!({ "name": name, "email": format!("{name}@example.test"),
+                "configDir": format!("{h}/.cc-monitor/accounts/{name}"),
+                "isDefault": name == "a1", "agent": agent })
+    };
+    write(
+        &format!(
+            "{}/{}",
+            relay_route_core::ACCOUNTS_DIR_REL,
+            relay_route_core::ACCOUNTS_MANIFEST_NAME
+        ),
+        &json!({ "version": 1, "accounts": [row("a1", "fake"), row("b1", "fake2")] }).to_string(),
+    );
+    let conf = |acct: &str| {
+        format!(
+            ".cc-monitor/accounts/{acct}/{}",
+            crate::agents::fake::MCP_FILE
+        )
+    };
+    write(&conf("a1"), "server a-only {\"command\":\"a\"}\n");
+    write(&conf("b1"), "server b-only {\"command\":\"b\"}\n");
+    let fam = |kind, env, wrapper, default| {
+        crate::agents::fake::family_row(kind, env, wrapper, default, || None)
+    };
+    let reg = [
+        fam("fake", "CCM_FAKE_A", "fakea", true),
+        fam("fake2", "CCM_FAKE_B", "fakeb", false),
+    ];
+    let door = crate::assets::aliases::test_support::HomeDoor(home.clone());
+    sync_among(&door, &reg).expect("同步一趟");
+    let store = std::fs::read_to_string(home.join(relay_route_core::ACCOUNTS_MCP_REL))
+        .expect("共享集合落了盘");
+    let names = |m: Map<String, Value>| m.keys().cloned().collect::<Vec<_>>();
+    assert_eq!(
+        names(servers_at(Some(&store), "s", "servers").expect("读得懂")),
+        ["a-only"]
+    );
+    let prod = json!({ "mcpServers": { "x": {} } }).to_string();
+    assert_eq!(names(servers_of(Some(&prod), "s").expect("读得懂")), ["x"]);
+    let _ = std::fs::remove_dir_all(&home);
+}

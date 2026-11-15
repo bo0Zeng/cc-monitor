@@ -415,10 +415,10 @@ export const MAIN_SCENES: Scene[] = [
     document.querySelector(".step-line[data-state=awaiting]")?.scrollIntoView({ block: "center" });
     await sleep(500);
   }),
-  main("main-needs-list", "主窗口 · 「需手动」浮层", "点栏顶「需手动 2」：浮层列出每个在等的会话与它等的那一句（等得最久的在前；点一行切过去；悬停不再开菜单）", async () => {
+  main("main-needs-list", "主窗口 · 「需手动」浮层", "点栏顶「需手动」：浮层列出每个答不了的会话与它等的那一句（等得最久的在前；点一行切过去；悬停不再开菜单）", async () => {
     await mainReady(ALL_TABS);
     await sleep(600);
-    await click(".tab-needs");
+    await click(`.tab-needs[data-col="manual"]`);
     await sleep(800);
   }, answerWorld),
   main("main-ended", "主窗口 · 已结束的会话", "第三个 tab：会话已结束（tab 灰、斜体）", async () => {
@@ -516,9 +516,10 @@ export const MAIN_SCENES: Scene[] = [
     await waitFor("[role=dialog]");
     await sleep(300);
   }),
-  main("main-head-display", "主窗口 · 会话头「显示 ▾」", "两个流开关（过程默认展开 · 显示系统注入）合成的一颗：下拉里两项、立刻生效", async () => {
+  main("main-head-display", "主窗口 · 会话头「⋯」里的流开关", "两个流开关（显示系统注入 · 过程默认展开）在会话头「⋯」里：勾着的是此刻的值、点了立刻生效", async () => {
     await mainReady(ALL_TABS);
-    await click(await waitFor<HTMLElement>("#session-head [data-head='display']"));
+    await click(await waitFor<HTMLElement>("#session-head [data-head='more']"));
+    await byText("[role=menu] [role^=menuitem]", copyText("stream.injected.toggle"));
     await sleep(400);
   }),
   main("main-head-fold", "窄窗 · 会话头放不下", "窗口 480×560：目录与状态一句先藏，还放不下 ⇒ 从排在最后的那颗起收进「⋯」最上面一组", async () => {

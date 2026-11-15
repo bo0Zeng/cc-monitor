@@ -52,7 +52,7 @@ fn answer_for(i: usize, case: &Value) -> Value {
                 Ok(r) => json!({ "reply": r }),
                 Err(e) => {
                     let f = e.into_said();
-                    let mut v = json!({ "code": f.code_or_fallback(), "said": f.said });
+                    let mut v = json!({ "code": cmd_wire::failed::Failed::code_or_fallback(f.code.clone()), "said": f.said });
                     if let Some(d) = f.data {
                         v["data"] = d;
                     }

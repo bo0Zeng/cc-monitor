@@ -83,22 +83,10 @@ fn the_shared_e2e_helper_reads_start_time_of_a_process_whose_name_has_spaces() {
 
     // 一个名字带空格和 `)` 的进程：脚本的进程名是脚本文件名（`sleep` 是多合一的那种，拷了改名不认）。
     // 它等 stdin 读到头就走：这边丢掉管子它就退，不留进程。
-    use std::os::unix::fs::PermissionsExt;
-    let dir = std::env::temp_dir().join(format!("proc-start-judge-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    // 进程名要是脚本名，不能改经 `/bin/sh` 起 ⇒ 经 `write_exe` 写（写完直接 exec 也不撞 ETXTBSY）。
+    let dir = test_home::scratch("proc-start");
     let exe = dir.join("a b) c");
-    // 本进程只写一份旁稿，`exe` 由 `cp` 那个子进程写：本进程里从没有过 `exe` 的写 fd。
-    // 在本进程里直接写 ⇒ 并行测试里别的线程正在 fork 时，子进程在 fork 与 exec 之间还攥着那份写 fd，
-    // 这时 exec 它 ＝ `ETXTBSY`（`Text file busy (os error 26)`，整套并行、机器忙时撞得到）。进程名要是脚本名，不能改经 `/bin/sh` 起。
-    let draft = dir.join("draft");
-    std::fs::write(&draft, "#!/bin/sh\nread _ || :\n").unwrap();
-    let cp = std::process::Command::new("cp")
-        .arg(&draft)
-        .arg(&exe)
-        .status()
-        .expect("cp 起不来");
-    assert!(cp.success(), "cp 没写成：{cp:?}");
-    std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
+    test_home::write_exe(&exe, "#!/bin/sh\nread _ || :\n");
     let mut child = std::process::Command::new(&exe)
         .stdin(std::process::Stdio::piped())
         .spawn()
@@ -125,7 +113,6 @@ fn the_shared_e2e_helper_reads_start_time_of_a_process_whose_name_has_spaces() {
         .expect("bash");
     drop(child.stdin.take());
     let _ = child.wait();
-    let _ = std::fs::remove_dir_all(&dir);
     let got = String::from_utf8_lossy(&out.stdout).trim().to_string();
     assert_eq!(
         got,

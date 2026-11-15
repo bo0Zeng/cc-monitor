@@ -92,7 +92,6 @@ import { __resetMachineContextForTests } from "../../../../src/frontend/ui/machi
 import {
   SKELETON_PX,
   makeSkeleton,
-  holdSkeletonHeight,
   skeletonHeight,
   type SkeletonKey,
 } from "../../../../src/frontend/ui/settings/skeleton";
@@ -161,19 +160,8 @@ describe("：骨架与它替代的那块内容**同一个高度**（第一刀 ·
     }
   });
 
-  it("🔴 骨架与它替代的容器是**同一个数**（这才是「不重排」的全部内容）", () => {
-    // 不经过面板，直接把两条路各走一遍 —— 断的是「两处取的是同一个住址」。
-    // 有人把其中一处改成字面量，这一条当场红。
-    for (const key of Object.keys(SKELETON_PX) as SkeletonKey[]) {
-      const sk = makeSkeleton(key, "载入中");
-      const holder = document.createElement("div");
-      holdSkeletonHeight(holder, key);
-      expect(holder.style.minHeight, `${key}：容器与骨架不同高`).toBe(sk.style.minHeight);
-    }
-  });
-
   it("骨架不是空的，也不冒充兜底态（「没有第三态」那一格）", () => {
-    const sk = makeSkeleton("data-places", "正在读 cc-monitor 放的文件…");
+    const sk = makeSkeleton("backend", "正在读各台后端…");
     expect(sk.textContent, "空骨架与「加载失败」在屏幕上分不开").not.toBe("");
     expect(sk.getAttribute("aria-busy"), "读屏器那一侧也要知道它在忙").toBe("true");
   });

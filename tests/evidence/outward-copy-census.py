@@ -113,6 +113,9 @@ EXCLUDED_DIRS = (
     # 判据支撑库：只进 monitor / 后端的 `[dev-dependencies]`（与下面 `guard_support.rs`
     # 被排除同一条理由 —— 判据支撑，不是生产面）。它的 `Err(…)` 是判据红时印给开发者看的，不是对外文案。
     "src/common/guard-core",
+    # 开发调度（自己一个 workspace，后端与壳都不链它）：只给开发机上跑编译测试的人看，不出产品界面、不进安装包 ⇒
+    # 它的字不是对外文案，不进文案表与台账。别的守卫（私人数据 · 编号 · 口语 · 墙钟 · fmt · clippy）照产品口径管它。
+    "src/devsched",
 )
 EXCLUDED_FILE_RE = re.compile(
     r"(\.vitest\.ts|\.test\.ts|\.spec\.ts|\.d\.ts)$"

@@ -540,7 +540,9 @@ fn facts_name_every_live_process_writing_the_session() {
         "{\"type\":\"user\",\"uuid\":\"w-1\",\"message\":{\"content\":\"q\"}}\n",
     )
     .unwrap();
-    let pids = crate::agents::pidfile_dir(&home);
+    let pids = crate::agents::IntoHomes::into_homes(&home)[0]
+        .pidfile_dir()
+        .unwrap();
     std::fs::create_dir_all(&pids).unwrap();
     let pidfile = |pid: u32, ticks: u64| {
         let body = format!(
@@ -607,7 +609,9 @@ fn facts_say_what_the_session_is_waiting_for() {
         "{\"type\":\"assistant\",\"timestamp\":\"t1\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"b1\",\"name\":\"Bash\",\"input\":{\"command\":\"rm -rf build/\"}}]}}\n",
     )
     .unwrap();
-    let pids = crate::agents::pidfile_dir(&home);
+    let pids = crate::agents::IntoHomes::into_homes(&home)[0]
+        .pidfile_dir()
+        .unwrap();
     std::fs::create_dir_all(&pids).unwrap();
     // 「没挂答题口」那一句照持着它的进程的环境与命令行现判：环境不从本进程继承那两格（本进程的环境是全局的），
     // 等它真 exec 完再问（见 `held`）。
@@ -643,7 +647,12 @@ fn facts_say_what_the_session_is_waiting_for() {
     let _ = c.wait();
     let dead = needs();
     let _ = std::fs::remove_dir_all(&home);
-    let (waited, rest) = split_waited(&waiting);
+    let (waited, mut rest) = split_waited(&waiting);
+    // 这一次从几时起等：就是那份 pidfile 的起点（与脸上在等那一句会走的起点同一个来源，出口拿它认是不是这一轮）。
+    assert_eq!(
+        rest.as_object_mut().unwrap().remove("sinceMs"),
+        Some(serde_json::json!(1_700_000_000_000u64))
+    );
     assert_eq!(
         rest,
         serde_json::json!({"kind": "approve", "tool": "Bash", "call": "b1", "what": "rm -rf build/", "text": copy_core::copy_text("beSession.needs.approve", &[]), "head": copy_core::copy_text("needs.bar.approve", &[("tool", "Bash")]), "headCode": "rm -rf build/", "tone": "need", "ask": null, "manualText": copy_core::copy_text("beAsk.manual.offElsewhere", &[])})
@@ -926,8 +935,9 @@ fn lines_by_number_match_the_hand_written_countable_rows() {
     let n = want.len() as u64;
     for from in 0..=n + 1 {
         for until in (from..=n + 2).map(Some).chain([None]) {
-            let got = crate::observe::query::body::read_lines_from(
+            let got = crate::observe::query::body::read_lines_at(
                 std::io::Cursor::new(body.as_bytes()),
+                (0, 0),
                 from,
                 until,
                 1 << 20,
@@ -961,8 +971,9 @@ fn lines_by_number_page_on_row_boundaries_and_reassemble() {
         let mut from = 0u64;
         let mut rounds = 0;
         loop {
-            let pg = crate::observe::query::body::read_lines_from(
+            let pg = crate::observe::query::body::read_lines_at(
                 std::io::Cursor::new(body.as_bytes()),
+                (0, 0),
                 from,
                 None,
                 page,
@@ -990,8 +1001,9 @@ fn lines_by_number_page_on_row_boundaries_and_reassemble() {
 fn lines_by_number_refuse_an_oversized_row_but_can_count_past_it() {
     let (body, want) = lines_fixture();
     let cap = 100; // 夹具那一行 > 200 字节
-    match crate::observe::query::body::read_lines_from(
+    match crate::observe::query::body::read_lines_at(
         std::io::Cursor::new(body.as_bytes()),
+        (0, 0),
         3,
         Some(5),
         1 << 20,
@@ -1000,8 +1012,9 @@ fn lines_by_number_refuse_an_oversized_row_but_can_count_past_it() {
         Err(e) if e.code.as_deref() == Some("oversized_line") => {}
         other => panic!("超长行被交出去了：{other:?}"),
     }
-    let after = crate::observe::query::body::read_lines_from(
+    let after = crate::observe::query::body::read_lines_at(
         std::io::Cursor::new(body.as_bytes()),
+        (0, 0),
         5,
         None,
         1 << 20,
@@ -1102,8 +1115,9 @@ fn lines_by_number_match_the_shared_seq_space_golden() {
         !want.is_empty(),
         "金标准一行都没抽到 —— 下面的相等在空集上绿"
     );
-    let pg = crate::observe::query::body::read_lines_from(
+    let pg = crate::observe::query::body::read_lines_at(
         std::io::Cursor::new(data),
+        (0, 0),
         0,
         None,
         1 << 20,
@@ -1275,9 +1289,11 @@ fn the_record_products_match_the_cross_language_golden() {
     );
 }
 
-/// `history-find` 每条命中旁边一格 `tsText`：那条记录的时刻按这台本地钟写好（今天 `HH:MM` · 昨天 · 更早带日期），界面照抄；读不出时刻 ⇒ 空串。
+/// `history-find` 每条命中的时刻写进头一行 `meta`（那条记录的时刻按这台本地钟写好：今天 `HH:MM` · 昨天 · 更早带日期），界面照抄；
+/// 不另上线一格 `tsText`。读不出时刻 ⇒ 头一行不写时刻。
 #[test]
-fn find_hits_carry_their_time_text() {
+fn find_hits_carry_their_time_in_the_head_line() {
+    use crate::observe::search_query::who_of;
     let home = scratch("p15-find-ts");
     let dir = home.join("projects").join("-p");
     std::fs::create_dir_all(&dir).unwrap();
@@ -1299,14 +1315,25 @@ fn find_hits_carry_their_time_text() {
     )
     .unwrap();
     let ms = crate::common::time::parse_iso8601_ms(ts).unwrap();
+    let time = crate::common::time::hit_text(ms, &crate::common::time::Tz::default());
+    assert!(time.contains(':'), "{time}");
+    let who = who_of(crate::agents::claudecode::AGENT_KIND, "user");
     assert_eq!(
-        v["hits"][0]["tsText"],
-        crate::common::time::hit_text(ms, &crate::common::time::Tz::default()).as_str()
+        v["hits"][0]["meta"],
+        copy_core::copy_text(
+            "sessionFind.hit.meta",
+            &[("who", &who), ("n", "1"), ("time", &time)]
+        )
     );
-    assert!(v["hits"][0]["tsText"]
-        .as_str()
-        .is_some_and(|t| t.contains(':')));
-    assert_eq!(v["hits"][1]["tsText"], "", "读不出时刻 ⇒ 空串");
+    assert_eq!(
+        v["hits"][1]["meta"],
+        copy_core::copy_text("sessionFind.hit.metaNoTime", &[("who", &who), ("n", "2")]),
+        "读不出时刻 ⇒ 头一行不写时刻"
+    );
+    assert!(
+        v["hits"][0].get("tsText").is_none(),
+        "时刻只写进头一行，不另上线"
+    );
     let _ = std::fs::remove_dir_all(&home);
 }
 
@@ -1326,7 +1353,9 @@ fn sessions_needs_lists_the_waiting_sessions_each_with_its_history_facts_needs()
         "{\"type\":\"assistant\",\"timestamp\":\"t1\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"b1\",\"name\":\"Bash\",\"input\":{\"command\":\"rm -rf build/\"}}]}}\n",
     )
     .unwrap();
-    let pids = crate::agents::pidfile_dir(&home);
+    let pids = crate::agents::IntoHomes::into_homes(&home)[0]
+        .pidfile_dir()
+        .unwrap();
     std::fs::create_dir_all(&pids).unwrap();
     let mut kids = Vec::new();
     let mut put_as = |sid: &str, status: &str, wait: &str, since: u64| {
@@ -1391,8 +1420,8 @@ fn sessions_needs_lists_the_waiting_sessions_each_with_its_history_facts_needs()
         keys.sort();
         assert_eq!(
             keys,
-            vec!["face", "hidden", "label", "needs", "sid"],
-            "一行只有这五格：{r}"
+            vec!["hidden", "label", "needs", "sid"],
+            "一行只有这四格：{r}"
         );
     }
 }
@@ -1403,7 +1432,9 @@ fn sessions_needs_lists_the_waiting_sessions_each_with_its_history_facts_needs()
 #[test]
 fn a_hidden_background_session_still_lists_its_needs() {
     let home = scratch("needs-bg-hidden");
-    let pids = crate::agents::pidfile_dir(&home);
+    let pids = crate::agents::IntoHomes::into_homes(&home)[0]
+        .pidfile_dir()
+        .unwrap();
     std::fs::create_dir_all(&pids).unwrap();
     let mut kids = Vec::new();
     let mut put_as = |sid: &str, kind: &str| {
@@ -1635,7 +1666,9 @@ fn a_session_whose_answer_hook_could_not_be_hung_says_so() {
         "{\"type\":\"assistant\",\"timestamp\":\"t1\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"b1\",\"name\":\"Bash\",\"input\":{\"command\":\"true\"}}]}}\n",
     )
     .unwrap();
-    let pids = crate::agents::pidfile_dir(&home);
+    let pids = crate::agents::IntoHomes::into_homes(&home)[0]
+        .pidfile_dir()
+        .unwrap();
     std::fs::create_dir_all(&pids).unwrap();
     let facts_with = |off: Option<&str>| {
         // 持着会话的那个进程活到这里亲手停它为止（`cat` 等着读它的标准输入，那一头在这里攥着）：
@@ -1695,6 +1728,10 @@ fn a_session_whose_answer_hook_could_not_be_hung_says_so() {
             HookOff::Version,
             copy_core::copy_text("beAsk.manual.offVersion", &[]),
         ),
+        (
+            HookOff::Overridden,
+            copy_core::copy_text("beAsk.manual.offOverridden", &[]),
+        ),
     ];
     let mut seen = Vec::new();
     for (off, said) in cases {
@@ -1705,7 +1742,7 @@ fn a_session_whose_answer_hook_could_not_be_hung_says_so() {
     }
     seen.sort();
     seen.dedup();
-    assert_eq!(seen.len(), 5, "五种原因五句不同的话");
+    assert_eq!(seen.len(), 6, "六种原因六句不同的话");
     let _ = std::fs::remove_dir_all(&home);
 }
 
@@ -1725,7 +1762,9 @@ fn a_session_started_elsewhere_says_why_it_cannot_be_answered_here() {
         "{\"type\":\"assistant\",\"timestamp\":\"t1\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"b1\",\"name\":\"Bash\",\"input\":{\"command\":\"true\"}}]}}\n",
     )
     .unwrap();
-    let pids = crate::agents::pidfile_dir(&home);
+    let pids = crate::agents::IntoHomes::into_homes(&home)[0]
+        .pidfile_dir()
+        .unwrap();
     std::fs::create_dir_all(&pids).unwrap();
     let data = crate::platform::paths::data_home().expect("测试档有数据目录");
     let own = crate::platform::fs::Own::issue_data_at(&data);
@@ -1854,12 +1893,8 @@ fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
             vec![crate::observe::accounts_query::NeedsRow {
                 sid: "s-1".into(),
                 label: crate::common::cells::Words("t".into()),
-                face: crate::wire::SessionFace::of(crate::wire::Life::Live {
-                    activity: Some(crate::agents::SessionActivity::NeedsYou),
-                    host: None,
-                }),
                 needs: needs_of(
-                    crate::agents::claudecode::AGENT_KIND,
+                    Some(crate::agents::claudecode::AGENT_KIND),
                     &[],
                     Some(&PidWait {
                         waiting_for: Some(crate::agents::WaitOn::Worker),
@@ -1896,7 +1931,7 @@ fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
     }
     assert_eq!(
         row_bytes,
-        r#"{"ended":[{"end":{"said":"w","stays":true},"sid":"s-2"}],"items":[{"clock":{"head":"等批准 · 协作请求 · {dur}","text":"等批准 · {dur}"},"kind":"session","rank":3298534883325,"session":{"face":{"can":{"attach":{"can":"yes"},"close":{"can":"no","why":"运行中"},"end":{"can":"yes"},"front":{"can":"yes"},"model":{"can":"no","why":"先答完需手动"},"permission":{"can":"no","why":"先答完需手动"},"reattach":{"can":"no","why":"运行中"},"resume":{"can":"no","why":"运行中"},"say":{"can":"yes","hint":"发消息…"},"stop":{"can":"no","why":"需手动"},"view":{"can":"yes","open":{"kind":"attach"},"said":"在 cc-monitor 里打开它的终端"}},"dot":"needs-you","life":{"activity":"needs_you","is":"live"},"line":"需手动","name":"需手动","order":0,"settled":false,"tip":"需手动","tone":"need"},"hidden":null,"label":"t","needs":{"ask":null,"call":null,"head":"等批准 · 协作请求","headCode":null,"kind":"worker","manualText":null,"rank":3298534883325,"text":"等批准","tone":"need","tool":null,"waitedMs":1,"what":null},"sid":"s-1"}}]}"#
+        r#"{"ended":[{"end":{"said":"w","stays":true},"sid":"s-2"}],"items":[{"clock":{"head":"等批准 · 协作请求 · {dur}","text":"等批准 · {dur}"},"kind":"session","rank":3298534883325,"session":{"hidden":null,"label":"t","needs":{"ask":null,"call":null,"head":"等批准 · 协作请求","headCode":null,"kind":"worker","manualText":"只能在终端里答","rank":3298534883325,"sinceMs":1,"text":"等批准","tone":"need","tool":null,"waitedMs":1,"what":null},"sid":"s-1"}}]}"#
     );
 }
 
@@ -2009,15 +2044,16 @@ fn a_session_whose_launcher_dropped_the_environment_says_so() {
         "{\"type\":\"assistant\",\"timestamp\":\"t1\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"b1\",\"name\":\"Bash\",\"input\":{\"command\":\"true\"}}]}}\n",
     )
     .unwrap();
-    let pids = crate::agents::pidfile_dir(&home);
+    let pids = crate::agents::IntoHomes::into_homes(&home)[0]
+        .pidfile_dir()
+        .unwrap();
     std::fs::create_dir_all(&pids).unwrap();
     let data = crate::platform::paths::data_home().expect("测试档有数据目录");
     let own = crate::platform::fs::Own::issue_data_at(&data);
-    let ours = crate::agents::asks::plugin_dir_under(
-        &crate::platform::paths::home_dir()
-            .expect("测试档有家目录")
-            .to_string_lossy(),
-    );
+    let ours = crate::agents::asks::plugin_dir_in_env(
+        &crate::platform::paths::home_dir().expect("测试档有家目录"),
+    )
+    .expect("测试档的家说得出、是 UTF-8");
     let var = crate::agents::claudecode::asks::PLUGIN_ENV;
     let facts_with = |dirs: Option<String>| {
         // 活到这里亲手停它为止（`cat` 等着读标准输入），不按墙钟给它定寿命。
@@ -2113,11 +2149,7 @@ fn facts_name_the_model_of_the_last_reply() {
     };
     let named = facts_of("a", "claude-opus-4-5-20251101");
     assert_eq!(named["agent"], "claude", "{named}");
-    assert_eq!(
-        named["modelText"],
-        serde_json::json!(crate::agents::model_text("claude", "claude-opus-4-5-20251101").unwrap()),
-        "{named}"
-    );
+    assert_eq!(named["modelText"], "Opus 4.5", "{named}");
     assert_eq!(named["modelPick"], "opus", "{named}");
     let odd = facts_of("b", "m-odd");
     assert_eq!(odd["modelText"], serde_json::Value::Null, "{odd}");
@@ -2155,9 +2187,6 @@ fn read_one(
         slot: s.into(),
         pct: Some(pct),
         resets_at: Some(at),
-        resets_at_text: None,
-        resets_at_rel_text: None,
-        reset_text: None,
         full: pct >= 100,
         text: crate::common::cells::Words::default(),
         tone: crate::common::cells::Tone::Plain,
@@ -2220,7 +2249,7 @@ fn listed_cells(
         .collect()
 }
 
-/// ★ 账号清单每号带的额度格从同一份 `quota-read` 成品里取（按 kind ＋ 号名对）：一格一个语义位、字是整格（位名 · 值 · 重置），
+/// ★ 账号清单每号带的额度格与额度几行从同一份 `quota-read` 成品里取（按 kind ＋ 号名对）：紧凑那一格是头一个语义位、字是整格（位名 · 值 · 重置），
 /// 语气照后端那一判；5h 超额在兜且用满 ⇒ warn（不是 fail）。别家的同名号 · 账上没有的号 ⇒ 没有；账读不出 ⇒ 每号一格「5h 读不到」。
 #[test]
 fn each_listed_account_carries_its_written_slots_from_the_quota_read() {
@@ -2230,10 +2259,23 @@ fn each_listed_account_carries_its_written_slots_from_the_quota_read() {
     let mut q = read_one(QuotaState::OverageInUse, 100, false);
     let agent = q.accounts[0].head.agent.as_str().to_string();
     let s5 = &q.accounts[0].head.show.slots[0];
-    let reset = s5.reset_text.clone().expect("5h 那一格有重置时刻").0;
-    with_quota(&mut list, &q, &agent);
+    let clock =
+        crate::common::time::TextClock::new(1_800_000_000, &crate::common::time::Tz::default());
+    let reset = crate::faces::quota_rows::slot_reset(s5.resets_at, &clock)
+        .expect("5h 那一格有重置时刻")
+        .0;
+    with_quota(&mut list, &q, &agent, &clock);
     let cells = listed_cells(&list);
-    assert_eq!(cells[0].len(), 2, "{cells:?}");
+    assert_eq!(cells[0].len(), 1, "紧凑那一格至多一格：{cells:?}");
+    assert_eq!(
+        list.accounts[0].quota,
+        crate::faces::quota_rows::account_line_rows(
+            &q.accounts[0].rows,
+            q.accounts[0].head.show.login,
+            q.accounts[0].head.show.stale,
+        ),
+        "额度几行照抄那一号那一段（去掉账号行自己有的那几格）"
+    );
     assert_eq!(
         cells[0][0].1,
         Tone::Warn,
@@ -2244,21 +2286,11 @@ fn each_listed_account_carries_its_written_slots_from_the_quota_read() {
         "5h 那一格带重置时刻：{cells:?}"
     );
     assert!(cells[0][0].0.contains(&s5.text.0), "{cells:?}");
-    assert!(
-        !cells[0][1].0.contains(
-            &q.accounts[0].head.show.slots[1]
-                .reset_text
-                .clone()
-                .unwrap()
-                .0
-        ),
-        "7d 不是卡人的那一格 ⇒ 不带重置：{cells:?}"
-    );
     assert!(cells[1].is_empty(), "账上没有的号 ⇒ 没有");
-    with_quota(&mut list, &q, "another-agent");
+    with_quota(&mut list, &q, "another-agent", &clock);
     assert_eq!(listed_cells(&list), [vec![], vec![]], "别家的同名号不对上");
     q.state = cmd_wire::quota::ReadState::Unreadable;
-    with_quota(&mut list, &q, &agent);
+    with_quota(&mut list, &q, &agent, &clock);
     let unreadable =
         crate::faces::quota_rows::head_five_hour(cmd_wire::quota::ReadState::Unreadable)
             .unwrap()
@@ -2271,6 +2303,12 @@ fn each_listed_account_carries_its_written_slots_from_the_quota_read() {
         ],
         "账读不出 ⇒ 每号一格"
     );
+    assert!(
+        list.accounts
+            .iter()
+            .all(|r| r.quota.len() == 1 && r.quota[0][0].text.0 == unreadable),
+        "账读不出 ⇒ 每号一行那一句"
+    );
 }
 
 /// ★ 数旧 ⇒ 本来 plain 的格画 warn；已经是 fail 的照旧。
@@ -2280,9 +2318,11 @@ fn stale_slots_turn_plain_into_warn() {
     use crate::common::cells::Tone;
     let mut list = listed(&["a"]);
     let q = read_one(QuotaState::Ok, 100, true);
-    with_quota(&mut list, &q, q.accounts[0].head.agent.as_str());
+    let clock =
+        crate::common::time::TextClock::new(1_800_000_000, &crate::common::time::Tz::default());
+    with_quota(&mut list, &q, q.accounts[0].head.agent.as_str(), &clock);
     let tones: Vec<Tone> = listed_cells(&list)[0].iter().map(|c| c.1).collect();
-    assert_eq!(tones, [Tone::Fail, Tone::Warn]);
+    assert_eq!(tones, [Tone::Fail]);
 }
 
 /// ★ 终端没了时换的那一项还算数 ⇒ 会话事实的模型 · 权限档写它（字取清单里那一项）；只记了一样 ⇒ 另一样照记录；没记 ⇒ 不动。
@@ -2307,15 +2347,19 @@ fn facts_follow_the_pick_kept_for_the_next_resume() {
             end: 1,
         }),
     );
-    assert_eq!(
-        f.model_text.map(|w| w.0),
-        crate::agents::model_choice_text("claude", "sonnet")
-    );
+    // 期望的字照键直接从文案表取（不经清单给字的那条链）。
+    let table: serde_json::Value = serde_json::from_str(copy_core::TABLE_JSON).unwrap();
+    let said = |key: &str| {
+        let s = table["entries"][key]["zh"].as_str().map(str::to_owned);
+        assert!(s.is_some(), "表里没有 `{key}`");
+        s
+    };
+    assert_eq!(f.model_text.map(|w| w.0), said("beSessionNew.model.sonnet"));
     assert_eq!(f.permission_mode.as_deref(), Some("plan"));
     assert_eq!(f.model_pick.as_deref(), Some("sonnet"), "记下的优先于记录");
     assert_eq!(
         f.permission_mode_text.map(|w| w.0),
-        crate::agents::permission_mode_text("claude", "plan")
+        said("beSessionNew.mode.plan")
     );
     let mut f = base();
     dress_kept(
@@ -2328,7 +2372,7 @@ fn facts_follow_the_pick_kept_for_the_next_resume() {
     );
     assert_eq!(
         f.model_text.map(|w| w.0),
-        crate::agents::model_choice_text("claude", "default")
+        said("resumeSelect.option.defaultBare")
     );
     assert_eq!(f.permission_mode.as_deref(), Some("acceptEdits"));
     assert_eq!(
@@ -2376,4 +2420,179 @@ fn history_run_reads_from_the_tail_and_pages_back() {
         (&serde_json::json!(0), &serde_json::json!(true))
     );
     let _ = std::fs::remove_dir_all(&home);
+}
+
+// ───────── 答题口没接上的那两问照会话找便条只一口（包一层那一形） ─────────
+
+/// 「包一层」那一形：便条在那一跳上、持着会话的进程是它的直接子进程（环境里没有答题插件目录 · 没带不挂 hook 的那个变量）。
+/// `plugin` ＝ 便条说答题插件经环境交下去了。
+#[cfg(target_os = "linux")]
+fn wrapped_with_note(plugin: bool) -> WrappedHop {
+    let w = WrappedHop::spawn(|cmd| {
+        cmd.env_remove(crate::agents::asks::ANSWER_HOOK_OFF_ENV);
+        for var in crate::agents::plugin_envs() {
+            cmd.env_remove(var);
+        }
+    });
+    let data = crate::platform::paths::data_home().expect("测试档有数据目录");
+    let now = crate::common::time::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    crate::control::launch_account::leave_note(
+        &crate::platform::fs::Own::issue_data_at(&data),
+        w.hop,
+        Some("acct"),
+        plugin,
+        None,
+        now + 1,
+    )
+    .unwrap();
+    w
+}
+
+/// 包一层起的会话，ccm 在那一跳上留过便条 ⇒ 不说「别处起的」；没记那一跳 ⇒ 只认会话进程自己的 pid，说「别处起的」。
+#[cfg(target_os = "linux")]
+#[test]
+fn a_session_under_a_wrapped_hop_with_its_note_is_not_started_elsewhere() {
+    let w = wrapped_with_note(false);
+    let hop = w.as_hop();
+    let kind = crate::agents::claudecode::AGENT_KIND;
+    let got = answer_off_among(&[w.session], Some(kind), &|p| {
+        (p == w.session).then_some(hop)
+    });
+    let bare = answer_off_among(&[w.session], Some(kind), &|_| None);
+    drop(w);
+    assert_eq!(got, None, "认那一跳的便条：是 ccm 起的");
+    assert_eq!(
+        bare.map(|w| w.0),
+        Some(copy_core::copy_text("beAsk.manual.offElsewhere", &[]))
+    );
+}
+
+/// 包一层起的会话，那一跳上的便条说插件经环境交下去了、会话进程环境里却没有 ⇒ 说启动器没把环境传下去。
+#[cfg(target_os = "linux")]
+#[test]
+fn a_session_under_a_wrapped_hop_whose_env_was_dropped_says_so() {
+    let w = wrapped_with_note(true);
+    let hop = w.as_hop();
+    let kind = crate::agents::claudecode::AGENT_KIND;
+    let got = answer_off_among(&[w.session], Some(kind), &|p| {
+        (p == w.session).then_some(hop)
+    });
+    drop(w);
+    assert_eq!(
+        got.map(|w| w.0),
+        Some(copy_core::copy_text("beAsk.manual.offEnvLost", &[]))
+    );
+}
+
+/// 判据夹具：「包一层」那一形 —— 一个 `sh`（那一跳）起一个子进程 `sh`（会话进程），会话进程报出自己的 pid 后读标准输入等着
+/// （不按墙钟定寿命）；丢掉时关上标准输入，两个都退。`tune` 调那一跳的环境（会话进程原样继承）。
+#[cfg(target_os = "linux")]
+struct WrappedHop {
+    child: std::process::Child,
+    /// 那一跳（便条留在它上面）。
+    hop: u32,
+    /// 会话进程：那一跳的直接子进程。
+    session: u32,
+}
+
+#[cfg(target_os = "linux")]
+impl WrappedHop {
+    fn spawn(tune: impl FnOnce(&mut std::process::Command)) -> Self {
+        use std::io::BufRead;
+        let mut cmd = std::process::Command::new("sh");
+        // 末尾那个 `:` 让那一跳不就地 exec 成里面那一个：它留着，里面那一个是它的直接子进程。
+        cmd.args(["-c", "sh -c 'echo $$; read _'; :"]);
+        tune(&mut cmd);
+        let mut child = cmd
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .expect("起得了 sh");
+        let mut line = String::new();
+        std::io::BufReader::new(child.stdout.as_mut().expect("接了标准输出"))
+            .read_line(&mut line)
+            .expect("会话进程报了 pid");
+        let session = line.trim().parse().expect("会话进程报的是 pid");
+        Self {
+            hop: child.id(),
+            session,
+            child,
+        }
+    }
+
+    /// 托管事实里记的那一跳：包一层。
+    fn as_hop(&self) -> crate::host::managed::Hop {
+        crate::host::managed::Hop {
+            pid: self.hop,
+            wrapped: true,
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl Drop for WrappedHop {
+    fn drop(&mut self) {
+        drop(self.child.stdin.take());
+        let _ = self.child.wait();
+    }
+}
+
+/// 会话事实里权限档 · 模型那几格的字只问记录那一家的起会话面：认不出是哪一家 ⇒ 三格都 `null`（不借注册表里的头一家）；
+/// 那一家没有那一格（Codex 没有模型的字 · 替身家没有权限档那一面）⇒ 那一格 `null`；正控：Claude 三格都有字。
+#[test]
+fn facts_words_come_only_from_the_family_that_has_them() {
+    use crate::agents::{claudecode, codex, LaunchFace};
+    use crate::faces::history_face::dress_words_among;
+    use crate::observe::recognize::facts::{LimitFrom, SessionFacts, UsageFact};
+    let facts = |agent: Option<&str>| SessionFacts {
+        agent: agent.map(Into::into),
+        permission_mode: Some("default".into()),
+        usage: Some(UsageFact::new(
+            1,
+            Some("claude-opus-4-1-20250805".into()),
+            1,
+            (200_000, LimitFrom::Assumed),
+        )),
+        ..Default::default()
+    };
+    let words = |f: &SessionFacts| {
+        (
+            f.permission_mode_text.is_some(),
+            f.model_text.is_some(),
+            f.model_pick.clone(),
+        )
+    };
+    let real = crate::agents::REGISTRY;
+    let mut f = facts(Some(claudecode::AGENT_KIND));
+    dress_words_among(&mut f, real);
+    assert_eq!(
+        words(&f),
+        (true, true, Some("opus".into())),
+        "正控：Claude 三格都有字"
+    );
+    let mut f = facts(None);
+    dress_words_among(&mut f, real);
+    assert_eq!(words(&f), (false, false, None), "认不出是哪一家 ⇒ 三格都缺");
+    let mut f = facts(Some(codex::AGENT_KIND));
+    dress_words_among(&mut f, real);
+    assert_eq!(
+        (words(&f).1, words(&f).2),
+        (false, None),
+        "Codex 没有模型的字"
+    );
+    let mut bare = claudecode::ADAPTER;
+    bare.launch = bare.launch.map(|l| LaunchFace {
+        permission: None,
+        ..l
+    });
+    let mut f = facts(Some(claudecode::AGENT_KIND));
+    dress_words_among(&mut f, &[bare]);
+    assert_eq!(
+        words(&f),
+        (false, true, Some("opus".into())),
+        "那一家没有权限档那一面 ⇒ 只那一格缺"
+    );
 }

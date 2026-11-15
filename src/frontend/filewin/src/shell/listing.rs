@@ -37,8 +37,16 @@ pub struct Listing {
     pub unreadable: Arc<AtomicU64>,
     /// 上一趟目录里一共读到几项（截断时那一句要它）。
     pub total: Arc<AtomicU64>,
-    /// 上一趟目录打不开：哪一种（后端的码）＋ 系统原话（进「复制详情」）。
-    pub open_fail: Arc<Mutex<Option<(crate::source::OpenFail, String)>>>,
+    /// 上一趟列的就是那台的家目录 · 到顶了（后端答的，左栏「家」「根」照它亮）。
+    pub at_home: Arc<std::sync::atomic::AtomicBool>,
+    pub at_root: Arc<std::sync::atomic::AtomicBool>,
+    /// 上一趟那台实际排的那一列与朝向（回包头答的；表头箭头照它画，窗口不自己算）；还没答过 ⇒ `None`。
+    pub caret: Arc<Mutex<Option<crate::source::Caret>>>,
+    /// 上一趟列成的那一级在那台上的绝对路径（回包面包屑最后一段）：一帧开头收走、换成当前目录（手输 `~/x` 也落成那台写好的形）。
+    pub landed_dir: Arc<Mutex<Option<String>>>,
+    /// 上一趟目录打不开：后端那一句 ＋ 复制详情（码在 [`crate::source::OPEN_FAIL_CODES`] 里的那几种）。
+    /// 只由 [`store_listed_if_current`] 在判号那把锁里写。
+    pub open_fail: Arc<Mutex<Option<crate::source::Failed>>>,
     /// 摆着的这一屏是什么时候列到的（UNIX 秒；0 ＝ 还没列到过）。断线条「离线 · 采样 13:40」那个时刻。
     pub landed: Arc<AtomicU64>,
     /// 计划反查：这个目录落在某一片的仓库里 ⇒ 每份文件归哪一格（后端 `plan-files`）；不在 / 还没问到 ⇒ `None`。
@@ -58,6 +66,10 @@ impl Default for Listing {
             show_hidden: Arc::new(std::sync::atomic::AtomicBool::new(true)),
             unreadable: Arc::new(AtomicU64::new(0)),
             total: Arc::new(AtomicU64::new(0)),
+            at_home: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            at_root: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            caret: Arc::new(Mutex::new(None)),
+            landed_dir: Arc::new(Mutex::new(None)),
             open_fail: Arc::new(Mutex::new(None)),
             landed: Arc::new(AtomicU64::new(0)),
             plan: Arc::new(Mutex::new(None)),
@@ -84,15 +96,20 @@ pub fn store_listed_if_current(
             let (rows, cut) = crate::source::screen_of(&hand);
             let kept = store_if_current(l, mine, Ok(rows));
             if kept {
-                l.truncated.store(cut.truncated, Ordering::SeqCst);
-                l.unreadable.store(cut.unreadable, Ordering::SeqCst);
-                l.total.store(cut.total, Ordering::SeqCst);
+                l.note_cut(cut, crate::source::landed_dir(&hand));
                 *l.open_fail.lock().unwrap() = None;
             }
             kept
         }
         Err(e) => {
             *hand = Default::default();
+            // 手上那一份没了头 ⇒ 头上答的各格跟着作废（错误那一屏不挂上一趟的箭头 · 家 / 根 · 截断）。
+            l.drop_head();
+            // 打不开 ⇒ 记下后端那一句（连复制详情），列表顶上画那一条 ＋ 出路。
+            // 🔴 在判号这把锁里记：放到调用方事后写，中间换了目录就挂到新目录头上。
+            if crate::source::opens_fail(&e.code) {
+                *l.open_fail.lock().unwrap() = Some(e.clone());
+            }
             store_if_current(l, mine, Err(e))
         }
     }
@@ -168,11 +185,21 @@ impl Listing {
     pub fn adopt(&self, first: crate::source::Shown) {
         let mine = self.start();
         let (rows, cut) = crate::source::screen_of(&first);
+        let landed = crate::source::landed_dir(&first);
         *self.hand.lock().unwrap() = first;
         store_if_current(self, mine, Ok(rows));
+        self.note_cut(cut, landed);
+    }
+
+    /// 一屏之外那几格落下（截断 · 读不出 · 总数 · 家 / 顶）＋ 列成的那一级。
+    fn note_cut(&self, cut: crate::source::Cut, landed: Option<String>) {
         self.truncated.store(cut.truncated, Ordering::SeqCst);
         self.unreadable.store(cut.unreadable, Ordering::SeqCst);
         self.total.store(cut.total, Ordering::SeqCst);
+        self.at_home.store(cut.at_home, Ordering::SeqCst);
+        self.at_root.store(cut.at_root, Ordering::SeqCst);
+        *self.caret.lock().unwrap() = cut.caret;
+        *self.landed_dir.lock().unwrap() = landed;
     }
 
     /// 换目录：号 +1（在飞的那些从此全部作废）、内容清空。
@@ -188,6 +215,15 @@ impl Listing {
         self.hidden.lock().unwrap().clear();
         *self.error.lock().unwrap() = None;
         *self.plan.lock().unwrap() = None;
+        // 新那一趟落地前，不拿上一个目录的去换当前目录、亮左栏、画箭头。
+        self.drop_head();
+    }
+
+    /// 上一趟回包头答的那几格作废（手上那一份由调用方在它那把锁里清）：截断 · 读不出 · 总数 · 家 / 顶 · 表头箭头 ·
+    /// 列成的那一级 · 打不开那一句。换目录与问不成都走这一处。
+    fn drop_head(&self) {
+        self.note_cut(crate::source::Cut::default(), None);
+        *self.open_fail.lock().unwrap() = None;
     }
 
     /// 切隐藏文件显不显示：显示 ⇒ 收起来的那几行插回它们在后端那一屏里的位置；不显示 ⇒ 挪到一边。

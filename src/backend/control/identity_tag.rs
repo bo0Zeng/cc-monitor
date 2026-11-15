@@ -6,15 +6,14 @@
 //! # (pid, sid) → 打到哪个窗格
 //!
 //! `@ccm_sid` 是窗格级 option（一个会话里可以跑几个 claude），所以先找那个 claude 住在哪个窗格：
-//! 读 `/proc/<pid>/environ` 的 `TMUX_PANE`。那个值属于进程自己（tmux 起 pane 时注进、`exec` 原样继承），没有陈旧的可能；
+//! 读它 `/proc/<pid>/environ` 里的 `TMUX_PANE`（`host::tmux::seat::pane_of`）。那个值属于进程自己（tmux 起 pane 时注进、`exec` 原样继承），没有陈旧的可能；
 //! 孙子进程（pane 里的 shell fork 出 ccm 再 exec）也带着它 ⇒ 不能改用 `#{pane_pid}` 去 join。
 //! 不让 ccm 自己写 `@ccm_pid` 当 join 键：ccm 退出后那个值留在会话里，PID 复用时会把新 sid 打到旧会话上 ——
 //! 而 `@ccm_sid` 是 kill 唯一认的事实，打错 = 杀错。只在 Linux 上跑（唯一调用点的上游 `pid_alive` 只在 Linux 上有）。
 //!
-//! # 两通道
+//! # 只有一个写者
 //!
-//! 通道 A 写 `@ccm_sid_expect`（意图，由建会话的那一方写：`shared/ccm` 或 [`super::launch`]），
-//! 通道 B 写 `@ccm_sid`（事实，只由本模块写）。破坏性动作只认后者。本模块在 `process_session_added`
+//! `@ccm_sid` 只由本模块写；建会话的那一方（ccm · [`super::launch`]）一个身份标都不写。破坏性动作只认它。本模块在 `process_session_added`
 //! 走完 `pid_alive` + procStart 冒名检查之后才被调用，所以打标前已证过「这个 pid 真的是写那份 pidfile 的那个 claude」。
 //!
 //! # 起进程
@@ -42,6 +41,12 @@ pub(crate) enum Outcome {
     /// 的唯一来源（`observe::watcher::container_of`）。环境读不到 / pane id 形状不对的那两支
     /// 挪进 [`Outcome::PaneUnknown`]：它们说的是「不知道」，不是「不在」。
     NotInTmux,
+    /// 这个进程没有控制终端（主会话 Bash 里起的 `claude -p` 那一形：环境里的 `TMUX_PANE` 是继承来的，它不是谁的终端会话）⇒ 不打标。
+    /// 不是失败、不说；容器不知道；tmux 里外一样（`host::tmux::seat::seat_of`）。
+    Detached,
+    /// 有控制终端，却不是 `TMUX_PANE` 那个窗格前台的那一个（别的终端上 · 那个窗格的后台进程组）⇒ 不打标，免得把窗格上
+    /// 主会话的标顶掉（投递认不到窗格、结束会话的门认错）。不是失败、不说；容器不知道。
+    NotOnPane,
     /// 不知道它在不在 tmux 里：环境这一刻读不到（`EnvRead::Unreadable`：exec 窗口、僵尸、非 Linux），
     /// 或者 `TMUX_PANE` 有值但形状过不了 `host::tmux::pane_id_ok`。
     ///
@@ -56,7 +61,7 @@ pub(crate) enum Outcome {
 }
 
 impl Outcome {
-    /// **打不上的那两形说出来**：一句给日志的话；其余五形回 `None`。
+    /// **打不上的那两形说出来**：一句给日志的话；其余七形回 `None`。
     ///
     /// | 结局 | 说不说 | 为什么 |
     /// |---|---|---|
@@ -64,6 +69,7 @@ impl Outcome {
     /// | `RejectedSid` | 说 | sid 形状不对、fail closed ⇒ 标没写上 |
     /// | `Tagged` / `AlreadyCurrent` | 不说 | 打上了 |
     /// | `NotInTmux` / `PaneUnknown` / `NoSuchPane` | 不说 | 没有可打的会话（不在 tmux 里 / 不知道 / 默认 socket 不认），不是「打标失败」 |
+    /// | `Detached` / `NotOnPane` | 不说 | 不是那个窗格前台的进程（没控制终端 / 别处的、后台的），本就不该打 |
     ///
     /// 后果那半句写死在这里：标没写上的会话，之后经后端的 kill 与送键过不了身份门（`wrong_owner`）。
     pub(crate) fn failure_note(&self, pid: u32, sid: &str) -> Option<String> {
@@ -75,6 +81,8 @@ impl Outcome {
             Outcome::Tagged(_)
             | Outcome::AlreadyCurrent(_)
             | Outcome::NotInTmux
+            | Outcome::Detached
+            | Outcome::NotOnPane
             | Outcome::PaneUnknown
             | Outcome::NoSuchPane => return None,
         };
@@ -97,6 +105,7 @@ impl Outcome {
     /// | `PaneUnknown` | 不知道 | 环境读不到 / pane id 形状不对 |
     /// | `NoSuchPane` | 不知道 | 环境说在某个 pane 里，默认 socket 上的 tmux 不认（私有 `-S` socket 之类）|
     /// | `RejectedSid` | 不知道 | sid 形状不对，压根没探 |
+    /// | `Detached` / `NotOnPane` | 不知道 | 不是那个窗格前台的进程，不报那个窗格 |
     /// | `Failed` | 不知道 | 起不来 tmux / tmux 报错 |
     ///
     /// **不知道就不报**（`None`）：「不在 tmux 里」是一句会改变界面措辞的话，没有正面证据不许说。
@@ -111,7 +120,9 @@ impl Outcome {
                 terminal: Some(t.clone()),
             }),
             Outcome::NotInTmux => Some(SessionContainer::None),
-            Outcome::PaneUnknown
+            Outcome::Detached
+            | Outcome::NotOnPane
+            | Outcome::PaneUnknown
             | Outcome::NoSuchPane
             | Outcome::RejectedSid
             | Outcome::Failed(_) => None,
@@ -119,42 +130,8 @@ impl Outcome {
     }
 }
 
-// tmux 的 pane id 形状（`%` + 十进制数字）住宿主口。空串必须挡住：`tmux display-message -p -t '' …` 不报错，
-// 静默解析成「当前 / 最近的那个会话」，一个空的 `TMUX_PANE` 就会把 sid 打到碰巧的会话上 —— 打错标就是杀错。
-use crate::host::tmux::pane_id_ok;
-
-/// 取这个进程所在的 tmux pane（`TMUX_PANE`），核过形状才回；三态（[`PaneRead`]）：打标上「没设」与
-/// 「读不到 / 形状不对」等价，容器那一格不等价（「不在 tmux 里」vs「不知道」）。
-///
-/// `proc_env_var` 在读侧就把空串压成了 `EnvRead::Unset` ⇒ `pane_id_ok("")` 在这条路上执行不到；留着它，
-/// 是为了那条早退哪天换了写法时还有一道门站着。
-fn pane_of(pid: u32) -> PaneRead {
-    use crate::platform::proc::EnvRead;
-    let raw = match crate::platform::proc::proc_env_var(pid, TMUX_PANE_ENV) {
-        EnvRead::Value(v) => v,
-        EnvRead::Unset => return PaneRead::NotSet,
-        EnvRead::Unreadable => return PaneRead::Unknown,
-    };
-    let pane = raw.trim().to_string();
-    if pane_id_ok(&pane) {
-        PaneRead::Pane(pane)
-    } else {
-        PaneRead::Unknown
-    }
-}
-
-/// [`pane_of`] 的三个结局。
-enum PaneRead {
-    /// 形状核过的 pane id。
-    Pane(String),
-    /// 环境读得到、`TMUX_PANE` 没设 ⇒ 不在 tmux 里。
-    NotSet,
-    /// 读不到，或者值的形状不对 ⇒ 不知道。
-    Unknown,
-}
-
-// tmux 注给 pane 的那个变量名（键名是常量、不是参数：本文件不回传整份环境）。
-use crate::common::tmux_utf8::TMUX_PANE_ENV;
+// 窗格那一格（`TMUX_PANE`，核过形状）与「是不是那个窗格前台的那一个」都问宿主口：判法只此一处，本文件一处环境都不读。
+use crate::host::tmux::seat::{own_pane, PaneRead, Seat};
 
 /// 打一次标、把打不上的那两形说出来。**[`tag`] 在生产里的唯一调用点**（[`tag_seen`] 与补打 [`retag_pending`] 都经它）。
 fn tag_said(pid: u32, sid: &str) -> Outcome {
@@ -166,15 +143,18 @@ fn tag_said(pid: u32, sid: &str) -> Outcome {
 }
 
 /// watcher 打标那一手（`observe::watcher::Reactions::tag`，由 `stream/entry.rs` 接上）：观测侧在「这个 pid 确实是写那份 pidfile 的那个 claude」
-/// 被证过之后调它。回（容器，这次真写了没有）；没打上的记下、之后补打。
-pub fn tag_seen(pid: u32, sid: &str) -> (Option<crate::wire::SessionContainer>, bool) {
+/// 被证过之后调它。回（容器 · 这次真写了没有 · 没控制终端）；没打上的记下、之后补打。
+pub fn tag_seen(pid: u32, sid: &str) -> crate::host::managed::Tagged {
     let _one_at_a_time = tagging();
     // 先补打上一回没打上的那几条（watcher 的下一个事件就是「后续周期」；不起定时器）。
     retag_held();
     let outcome = tag_said(pid, sid);
     remember(pid, sid, &outcome);
-    let wrote = outcome.wrote();
-    (outcome.container(), wrote)
+    crate::host::managed::Tagged {
+        wrote: outcome.wrote(),
+        detached: outcome == Outcome::Detached,
+        container: outcome.container(),
+    }
 }
 
 /// 打标一次只一趟（watcher 的打标 · 门那一下的补打）：两趟交错时，补打手里那条旧 sid 会盖掉刚打上的新 sid，
@@ -242,17 +222,28 @@ pub(crate) fn tag(pid: u32, sid: &str) -> Outcome {
     if sid.parse::<cmd_wire::Sid>().is_err() {
         return Outcome::RejectedSid;
     }
-    let pane = match pane_of(pid) {
-        PaneRead::Pane(p) => p,
-        PaneRead::NotSet => return Outcome::NotInTmux,
-        PaneRead::Unknown => return Outcome::PaneUnknown,
+    let pane = match own_pane(pid) {
+        (PaneRead::Pane(p), Seat::OnPane) => p,
+        (PaneRead::Pane(_), Seat::Unknown) => return Outcome::PaneUnknown,
+        (PaneRead::Pane(_), Seat::Detached) | (PaneRead::NotSet, Seat::Detached) => {
+            return Outcome::Detached
+        }
+        (PaneRead::Pane(_), Seat::Elsewhere) => return Outcome::NotOnPane,
+        (PaneRead::NotSet, _) => return Outcome::NotInTmux,
+        (PaneRead::Unknown, _) => return Outcome::PaneUnknown,
     };
     // 探测复用 gate 那一处（**零新增起进程点**）。它顺带把当前 `@ccm_sid` 取回来 ⇒
     // 值没变就一次 `set-option` 都不用起。
     let probed = match super::gate::probe_with(probe_cmd, &pane) {
         Ok(Some(p)) => p,
         Ok(None) => return Outcome::NoSuchPane,
-        Err(s) => return Outcome::Failed(format!("{}: {}", s.code_or_fallback(), s.said)),
+        Err(s) => {
+            return Outcome::Failed(format!(
+                "{}: {}",
+                cmd_wire::failed::Failed::code_or_fallback(s.code.clone()),
+                s.said
+            ))
+        }
     };
     // 容器那一格报的句柄：与 `terminals-list` 同一个函数、同一个窗格。
     let terminal = crate::host::tmux::handle_of(probed.session_id(), Some(&pane));
@@ -307,7 +298,7 @@ fn set_sid(
     }
 }
 
-// 起 `sleep` 的夹具住平台层（`platform::proc::test_support::spawn_settled_sleep`），观测面 watcher 的判据也用那一份。
+// 判据里的窗格进程起在私有 tmux server 上（`tmux_sandbox`），没控制终端的那一形用 `setsid`。
 #[cfg(test)]
 #[path = "../../../tests/backend/control/identity_tag_tests.rs"]
 mod tests;

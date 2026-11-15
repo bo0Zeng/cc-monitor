@@ -14,6 +14,12 @@ use crate::copy::testing::{rects_of, text_in_frame, PaintedText};
 use crate::select::Action;
 use crate::source::Row;
 
+/// 此刻选中的那一份菜单成品到了没有：看命令栏读的那个真口（[`FileWindow::act_why`] 成品没到时回 `Err`，
+/// 命令栏照它灰着说「正在查询」）。记着的那一键在成品到了的下一帧落定。
+fn product_in(w: &FileWindow) -> bool {
+    w.act_why(Action::Rename).is_ok()
+}
+
 const SCREEN: egui::Vec2 = egui::vec2(1280.0, 800.0);
 
 fn synth_cfg(label: &str) -> String {
@@ -38,15 +44,29 @@ fn dir(name: &str) -> Row {
     row(name, true, 0, false)
 }
 
-/// 一个看着 `/srv/data`、列表里有这几行、**不连任何东西**的窗口。
+/// 一个看着 `/srv/data`、列表里有这几行的窗口：通道只接一台合成后端（它只答本机后端那一问：菜单成品，照桌面那张表的真函数）。
 fn window(rows: Vec<Row>) -> FileWindow {
+    window_on(
+        rows,
+        crate::find::testing::FakeBackend::new(&[], Default::default()),
+    )
+}
+
+/// 同 [`window`]，合成后端由用例给。
+fn window_on(rows: Vec<Row>, be: crate::find::testing::FakeBackend) -> FileWindow {
+    static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let label = format!(
+        "keys-{}",
+        N.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+    );
     let mut w = FileWindow::seeded(
-        Source::remote(synth_cfg("keys")),
+        Source::remote(synth_cfg(&label)),
         "/srv/data".to_string(),
         None,
         rows.into_iter()
-            .map(|r| crate::find::testing::gated(r.into())),
+            .map(|r| crate::find::testing::gated_raw(r.into())),
     );
+    let _ = crate::find::testing::wire_menu_with(&mut w, &label, be);
     *w.listing.error.lock().unwrap() = None;
     w
 }
@@ -96,9 +116,23 @@ impl Drive {
         self.frame_mods(w, events, egui::Modifiers::NONE)
     }
 
+    /// 右键之后等本机后端那一份菜单成品回来、菜单摆出来（一帧一帧跑，不靠睡一个猜的时长）。
+    fn await_menu(&mut self, w: &mut FileWindow) {
+        for _ in guard_core::wall::rounds() {
+            if w.menu().is_some() {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            self.frame(w, Vec::new());
+        }
+    }
+
     /// 按一个键（按下即可；`intents` 只认按下）。
+    /// 成品还没回来时按下的那一键由窗口记着、成品到了的下一帧再判 ⇒ 按之前成品没到的，一帧一帧跑到成品到了
+    /// （命令栏不再说「正在查询」，[`product_in`]），再跑一帧让记着的那一键落定才交回。
     fn key(&mut self, w: &mut FileWindow, k: egui::Key, m: egui::Modifiers) -> Vec<PaintedText> {
-        self.frame(
+        let waited = !product_in(w);
+        let painted = self.frame(
             w,
             vec![egui::Event::Key {
                 key: k,
@@ -107,7 +141,11 @@ impl Drive {
                 repeat: false,
                 modifiers: m,
             }],
-        )
+        );
+        if !waited {
+            return painted;
+        }
+        land_product(self, w)
     }
 
     /// 在 `name` 那一行的名字上点一下（`button` 左 / 右），按着 `mods`。
@@ -317,30 +355,32 @@ fn alt_up_goes_to_the_parent_directory() {
     assert!(picked(&w).is_empty());
 }
 
-/// 回车：目录进去 · 文件走编辑（这个窗口没运行时 ⇒ 编辑那一支**出声**）· 多选时说一次只能开一项。
+/// 回车：目录进去 · 文件走编辑（那一份经通道读起来）· 多选时说一次只能开一项。
 #[test]
 fn enter_opens_a_directory_edits_a_file_and_refuses_a_bunch() {
     let mut w = window(vec![dir("sub"), file("a.txt"), file("b.txt")]);
     let mut d = Drive::new();
-    // 文件：落到 `begin_edit`（它出声：没有运行时）。
+    // 文件：落到 `begin_edit`（读那一份的那一趟起了）。
     d.pick(&mut w, "a.txt", NONE);
     d.key(&mut w, egui::Key::Enter, NONE);
-    let e = w
-        .listing
-        .error
-        .lock()
-        .unwrap()
-        .clone()
-        .unwrap_or_default()
-        .said;
-    assert!(no_runtime(&e), "回车没落到编辑那一支：{e:?}");
+    // 那一趟起了：编辑那一面记着这一行（读回来成不成另说，合成后端答得快、可能已经回了）。
+    assert_eq!(
+        w.edit_row.as_ref().map(|r| r.name.as_str()),
+        Some("a.txt"),
+        "回车没落到编辑那一支：{:?}",
+        w.listing.error.lock().unwrap()
+    );
     assert_eq!(w.cwd, "/srv/data");
+    // 读着那一份时这一栏换成了编辑那一面 ⇒ 下面两格各开一扇。
+    let mut w = window(vec![dir("sub"), file("a.txt"), file("b.txt")]);
+    let mut d = Drive::new();
+    d.pick(&mut w, "a.txt", NONE);
     // 多选：出声，不动。
     d.pick(&mut w, "b.txt", CTRL);
     d.key(&mut w, egui::Key::Enter, NONE);
     assert_eq!(
         w.key_notice(),
-        Some(crate::select::refusal(Action::Open, 2).as_str())
+        Some(copy_core::copy_text("rsFilewinSelect.refusal.openOne", &[("n", "2")]).as_str())
     );
     // 目录：进去。
     d.pick(&mut w, "sub", NONE);
@@ -359,7 +399,7 @@ fn f2_renames_one_and_refuses_two() {
     assert!(w.write_prompt().is_none(), "选了两项按 F2 竟然摆出了改名框");
     assert_eq!(
         w.key_notice(),
-        Some(crate::select::refusal(Action::Rename, 2).as_str())
+        Some(copy_core::copy_text("rsFilewinSelect.refusal.renameOne", &[("n", "2")]).as_str())
     );
     d.pick(&mut w, "b.bin", NONE);
     d.key(&mut w, egui::Key::F2, NONE);
@@ -499,10 +539,11 @@ fn perform_refuses_what_the_table_refuses_and_says_so() {
     let cases: Vec<(Vec<Row>, Vec<&str>, Vec<Action>)> = vec![
         // 目录能复制了⇒ 「复制」不在拒绝表里。
         (vec![dir("sub")], vec!["sub"], vec![Edit, Download]),
+        // 有损名带着字节 ⇒ 照它那一种（文本）：表里没有的只这几件。
         (
             vec![row(lossy, false, 3, true)],
             vec![lossy],
-            vec![Open, Edit, Copy, Download, Rename, Chmod, Delete],
+            vec![Open, Size, Extract],
         ),
         (
             vec![file("a.bin"), file("b.bin")],
@@ -523,11 +564,20 @@ fn perform_refuses_what_the_table_refuses_and_says_so() {
             for (k, n) in pick.iter().enumerate() {
                 d.pick(&mut w, n, if k == 0 { NONE } else { CTRL });
             }
-            assert!(!w.perform(a, None), "{pick:?} 上 {a:?} 竟然做了");
+            assert!(
+                !crate::find::testing::perform_now(&mut w, a),
+                "{pick:?} 上 {a:?} 竟然做了"
+            );
+            // 说的正是本机后端那份成品里这一件写好的那一句。
+            let said = w
+                .menu_product()
+                .and_then(|m| m.acts.into_iter().find(|s| s.action == a))
+                .and_then(|s| s.why);
+            assert!(said.is_some(), "{pick:?} 上 {a:?}：成品说做得了");
             assert_eq!(
                 w.key_notice(),
-                Some(crate::select::refusal(a, pick.len()).as_str()),
-                "{pick:?} 上 {a:?} 做不了却没出声"
+                said.as_deref(),
+                "{pick:?} 上 {a:?} 做不了却没说成品那一句"
             );
             assert!(
                 w.write_prompt().is_none() && w.copy_prompt().is_none() && w.pull_want().is_none()
@@ -695,6 +745,7 @@ fn open_menu(
         d.pick(&mut w, n, *m);
     }
     d.click_name(&mut w, target, egui::PointerButton::Secondary, NONE);
+    d.await_menu(&mut w);
     assert!(w.menu().is_some(), "右键点了「{target}」，菜单没摆出来");
     // 第一帧是 egui 弹层的「量尺寸」那一趟（不画）⇒ 再跑一帧才是真画。
     let painted = d.frame(&mut w, Vec::new());
@@ -704,7 +755,7 @@ fn open_menu(
 
 /// 🔴🔴 **菜单项 == 当前选中能做的动作 —— 逐格手写，两向相等。**
 ///
-/// 期望一侧是**手写**的字（不调 `actions_for` / 菜单那张表，否则两侧同源恒真）；
+/// 期望一侧是**手写**的字（不调菜单那张表，否则两侧同源恒真）；
 /// 实得一侧是 egui 这一帧**真画在菜单那一块里**的字（项的字 ＋ 右端的快捷键；图标不收）。
 /// 10-11 起照表：算大小只给目录与多选 · 解压只给压缩包 · 查看给图片 · 编辑给文本；改权限 / 删除带「…」。
 #[test]
@@ -811,11 +862,12 @@ fn the_menu_lists_exactly_what_the_selection_allows() {
             text_file.clone(),
         ),
         (
+            // 带着名字的原始字节（真行恒带）⇒ 寻址得到，照它那一种（无扩展名 ⇒ 文本那一种）。
             "一个有损名文件",
             vec![file("a.bin"), row(lossy, false, 3, true)],
             vec![],
             lossy,
-            vec![MENU_EMPTY.as_str()],
+            text_file.clone(),
         ),
         (
             "右键落在选中里：两项",
@@ -841,11 +893,20 @@ fn the_menu_lists_exactly_what_the_selection_allows() {
             a_dir.clone(),
         ),
         (
+            // 有损名带着字节 ⇒ 与别的一起照多选那一种。
             "两项混着有损名",
             vec![row(lossy, false, 3, true), file("b.bin"), file("c.bin")],
             vec![(lossy, NONE), ("c.bin", CTRL)],
             "c.bin",
-            vec![MENU_EMPTY.as_str()],
+            vec![
+                copy_core::copy_text("rsFilewinSelect.label.downloadMany", &[("n", "2")]).leak(),
+                "Ctrl+D",
+                copy_core::copy_text("rsFilewinSelect.label.crossMany", &[("n", "2")]).leak(),
+                c!("rsFilewinSize.label.size"),
+                chmod,
+                delete2,
+                "Delete",
+            ],
         ),
     ];
     for (what, rows, pre, target, want) in cases {
@@ -875,6 +936,7 @@ fn a_right_click_on_the_blank_part_of_the_list_opens_the_menu_for_this_directory
         modifiers: NONE,
     };
     d.frame(&mut w, vec![press(true), press(false)]);
+    d.await_menu(&mut w);
     assert!(w.menu().is_some(), "右键点空白处，菜单没摆出来");
     assert!(picked(&w).is_empty(), "右键点空白处，选中还挂着");
     let painted = d.frame(&mut w, Vec::new());
@@ -910,15 +972,11 @@ fn every_menu_item_lands_on_the_row_it_was_opened_for() {
     type Check = fn(&FileWindow) -> Result<(), String>;
     let on_file: Vec<(&str, Check)> = vec![
         (copy_core::copy_static!("rsFilewinEditor.label.edit"), |w| {
-            let e = w
-                .listing
-                .error
-                .lock()
-                .unwrap()
-                .clone()
-                .unwrap_or_default()
-                .said;
-            no_runtime(&e).then_some(()).ok_or(e)
+            // 读那一份来编辑的那一趟起了（经通道）。
+            match w.edits.open_pending() {
+                Some(p) if p == "/srv/data/f.txt" => Ok(()),
+                other => Err(format!("{other:?}")),
+            }
         }),
         (
             copy_core::copy_static!("rsFilewinCopy.label.copy"),
@@ -949,16 +1007,10 @@ fn every_menu_item_lands_on_the_row_it_was_opened_for() {
             },
         ),
         (copy_core::copy_static!("history.menu.delete"), |w| {
-            // 没有运行时 ⇒ 那一摞起不来，而它**出声**（不静默吞掉一次删除）。
-            let e = w
-                .listing
-                .error
-                .lock()
-                .unwrap()
-                .clone()
-                .unwrap_or_default()
-                .said;
-            no_runtime(&e).then_some(()).ok_or(e)
+            // 删那一摞起了（经通道先问一次再做）。
+            (w.writes_started == 1)
+                .then_some(())
+                .ok_or(format!("起了 {} 摞写", w.writes_started))
         }),
     ];
     for (label, check) in on_file {
@@ -1005,10 +1057,15 @@ fn clicking_elsewhere_closes_the_menu_and_another_right_click_reopens_it() {
     let first = w.menu().unwrap().serial;
     // 在另一行上右键 ⇒ 新菜单（对它说话）。
     d.click_name(&mut w, "sub", egui::PointerButton::Secondary, NONE);
+    d.await_menu(&mut w);
     let m = w.menu().expect("第二次右键只把菜单关了，没开新的");
     assert_ne!(m.serial, first);
     assert_eq!(picked(&w), set(&["sub"]));
-    assert!(m.actions.contains(&Action::Open));
+    assert!(m
+        .groups
+        .iter()
+        .flatten()
+        .any(|e| e.item == crate::select::Item::Act(Action::Open)));
     // 点空白处（列表下面远处）⇒ 收掉、什么都不做。
     let far = egui::pos2(600.0, 760.0);
     d.frame(&mut w, vec![egui::Event::PointerMoved(far)]);
@@ -1050,6 +1107,8 @@ struct KeyProbe {
     cwd: String,
     prompt: Option<String>,
     error: Option<String>,
+    /// 键盘那一下做不了时说的那一句（[`FileWindow::key_notice`]）。
+    notice: Option<String>,
     /// 驱动线程要求：把 F2 摆出来的那个框收掉（它是模态的，摆着的时候键盘不归列表）。
     cancel_prompt: bool,
     close_now: bool,
@@ -1073,6 +1132,7 @@ impl eframe::App for KeyProbeApp {
         p.cwd = self.w.cwd.clone();
         p.prompt = self.w.write_prompt().map(|q| q.src_name.clone());
         p.error = self.w.listing.error.lock().unwrap().clone().map(|f| f.said);
+        p.notice = self.w.key_notice().map(str::to_string);
         if p.cancel_prompt {
             p.cancel_prompt = false;
             self.w.cancel_write();
@@ -1091,6 +1151,10 @@ impl eframe::App for KeyProbeApp {
 /// `rows_tests` 那一格现打栽过）。
 #[cfg(not(windows))]
 const KEY_PROBE_TITLE: &str = "ccm-filewin-real-key-probe";
+
+/// 真键那一趟里成品把「删除」灰着说的那一句。
+#[cfg(not(windows))]
+const PROBE_NO_DELETE: &str = "probe: delete greyed";
 
 /// 真键那一趟的步骤：`(读数名, xdotool 参数, 等到什么为止)`。
 #[cfg(not(windows))]
@@ -1114,7 +1178,7 @@ fn key_steps() -> Vec<KeyStep> {
         ("k.ctrl_a", &["key", "ctrl+a"], |k| k.picked.len() == 5),
         ("k.type_ze", &["type", "ze"], |k| p(k, &["zeta.bin"])),
         ("k.delete", &["key", "Delete"], |k| {
-            k.error.as_deref().is_some_and(|e| no_runtime(e))
+            k.notice.as_deref() == Some(PROBE_NO_DELETE)
         }),
         ("k.type_su", &["type", "su"], |k| p(k, &["sub"])),
         ("k.f2", &["key", "F2"], |k| {
@@ -1146,6 +1210,16 @@ fn xvfb_worker_real_keys_on_the_window() {
         ],
     );
     *w.listing.error.lock().unwrap() = None;
+    // 菜单成品照桌面那张表的真函数答，只把「删除」灰着说一句（Delete 那一键看它出声，不起一摞、不摆确认框挡住后面的键）。
+    let mut be = crate::find::testing::FakeBackend::new(&[], Default::default());
+    be.menu_tweak = Some(|m| {
+        for s in &mut m.acts {
+            if s.action == Action::Delete {
+                s.why = Some(PROBE_NO_DELETE.into());
+            }
+        }
+    });
+    let _ = crate::find::testing::wire_menu_with(&mut w, "xvfb-keys", be);
     let shared = Arc::new(Mutex::new(KeyProbe::default()));
     let app = KeyProbeApp {
         w,
@@ -1338,7 +1412,10 @@ async fn batch_chmod_and_a_recursive_delete_reach_the_wire_with_the_right_shapes
     }
     pick_rows(&mut w, &[0, 1, 2]);
     assert_eq!(w.selection().len(), 3, "前提：三项没选上");
-    assert!(w.perform(Action::Chmod, None), "批量改权限没摆出框");
+    assert!(
+        crate::find::testing::perform_now_async(&mut w, Action::Chmod).await,
+        "批量改权限没摆出框"
+    );
     {
         let p = w.write_prompt.as_mut().expect("框没摆出来");
         assert_eq!(
@@ -1387,7 +1464,10 @@ async fn batch_chmod_and_a_recursive_delete_reach_the_wire_with_the_right_shapes
 
     // 删：目录 ＋ 乱码名（不跑帧 ⇒ 列表不重列，下标还是那三行）。
     pick_rows(&mut w, &[1, 2]);
-    assert!(w.perform(Action::Delete, None), "批量删没起来");
+    assert!(
+        crate::find::testing::perform_now_async(&mut w, Action::Delete).await,
+        "批量删没起来"
+    );
     settle(&mut w, 1).await;
     let dels: Vec<serde_json::Value> = wired
         .log
@@ -1433,7 +1513,11 @@ fn chmod_is_refused_out_loud_where_the_machine_said_it_cannot() {
         }
         let mut d = Drive::new();
         d.pick(&mut w, "a.bin", NONE);
-        assert_eq!(w.perform(Action::Chmod, None), allowed, "said={said}");
+        assert_eq!(
+            crate::find::testing::perform_now(&mut w, Action::Chmod),
+            allowed,
+            "said={said}"
+        );
         if said {
             assert!(
                 w.key_notice()
@@ -1450,13 +1534,108 @@ fn chmod_is_refused_out_loud_where_the_machine_said_it_cannot() {
     }
 }
 
-/// 「起不来，重开这个窗口」那一族（`rsFilewinShell.*.noRuntime`）里的某一句。
-fn no_runtime(e: &str) -> bool {
-    [
-        "save", "edit", "pull", "writes", "copy", "upload", "search", "size",
-    ]
-    .iter()
-    .any(|k| copy_core::copy_matches(&format!("rsFilewinShell.{k}.noRuntime"), e))
+/// 🔴 键盘与命令栏只照本机后端那份成品判：成品把「改名」灰着说「X」⇒ 按 F2 说「X」、不摆框，命令栏改名那一颗也说「X」。
+#[test]
+fn f2_and_the_command_bar_say_what_the_product_says() {
+    let mut be = crate::find::testing::FakeBackend::new(&[], Default::default());
+    be.menu_tweak = Some(|m| {
+        for s in &mut m.acts {
+            if s.action == Action::Rename {
+                s.why = Some("X".into());
+            }
+        }
+    });
+    let mut w = window_on(vec![file("a.bin")], be);
+    let mut d = Drive::new();
+    d.pick(&mut w, "a.bin", NONE);
+    d.key(&mut w, egui::Key::F2, NONE);
+    assert!(w.write_prompt().is_none(), "成品说灰着，F2 却摆出了改名框");
+    assert_eq!(w.key_notice(), Some("X"));
+    assert_eq!(w.command_blocked(Action::Rename).as_deref(), Some("X"));
+    // 与 cc-monitor 断开 ⇒ 问不到 ⇒ 命令栏说断开那一句，不说「正在查询」。
+    w.gate.set(crate::source::LinkSeen::Severed);
+    assert_eq!(w.command_blocked(Action::Rename), w.gate.write_refused());
+}
+
+/// 🔴 编辑那道闸只读成品：成品把「编辑」灰着说「Y」⇒ 对那一份按回车 ⇒ 读那一份那一趟不起、说「Y」。
+#[test]
+fn enter_on_a_file_the_product_will_not_edit_says_its_reason() {
+    let mut be = crate::find::testing::FakeBackend::new(&[], Default::default());
+    be.menu_tweak = Some(|m| {
+        for s in &mut m.acts {
+            if s.action == Action::Edit {
+                s.why = Some("Y".into());
+            }
+        }
+    });
+    let mut w = window_on(vec![file("a.txt")], be);
+    let mut d = Drive::new();
+    d.pick(&mut w, "a.txt", NONE);
+    d.key(&mut w, egui::Key::Enter, NONE);
+    assert_eq!(
+        w.edits.open_pending(),
+        None,
+        "成品说编辑不了，却起了读那一份那一趟"
+    );
+    assert_eq!(w.key_notice(), Some("Y"));
+}
+
+/// 一帧一帧跑到此刻选中的那一份成品到了（[`product_in`]），再跑一帧：记着的那一键在这一帧判。交回最后那一帧画的。
+fn land_product(d: &mut Drive, w: &mut FileWindow) -> Vec<PaintedText> {
+    for _ in guard_core::wall::rounds() {
+        if product_in(w) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        d.frame(w, Vec::new());
+    }
+    assert!(product_in(w), "成品一直没到");
+    d.frame(w, Vec::new())
+}
+
+/// 🔴 选中刚变、成品还没回来时按的那一键：记下，成品到了照成品做；回来之前选中又变了 ⇒ 那一键作废。
+#[test]
+fn a_key_before_the_product_lands_waits_for_it_and_a_new_pick_drops_it() {
+    let hold = std::sync::Arc::new(tokio::sync::Semaphore::new(0));
+    let mut be = crate::find::testing::FakeBackend::new(&[], Default::default());
+    be.menu_hold = Some(hold.clone());
+    let mut w = window_on(vec![file("a.bin"), file("b.bin")], be);
+    let mut d = Drive::new();
+    // 成品扣着：选中 a.bin、按 F2 ⇒ 不摆框、记着这一键；命令栏灰着说「正在查询」。
+    {
+        let rows = w.listing.rows.lock().unwrap().clone();
+        w.selection.click(&rows, 0, NONE);
+    }
+    assert!(!w.perform(Action::Rename, None));
+    assert!(w.write_prompt().is_none(), "成品没到，框就摆出来了");
+    assert_eq!(
+        w.command_blocked(Action::Rename),
+        Some(copy_core::copy_text("rsFilewinSelect.menu.asking", &[]))
+    );
+    hold.add_permits(64);
+    land_product(&mut d, &mut w);
+    let p = w.write_prompt().expect("成品到了，记着的那一键没做");
+    assert_eq!(p.src_name, "a.bin");
+
+    // 再来：记着一键，回来之前选中换成 b.bin ⇒ 那一键作废。
+    let hold = std::sync::Arc::new(tokio::sync::Semaphore::new(0));
+    let mut be = crate::find::testing::FakeBackend::new(&[], Default::default());
+    be.menu_hold = Some(hold.clone());
+    let mut w = window_on(vec![file("a.bin"), file("b.bin")], be);
+    {
+        let rows = w.listing.rows.lock().unwrap().clone();
+        w.selection.click(&rows, 0, NONE);
+    }
+    assert!(!w.perform(Action::Rename, None));
+    {
+        let rows = w.listing.rows.lock().unwrap().clone();
+        w.selection.click(&rows, 1, NONE);
+    }
+    // 先跑一帧让问出去的那份换成 b.bin，再放行：否则 a.bin 那份先到，看着「成品到了」其实问的还是旧选中。
+    d.frame(&mut w, Vec::new());
+    hold.add_permits(64);
+    land_product(&mut d, &mut w);
+    assert!(w.write_prompt().is_none(), "选中变了，旧的那一键照样做了");
 }
 
 // ════════════════════════════════════════════════════════════════════════

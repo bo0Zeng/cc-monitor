@@ -34,17 +34,16 @@ fn last(ws: &str) -> Result<wire::PlanRead, Said> {
         .ok_or_else(|| crate::wire::spec::fail("not_read", copy_text("bePlan.review.notRead", &[])))
 }
 
-/// 认可改了之后：这个工作区此刻要你看的数，推一帧 `changed {plan}`（别的窗口跟着改数）。
-fn after_ack(ws: &str, key: &str, acked: bool) -> Answer {
-    let doc = crate::faces::plan_face::marked(last(ws)?);
+/// 认可改了之后：这个工作区此刻要你看的数（照 `own` 刚写的那一份记录标），推一帧 `changed {plan}`（别的窗口跟着改数）。
+fn after_ack(ws: &str, key: &str, own: &crate::platform::fs::Own) -> Answer {
+    let doc =
+        crate::faces::plan_face::marked_with(last(ws)?, &crate::plan::review::current_at(own));
     let (rev, n) = crate::faces::plan_face::seen_of(&doc);
     // 此刻没有流连接订它 ⇒ 发不出是正常的，客户端重问 `plan-read` 就有。
-    // 此刻没有流连接订它 ⇒ 发不出是正常的，客户端重问 `plan-read` 就有
     crate::plan::watch::changes()
         .send((ws.to_string(), rev, n))
         .discard(Why::NotAnError);
     Ok(wire::PlanAckReply {
-        acked,
         key: key.to_string(),
         need_count: doc.need_count,
     })
@@ -58,12 +57,12 @@ fn ack(req: &PlanAckReq, own: &crate::platform::fs::Own) -> Answer {
     })?;
     check_ack(sl, key)?;
     crate::plan::review::answer_ack(own, ws, slice, key, &needs::keys_of(sl))?;
-    after_ack(ws, key, true)
+    after_ack(ws, key, own)
 }
 
 fn unack(req: &PlanAckReq, own: &crate::platform::fs::Own) -> Answer {
     crate::plan::review::answer_unack(own, &req.workspace, &req.slice, &req.key)?;
-    after_ack(&req.workspace, &req.key, false)
+    after_ack(&req.workspace, &req.key, own)
 }
 
 /// `plan-ack` · `plan-unack` 的入参。

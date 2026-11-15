@@ -7,7 +7,7 @@ import type { Ref } from "./copy-support.ts";
 import { stripComments } from "../test-support/strip-comments.ts";
 
 /** Kotlin 取文口自己住的文件：它里头的 `copyText` 是定义，不是引用。 */
-export const KT_HOME = "src/mobile/core-copy/src/main/kotlin/com/ccmonitor/mobile/core/copy/CopyText.kt";
+export const KT_HOME = "src/mobile/core-rs/src/main/kotlin/com/ccmonitor/mobile/core/copy/CopyText.kt";
 const KT_FN = "copyText";
 
 /** 读一份 `.kt` 里的全部 `copyText` 调用点。 */

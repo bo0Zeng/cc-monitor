@@ -3,7 +3,7 @@ import type { AttachLocal } from "./AttachLocal";
 import type { AttachWantCard } from "./AttachWantCard";
 
 /**
- * 交核心的那一份：每张卡走到哪 ＋ 断着时那台离线那一句 ＋ 手机这边的错。
+ * 交写字那一侧的那一份：每张卡走到哪 ＋ 断着时那台离线那一句 ＋ 手机这边的错。
  */
 export type AttachWant = { cards: Array<AttachWantCard>, 
 /**

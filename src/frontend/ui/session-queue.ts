@@ -73,12 +73,38 @@ export const CHANNEL_WATCH: QueueWatchFn = (origin, on) => {
 /** 待发在本地存储里那一格的键：那台 ＋ 会话。 */
 export const pendingKey = (origin: Machine, sid: string): string => `${origin}\u0000${sid}`;
 
+/** `Rewind` 两格的取值：按键穷举，生成的类型多一个取值这里就编不过。 */
+const REWIND_HOW: Record<Rewind["how"], true> = { conversation: true, code_and_conversation: true };
+const REWIND_WHEN: Record<Rewind["when"], true> = { after_turn: true, now: true };
+const oneOf = (m: Record<string, true>, x: unknown): boolean => typeof x === "string" && Object.prototype.hasOwnProperty.call(m, x);
+
+/**
+ * 落盘的一句待发哪一格形状不对（`Outgoing` 那几格 ＋ `outbox.ts` 的 `Pending` 随它落盘的 `refused` · `withdrawing`）：
+ * 必有的四格缺了也算不对；可选的那几格缺了算合法、有字就得是对的形状。不是对象 ⇒ `item`；都对 ⇒ `null`。
+ */
+function badField(o: unknown): string | null {
+  if (o === null || typeof o !== "object") return "item";
+  const v = o as Record<string, unknown>;
+  if (typeof v.id !== "string") return "id";
+  if (typeof v.sid !== "string") return "sid";
+  if (typeof v.text !== "string") return "text";
+  if (!Array.isArray(v.attachments) || !v.attachments.every((a) => typeof a === "string")) return "attachments";
+  if (v.refused !== undefined && typeof v.refused !== "string") return "refused";
+  if (v.withdrawing !== undefined && v.withdrawing !== true) return "withdrawing";
+  if (v.rewind !== undefined) {
+    const r = v.rewind as Record<string, unknown> | null;
+    if (r === null || typeof r !== "object" || typeof r.to !== "string" || !oneOf(REWIND_HOW, r.how) || !oneOf(REWIND_WHEN, r.when)) return "rewind";
+  }
+  return null;
+}
+
 const isOutgoing = (o: unknown): o is Outgoing => {
-  const v = o as Partial<Outgoing> | null;
-  return typeof v?.id === "string" && typeof v.sid === "string" && typeof v.text === "string" && Array.isArray(v.attachments);
+  const bad = badField(o);
+  if (bad !== null) console.warn(`[session-queue] 本地存的一句待发 ${bad} 那一格形状不对，丢掉：`, o);
+  return bad === null;
 };
 
-/** 本地存储里的待发（键 ⇒ 那几句，先交的在前）；读不懂的那几格 ⇒ 不要。 */
+/** 本地存储里的待发（键 ⇒ 那几句，先交的在前）；形状不对的那一句 ⇒ 不要（记一行说哪一格）。 */
 export function loadPending(): Map<string, Outgoing[]> {
   const v = safeGetJson<Record<string, unknown>>(LS_KEYS.queuePending);
   const out = new Map<string, Outgoing[]>();
@@ -124,11 +150,14 @@ export function outgoing(sid: string, text: string, attachments: string[], rewin
   return { id: `${END}-${crypto.randomUUID()}`, sid, text, attachments, ...(rewind !== undefined ? { rewind } : {}) };
 }
 
-/** 交一次的结局：回执到了（那台写好的那一句）· 那台拒了（那台写好的那一句）· 没回执（留着，接上再交）。 */
-export type PutEnd = { at: "receipt"; said: string } | { at: "refused"; said: string } | { at: "none"; said: string };
+/**
+ * 交一次的结局：回执到了（那台写好的那一句）· 那台拒了（那台写好的那一句）· 没回执（留着，接上再交）·
+ * 撤了（在飞时那台答撤成了，[Outbox.say] 回它；[putOnce] 不回它）。
+ */
+export type PutEnd = { at: "receipt"; said: string } | { at: "refused"; said: string } | { at: "none"; said: string } | { at: "cancelled" };
 
 /** 交那一句（同一个编号交几次都只进一条）。 */
-export async function putOnce(put: QueuePutFn, origin: Machine, o: Outgoing): Promise<PutEnd> {
+export async function putOnce(put: QueuePutFn, origin: Machine, o: Outgoing): Promise<Exclude<PutEnd, { at: "cancelled" }>> {
   const req: SessionQueuePutReq = {
     // 问的就是交过去的那一台自己（那台眼里的本机）。
     machine: LOCAL,

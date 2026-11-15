@@ -8,8 +8,9 @@ import { ChanError } from "../../../src/comms/inward/chan";
 const calls: { name: string; req: unknown }[] = [];
 const opened: { origin: string; at: unknown }[] = [];
 vi.mock("../../../src/frontend/ui/file-window", () => ({
-  openOnMachine: vi.fn(async (origin: string, at: unknown) => {
+  openFileWindow: vi.fn(async (origin: string, at: unknown) => {
     opened.push({ origin, at });
+    return true;
   }),
 }));
 const refuse = new Map<string, string>();

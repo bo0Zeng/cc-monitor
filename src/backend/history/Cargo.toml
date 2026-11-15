@@ -34,8 +34,6 @@ face-core = { path = "../../common/face-core" }
 relay-route-core = { path = "../../common/relay-route-core" }
 # 有上限读（读上限 `Cap` · 同步整读）的唯一一份；零依赖。
 cap-core = { path = "../../common/cap-core" }
-# 组员那台没答时那一句（离线那一句只由连接层写）。
-comms-inward = { path = "../../comms/inward" }
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
@@ -43,6 +41,8 @@ tracing.workspace = true
 ts-rs = { workspace = true, optional = true }
 
 [dev-dependencies]
+# 替身家（假 agent 的夹具：合成历史面 · 子运行住址）用 agents 那一层的 `test-support`。
+backend-agents = { path = "../agents", features = ["test-support"] }
 # 测试档的家一开始就是沙箱（判据碰不到这台用户的真家）。
 test-home = { path = "../../common/test-home" }
 # 源码扫描型守卫的「只留生产段」剥法 · 仓根住址（只在测试档）。

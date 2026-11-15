@@ -32,15 +32,31 @@ pub(crate) const UPSTREAM: crate::agents::DefaultUpstream = crate::agents::Defau
     // API key 凭据文件没有 agent 这一维，行都归 claude-code ⇒ `/s/` 代入对这一家照旧拒。
     owns_credentials_file: false,
     settings_env: Some(SETTINGS_ENV),
-    // 回包里没有这一家的额度头 ⇒ 不记。
-    quota: None,
-    window_slot: None,
-    window_key: None,
-    usage: None,
-    warm: None,
-    login: None,
-    // 没有这一家认得的「用满」回包 ⇒ 硬上限对它不成立。
-    limit_reply: None,
+    // 回包头 `x-codex-primary-*` · `x-codex-secondary-*` 那一族（两窗按时长起名，`300m` ⇒ 5h · `10080m` ⇒ 7d）。
+    quota: Some(super::parse::quota_of_headers),
+    window_slot: Some(super::parse::slot_of),
+    window_key: Some(super::parse::key_of),
+    usage: Some(super::usage::FACE),
+    warm: Some(super::usage::WARM),
+    // 换号时读的那份登录 ＝ 账号面那一份（同一个凭据文件 · 同一段；账号 0 不续不写）。
+    login: Some(super::accounts::LOGIN),
+    // 换到别的号：`Authorization: Bearer <那个号的访问令牌>` 与 `ChatGPT-Account-ID: <那个号的 account_id>`（codex-rs `model-provider/src/auth.rs`）。
+    swap_heads: &[
+        crate::agents::SwapHead {
+            name: "Authorization",
+            prefix: "Bearer ",
+            cell: crate::agents::CredCell::Access,
+        },
+        crate::agents::SwapHead {
+            name: "ChatGPT-Account-ID",
+            prefix: "",
+            cell: crate::agents::CredCell::Field("account_id"),
+        },
+    ],
+    // 不能预定会话号（没有那个旗标）⇒ 中转按第一发带的来处绑号。
+    bind: crate::agents::Bind::Origin,
+    // 用满那一发照 Codex 认的样子回（[`limit_reply`]）。
+    limit_reply: Some(limit_reply),
     resumes_within: None,
     inject: crate::agents::Inject::Args(launch_args),
     // 照常见 HTTP 客户端的读法：另认 `ALL_PROXY`。
@@ -58,6 +74,39 @@ pub(crate) const UPSTREAM: crate::agents::DefaultUpstream = crate::agents::Defau
 };
 
 /// 中转地址 ⇒ 垫在透传之前的那一组 `-c`（值是 TOML 串）。计划里拿到的是不带钥匙的地址，`ccm` exec 那一刻插上钥匙。
+/// 说不出卡在哪个窗口时，重置时刻离此刻多远以内标 5 小时那一窗（更远标一周那一窗）。
+const FIVE_HOURS_SECS: u64 = 5 * 3600;
+/// 两窗的分钟数（`limit_window_minutes` 那一格；同 Codex 报的时长）。
+const FIVE_HOURS_MIN: u64 = 300;
+const WEEK_MIN: u64 = 7 * 24 * 60;
+
+/// 「用满」回包（注册表 `DefaultUpstream.limit_reply`）：照 Codex 认的那一形 —— codex-rs `rust-v0.167.0`
+/// `codex_api::api_bridge`：429、体 `{"error":{"type":"usage_limit_reached","resets_at":<unix 秒>,"limit_window_minutes":<分>}}`
+/// ⇒ `UsageLimitReached`，Codex 照它原生的样子说「用满 · 几点重置」。体里不放 `code`（带了会先被别的分支截走）；
+/// 卡着的窗口（`key`：`5h` · `7d`）照它的分钟数，说不出 ⇒ 按离重置远近标（只关显示用词，重置时刻照真的）。
+fn limit_reply(reset_at: u64, now: u64, key: Option<&str>) -> crate::agents::LimitReply {
+    let near = reset_at.saturating_sub(now) <= FIVE_HOURS_SECS;
+    let minutes = match key {
+        Some(k) if k == cmd_wire::quota::SLOT_5H => FIVE_HOURS_MIN,
+        Some(k) if k == cmd_wire::quota::SLOT_7D => WEEK_MIN,
+        _ if near => FIVE_HOURS_MIN,
+        _ => WEEK_MIN,
+    };
+    let body = serde_json::json!({
+        "error": {
+            "type": "usage_limit_reached",
+            "message": "usage limit reached",
+            "resets_at": reset_at,
+            "limit_window_minutes": minutes,
+        }
+    });
+    crate::agents::LimitReply {
+        status: "429 Too Many Requests",
+        headers: vec![("content-type".to_string(), "application/json".to_string())],
+        body: body.to_string().into_bytes(),
+    }
+}
+
 pub(crate) fn launch_args(url: &str) -> Vec<String> {
     vec!["-c".to_string(), format!("{KEY}=\"{url}\"")]
 }

@@ -1,6 +1,7 @@
 //! 帧面 `session-model` 的宿主壳：换模型。这台已经没有它的终端 ⇒ 记在这条会话上、下次恢复照它起（`history_annotations::keep_for_resume`）；
-//! 开着 ⇒ 往会话里送那一家声明的那一行（Claude：`/model <值>`），
-//! 再从记录里此后长出的那一条读回换成了什么（适配层 `LaunchFace.model_switch` 认）。在等人不送；读不回 ⇒ 结果未知，不猜。
+//! 开着 ⇒ 经读屏驱动往会话里送那一家声明的那一行（Claude：`/model <值>`），
+//! 再从记录里此后长出的那一条读回换成了什么（适配层 `LaunchFace.model_switch` 认）。在等人不送；期限内读不回 ⇒ 结果未知，不猜；
+//! 那一家换了不写记录（没声明读回）⇒ 送到了就回「已发出」，不白等。
 //! 对话里已有回复时那一家先弹确认框 ⇒ 适配层声明了框的样子（`ModelSwitch.confirm`），认出来就替人确认（换模型本来就是人点的）；认不出的框不按。
 //! 那一家换模型时也把它存成以后新会话的默认 —— 这条会话用的那个号的那份设置跟别的号共用（链回共享库）⇒ 读回那一句说「各号」，它自己一份 ⇒「此号」。
 
@@ -9,7 +10,7 @@ use crate::common::contract::malformed;
 use crate::common::said::Said;
 use crate::control::screen_drive::{settle, Drive, REDRAWS_AFTER_SEND};
 use crate::control::terminals::{no_said, Refused};
-use crate::control::terminals_wire::{Sent, SentResult, TerminalInputReq};
+use crate::control::terminals_wire::{Sent, SentResult};
 use crate::faces::session_mode_face::SwitchResult;
 use crate::wire::typed::{self, Command};
 use copy_core::copy_text;
@@ -172,15 +173,48 @@ pub(crate) fn confirm_with(
     })
 }
 
-/// 生产那一份：读屏驱动（抓屏不带色 · 按键同 `session-say` 那一道 · 等重画用实时预览那个只读客户端），读回问那只耳朵。
+/// 送那一行要碰的终端那几样（生产：读屏驱动 [`Drive`]；判据拿替身记下送了什么）。
+pub(crate) trait ModelDrive {
+    /// 起看屏的那只只读客户端；终端不收 ⇒ 原因。
+    fn open(&mut self) -> Result<Option<Refused>, Said>;
+    /// 送进一句（字面字 ＋ 回车）。
+    fn say(&mut self, line: &str) -> Result<Sent, Said>;
+    /// 等下一次重画（到期没变 ⇒ `false`）。
+    fn redrawn(&mut self) -> bool;
+    /// 此刻那一屏（纯文本行）。
+    fn screen(&mut self) -> Result<Vec<String>, Said>;
+    /// 按一下键。
+    fn press(&mut self, key: &'static str) -> Result<Sent, Said>;
+}
+
+impl ModelDrive for Drive<'_> {
+    fn open(&mut self) -> Result<Option<Refused>, Said> {
+        Drive::open(self)
+    }
+    fn say(&mut self, line: &str) -> Result<Sent, Said> {
+        Drive::say(self, line)
+    }
+    fn redrawn(&mut self) -> bool {
+        Drive::redrawn(self)
+    }
+    fn screen(&mut self) -> Result<Vec<String>, Said> {
+        Drive::screen(self)
+    }
+    fn press(&mut self, key: &'static str) -> Result<Sent, Said> {
+        Drive::press(self, key)
+    }
+}
+
+/// 找确认框那一份：终端照 [`ModelDrive`]（抓屏不带色 · 按键同 `session-say` 那一道 · 等重画用实时预览那个只读客户端），读回问那只耳朵。
 struct LiveBox<'a> {
-    drive: Drive<'a>,
-    ears: &'a mut crate::observe::one_wait::Armed<ModelSaid>,
+    drive: &'a mut dyn ModelDrive,
+    /// 那一家不写读回 ⇒ `None`（读回永远没到，只认框）。
+    ears: Option<&'a mut crate::observe::one_wait::Armed<ModelSaid>>,
 }
 
 impl ConfirmIo for LiveBox<'_> {
     fn arrived(&mut self) -> Option<ModelSaid> {
-        self.ears.take_now()
+        self.ears.as_mut()?.take_now()
     }
     fn redrawn(&mut self) -> bool {
         self.drive.redrawn()
@@ -191,12 +225,6 @@ impl ConfirmIo for LiveBox<'_> {
     fn press(&mut self, key: &'static str) -> Result<Sent, Said> {
         self.drive.press(key)
     }
-}
-
-/// 看屏的那只只读客户端：终端收（同 `session-say` 那一道门）才起；起不来 ⇒ `None`（不找框，照旧等读回）。
-fn box_drive<'a>(sid: &'a str, client: Option<String>) -> Option<Drive<'a>> {
-    let mut d = Drive::new(sid, client);
-    matches!(d.open(), Ok(None)).then_some(d)
 }
 
 /// `session-model`：换模型（终端没了 ⇒ 记下、恢复照它起）。异步档：送那一行在阻塞线程池里做，等读回是一次有界等待（文件事件叫醒）。
@@ -223,10 +251,47 @@ impl crate::wire::typed::Handle for SessionModel {
     }
 }
 
-/// 送之前那几步的结局：已经有结局了 · 送到了、等读回（带着那份设置各号共不共用）。
-enum Sent2 {
+/// 核模型与推理档、出送的那一行：`model` 得在可选的模型（`offered`）·「默认」那一项里，`effort` 得是那个模型列着的一档；
+/// 过了 ⇒ `(模型的字, 那一家换模型（`sw`）的那一句)`（字照 [`crate::agents::LaunchFace::model_word`]）；不过 ⇒ `bad_args`。
+pub(crate) fn switch_line(
+    face: &crate::agents::LaunchFace,
+    sw: &crate::agents::ModelSwitch,
+    offered: &[crate::agents::ListedModel],
+    model: &str,
+    effort: Option<&str>,
+) -> Result<(String, String), Said> {
+    let listed = offered.iter().find(|m| m.value == model);
+    let is_default = face.model_default.is_some_and(|c| c.value == model);
+    let bad = |why: &str| crate::wire::spec::fail("bad_args", malformed(why));
+    if listed.is_none() && !is_default {
+        return Err(bad("`model` is not one this agent offers"));
+    }
+    if let Some(e) = effort {
+        if !listed.is_some_and(|m| m.efforts.iter().any(|x| x == e)) {
+            return Err(bad("`effort` is not one this model offers"));
+        }
+    }
+    // 上面核过它在可选的里 ⇒ 有字。
+    let text = face.model_word(model, Some(offered)).unwrap_or_default();
+    Ok((text, (sw.command)(model, effort)))
+}
+
+/// 送之前那几步的结局：已经有结局了 · 送到了、等读回（`E` ＝ 读回的耳朵，带着那份设置各号共不共用）。
+pub(crate) enum Sent2<E> {
     Done(ModelSwitched),
-    Wait(crate::observe::one_wait::Armed<ModelSaid>, bool),
+    Wait(E, bool),
+}
+
+/// 那一句送到了之后：那一家写读回（装了耳朵）⇒ 等读回；不写 ⇒ 当场回「已发出」＋ 那一句（`text` ＝ 选的那个模型的字），不白等。
+pub(crate) fn after_delivery<E>(ears: Option<E>, text: &str, shared: bool) -> Sent2<E> {
+    match ears {
+        Some(e) => Sent2::Wait(e, shared),
+        None => Sent2::Done(reply(
+            SwitchResult::Sent,
+            None,
+            Some(copy_text("beSessionModel.set.sent", &[("model", text)])),
+        )),
+    }
 }
 
 async fn answer(req: SessionModelReq, own: crate::platform::Own) -> Result<ModelSwitched, Said> {
@@ -241,76 +306,110 @@ async fn answer(req: SessionModelReq, own: crate::platform::Own) -> Result<Model
     })
 }
 
-/// 认会话 · 核模型 · 判在不在等人 · 先装读回的耳朵 · 再送那一行（同 `session-say` 那一道：窗格里只剩 shell 不送）·
-/// 那一家声明了确认框 ⇒ 送出之后看屏，认出来就替人确认。
-fn send(req: &SessionModelReq, own: &crate::platform::Own) -> Result<Sent2, Said> {
-    let home = crate::history::listing::agent_home();
-    let record = crate::observe::query::locate::session_record(&home, &req.sid).map_err(|_| {
+fn unsupported() -> Said {
+    crate::wire::spec::fail(
+        "unsupported",
+        copy_text("beSessionModel.switch.unsupported", &[]),
+    )
+}
+
+/// 按 sid 找到的那一条（`at`）那一家的起会话事实与换模型那一格：那一家没声明换模型 ⇒ 不支持。
+pub(crate) fn switch_face_among(
+    registry: &[crate::agents::Adapter],
+    at: &crate::agents::SessionAt,
+) -> Result<(crate::agents::LaunchFace, crate::agents::ModelSwitch), Said> {
+    let face = crate::agents::launch_face_among(registry, at.kind);
+    match (face, face.and_then(|f| f.model_switch)) {
+        (Some(face), Some(sw)) => Ok((face, sw)),
+        _ => Err(unsupported()),
+    }
+}
+
+/// 认会话，再照这台的注册表 · 读屏驱动送（[`send_among`]）。
+fn send(
+    req: &SessionModelReq,
+    own: &crate::platform::Own,
+) -> Result<Sent2<crate::observe::one_wait::Armed<ModelSaid>>, Said> {
+    let home = crate::agents::local_homes();
+    let at = crate::observe::query::locate::session_at(&home, &req.sid).map_err(|_| {
         crate::wire::spec::fail(
             "no_such_session",
             copy_text("beSessionCommands.session.noRecord", &[]),
         )
     })?;
-    let face = crate::agents::pick_kind(crate::agents::record_kind_of(&record))
-        .ok()
-        .map(|(_, f)| f);
-    let Some(sw) = face.and_then(|f| f.models.and(f.model_switch)) else {
-        return Err(crate::wire::spec::fail(
-            "unsupported",
-            copy_text("beSessionModel.switch.unsupported", &[]),
-        ));
-    };
-    let Some(choice) = face.and_then(|f| f.model_choice(&req.model)) else {
-        return Err(crate::wire::spec::fail(
-            "bad_args",
-            malformed("`model` is not one this agent offers"),
-        ));
-    };
-    let live = crate::history::live_table::now(&home);
+    let mut drive = Drive::new(&req.sid, req.client.clone());
+    send_among(
+        crate::agents::REGISTRY,
+        &at,
+        req,
+        &home,
+        own,
+        &super::session_open_face::listed_models,
+        &mut drive,
+    )
+}
+
+/// 按 sid 找到的那一条（`at`）：照它那一家（`registry` 里）核模型 · 判在不在等人 · 先装读回的耳朵 · 再经 `drive` 送那一行
+/// （同 `session-say` 那一道：窗格里只剩 shell 不送）· 那一家声明了确认框 ⇒ 送出之后看屏，认出来就替人确认。
+/// 那一家不支持换模型 ⇒ 不支持，`drive` 一个键不收。`listed` 列那一家的模型清单（[`super::session_open_face::offered_models`]）。
+pub(crate) fn send_among(
+    registry: &[crate::agents::Adapter],
+    at: &crate::agents::SessionAt,
+    req: &SessionModelReq,
+    home: &[crate::agents::AgentHome],
+    own: &crate::platform::Own,
+    listed: &dyn Fn(&crate::agents::LaunchFace) -> Option<Vec<crate::agents::ListedModel>>,
+    drive: &mut dyn ModelDrive,
+) -> Result<Sent2<crate::observe::one_wait::Armed<ModelSaid>>, Said> {
+    let (face, sw) = switch_face_among(registry, at)?;
+    let record = &at.file;
+    // 可选的模型照起会话框那一份（清单读得成照清单，否则静态的那一张）＋「默认」那一项。
+    let offered = super::session_open_face::offered_models(&face, listed);
+    if offered.is_empty() {
+        return Err(unsupported());
+    }
+    let (text, line) = switch_line(&face, &sw, &offered, &req.model, req.effort.as_deref())?;
+    let live = crate::history::live_table::now(home);
     if live.waiting(&req.sid) {
         return Ok(Sent2::Done(waiting_reply()));
     }
-    // 先装耳朵再送：送出之后才长出的那一条才算读回。看屏的客户端也先起：送出之后的重画才都看得见。
-    let mut ears = crate::observe::one_wait::record_pick(&record, sw.read)
+    // 先装耳朵再送：送出之后才长出的那一条才算读回（那一家不写读回 ⇒ 不装）。那一家声明了确认框 ⇒ 看屏的只读客户端也先起（终端收、同 `session-say`
+    // 那一道门才起；起不来就不找框，照旧等读回）：送出之后的重画才都看得见。送那一行一律经读屏驱动（送前忘掉此刻之前的变化）。
+    let mut ears = sw
+        .read
+        .map(|read| crate::observe::one_wait::record_pick(record, read))
+        .transpose()
         .map_err(|e| crate::wire::spec::fail("unobservable", malformed(&e)))?;
-    let watch = sw
-        .confirm
-        .and_then(|bx| box_drive(&req.sid, req.client.clone()).map(|d| (bx, d)));
+    let watch = sw.confirm.filter(|_| matches!(drive.open(), Ok(None)));
     let shared = sw.saves.is_some_and(|rel| {
         crate::accounts::manage::library::session_home(&live, &req.sid)
             .is_some_and(|h| crate::accounts::manage::library::shared_with_other_accounts(&h, rel))
     });
-    let sent = crate::control::terminals_wire::say(&TerminalInputReq {
-        sid: Some(req.sid.to_string()),
-        text: Some((sw.command)(&req.model)),
-        enter: Some(true),
-        client: req.client.clone(),
-        ..TerminalInputReq::default()
-    })?;
+    let sent = drive.say(&line)?;
     let keep = || {
         crate::history::history_annotations::keep_for_resume(
             own,
             &req.sid,
-            &record,
+            record,
             Some(&req.model),
             None,
         )
-        .map(|()| (choice.text)())
+        .map(|()| text.clone())
     };
     if let Some(r) = after_send(sent, &keep)? {
         return Ok(Sent2::Done(r));
     }
-    let Some((bx, drive)) = watch else {
-        return Ok(Sent2::Wait(ears, shared));
+    let Some(bx) = watch else {
+        return Ok(after_delivery(ears, &text, shared));
     };
     let mut io = LiveBox {
         drive,
-        ears: &mut ears,
+        ears: ears.as_mut(),
     };
     Ok(match confirm_with(&bx, &mut io)? {
         Confirmed::Arrived(s) => Sent2::Done(settled(Some(s), shared)),
         Confirmed::Ended(r) => Sent2::Done(r),
-        Confirmed::Pressed | Confirmed::Nothing => Sent2::Wait(ears, shared),
+        Confirmed::Pressed | Confirmed::Nothing => after_delivery(ears, &text, shared),
     })
 }
 

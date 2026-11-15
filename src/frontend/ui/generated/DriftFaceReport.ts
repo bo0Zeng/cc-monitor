@@ -10,6 +10,6 @@ export type DriftFaceReport = {
  */
 face: string, 
 /**
- * 按 `count` 降序、同数按键名升序（键数触顶后新键并进那一家的溢出键）。
+ * 按 `count` 降序、同数按键名升序（键数触顶后新键并进溢出键 [`OVERFLOW_KEY`]）。
  */
 entries: Array<DriftEntry>, };

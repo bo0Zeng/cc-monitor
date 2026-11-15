@@ -145,7 +145,7 @@ pub(crate) fn push_plan(
 
 /// 写口回的失败（或对面那一份解不成并的入参）⇒ 那一趟的那一句。
 fn fold_failed(f: Said) -> String {
-    let c = f.code_or_fallback().to_string();
+    let c = cmd_wire::failed::Failed::code_or_fallback(f.code.clone());
     copy_text(
         "beAssetSync.foldBlocking.failed",
         &[("c", &c), ("m", &f.into_note())],

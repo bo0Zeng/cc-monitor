@@ -68,9 +68,10 @@ const cmd = (id: string, title: string, keywords?: string, group: Command["group
   group,
   run: vi.fn(),
 });
-const ses = (id: string, title: string, waiting: string | null = null): Command => ({
+const ses = (id: string, title: string, waiting: string | null = null, group?: "answerable" | "manual"): Command => ({
   id,
   title,
+  ...(group ? { group } : {}),
   session: { dot: waiting ? "needs-you" : "running", dotLabel: "", machine: null, title, waiting },
   run: vi.fn(),
 });
@@ -133,10 +134,25 @@ describe("命令面板", () => {
     expect(selectedText()).toBe("打开历史");
   });
 
-  it("🔴 空输入：按分组列（需手动 · 当前会话 · 打开 · 窗口 · 账号），会话只列在等你的；有输入：会话在前、命令在后", () => {
+  it("★ 空输入：在等的会话拆两组（待答请求在前 · 需手动其次），哪条进哪组只照宿主交的列（簿的两列），不照 waiting", () => {
     document.body.replaceChildren();
     const view = mkView([
-      ses("s1", "表格分页", "等批准"),
+      ses("m", "终端那条", "等批准", "manual"),
+      ses("a", "答得了", "等批准", "answerable"),
+      ses("x", "簿里没有", "等批准"),
+      cmd("h", "历史", "history", "open"),
+    ]);
+    view.open();
+    expect(groupTitles()).toEqual([copyText("needs.asks.title"), copyText("beSession.needs.unknown"), copyText("mobTerms.row.attach")]);
+    const w = copyText("commandBar.session.waiting", { what: "等批准" });
+    expect(items().map((e) => e.textContent), "簿里没有的那条空输入不列").toEqual([`答得了${w}`, `终端那条${w}`, "历史"]);
+    view.close();
+  });
+
+  it("🔴 空输入：按分组列（需手动 · 当前会话 · 打开 · 窗口 · 账号），会话只列簿里有的；有输入：会话在前、命令在后", () => {
+    document.body.replaceChildren();
+    const view = mkView([
+      ses("s1", "表格分页", "等批准", "manual"),
       ses("s2", "清洗日志"),
       cmd("w", "全屏", "fullscreen", "window"),
       cmd("f", "在会话里找", "find", "current"),

@@ -138,7 +138,11 @@ fn own_file(mode: u32) -> Item {
 fn shaped(extra: &[&str]) -> Snapshot {
     let mut s = snap(BTreeMap::new());
     let (mut shared, mut z) = (BTreeMap::new(), BTreeMap::new());
-    let secret = |n: &str| identity().iter().any(|(i, _, sec)| *i == n && *sec);
+    let secret = |n: &str| {
+        super::super::layout::identity()
+            .iter()
+            .any(|(i, _, sec)| *i == n && *sec)
+    };
     for (name, kind) in ACCOUNT_DIR_SHAPE {
         let it = match kind {
             'l' => Item::Link {
@@ -178,7 +182,10 @@ fn every_per_account_file_in_an_account_dir_is_on_the_list_and_never_called_a_mi
         .map(|(n, _)| *n)
         .collect();
     want.sort_unstable();
-    let mut got: Vec<&str> = identity().iter().map(|(n, _, _)| *n).collect();
+    let mut got: Vec<&str> = super::super::layout::identity()
+        .iter()
+        .map(|(n, _, _)| *n)
+        .collect();
     got.sort_unstable();
     assert_eq!(got, want);
 
@@ -345,7 +352,7 @@ fn the_bar_sentence_is_written_here_first_fail_plus_how_many_more() {
         account: account.map(str::to_string),
         text: text.to_string(),
     };
-    let r = finish(Out {
+    let r = finish(Checks {
         checks: vec![
             line(None, CheckLevel::Warn, "先一条提示"),
             line(Some("z"), CheckLevel::Fail, "身份文件是链接"),
@@ -364,7 +371,7 @@ fn the_bar_sentence_is_written_here_first_fail_plus_how_many_more() {
         Some(format!("{first}{sep}{more}").as_str())
     );
 
-    let global = finish(Out {
+    let global = finish(Checks {
         checks: vec![line(None, CheckLevel::Fail, "共享库里留着身份")],
     });
     assert_eq!(
@@ -373,7 +380,7 @@ fn the_bar_sentence_is_written_here_first_fail_plus_how_many_more() {
         "只一条 ⇒ 不接「另 ×N」；全局的 ⇒ 账号库那一式"
     );
 
-    let none = finish(Out {
+    let none = finish(Checks {
         checks: vec![line(Some("z"), CheckLevel::Warn, "还没登录")],
     });
     assert_eq!(none.headline, None, "没有对不上的 ⇒ 缺");
@@ -381,5 +388,248 @@ fn the_bar_sentence_is_written_here_first_fail_plus_how_many_more() {
         serde_json::to_value(&none).unwrap().get("headline"),
         None,
         "缺 ⇒ 不上线"
+    );
+}
+
+/// 「未登录」照那个号那一家声明的凭据文件判（号表判「已登录」问的同一格）：缺省那一家的号缺凭据 ⇒ 说未登录；
+/// 那一家没声明凭据文件的号（不在 app 里登的那一家）⇒ 不拿缺省那一家的凭据名去判它。
+#[test]
+fn not_logged_in_follows_the_credentials_file_of_that_accounts_family() {
+    let said = copy_text("beAcctVerify.acct.notLoggedIn", &[]);
+    let mine = verify(&snap(BTreeMap::new()), &[]);
+    assert!(
+        warns(&mine).contains(&said.as_str()),
+        "缺省那一家的号缺凭据"
+    );
+    // 替身注册表：缺省那一家声明了凭据文件；另一家（`no-login`）身份表同形，却没声明凭据文件。
+    let [one, two] = two_families();
+    let unsaid = crate::agents::Adapter {
+        kind: "no-login",
+        accounts: Some(crate::agents::AccountsFace {
+            login: None,
+            ..two.accounts.expect("替身家有账号面")
+        }),
+        ..two
+    };
+    let reg = [one, unsaid];
+    let mut s = two_family_snap(false, false);
+    let text = r#"{"version":1,"sharedStore":"/h/.claude","accounts":[
+        {"name":"z","email":"","configDir":"/h/.cc-monitor/accounts/z","isDefault":true},
+        {"name":"t","email":"","configDir":"/h/.cc-monitor/accounts/t","agent":"no-login"}]}"#;
+    s.manifest = Some(super::super::model::Manifest::parse(text));
+    let who: Vec<String> = verify_among(&reg, &s, &[])
+        .checks
+        .into_iter()
+        .filter(|c| c.text == said)
+        .filter_map(|c| c.account)
+        .collect();
+    assert_eq!(
+        who,
+        ["z"],
+        "no-login 没声明凭据文件，不该拿缺省那一家的凭据名判它未登录"
+    );
+}
+
+/// 另一家替身的凭据文件名：跟缺省那一家的不同名，身份表各是各的（拿缺省那一家的表核它就认不出它的凭据）。
+const TWO_CREDS: &str = "st-login.ndjson";
+
+/// 两家替身：缺省那一家（共享库是它的）申报了共享 `skills`、身份本体是它的凭据文件；另一家只申报身份本体（另一个名字）、不共享。
+fn two_families() -> [crate::agents::Adapter; 2] {
+    use crate::agents::{IdentityClass, IdentityRoot};
+    let face = |row: &crate::agents::Adapter| row.accounts.expect("替身家有账号面");
+    let one = crate::agents::fake::family_row("stand-in", "CCM_STAND_IN_DIR", "si", true, || None);
+    let two =
+        crate::agents::fake::family_row("stand-two", "CCM_STAND_TWO_DIR", "st", false, || None);
+    let login = face(&one).login.expect("替身家声明了凭据文件");
+    assert_eq!(
+        login.creds_file, "fake-login.ndjson",
+        "身份表那一项照凭据文件名写"
+    );
+    [
+        crate::agents::Adapter {
+            accounts: Some(crate::agents::AccountsFace {
+                identity: &[(
+                    "fake-login.ndjson",
+                    IdentityRoot::ConfigDir,
+                    IdentityClass::Secret,
+                )],
+                shared: &["skills"],
+                ..face(&one)
+            }),
+            ..one
+        },
+        crate::agents::Adapter {
+            accounts: Some(crate::agents::AccountsFace {
+                identity: &[(TWO_CREDS, IdentityRoot::ConfigDir, IdentityClass::Secret)],
+                shared: &[],
+                login: Some(crate::agents::LoginFace {
+                    creds_file: TWO_CREDS,
+                    ..login
+                }),
+                ..face(&two)
+            }),
+            ..two
+        },
+    ]
+}
+
+/// 两家替身各一个号：z 是缺省那一家的（链共享库的 `skills`），t 是另一家的（不链共享库，照它那一家的表只有自己的凭据）。
+fn two_family_snap(z_creds: bool, t_creds: bool) -> Snapshot {
+    let text = r#"{"version":1,"sharedStore":"/h/.claude","accounts":[
+        {"name":"z","email":"","configDir":"/h/.cc-monitor/accounts/z","isDefault":true},
+        {"name":"t","email":"","configDir":"/h/.cc-monitor/accounts/t","agent":"stand-two"}]}"#;
+    let mut s = snap(BTreeMap::new());
+    s.manifest = Some(super::super::model::Manifest::parse(text));
+    s.shared.entries = [("skills".to_string(), Item::Dir { mode: Some(0o755) })].into();
+    let mut z: BTreeMap<String, Item> = [(
+        "skills".to_string(),
+        Item::Link {
+            target: "/h/.claude/skills".into(),
+            dangling: false,
+        },
+    )]
+    .into();
+    let mut t = BTreeMap::new();
+    if z_creds {
+        z.insert("fake-login.ndjson".into(), own_file(0o600));
+    }
+    if t_creds {
+        t.insert(TWO_CREDS.into(), own_file(0o600));
+    }
+    for (n, e) in [("z", z), ("t", t)] {
+        s.dirs.insert(
+            format!("/h/.cc-monitor/accounts/{n}"),
+            DirState {
+                me: Some(Item::Dir { mode: Some(0o700) }),
+                entries: e,
+            },
+        );
+    }
+    s
+}
+
+/// 核对照每个号那一家的身份表 · 共享表核：另一家的号不链共享库，不报缺链；两家的凭据各照各家的表认（不报「没归类」）。
+#[test]
+fn each_account_is_checked_by_its_own_familys_tables() {
+    let reg = two_families();
+    let r = verify_among(&reg, &two_family_snap(true, true), &[]);
+    assert!(r.pass, "{:?}", fails(&r));
+    for (n, item) in [("z", "fake-login.ndjson"), ("t", TWO_CREDS)] {
+        let cred_ok = copy_text("beAcctVerify.acct.credOk", &[("item", item)]);
+        assert!(
+            r.checks
+                .iter()
+                .any(|c| c.account.as_deref() == Some(n) && c.text == cred_ok),
+            "{n} 的凭据没照它那一家的身份表认：{:?}",
+            r.checks
+        );
+    }
+    let linked = copy_text("beAcctVerify.acct.linksOk", &[("n", "1")]);
+    assert!(
+        r.checks
+            .iter()
+            .any(|c| c.account.as_deref() == Some("z") && c.text == linked),
+        "缺省那一家的号照它的共享表核：{:?}",
+        r.checks
+    );
+    assert!(
+        !r.checks
+            .iter()
+            .any(|c| c.account.as_deref() == Some("t") && c.text.contains("skills")),
+        "另一家的号被拿共享库的表核：{:?}",
+        r.checks
+    );
+    assert!(
+        !r.checks.iter().any(|c| c.account.is_none()
+            && (c.text.contains("fake-login.ndjson") || c.text.contains(TWO_CREDS))),
+        "凭据被当成没归类：{:?}",
+        r.checks
+    );
+}
+
+/// 全局那几条（就地 / 隔离 · 共享库残留 · 家目录留配置 · 身份本体哪儿都没有）只数共享库那一家的号：
+/// 账号库里只有另一家的号 ⇒ 一条都不出，也不照缺省那一家的身份表去别家号的目录里找。
+#[test]
+fn the_global_lines_count_only_accounts_of_the_store_family() {
+    let reg = two_families();
+    let mut s = two_family_snap(false, true);
+    let text = r#"{"version":1,"sharedStore":"/h/.claude","accounts":[
+        {"name":"t","email":"","configDir":"/h/.cc-monitor/accounts/t","agent":"stand-two"}]}"#;
+    s.manifest = Some(super::super::model::Manifest::parse(text));
+    s.home_items
+        .insert("fake-config.json".into(), own_file(0o600));
+    let r = verify_among(&reg, &s, &[]);
+    let global: Vec<&VerifyCheck> = r
+        .checks
+        .iter()
+        .filter(|c| c.account.is_none() && c.level != CheckLevel::Skip)
+        .collect();
+    assert!(
+        global.is_empty(),
+        "只有别家的号也出了全局那几条：{global:?}"
+    );
+
+    // 正控：同一份快照多一个缺省那一家的隔离号 ⇒ 家目录留配置那一条照出。
+    let text = r#"{"version":1,"sharedStore":"/h/.claude","accounts":[
+        {"name":"z","email":"","configDir":"/h/.cc-monitor/accounts/z","isDefault":true},
+        {"name":"t","email":"","configDir":"/h/.cc-monitor/accounts/t","agent":"stand-two"}]}"#;
+    s.manifest = Some(super::super::model::Manifest::parse(text));
+    let home_config = copy_text(
+        "beAcctVerify.global.homeConfig",
+        &[("path", "/h/fake-config.json")],
+    );
+    assert!(
+        warns(&verify_among(&reg, &s, &[])).contains(&home_config.as_str()),
+        "缺省那一家的隔离号在 ⇒ 家目录留配置照报"
+    );
+}
+
+/// 邮箱重复只在同一家的号之间判：两家各一个号用同一个邮箱（同一个人两家各登一个，常态）⇒ 不报重复；
+/// 同一家两个号用同一个邮箱 ⇒ 照报一条。
+#[test]
+fn the_same_email_is_a_duplicate_only_within_one_family() {
+    let reg = two_families();
+    let dup = |r: &VerifyReport| -> usize {
+        r.checks
+            .iter()
+            .filter(|c| c.level == CheckLevel::Fail && c.text.contains("same@x"))
+            .count()
+    };
+    let mut s = two_family_snap(true, true);
+    for n in ["z", "t"] {
+        s.emails
+            .insert(format!("/h/.cc-monitor/accounts/{n}"), "same@x".into());
+    }
+    let r = verify_among(&reg, &s, &[]);
+    assert_eq!(dup(&r), 0, "两家各一个号同邮箱被报成重复：{:?}", r.checks);
+    assert!(r.pass, "{:?}", fails(&r));
+
+    let text = r#"{"version":1,"sharedStore":"/h/.claude","accounts":[
+        {"name":"z","email":"","configDir":"/h/.cc-monitor/accounts/z","isDefault":true},
+        {"name":"t","email":"","configDir":"/h/.cc-monitor/accounts/t"}]}"#;
+    s.manifest = Some(super::super::model::Manifest::parse(text));
+    let r = verify_among(&reg, &s, &[]);
+    assert_eq!(dup(&r), 1, "同一家两个号同邮箱没报：{:?}", r.checks);
+}
+
+/// 未登录各照各家：两家的号都缺凭据 ⇒ 各报一条；那一家的凭据在 ⇒ 不报它。
+#[test]
+fn not_logged_in_is_said_per_family() {
+    let reg = two_families();
+    let said = copy_text("beAcctVerify.acct.notLoggedIn", &[]);
+    let who = |r: &VerifyReport| -> Vec<String> {
+        r.checks
+            .iter()
+            .filter(|c| c.text == said)
+            .filter_map(|c| c.account.clone())
+            .collect()
+    };
+    assert_eq!(
+        who(&verify_among(&reg, &two_family_snap(false, false), &[])),
+        ["z", "t"]
+    );
+    assert_eq!(
+        who(&verify_among(&reg, &two_family_snap(true, false), &[])),
+        ["t"]
     );
 }

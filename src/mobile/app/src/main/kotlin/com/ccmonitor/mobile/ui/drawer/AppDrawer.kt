@@ -36,6 +36,7 @@ import com.ccmonitor.mobile.core.ui.icon.PhIconButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.ThemeTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
+import com.ccmonitor.mobile.ssh.machineName
 import com.ccmonitor.mobile.ui.chats.rememberRecent
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
@@ -174,7 +175,7 @@ private fun ServerRow(
     onAction: (DrawerAction) -> Unit,
 ) {
     val hosts = koinInject<HostRepository>()
-    val name by produceState<String?>(null, hostId) { value = hosts.get(hostId)?.label }
+    val name by produceState<String?>(null, hostId) { value = hosts.machineName(hostId) }
     Row(
         Modifier.fillMaxWidth().height(Touch.rowDrawer).padding(end = 8.dp),
         verticalAlignment = Alignment.CenterVertically,

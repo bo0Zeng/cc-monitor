@@ -2,7 +2,6 @@
 
 use super::locate;
 use super::{digits, jlen, Pager};
-use std::path::Path;
 
 /// `history-index` 的入参。
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -227,7 +226,13 @@ fn index_row_cost(
 ///
 /// 行从哪来：从 0 起 · 那一份的图留着 ⇒ 从扫描图上切；从中间起而图不在（界面冷开先要尾段那一截）⇒ 只读那一截
 /// （[`locate::index_rows`]）。
-pub fn index_page(home: &Path, req: HistoryIndexReq, cap: usize) -> Result<HistoryIndex, String> {
+pub fn index_page(
+    home: impl crate::agents::IntoHomes,
+    req: HistoryIndexReq,
+    cap: usize,
+) -> Result<HistoryIndex, String> {
+    let home_v = crate::agents::IntoHomes::into_homes(home);
+    let home: &[crate::agents::AgentHome] = &home_v;
     let offset = req.offset.unwrap_or(0);
     let fixed = jlen(&pack_index(u64::MAX, u64::MAX, &[])) + digits(u64::MAX);
     let mut pager = Pager::new(cap, fixed, req.limit);

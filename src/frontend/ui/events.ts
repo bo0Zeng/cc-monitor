@@ -5,7 +5,7 @@ import { isLocalOrigin, LOCAL, type Machine } from "./ipc/origin";
 import { CHANGED_WINDOW, changedItems, changedStream, type Changed, type Topic } from "./changed-stream";
 import { tryDecodeJson } from "./ipc/decode";
 import { isLive, isUnclear } from "./face-can";
-import { emitPerfSummary, noteFirstBatch } from "./startup-perf";
+import { noteBatchDrained, noteBatchSettled, noteFirstBatch, notePayloadDispatched } from "./startup-perf";
 // 这几个 payload 类型从生成物 re-export（源：`src/frontend/shell/src/ui_contract.rs` 的 ts-rs 派生）。
 // 仍然 `export`：不缩小已经导出的表面（要用的话从这个枢纽拿）。
 import type { JsonlLinePayload } from "./generated/JsonlLinePayload";
@@ -110,6 +110,11 @@ export interface EventHandlers {
    * （`TabManager.onSessionWatch`）。进 queue：排在那之前到的行后面（补的起点按已有的算）。
    */
   onSessionWatch?: (origin: Machine, p: WatchFrom) => void;
+  /**
+   * 这个会话在这条连接上的未读变了（`unread` 格，那台写好的字；`null` ⇒ 没有了）：宿主照摆，不自己数。
+   * 进 queue：与行同序。
+   */
+  onSessionUnread?: (origin: Machine, sid: string, said: string | null) => void;
 }
 
 /**
@@ -167,6 +172,7 @@ type Queued =
   | { kind: "runs"; payload: SessionRuns }
   | { kind: "branch"; payload: SessionBranchPayload }
   | { kind: "watch"; origin: Machine; payload: WatchFrom }
+  | { kind: "unread"; origin: Machine; sessionId: string; said: string | null }
   | { kind: "listed"; origin: string }
   // 记录文件不见了 / 被改过已从头重读 —— 流里的一格，与行同序（见 EventHandlers.onSessionFileNotice）。
   | { kind: "file-notice"; sessionId: string; change: string; said: string };
@@ -348,9 +354,8 @@ export async function bindEvents(
         } catch (e) {
           console.error("[events] onBatchEnd threw:", e);
         }
-        // perf：真正稳定（无更多积压）→ 输出完整 timeline
-        perf.onBatchEndFired = performance.now();
-        emitPerfSummary(perf, payloadCount);
+        // perf：真正稳定（无更多积压）→ 输出完整 timeline（时刻只记头一批，`startup-perf.ts`）
+        noteBatchSettled(perf, payloadCount);
       }
     }, BATCH_END_GRACE_MS);
   };
@@ -397,17 +402,15 @@ export async function bindEvents(
         if (inBatchMode && endTimer !== null) {
           scheduleBatchEnd();
         }
-        if (perf.firstPayloadDrained === undefined) {
-          perf.firstPayloadDrained = performance.now();
-        }
+        notePayloadDispatched(perf);
         payloadCount += 1;
         handlers.onLine(item.payload);
       } else if (item.kind === "batch-start") {
         enterBatchMode();
       } else if (item.kind === "batch-end") {
         // 不直接切回 live，延迟 300ms；期间积压 payload / 下一个 chunk 会续期 timer
-        // perf：记录 batch payload 全部 drain 完毕的时刻（不是 onBatchEnd fire）
-        perf.batchDrainEnd = performance.now();
+        // perf：batch payload 全部 drain 完毕的时刻（不是 onBatchEnd fire；只记头一批）
+        noteBatchDrained(perf);
         scheduleBatchEnd();
       } else if (item.kind === "face") {
         if (item.name) handlers.onSessionName?.(item.sessionId, item.name.label, item.name.title);
@@ -432,6 +435,8 @@ export async function bindEvents(
         handlers.onSessionBranch?.(item.payload);
       } else if (item.kind === "watch") {
         handlers.onSessionWatch?.(item.origin, item.payload);
+      } else if (item.kind === "unread") {
+        handlers.onSessionUnread?.(item.origin, item.sessionId, item.said);
       } else if (item.kind === "listed") {
         handlers.onOriginSessionsListed?.(item.origin);
       } else if (item.kind === "file-notice") {
@@ -565,6 +570,8 @@ export async function bindEvents(
           take({ kind: "branch", payload: f.branch });
         } else if (f !== null && typeof f === "object" && "watch" in f) {
           take({ kind: "watch", origin, payload: f.watch });
+        } else if (f !== null && typeof f === "object" && "unread" in f) {
+          take({ kind: "unread", origin, sessionId: f.unread.sid, said: f.unread.said ?? null });
         } else if (f !== null && typeof f === "object" && "left" in f) {
           take({ kind: "face", sessionId: f.left.sid, face: f.left.face, name: null });
         } else if (f !== null && typeof f === "object" && "listed" in f) {

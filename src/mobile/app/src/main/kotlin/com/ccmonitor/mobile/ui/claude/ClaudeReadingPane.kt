@@ -588,7 +588,7 @@ private fun OutputText(
     }
 }
 
-/** `/compact` 续接摘要：默认折叠为 `上下文摘要 · N 字`，点开看全文。搜索命中自动展开。 */
+/** `/compact` 续接摘要：默认折叠为核心写好的那一行（[RenderUnit.CompactSummary.title]），点开看全文。搜索命中自动展开。 */
 @Composable
 private fun CompactSummaryCard(
     unit: RenderUnit.CompactSummary,
@@ -610,9 +610,8 @@ private fun CompactSummaryCard(
                 .padding(tokens.spacing.md),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(copyText("mobReading.compact.title"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.width(tokens.spacing.sm))
-            Text(copyText("mobReading.compact.size", "n" to unit.text.length), style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // 收着时那一行照抄核心写好的（字数 · 钟面），不自己数。
+            Text(unit.title.orEmpty(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.weight(1f))
             Caret(expanded)
         }

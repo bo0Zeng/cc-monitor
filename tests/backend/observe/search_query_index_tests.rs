@@ -41,7 +41,7 @@ type Answer = (&'static str, usize, Vec<String>);
 
 /// 在一个索引上把 [`cases`] 全问一遍：每问一份 [`Answer`]；另回这一遍里追加读了几次。
 fn ask_all(index: &mut SearchIndex, home: &Path) -> (Vec<Answer>, usize) {
-    let fence = Fence::at(&projects_root(home)).expect("围栏");
+    let trees = Trees::among(home, &[]).expect("记录树");
     let mut appended = 0;
     let rows = cases()
         .into_iter()
@@ -49,8 +49,8 @@ fn ask_all(index: &mut SearchIndex, home: &Path) -> (Vec<Answer>, usize) {
         .map(|(name, q, rest)| {
             let mut buf = Vec::new();
             let n = index
-                .search(
-                    &fence,
+                .search_in(
+                    &trees,
                     &q.trim().to_lowercase(),
                     &opts_from_words(&rest),
                     &crate::history::live_table::now(home),
@@ -332,12 +332,13 @@ fn fix_only_a_question_fills_the_resident_index() {
 #[test]
 fn fix_a_bounded_index_answers_like_an_unbounded_one_and_keeps_the_most_recent() {
     let home = build_corpus("bound");
-    let fence = Fence::at(&projects_root(&home)).expect("围栏");
+    let trees = Trees::among(&home, &[]).expect("记录树");
     let mut free = SearchIndex::with_budget(usize::MAX);
     let (want, _) = ask_all(&mut free, &home);
-    let order: Vec<(PathBuf, usize)> = session_files(&fence)
+    let order: Vec<(PathBuf, usize)> = trees
+        .files()
         .into_iter()
-        .filter_map(|(p, _)| free.files.get(&p).map(|e| (p, e.weight)))
+        .filter_map(|(p, _, _)| free.files.get(&p).map(|e| (p, e.weight)))
         .collect();
     // 上界 = 最近两份之和 ⇒ 至少丢一份（反空真），最近那份一定留。
     let budget = order[0].1 + order[1].1;
@@ -438,7 +439,7 @@ fn a_tools_question_does_not_push_plain_text_out_of_the_index() {
         std::fs::write(&f, &text).unwrap();
         touch(&f, 1_800_000_000_000 + i64::from(i) * 1_000);
     }
-    let fence = Fence::at(&projects_root(&home)).expect("围栏");
+    let trees = Trees::among(&home, &[]).expect("记录树");
     let live = crate::history::live_table::now(&home);
     let ask = |index: &mut SearchIndex, q: &str, tools: bool| {
         let rest: Vec<String> = if tools {
@@ -448,8 +449,8 @@ fn a_tools_question_does_not_push_plain_text_out_of_the_index() {
         };
         let mut buf = Vec::new();
         index
-            .search(
-                &fence,
+            .search_in(
+                &trees,
                 q,
                 &opts_from_words(&rest),
                 &live,
@@ -511,11 +512,11 @@ fn many_batches_still_answer_most_recent_first() {
         // 名字越大越旧：最近优先的序与名字序、目录序都不同。
         touch(&f, 1_800_000_000_000 - (i as i64) * 1_000);
     }
-    let fence = Fence::at(&projects_root(&home)).expect("围栏");
+    let trees = Trees::among(&home, &[]).expect("记录树");
     let mut buf = Vec::new();
     SearchIndex::default()
-        .search(
-            &fence,
+        .search_in(
+            &trees,
             "cursor",
             &opts_from_words(&[]),
             &crate::history::live_table::now(&home),

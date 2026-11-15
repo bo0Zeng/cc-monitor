@@ -29,7 +29,7 @@ class SeedOnCreateTest {
                 .inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), AppDatabase::class.java)
                 .addCallback(
                     object : RoomDatabase.Callback() {
-                        override fun onCreate(db: SupportSQLiteDatabase) = seedDefaultKeys(db)
+                        override fun onCreate(db: SupportSQLiteDatabase) = seedDefaultKeys(db, COMMON)
                     },
                 ).build()
     }
@@ -41,8 +41,16 @@ class SeedOnCreateTest {
     fun onCreateSeedsTheThreeDefaultGroupsExactly() =
         runBlocking {
             val dao = db.keyDao()
-            assertEquals(defaultKeyGroups(), dao.observeGroups().first())
+            assertEquals(defaultKeyGroups(COMMON), dao.observeGroups().first())
             assertEquals(defaultKeys().sortedWith(compareBy({ it.groupId }, { it.sortOrder }, { it.id })), dao.allKeys())
-            assertEquals(listOf("⇌", "Esc", "Ctrl-C", "Ctrl-B", "↑", "↓", "⏎", "Tab", "Shift-Tab", "粘贴"), dao.keys(DEFAULT_GROUP_COMMON).map { it.cap() })
+            assertEquals(
+                defaultKeys().filter { it.groupId == DEFAULT_GROUP_COMMON }.sortedBy { it.sortOrder },
+                dao.keys(DEFAULT_GROUP_COMMON),
+            )
         }
+
+    private companion object {
+        /** 交进去的「常用」组名（上屏的字在 app 取，这里只看它原样落库）。 */
+        const val COMMON = "常用-种"
+    }
 }

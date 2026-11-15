@@ -3,11 +3,11 @@ import type { OwnClass } from "./OwnClass";
 import type { Words } from "./Words";
 
 /**
- * cc-monitor 在这台自己家里放的一样。
+ * cc-monitor 在这台放的一样（家里那几样；本机那一问另有界面自己那几样）。
  */
 export type OwnItem = { 
 /**
- * 闭集同 `relay_route_core::OWN_HOME_ENTRIES`。
+ * 闭集同 `relay_route_core::OWN_HOME_ENTRIES` ＋ `MONITOR_DATA_ENTRIES` ＋ `webview`。
  */
 id: string, 
 /**
@@ -15,9 +15,21 @@ id: string,
  */
 what: string, 
 /**
- * `~/.cc-monitor/…` 写法。
+ * 在家目录底下 ⇒ `~/…` 写法；不在（数据目录挪到别处 · 网页引擎目录）⇒ 绝对路径。
  */
-path: string, dir: boolean, class: OwnClass, exists: boolean, 
+path: string, 
+/**
+ * 显示名：`~/.cc-monitor/` 底下那一段（不在那底下 ⇒ 同 `path`），目录带尾 `/`。
+ */
+label: string, 
+/**
+ * 落点的绝对路径（分隔符照那台家目录的写法），打开 · 悬停照它。
+ */
+abs: string, dir: boolean, class: OwnClass, exists: boolean, 
+/**
+ * 不在盘上 ⇒ 写好的那一句（界面照抄）；在 ⇒ `null`。
+ */
+absent_said: Words | null, 
 /**
  * 文件的大小，写好的字（`copy_core::size_text`）；目录 / 不在 ⇒ `null`。
  */

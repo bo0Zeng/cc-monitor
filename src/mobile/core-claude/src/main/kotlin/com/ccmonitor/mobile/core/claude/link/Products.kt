@@ -17,9 +17,6 @@ import com.ccmonitor.mobile.core.wire.gen.HistoryMachineRead
 import com.ccmonitor.mobile.core.wire.gen.HistoryRow
 import com.ccmonitor.mobile.core.wire.gen.LOCAL
 import com.ccmonitor.mobile.core.wire.gen.Merged
-import com.ccmonitor.mobile.core.wire.gen.NeedsItem
-import com.ccmonitor.mobile.core.wire.gen.NeedsList
-import com.ccmonitor.mobile.core.wire.gen.NeedsRow
 import com.ccmonitor.mobile.core.wire.gen.SessionBook
 import com.ccmonitor.mobile.core.wire.gen.SessionFace
 import com.ccmonitor.mobile.core.wire.gen.Tone
@@ -64,17 +61,6 @@ fun SessionBook.fileNotice(sid: String): String? = fileSaid[sid]
 
 /** 那台说那一条此刻停得下（`face.can.stop`，一轮在跑时才是；聊天屏的停止键只认它）；不在 ⇒ 不算。 */
 fun SessionBook.canStop(sid: String): Boolean = face(sid)?.can?.stop == Allow.Yes
-
-/** `sessions-needs`：这台需手动的整份（在等的会话 · 计划格 · 会话外的），那台排好——出口照这个先后，不另排。核心按 `cmd-wire` 那一份解过。 */
-object SessionsNeeds {
-    const val COMMAND: String = "sessions-needs"
-
-    /** 会话那几项（照那台的先后）。 */
-    fun of(data: Any?): List<NeedsRow>? = list(data)?.items?.mapNotNull { (it as? NeedsItem.Session)?.session }
-
-    /** 整份（每一项 ＋ 上一条请求收场的那几条（ended）＋ 会外那一截读不出的那一句）。 */
-    fun list(data: Any?): NeedsList? = Wire.bind<NeedsList>(data)
-}
 
 /**
  * `history-list` 的一行与整份。手机只连一台、直接问那台的常驻：`origin` 交 [LOCAL]（那台眼里的这台）⇒
@@ -220,23 +206,17 @@ object Groups {
         }
 }
 
-/** `history-search`：这台的会话内容里搜一个词（不分大小写，子串）。回包原样交 [SearchMerge]（手机不解各台那一份）。 */
-object HistorySearch {
-    const val COMMAND: String = "history-search"
-
-    fun args(query: String): Map<String, Any?> = mapOf("query" to query)
-}
-
 /**
- * 几台搜内容的结果合成一份：手机逐台直连问完，交嵌的 Rust 核心合（`face_core::search::merge`，本机后端扇出完调的同一份），
- * 不交哪一台当信差。每台原样交它的回包（核心按类型解，整数照整数写）。
+ * 几台搜内容问一圈、合成一份：逐台问 `history-search` 与合（`face_core::search::merge`，本机后端扇出完调的同一份）都在嵌的 Rust 核心（`search_all`），
+ * 不交哪一台当信差。这里只交问哪几台（[NeedsFace.Host] 那一形）；答了没答上 · 没答上那一句 · 每行删除确认那一句都由核心照称呼写。
  */
 object SearchMerge {
-    /** [q] 搜的词（结果头那一句由核心写）；[answered]：每台 `(hostId, 它 history-search 回包原样)` ⇒ 交核心的那一行。 */
+    /** [q] 搜的词（结果头那一句由核心写）；[hosts]：问哪几台，台序照给的 ⇒ 交核心的那一行。 */
     fun input(
         q: String,
-        answered: List<Pair<String, Any?>>,
-    ): String = Json.line(mapOf("q" to q, "answered" to answered.map { (origin, reply) -> mapOf("origin" to origin, "reply" to reply) }))
+        hosts: List<NeedsFace.Host>,
+        withinMs: Long,
+    ): String = Json.line(mapOf("q" to q, "hosts" to hosts.map(NeedsFace::host), "withinMs" to withinMs))
 
     /** 核心合好的那一行；读不动 ⇒ `null`。 */
     fun of(text: String): Merged? = Json.value(text)?.let { Wire.bind<Merged>(it) }

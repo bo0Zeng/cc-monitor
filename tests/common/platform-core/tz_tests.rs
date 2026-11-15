@@ -125,3 +125,18 @@ fn the_offset_is_whole_minutes_within_a_day() {
     assert_eq!(off % 60, 0);
     assert!(off.abs() <= 14 * 3600, "{off}");
 }
+
+/// ★ Windows：系统时区设成太平洋时间、没有 `TZ` ⇒ 时区名经系统那一臂答 `America/Los_Angeles`，
+/// 2026-11-12 18:45Z（冬令时）那一刻偏移 −8 小时。只在先设了系统时区的那一趟跑（CI 的 Windows job 先 `tzutil /s "Pacific Standard Time"`
+/// 再带 `--ignored` 单跑它）：runner 缺省是 UTC，测不出东西；别的机器的系统时区不归判据管。
+#[cfg(windows)]
+#[test]
+#[ignore = "要先把系统时区设成 Pacific Standard Time（CI 的 Windows job 先 tzutil 再单跑）"]
+fn a_pacific_windows_names_its_zone_and_offset() {
+    assert_eq!(std::env::var("TZ").ok(), None, "这一条判的是系统那一臂");
+    assert_eq!(
+        crate::tz::iana_name(looks_iana).as_deref(),
+        Some("America/Los_Angeles")
+    );
+    assert_eq!(crate::tz::offset_secs(1_794_509_100), Some(-28_800));
+}

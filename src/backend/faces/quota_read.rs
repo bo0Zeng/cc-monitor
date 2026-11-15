@@ -6,26 +6,17 @@
 
 use crate::accounts::quota::facts::Kind;
 use crate::accounts::quota::ledger::ReadState;
-use crate::accounts::quota::name_words::{account_text, is_candidate, names};
+use crate::accounts::quota::name_words::{account_text_of, is_candidate, names};
 use crate::accounts::quota::rules::decide::{WarmVerdict, WarmWhy};
 use crate::accounts::quota::show::QuotaShow;
-use crate::agents::{kind_of_route, QuotaReading};
+use crate::agents::QuotaReading;
 use crate::common::cells::{Tone, Words};
 use crate::common::time::TextClock;
-use crate::faces::quota_rows::{self, Stamp};
+use crate::faces::quota_rows::{self, Stamp, Written};
 pub(crate) use cmd_wire::quota::{
-    AccountHead, Candidate, QuotaAccount, QuotaRead, QuotaUnseen, ResetsAt, UnseenHead,
-    UnseenUsage, Verdict, SLOT_5H,
+    AccountHead, Candidate, QuotaAccount, QuotaRead, QuotaUnseen, UnseenHead, UnseenUsage, Verdict,
+    SLOT_5H,
 };
-
-/// 「几点重置」那一格与旁边写好的字。
-fn resets_at(t: Option<u64>, clock: &TextClock) -> ResetsAt {
-    ResetsAt {
-        resets_at: t,
-        resets_at_text: t.map(|t| clock.text(t)),
-        resets_at_rel_text: t.and_then(|t| clock.rel(t)),
-    }
-}
 
 /// 出过数的一个号交进出口的样子（时刻字还没写）。`agent` 是账上记的路由名，出口换成线上的 kind。
 pub struct Seen {
@@ -51,28 +42,52 @@ pub(crate) struct Base {
     pub(crate) detail: Option<String>,
     pub(crate) path: Option<String>,
     pub(crate) now: u64,
-    pub(crate) usable: Vec<String>,
-    /// （号, 几点回来）。
-    pub(crate) earliest: Option<(String, u64)>,
+    /// 此刻发得出去的号（家, 号名）：号按（家, 号名）认，两家同名的号各算各的。
+    pub(crate) usable: Vec<(String, String)>,
+    /// （（家, 号名）, 几点回来）。
+    pub(crate) earliest: Option<((String, String), u64)>,
 }
 
-/// 出过数的一个号 ⇒ 成品那一条。
+/// 出过数的一个号 ⇒ 成品那一条（照这台的注册表认家，[`account_of_among`]）。
 pub fn account_of(s: Seen, clock: &TextClock) -> QuotaAccount {
+    account_of_among(crate::agents::REGISTRY, s, clock)
+}
+
+/// [`account_of`] 的本体：路由名照交进来的注册表认家（[`reply_of_among`] 交它手里那一张）；号名的字照 `name_words`，不归这一格。
+fn account_of_among(
+    registry: &[crate::agents::Adapter],
+    s: Seen,
+    clock: &TextClock,
+) -> QuotaAccount {
     let mut show = s.show;
-    quota_rows::written(&mut show, s.reading.resets_at);
+    quota_rows::written(&mut show, s.reading.resets_at, clock);
     show.stamp(clock);
-    let head = AccountHead {
-        agent: kind_of_route(&s.agent),
-        account: s.account,
-        seen_at: s.seen_at,
+    let w = Written {
         seen_at_text: clock.text(s.seen_at),
-        resets_at: resets_at(s.reading.resets_at, clock),
-        show,
+        reading_reset_text: s
+            .reading
+            .resets_at
+            .map(|t| Words(quota_rows::reset_at_text(t, clock))),
+        overage: crate::accounts::quota::show::overage_of(
+            &s.reading,
+            show.kind,
+            u64::try_from(clock.now).unwrap_or(0),
+        ),
     };
+    let agent =
+        crate::agents::AgentKind::new(crate::agents::kind_of_route_among(registry, &s.agent));
+    let rows = quota_rows::seen_block(agent.as_str(), &s.account, &mut show, &w);
+    let sampled = quota_rows::sampled_text(&w);
+    let warm = quota_rows::warm_of(s.warm, Some(&show), clock);
     QuotaAccount {
-        rows: quota_rows::seen_block(&head),
-        warm: quota_rows::warm_of(s.warm, Some(&head.show), clock),
-        head,
+        head: AccountHead {
+            agent,
+            account: s.account,
+            show: show.wire(),
+        },
+        rows,
+        sampled,
+        warm,
     }
 }
 
@@ -86,11 +101,51 @@ pub(crate) fn unseen_of(mut u: Unseen, clock: &TextClock) -> QuotaUnseen {
     }
 }
 
+/// 号名那一格要不要带是哪一家：`among` 里另有一家同名的号 ⇒ 这一家的叫法（号按（家, 号名）认）；否则 ⇒ 缺。
+/// 那一家的叫法照交进来的注册表问 [`crate::agents::family_said_among`]。
+pub(crate) fn family_tag(
+    registry: &[crate::agents::Adapter],
+    agent: &str,
+    account: &str,
+    among: &[(String, String)],
+) -> Option<String> {
+    if !among.iter().any(|(a, x)| x == account && a != agent) {
+        return None;
+    }
+    let kind = crate::agents::kind_of_route_among(registry, agent);
+    Some(crate::agents::family_said_among(registry, kind))
+}
+
+/// 号名那一格（[`account_text_of`]）：要带是哪一家的（[`family_tag`]）⇒ 带上。
+fn name_in(
+    registry: &[crate::agents::Adapter],
+    agent: &str,
+    account: &str,
+    among: &[(String, String)],
+) -> String {
+    let name = account_text_of(agent, account);
+    match family_tag(registry, agent, account, among) {
+        Some(family) => copy_core::copy_text(
+            "acct.verdict.ofAgent",
+            &[("account", &name), ("agent", &family)],
+        ),
+        None => name,
+    }
+}
+
 /// ★「现在还能不能发」那两行（唯一写法）：有号发得出去 ⇒「可发 · n 个号」＋ 哪几个；一个都发不出去 ⇒「均不可发」＋ 最早哪个几点回来（说不出 ⇒ 缺）。
-fn verdict_of(usable: &[String], earliest: Option<&(String, u64)>, clock: &TextClock) -> Verdict {
+fn verdict_of(
+    registry: &[crate::agents::Adapter],
+    usable: &[(String, String)],
+    earliest: Option<&((String, String), u64)>,
+    clock: &TextClock,
+) -> Verdict {
     if !usable.is_empty() {
         let sep = copy_core::copy_text("kit.text.sep", &[]);
-        let names: Vec<String> = usable.iter().map(|a| account_text(a)).collect();
+        let names: Vec<String> = usable
+            .iter()
+            .map(|(g, a)| name_in(registry, g, a, usable))
+            .collect();
         return Verdict {
             text: Words(copy_core::copy_text(
                 "acct.verdict.can",
@@ -100,8 +155,8 @@ fn verdict_of(usable: &[String], earliest: Option<&(String, u64)>, clock: &TextC
             tone: Tone::Plain,
         };
     }
-    let sub = earliest.map(|(account, at)| {
-        let account = account_text(account);
+    let sub = earliest.map(|((agent, account), at)| {
+        let account = account_text_of(agent, account);
         let at_text = clock.text(*at).0;
         Words(match clock.rel(*at) {
             Some(rel) => copy_core::copy_text(
@@ -121,8 +176,20 @@ fn verdict_of(usable: &[String], earliest: Option<&(String, u64)>, clock: &TextC
     }
 }
 
-/// ★ 出口：交进来的原数与显示态 ⇒ `quota-read` 的成品（唯一一处；生产与金样都走它）。
+/// ★ 出口：交进来的原数与显示态 ⇒ `quota-read` 的成品（唯一一处；生产与金样都走它）。照这台的注册表（[`reply_of_among`]）。
 pub(crate) fn reply_of(
+    base: Base,
+    seen: Vec<Seen>,
+    unseen: Vec<Unseen>,
+    clock: &TextClock,
+) -> QuotaRead {
+    reply_of_among(crate::agents::REGISTRY, base, seen, unseen, clock)
+}
+
+/// [`reply_of`] 的本体：注册表是参数（路由名认家 · 号名旁那一家的叫法都照它；判据拿替身家喂它）。
+/// 号名本身的字（`_` · 账号 0 的短形）照 `name_words::account_text_of` 写，那一处读这台的注册表，不归这一格。
+pub(crate) fn reply_of_among(
+    registry: &[crate::agents::Adapter],
     base: Base,
     seen: Vec<Seen>,
     unseen: Vec<Unseen>,
@@ -135,7 +202,15 @@ pub(crate) fn reply_of(
     );
     let candidates = seen
         .iter()
-        .map(|s| (kind_of_route(&s.agent), &s.account, s.show.kind))
+        .map(|s| {
+            (
+                crate::agents::AgentKind::new(crate::agents::kind_of_route_among(
+                    registry, &s.agent,
+                )),
+                &s.account,
+                s.show.kind,
+            )
+        })
         .chain(
             unseen
                 .iter()
@@ -159,7 +234,7 @@ pub(crate) fn reply_of(
         w
     };
     let verdict = (base.state == ReadState::Present && !(seen.is_empty() && unseen.is_empty()))
-        .then(|| verdict_of(&base.usable, base.earliest.as_ref(), clock));
+        .then(|| verdict_of(registry, &base.usable, base.earliest.as_ref(), clock));
     QuotaRead {
         verdict,
         candidates,
@@ -171,7 +246,7 @@ pub(crate) fn reply_of(
         now: base.now,
         accounts: seen
             .into_iter()
-            .map(|s| account_of(s, clock))
+            .map(|s| account_of_among(registry, s, clock))
             .map(|mut a| {
                 a.warm = warm_over(a.warm);
                 a
@@ -204,9 +279,6 @@ pub(crate) fn specimen() -> QuotaRead {
             slot: SLOT_5H.into(),
             pct: Some(1),
             resets_at: Some(2_000),
-            resets_at_text: None,
-            resets_at_rel_text: None,
-            reset_text: Some(Words("r".into())),
             full: true,
             text: Words("1%".into()),
             tone: Tone::Plain,
@@ -225,8 +297,11 @@ pub(crate) fn specimen() -> QuotaRead {
             from: Source::Headers,
             tokens_per_pct: Some(25_000),
             per_pct_text: Some(Words("p".into())),
-            reset_since_seen: true,
+            lapsed: None,
+            full: false,
+            near: false,
             tone: Tone::Plain,
+            row: None,
         }],
         usage: crate::accounts::quota::show::Usage {
             slot: Some(SLOT_5H.into()),
@@ -235,7 +310,6 @@ pub(crate) fn specimen() -> QuotaRead {
             reset: None,
             text: Words("5h 1%".into()),
             tone: Tone::Plain,
-            resets_at: Some(2_000),
         },
     };
     let mut r = reply_of(
@@ -245,8 +319,8 @@ pub(crate) fn specimen() -> QuotaRead {
             detail: Some("d".into()),
             path: Some("/q".into()),
             now: 1_000,
-            usable: vec!["a".into()],
-            earliest: Some(("a".into(), 2_000)),
+            usable: vec![("agent".into(), "a".into())],
+            earliest: Some((("agent".into(), "a".into()), 2_000)),
         },
         vec![Seen {
             agent: "agent".into(),

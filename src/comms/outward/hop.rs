@@ -2,7 +2,7 @@
 //! 线上进出字节（TLS 之下那条 TCP 上数，[`crate::upstream::Metered`]）· 上次连上了还是卡在哪一步（[`FailedAt`]）。
 //!
 //! 记点两处：连上 ＝ 读到最终回包头（`server::read_final_head`）；没连上 ＝ 四种传输失败都经过的那一处（`server::respond_upstream_failed`）。
-//! 那一句（进本机那台复制详情末尾「连接：」那一段，同 SSH 那几跳一形）也住这里（[`HopFacts::line`]）；归到哪台是宿主的事。
+//! 那一句（进本机那台复制详情末尾「连接：」那一段）与归到哪台都是宿主的事：这里只出读数。
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
@@ -30,34 +30,6 @@ pub struct HopFacts {
     /// 线上发出的字节（合计）。
     pub bytes_out: u64,
     pub last: Option<Last>,
-}
-
-impl HopFacts {
-    /// 那一句（「中转 上游〔· 经代理〕· 收 · 发〔· 上次卡在…〕」）；一发都没往上游走过 ⇒ 没有。
-    pub fn line(&self) -> Option<String> {
-        use copy_core::{copy_text, size_text};
-        let endpoint = self.endpoint.as_ref()?;
-        let place = if self.via_proxy {
-            copy_text("beLinks.route.proxy", &[("endpoint", endpoint)])
-        } else {
-            endpoint.clone()
-        };
-        let line = copy_text(
-            "beLinks.relay.line",
-            &[
-                ("endpoint", &place),
-                ("in", &size_text(self.bytes_in)),
-                ("out", &size_text(self.bytes_out)),
-            ],
-        );
-        Some(match self.last {
-            Some(Last::Failed(at)) => copy_text(
-                "beLinks.relay.failed",
-                &[("line", &line), ("hop", at.words().1)],
-            ),
-            Some(Last::Up) | None => line,
-        })
-    }
 }
 
 /// 一个中转的那一份记账（`Relay` 构造时起一份，各条上游连接共用）。

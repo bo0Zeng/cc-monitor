@@ -67,11 +67,8 @@ DEB="${LBC_DEB:-cc-monitor_3.8.0_amd64.deb}"
 
 # 产品侧的两个落点（**只写在这里一处**，下面全部引用它）。
 DIR_REAL='.cc-monitor/bin'      # install_local_ccm_entry 的真落点（local_backend.rs:1657）
-DIR_SNIPPET='.local/bin'        # src/shared/ccm-aliases.sh 那行 PATH 加的那个
+DIR_SNIPPET='.local/bin'        # 旧版 rc 片段往 PATH 加过的那个（今天的接入块加的是 DIR_REAL）：只看它在不在
 
-# 产品写 rc 时用的围栏（`src/frontend/shell/src/profile_installer.rs` 的 CCM_PROFILE_BEGIN / _END 逐字）。
-FENCE_BEGIN='# === cc-monitor remote ccm BEGIN ==='
-FENCE_END='# === cc-monitor remote ccm END ==='
 
 . "$HERE/../assert.sh"
 SNAP=""
@@ -262,19 +259,16 @@ note "rc 里有没有产品的围栏：$(tsh "grep -c 'cc-monitor remote ccm BEG
 line
 
 # ══════════════════════════════════════════════════════════════════
-echo "== P8 把产品那段 rc 片段装进去（逐字 src/shared/ccm-aliases.sh + 产品的围栏），再敲"
-# ⚠ 这一步模拟的是**用户在设置面板里点了「装 ccm 别名块」**之后 rc 的样子。
-#   片段取自**本树的** `src/shared/ccm-aliases.sh`（后端 `sftp.rs` 也是 `include_str!` 同一份文件
-#   ⇒ 这里与产品写进去的那一份同源），**一个字节都不改**。
-SNIPPET="$HERE/../../../src/shared/ccm-aliases.sh"
-if [ -f "$SNIPPET" ]; then
-  note "rc 片段取自 $SNIPPET（md5 $(md5sum "$SNIPPET" | awk '{print $1}')）"
-  docker cp "$SNIPPET" "$CT:/tmp/ccm-aliases.sh" >/dev/null 2>&1
+echo "== P8 让 P6 放下的后端自己把别名块装进 rc（aliases-block-install），再敲"
+# ⚠ 这一步走的就是**用户在设置面板里点了「装 ccm 别名块」**那一条命令：块由后端渲染（模板 `src/shared/ccm-aliases.sh`
+#   只写形状，路径 · 握手目录 · 起始时刻那一句由后端填），这里不拷模板、不自己拼围栏。
+_inst_rc=1
+if docker exec -u tester -e HOME=/home/tester "$CT" sh -c '[ -x "$HOME/'"$DIR_REAL"'/ccm" ]' 2>/dev/null; then
+  docker exec -i -u tester -e HOME=/home/tester "$CT" sh -c '"$HOME/'"$DIR_REAL"'/ccm" -- --aliases-block-install --within-ms 10000' \
+    <<<'{"rcPath":"/home/tester/.bashrc"}' >/dev/null 2>&1 && _inst_rc=0
 fi
-if docker exec "$CT" sh -c '[ -f /tmp/ccm-aliases.sh ]' 2>/dev/null; then
-  docker exec -u tester -e HOME=/home/tester "$CT" bash -c \
-    "printf '\n%s\n' '$FENCE_BEGIN' >> \$HOME/.bashrc && cat /tmp/ccm-aliases.sh >> \$HOME/.bashrc && printf '%s\n' '$FENCE_END' >> \$HOME/.bashrc" >/dev/null 2>&1
-  ok "rc 片段已装（围栏逐字取自 profile_installer.rs 的 CCM_PROFILE_BEGIN/_END）"
+if [ "$_inst_rc" -eq 0 ]; then
+  ok "rc 片段已由后端装上（aliases-block-install；围栏是后端的 CCM_PROFILE_BEGIN/_END）"
   note "装完之后 rc 里围栏处数：$(tsh "grep -c 'cc-monitor remote ccm BEGIN' \$HOME/.bashrc")"
   for n in ccm cc cct; do
     note "[-lic 交互] $n ⇒ $(probe_name "$n" tsh)"
@@ -285,7 +279,7 @@ if docker exec "$CT" sh -c '[ -f /tmp/ccm-aliases.sh ]' 2>/dev/null; then
   note "真敲 cc（退出码 + 首行）：$(tsh 'cc --help >/dev/null 2>&1; echo rc=$?')"
   note "真敲 ccm（退出码）：$(tsh 'ccm --help >/dev/null 2>&1; echo rc=$?')"
 else
-  bad "本树里没有 src/shared/ccm-aliases.sh（找的是 $SNIPPET）—— P8 整段没跑"
+  bad "后端没把别名块装上（$DIR_REAL/ccm 不在，或 aliases-block-install 退了非零）—— P8 整段没跑"
 fi
 line
 

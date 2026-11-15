@@ -1,31 +1,11 @@
 /**
  * 要求：cc-bus 那条钩子装了没有由那台后端读它自己那份配置判（`hooks-diag`），界面不读、不写那份文件；
- * 成品的形状从后端类型生成（金样 `tests/__fixtures__/hooks-diag.golden.json` 钉线上形），四态不误说。
+ * 成品的形状从后端类型生成（金样 `tests/__fixtures__/hooks-diag.golden.json` 钉线上形）；各态那一句与色调由后端写（`tests/backend/assets/cc_bus_hooks_tests.rs`），界面照抄。
  */
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { describeState } from "../../../src/frontend/ui/cc-bus-hooks-reads";
 import { REPO_ROOT } from "../../test-support/repo-root";
-import { copyText } from "../../../src/frontend/ui/copy-table";
-
-describe("钩子状态：四态不误说", () => {
-  it("显式路径且在 ⇒ 已装（不能说成有问题）；路径不在 ⇒ 绝不说已装；包装写法 ⇒ 中性", () => {
-    const at = describeState({ kind: "installed-at-path", command: "x", path: "$HOME/.claude/skills/cc-bus/scripts/cc-bus-stop-hook" });
-    expect([at.tone, at.text === copyText("ccBusHooks.state.explicit", { path: "$HOME/.claude/skills/cc-bus/scripts/cc-bus-stop-hook" })]).toEqual(["ok", true]);
-    const gone = describeState({ kind: "path-missing", command: "x", path: "/gone/cc-bus-stop-hook" });
-    expect(gone.tone).toBe("bad");
-    expect(gone.text).not.toMatch(/^已装/);
-    expect(gone.text, "配了、指向的东西不在 ⇒ 已失效，带那条路径").toBe(copyText("ccBusHooks.state.brokenPath", { path: "/gone/cc-bus-stop-hook" }));
-    expect(gone.text.startsWith("已失效")).toBe(true);
-    expect(gone.text).toContain("/gone/cc-bus-stop-hook");
-    const wrapped = describeState({ kind: "unknown", command: 'sh -c "cc-bus-stop-hook"' });
-    expect(wrapped.tone).toBe("unknown");
-    expect(wrapped.text).not.toContain(copyText("reason.spawn.notInstalled"));
-    expect(describeState({ kind: "not-installed" }).tone).toBe("bad");
-    expect(describeState({ kind: "installed-via-path", command: "cc-bus-stop-hook" }).tone).toBe("ok");
-  });
-});
 
 describe("`hooks-diag` 读口", () => {
   it("读口只问 `hooks-diag` 那一条（只读），源码里没有任何别的通道调用与 Tauri 命令", () => {

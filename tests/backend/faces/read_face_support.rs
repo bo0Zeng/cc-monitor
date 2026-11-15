@@ -20,11 +20,20 @@ pub fn answer_at(home: &Path, cmd: &str, args: &Value, tz: &crate::common::time:
                 .copied()
                 .unwrap_or_else(|| panic!("码表外的码 `{c}`"))
         };
-        let req = take::<C::Req>(args)
-            .map_err(|e| crate::common::said::Said::new(code(e.code_or_fallback()), e.said))?;
+        let req = take::<C::Req>(args).map_err(|e| {
+            crate::common::said::Said::new(
+                code(&cmd_wire::failed::Failed::code_or_fallback(e.code.clone())),
+                e.said,
+            )
+        })?;
         let got = f(req).map_err(|e| {
             let fail = e.into_said();
-            crate::common::said::Said::new(code(fail.code_or_fallback()), fail.said)
+            crate::common::said::Said::new(
+                code(&cmd_wire::failed::Failed::code_or_fallback(
+                    fail.code.clone(),
+                )),
+                fail.said,
+            )
         })?;
         Ok(serde_json::to_value(got).expect("回包序列化"))
     }

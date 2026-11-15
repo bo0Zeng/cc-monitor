@@ -35,11 +35,15 @@ pub fn cd_then_login_shell(quoted_dir: Option<&str>) -> String {
     }
 }
 
-/// 跑这一行的那个 shell 把自己的窗口标签（`$$-<`/proc/$$/stat` 第 22 格>`，与接入块设的 `LC_CCM_WINDOW` 同一个键）与 `machine`
+/// 这个 shell 自己的起始时刻（`/proc/$$/stat` 第 22 格）：窗口标签 `$$-<它>` 的后半。接入块（`src/shared/ccm-aliases.sh` 的占位）
+/// 与 [`note_own_window`] 都只引这一句（与 `LC_CCM_WINDOW` 同一个键）。是一条命令，用的人包进 `$( )`。
+pub const SELF_START: &str = r#"sed 's/.*) //' "/proc/$$/stat" | cut -d' ' -f20"#;
+
+/// 跑这一行的那个 shell 把自己的窗口标签（`$$-<`[`SELF_START`]`>`，与接入块设的 `LC_CCM_WINDOW` 同一个键）与 `machine`
 /// 两行写进 `file`（先写 `part` 再 `mv`）；没有 `/proc` ⇒ 不写；错误吞掉。三个词已成词。以 `; ` 收尾，后面接那一行。
 pub fn note_own_window(file: &str, part: &str, machine: &str) -> String {
     format!(
-        "{{ [ -r /proc/$$/stat ] && printf '%s-%s\\n%s\\n' \"$$\" \"$(sed 's/.*) //' /proc/$$/stat | cut -d' ' -f20)\" {machine} > {part} && mv -f {part} {file}; }} 2>/dev/null; "
+        "{{ [ -r /proc/$$/stat ] && printf '%s-%s\\n%s\\n' \"$$\" \"$({SELF_START})\" {machine} > {part} && mv -f {part} {file}; }} 2>/dev/null; "
     )
 }
 

@@ -11,7 +11,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** 长按一行那一列：项照那一行的格选字；能不能删照那台判的 `can.delete`；删除确认的正文照那台说的写。 */
+/** 长按一行那一列：项照那一行的格选字；能不能删照那台判的 `can.delete`（删除确认的正文是核心写好的，见 ChatsBoardTest）。 */
 class RowMenuTest {
     private fun row(
         hidden: String? = null,
@@ -47,12 +47,5 @@ class RowMenuTest {
         assertFalse(live.enabled)
         assertEquals(copyText("history.delete.liveHint"), live.hint)
         assertTrue(rowMenu(row(can = CanDelete.UNSURE), noop).last().enabled)
-    }
-
-    @Test
-    fun `删除确认的正文：哪台上的记录 · 不可恢复；说不准在不在跑 ⇒ 多一句`() {
-        val remote = copyText("history.delete.bodyRemote", "machine" to "gpu")
-        assertEquals(listOf(remote), deleteBody("gpu", CanDelete.YES))
-        assertEquals(listOf(remote, copyText("history.delete.unsure")), deleteBody("gpu", CanDelete.UNSURE))
     }
 }

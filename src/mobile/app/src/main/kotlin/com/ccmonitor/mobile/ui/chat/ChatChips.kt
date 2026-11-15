@@ -51,17 +51,19 @@ internal class ChatChips(
      * 换模型：那台送命令、从记录里读回换成了什么（`session-model`）。读回 `done` ⇒ 再问一次会话事实、字照它；没读回（`unsure` · 超时）· 被拒 ⇒ 字不动 ＋ chip 上方那一句。
      * 已经在换（模型或权限档）⇒ 不再起一趟。
      */
-    fun switchModel(pick: AgentPick) =
-        switching(pick, { it.model }, { st, c -> st.copy(model = c) }) { s ->
-            val r = link.call(SessionModel.COMMAND, SessionModel.args(s, pick.value), SWITCH_MS)
-            when {
-                r is Reply.Ok ->
-                    SessionModel.of(r.data)?.let { Switched(it.result, it.said) }
-                        ?: Switched.failed(unreadableReply(machine, SessionModel.COMMAND, r.data.toString()).text)
-                r is Reply.TimedOut -> Switched.failed(copyText("session.model.unsure"))
-                else -> Switched.failed(r.problem(machine, SessionModel.COMMAND, link.offline.value)?.text)
-            }.orUnsure(copyText("session.model.unsure"))
-        }
+    fun switchModel(
+        pick: AgentPick,
+        effort: String?,
+    ) = switching(pick, { it.model }, { st, c -> st.copy(model = c) }) { s ->
+        val r = link.call(SessionModel.COMMAND, SessionModel.args(s, pick.value, effort), SWITCH_MS)
+        when {
+            r is Reply.Ok ->
+                SessionModel.of(r.data)?.let { Switched(it.result, it.said) }
+                    ?: Switched.failed(unreadableReply(machine, SessionModel.COMMAND, r.data.toString()).text)
+            r is Reply.TimedOut -> Switched.failed(copyText("session.model.unsure"))
+            else -> Switched.failed(r.problem(machine, SessionModel.COMMAND, link.offline.value)?.text)
+        }.orUnsure(copyText("session.model.unsure"))
+    }
 
     /** ［+］面板打开：问那台这条会话能用的命令与 Skill（每开一次问一次：项目里的命令文件可能刚改过）。 */
     fun loadCommands() {
@@ -98,8 +100,11 @@ internal class ChatChips(
         val result: ModeSwitchResult,
         val said: String?,
     ) {
+        /** 没成（被拒 · 结果未知）；换成了 · 已发出都不算。界面只判这一样，字照那台那一句。 */
+        val failed: Boolean get() = result == ModeSwitchResult.REFUSED || result == ModeSwitchResult.UNSURE
+
         /** 没成却没那一句 ⇒ 补上「结果未知」那一句（unsure 时那台多半带着自己的那一句）。 */
-        fun orUnsure(unsure: String): Switched = if (result != ModeSwitchResult.DONE && said == null) copy(said = unsure) else this
+        fun orUnsure(unsure: String): Switched = if (failed && said == null) copy(said = unsure) else this
 
         companion object {
             fun failed(said: String?) = Switched(ModeSwitchResult.UNSURE, said)
@@ -118,8 +123,8 @@ internal class ChatChips(
         state.value = put(st, chipOf(st).copy(pending = pick)).copy(note = null)
         scope.launch {
             val r = ask(s)
-            // 换成了：字与抽屉勾哪一项只照会话事实，回包不写字；那台那一句有就照摆。
-            if (r.result == ModeSwitchResult.DONE) path()?.let { readFacts(it) }
+            // 没失败：字与抽屉勾哪一项只照会话事实，回包不写字；那台那一句有就照摆。
+            if (!r.failed) path()?.let { readFacts(it) }
             val now = state.value
             state.value = put(now, chipOf(now).copy(pending = null)).copy(note = r.said)
         }

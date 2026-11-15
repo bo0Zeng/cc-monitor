@@ -7,6 +7,24 @@ pub use cmd_wire::needs::{
     Ask, AskRun, Choice, ChoiceLook, ChoiceRow, NoteNeed, Question, QuestionOption,
 };
 
+/// 一条挂着的请求，后端自己用的那一份：线上那一份成品 ＋ 何时挂上（epoch ms，这台的钟；算已等多久用，不上线）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Asked {
+    pub ask: Ask,
+    pub since_ms: u64,
+}
+
+impl Asked {
+    /// **界面答不答得了的唯一判法**：成品一项都不给选（挡着终端、那一家又认不得终端里那个框）⇒ 答不了、那一句「在终端里答」（会话事实照它不交 `needs.ask`、只交 `manualText`）；
+    /// 给得出选项 ⇒ `None`（界面里答）。
+    pub fn manual(&self) -> Option<Words> {
+        self.ask
+            .choices
+            .is_empty()
+            .then(|| Words(copy_text("beAsk.manual.inTerminal", &[])))
+    }
+}
+
 /// 会话级答题 hook 叫 ccm 的那个子命令（`control::asks::hook`；那一家的 hook 设置里写的就是它）。
 pub const ANSWER_HOOK_FLAG: &str = "--answer-hook";
 /// 那一家的 hook 叫 ccm 的那几个词（打头的 `--`：后面是后端的词），后面再接那一家的 kind。
@@ -25,12 +43,17 @@ pub enum HookOff {
     Launcher,
     /// 换了启动器，本机 managed 策略不许加载会话插件（`disableSideloadFlags` · `allowManagedHooksOnly`）。
     Policy,
-    /// 换了启动器，装着的那一家版本低于认插件目录变量的那一版（或认不出版本）。
+    /// 装着的那一家版本够不着（或认不出版本）：换了启动器 ⇒ 低于认插件目录变量的那一版；默认启动器 ⇒ 低于那一家答题口的版本门（`AskFace::gate`）。
     Version,
     /// 换了启动器、ccm 经环境交了插件，持着会话的进程环境里却没有它：启动器没把环境传下去（会话事实读出来的，ccm 不写这个值）。
     EnvLost,
     /// 会话不是 ccm 起的：持着它的进程身上看不出挂过答题口（[`started_elsewhere`]；会话事实读出来的，ccm 不写这个值）。
     Elsewhere,
+    /// 这一家对这类请求不给经钩子答的口（`AskFace::cannot` 认的那一种，比如某一家的提问）：请求挂不上、照常在终端里问
+    /// （待答登记表那一侧记的，ccm 不写这个值）。
+    NoAnswer,
+    /// 透传参数里用户自己写了整张钩子表、盖掉我们垫的那一张（`AskFace::overridden` 认的那一形）：照旧起、不动他的参数，这一趟当没挂。
+    Overridden,
 }
 
 /// 用户自带的会话级设置并不进去的原因。
@@ -56,6 +79,8 @@ impl HookOff {
             HookOff::Version => "version",
             HookOff::EnvLost => "env-lost",
             HookOff::Elsewhere => "elsewhere",
+            HookOff::NoAnswer => "no-answer",
+            HookOff::Overridden => "overridden",
         }
     }
 
@@ -70,6 +95,8 @@ impl HookOff {
             HookOff::Version,
             HookOff::EnvLost,
             HookOff::Elsewhere,
+            HookOff::NoAnswer,
+            HookOff::Overridden,
         ]
         .into_iter()
         .find(|o| o.env_value() == v)
@@ -77,12 +104,15 @@ impl HookOff {
 }
 
 /// 我们那个答题插件目录（`<家>/.cc-monitor/…`，绝对路径；ccm 起会话那一下写进去，起会话 · hook · 会话事实都按这一处算）。
-pub fn plugin_dir_under(home: &str) -> String {
-    let mut p = std::path::PathBuf::from(home);
-    for seg in relay_route_core::ANSWER_PLUGIN_DIR_REL.split('/') {
-        p.push(seg);
-    }
-    p.to_string_lossy().into_owned()
+/// 家说不出 ⇒ 照实拒（判只在 `platform::paths::under_home`），不拼成相对路径；家名不是 UTF-8 ⇒ 原样留着那几个字节。
+pub fn plugin_dir_under(home: &std::path::Path) -> Result<std::path::PathBuf, String> {
+    crate::platform::paths::under_home(Some(home), relay_route_core::ANSWER_PLUGIN_DIR_REL)
+}
+
+/// 插件目录在环境变量里那一项的写法（交下去 · 认得出交没交下去都按这一处）：家说不出（[`plugin_dir_under`] 拒）
+/// 或家名不是 UTF-8（环境变量那一串装不下）⇒ 没有。
+pub fn plugin_dir_in_env(home: &std::path::Path) -> Option<String> {
+    plugin_dir_under(home).ok()?.to_str().map(str::to_owned)
 }
 
 /// 插件目录清单的分隔符（这台的路径清单分隔符；那一家照 `--plugin-dir` 那样一项一项加载）。
@@ -136,6 +166,8 @@ pub fn hook_off_words(env_value: &str) -> Words {
         Some(HookOff::Version) => copy_text("beAsk.manual.offVersion", &[]),
         Some(HookOff::EnvLost) => copy_text("beAsk.manual.offEnvLost", &[]),
         Some(HookOff::Elsewhere) => copy_text("beAsk.manual.offElsewhere", &[]),
+        Some(HookOff::NoAnswer) => copy_text("beAsk.manual.offNoAnswer", &[]),
+        Some(HookOff::Overridden) => copy_text("beAsk.manual.offOverridden", &[]),
         None => copy_text("beAsk.manual.offUnknown", &[]),
     })
 }
@@ -144,13 +176,12 @@ use copy_core::copy_text;
 use serde_json::Value;
 
 /// 一个选项排在哪一段（唯一一处）：批计划 · 有题的提问 ⇒ 全在照做那一段（一行）；
-/// 别的：拒绝一族 ⇒ 不照做那一段；改到终端里答 ⇒ 放开那一段；其余照做。
+/// 别的：拒绝一族 ⇒ 不照做那一段；其余照做。
 pub(crate) fn row_of(a: &AskIn, id: &str) -> ChoiceRow {
     if a.kind == AskKind::Plan || !a.questions.is_empty() {
         return ChoiceRow::Main;
     }
     match id {
-        "release" => ChoiceRow::Release,
         "deny" | "deny-note" | "deny-stop" => ChoiceRow::Hold,
         _ => ChoiceRow::Main,
     }
@@ -190,8 +221,17 @@ fn run_words(label: Option<&str>, kind: Option<&str>) -> Words {
     })
 }
 
-/// 成品：选项按种类写好字；`label` ＝ 子运行发的那一条派出时的标签（[`run_label`]，主会话 / 查不到 ⇒ `None`）。
-pub fn product_of(id: &str, a: &AskIn, label: Option<&str>, since_ms: u64) -> Ask {
+/// 成品：选项按种类写好字；`stop_on_deny` ＝ 那一家拒绝时写得出停下这一轮（[`super::AskFace::stop_on_deny`]，假 ⇒ 不带「拒绝并停下」）；
+/// `label` ＝ 子运行发的那一条派出时的标签（[`run_label`]，主会话 / 查不到 ⇒ `None`）。
+/// 挡着终端的那一种（终端里有框）：`screen` ＝ 那一家认得出那个框（[`super::AskFace::answers_on_screen`]）⇒ 只给「允许 · 拒绝」
+/// （app 里经读屏按，附话 · 以后不再问 · 停下这一轮按不出来）；认不得 ⇒ 一项都不给选、在终端里答。
+pub fn product_of(
+    id: &str,
+    a: &AskIn,
+    stop_on_deny: bool,
+    screen: bool,
+    label: Option<&str>,
+) -> Ask {
     let quiz = !a.questions.is_empty();
     let c = |id: &str, text: String, look: ChoiceLook, note: NoteNeed| Choice {
         id: id.to_string(),
@@ -201,9 +241,24 @@ pub fn product_of(id: &str, a: &AskIn, label: Option<&str>, since_ms: u64) -> As
         row: row_of(a, id),
         picks: id == "answer",
     };
-    // 每一种的第一颗是主按钮（照做那一段第一颗，只这一颗）；停下整轮 ⇒ 危险；改到终端里答 · 有题时的不回答 ⇒ 弱。
+    // 每一种的第一颗是主按钮（照做那一段第一颗，只这一颗）；停下整轮 ⇒ 危险；有题时的不回答 ⇒ 弱。
     let mut choices = Vec::new();
     match a.kind {
+        _ if screen => {
+            choices.push(c(
+                "allow",
+                copy_text("beAsk.choice.allow", &[]),
+                ChoiceLook::Main,
+                NoteNeed::None,
+            ));
+            choices.push(c(
+                "deny",
+                copy_text("beAsk.choice.deny", &[]),
+                ChoiceLook::Plain,
+                NoteNeed::None,
+            ));
+        }
+        _ if a.blocks_terminal => {}
         AskKind::Approve => {
             choices.push(c(
                 "allow",
@@ -231,12 +286,14 @@ pub fn product_of(id: &str, a: &AskIn, label: Option<&str>, since_ms: u64) -> As
                 ChoiceLook::Plain,
                 NoteNeed::Required,
             ));
-            choices.push(c(
-                "deny-stop",
-                copy_text("beAsk.choice.denyStop", &[]),
-                ChoiceLook::Danger,
-                NoteNeed::None,
-            ));
+            if stop_on_deny {
+                choices.push(c(
+                    "deny-stop",
+                    copy_text("beAsk.choice.denyStop", &[]),
+                    ChoiceLook::Danger,
+                    NoteNeed::None,
+                ));
+            }
         }
         AskKind::Plan => {
             choices.push(c(
@@ -264,7 +321,7 @@ pub fn product_of(id: &str, a: &AskIn, label: Option<&str>, since_ms: u64) -> As
                 NoteNeed::Optional,
             ));
         }
-        AskKind::Question => {
+        AskKind::Answer => {
             if quiz {
                 choices.push(c(
                     "answer",
@@ -284,14 +341,6 @@ pub fn product_of(id: &str, a: &AskIn, label: Option<&str>, since_ms: u64) -> As
                 NoteNeed::None,
             ));
         }
-    }
-    if a.blocks_terminal {
-        choices.push(c(
-            "release",
-            copy_text("beAsk.choice.release", &[]),
-            ChoiceLook::Ghost,
-            NoteNeed::None,
-        ));
     }
     Ask {
         id: id.to_string(),
@@ -326,7 +375,6 @@ pub fn product_of(id: &str, a: &AskIn, label: Option<&str>, since_ms: u64) -> As
                 other: true,
             })
             .collect(),
-        since_ms,
     }
 }
 
@@ -336,7 +384,7 @@ pub fn specimen() -> Ask {
         "ask-1",
         &AskIn {
             sid: "s".into(),
-            kind: AskKind::Question,
+            kind: AskKind::Answer,
             tool: "t".into(),
             what: Some("w".into()),
             detail: "d".into(),
@@ -352,11 +400,12 @@ pub fn specimen() -> Ask {
             }],
             agent_id: Some("a".into()),
             agent_type: Some("t".into()),
-            blocks_terminal: true,
+            blocks_terminal: false,
             input: Value::Null,
         },
+        true,
+        false,
         Some("l"),
-        1,
     )
 }
 

@@ -231,7 +231,7 @@ fn take_bad_args_omits_sentinel_value_from_rejection() {
     let fail = crate::wire::typed::take::<DummyReq>(&args).expect_err("should fail");
     let rejection = format!(
         "code={} message={} raw={:?}",
-        fail.code_or_fallback(),
+        cmd_wire::failed::Failed::code_or_fallback(fail.code.clone()),
         fail.said,
         fail.raw
     );
@@ -279,6 +279,7 @@ const ELSEWHERE: &[(&str, &str, &str)] = &[
     ("HistoryListingHead", "annotations", "对端后端：`history-listing` 问的那台照它出行（history/history_list.rs）"),
     ("HistoryListingHead", "annotationsNotice", "对端后端：`history-listing` 问的那台（history/history_list.rs）"),
     ("HistoryRawRow", "launchTab", "对端后端：`history-listing` 问的那台出启动 tab 那一格（history/history_list.rs）"),
+    ("HistoryRawRow", "housed", "对端后端：`history-listing` 问的那台照这一格（那台判好的宿主）造清单脸（history/history_list.rs::answer_from）"),
     ("Entry", "resumeWith", "对端后端：`history-listing` 带的注解表，问的那台读（history/history_annotations.rs）"),
     ("CatalogMachine", "projectDirs", "对端后端：资产目录两台互拉互推（assets/asset_catalog.rs）"),
     ("CatalogMachine", "seenAt", "对端后端：资产目录两台互拉互推（assets/asset_catalog.rs）"),
@@ -292,6 +293,10 @@ const ELSEWHERE: &[(&str, &str, &str)] = &[
     ("DialRequest", "forward", "拨号层：ssh-dial 开转发（comms/ssh-dial/uses.rs）"),
     ("CaptureOpts", "abort_marker", "拨号层：ssh-dial 见到就收工（comms/ssh-dial/uses.rs）"),
     ("DeleteExpect", "empty_dir", "后端自己交：common/door.rs 删空目录走同一条入参，没有客户端交它"),
+    ("MachineInterruptsReply", "relayedSessions", "对端后端：重启 / 退出那一问本机后端问到各台、加起来，再照它排两行（faces/read_face.rs::interrupts_hub · rows_of）"),
+    ("MachineInterruptsReply", "relayedMaybe", "对端后端：同上（faces/read_face.rs::interrupts_hub · rows_of）"),
+    ("MachineInterruptsReply", "liveStreams", "对端后端：同上（faces/read_face.rs::interrupts_hub · rows_of）"),
+    ("AskReq", "asker", "后端自己交：答题钩子经环境来的那一发带发问进程 pid（control/asks/hook.rs::request），常驻照它认是不是 ccm 起的会话（control/asks/mod.rs · hook.rs::vouched）；没有客户端交它"),
 ];
 
 /// 没有读者、还没裁的格：`(类型, 格, 为什么裁不了)`。裁一格删一条；两向相等。
@@ -308,7 +313,6 @@ const UNCUT: &[(&str, &str, &str)] = &[
     ("AccountChange", "applied", "后端自己用、该不出帧；账号那几族判据（accounts_face · mcp_share_exec · trust_share_exec）经回包读它看行为，要先改成直接测本体"),
     ("VerifyReport", "checks", "同 `AccountChange.applied`：核对那几条判据经回包读逐项"),
     ("VerifyReport", "fails", "同 `VerifyReport.checks`"),
-    ("DialAck", "winner", "写它的是 src/comms/ssh-dial，要连带改（另排）"),
     ("TerminalPreviewReq", "scrollback", "终端往回看整条没有调用方，牵到托管终端那一侧（host/managed 要连带改（另排））"),
     ("Preview", "capped", "同 `TerminalPreviewReq.scrollback`：往回看那一截的回包"),
     ("Preview", "scrollback_lines", "同 `TerminalPreviewReq.scrollback`：往回看那一截的回包"),
@@ -521,7 +525,7 @@ fn camel(n: &str) -> String {
 
 /// 线上每一格都有读者：生成的 TS 声明（`src/frontend/ui/generated/`，与线上 `serde_json` 同一套属性）里每个类型的每一格，
 /// 在读者那几处（[`READERS`] · [`PROSE`]）以取格的写法出现过（名字按原样 · snake · camel 找），不然就得登在 [`ELSEWHERE`]（写谁读），
-/// 或登在 [`UNCUT`]（没有读者、还裁不了，写为什么、要连带改什么）。后端自己还要用、两端不读的格留在类型里、不出帧（`serde(skip)`）。
+/// 或登在 [`UNCUT`]（没有读者、还裁不了，写为什么、要连带改什么）。后端自己还要用、两端不读的格住后端私有行（[`cmd_wire_carries_no_cell_kept_off_the_wire`]）。
 /// 两向相等：表里的那一格得真在线上、真找不到读者。
 /// 判法宽的一侧：同名的别的格也算读者 —— 零命中的一定没读者，有命中的不担保。
 #[test]
@@ -585,7 +589,7 @@ fn cells_no_reader_reads_are_off_the_wire() {
     let stale: Vec<&String> = listed.difference(&unread).collect();
     assert!(
         off.is_empty() && stale.is_empty(),
-        "线上没有读者的格（删，或后端自己用的 `serde(skip)`；读者真在别处 ⇒ 登 ELSEWHERE 写谁读）：{off:?}\n\
+        "线上没有读者的格（删，或后端自己用的挪进后端私有行；读者真在别处 ⇒ 登 ELSEWHERE 写谁读）：{off:?}\n\
          ELSEWHERE · UNCUT 里已不在线上、或在读者那几处读得到的：{stale:?}"
     );
 }
@@ -611,6 +615,195 @@ fn a_cell_read_is_told_from_a_mention() {
             .iter()
             .map(|s| s.to_string())
             .collect()
+    );
+}
+
+/// cmd-wire 里还没挪回后端的不上线格：`(文件, 类型.格, 卡在哪)`。挪一格删一条；两向相等。
+/// 卡着的是别的块此刻占着的后端文件（造它或读它的那几处），放开了照「后端私有行 ＋ 出口那一下再造线上类型」挪。
+const SKIP_LEFT: &[(&str, &str, &str)] = &[];
+
+/// 一份 Rust 源里不上线的格落在哪：`类型.格`（枚举里的 ⇒ `枚举::变体.格`）。
+/// 不上线 ＝ 那一格的属性（可跨行，连 `cfg_attr(…, serde(…))` 里的）里某个 `serde(…)` 有 `skip` · `skip_serializing`，
+/// 或 `skip_serializing_if` 指着恒真的判法（`always` 里的名字：生产段里函数体只有 `true` 的那几个，[`always_true_fns`]）。
+/// 只看生产段（[`guard_core::production_code`]：测试段与注释都去掉）。
+fn skipped_cells(src: &str, always: &std::collections::BTreeSet<String>) -> Vec<String> {
+    let prod = guard_core::production_code(src);
+    let name_after = |l: &str, kw: &str| {
+        l.split_once(kw).map(|(_, r)| {
+            r.chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect::<String>()
+        })
+    };
+    // 一整条属性（可跨行）里每个 `serde(…)`（连 `cfg_attr(…, serde(…))` 里的）的各项，任一项说不序列化 ⇒ 不上线。
+    let kept_off = |attr: &str| {
+        attr.match_indices("serde(").any(|(at, _)| {
+            let mut depth = 0usize;
+            let mut items = vec![String::new()];
+            for c in attr[at + "serde(".len()..].chars() {
+                match c {
+                    '(' => depth += 1,
+                    ')' if depth == 0 => break,
+                    ')' => depth -= 1,
+                    ',' if depth == 0 => {
+                        items.push(String::new());
+                        continue;
+                    }
+                    _ => {}
+                }
+                items.last_mut().unwrap().push(c);
+            }
+            items.iter().map(|s| s.trim()).any(|item| match item {
+                "skip" | "skip_serializing" => true,
+                _ => item
+                    .strip_prefix("skip_serializing_if")
+                    .and_then(|r| r.trim_start().strip_prefix('='))
+                    .map(|r| r.trim().trim_matches('"'))
+                    .is_some_and(|p| always.contains(p.rsplit("::").next().unwrap_or(p))),
+            })
+        })
+    };
+    let (mut ty, mut variant, mut is_enum) = (String::new(), None::<String>, false);
+    let mut pending = false;
+    // 读到一半的属性（`#[` 起、方括号还没合上）。
+    let mut attr: Option<String> = None;
+    let mut out = Vec::new();
+    for line in prod.lines() {
+        let t = line.trim();
+        let indent = line.len() - line.trim_start().len();
+        if attr.is_some() || t.starts_with("#[") {
+            let a = attr.get_or_insert_with(String::new);
+            a.push_str(t);
+            a.push(' ');
+            if a.matches('[').count() == a.matches(']').count() {
+                pending |= kept_off(a);
+                attr = None;
+            }
+            continue;
+        }
+        if let Some(n) = name_after(line, "pub struct ") {
+            (ty, variant, is_enum) = (n, None, false);
+        } else if let Some(n) = name_after(line, "pub enum ") {
+            (ty, variant, is_enum) = (n, None, true);
+        } else if is_enum && indent == 4 {
+            let n: String = t.chars().take_while(|c| c.is_alphanumeric()).collect();
+            if !n.is_empty() && t[n.len()..].trim_start().starts_with('{') {
+                variant = Some(n);
+            }
+        }
+        if pending && !t.is_empty() && t.chars().next() != Some('#') {
+            pending = false;
+            let field: String = t
+                .trim_start_matches("pub(crate) ")
+                .trim_start_matches("pub ")
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            out.push(match &variant {
+                Some(v) => format!("{ty}::{v}.{field}"),
+                None => format!("{ty}.{field}"),
+            });
+        }
+    }
+    assert!(
+        attr.is_none(),
+        "有一条属性的方括号到文件末尾都没合上（字串里落单的 `[` `]`？）—— 判法把后面整段当属性吞了：{attr:?}"
+    );
+    out
+}
+
+/// 一份 Rust 源的生产段里函数体只有 `true` 的函数名（拿来当 `skip_serializing_if` ⇒ 那一格永不上线）。
+fn always_true_fns(src: &str) -> Vec<String> {
+    let prod = guard_core::production_code(src);
+    let mut out = Vec::new();
+    let mut rest = prod.as_str();
+    while let Some(at) = rest.find("fn ") {
+        let after = &rest[at + 3..];
+        rest = after;
+        let name: String = after
+            .chars()
+            .take_while(|c| c.is_alphanumeric() || *c == '_')
+            .collect();
+        let Some(open) = after.find('{') else { break };
+        let Some(close) = after[open..].find('}') else {
+            break;
+        };
+        if !name.is_empty() && after[open + 1..open + close].trim() == "true" {
+            out.push(name);
+        }
+    }
+    out
+}
+
+/// cmd-wire 生产段零不上线的格（`skip` · `skip_serializing` · 恒真的 `skip_serializing_if`）：契约包里只放线上类型，
+/// 后端自己用的格住后端私有行、出口那一下再造线上类型（没挪完的登在 [`SKIP_LEFT`]，写卡在哪；两向相等）。
+#[test]
+fn cmd_wire_carries_no_cell_kept_off_the_wire() {
+    let root = guard_core::addr::repo_root();
+    let mut found = std::collections::BTreeSet::new();
+    let mut files = 0;
+    let srcs = guard_core::scan_tree!(&root.join("src/common/cmd-wire/src"), &["rs"]);
+    let always: std::collections::BTreeSet<String> = srcs
+        .iter()
+        .flat_map(|(_, src)| always_true_fns(src))
+        .collect();
+    for (path, src) in &srcs {
+        files += 1;
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+        for c in skipped_cells(src, &always) {
+            found.insert(format!("{name} {c}"));
+        }
+    }
+    assert!(files > 20, "cmd-wire 底下只认出 {files} 份 —— 本条在空转");
+    let listed: std::collections::BTreeSet<String> = SKIP_LEFT
+        .iter()
+        .map(|(f, c, _)| format!("{f} {c}"))
+        .collect();
+    let off: Vec<&String> = found.difference(&listed).collect();
+    let stale: Vec<&String> = listed.difference(&found).collect();
+    assert!(
+        off.is_empty() && stale.is_empty(),
+        "cmd-wire 里不上线的格（挪进后端私有行，出口那一下再造线上类型）：{off:?}\n\
+         SKIP_LEFT 里已经挪走的：{stale:?}"
+    );
+}
+
+/// 判法自己的正控：结构体的格 · 枚举变体的格认得出；注释里的 `serde(skip)`、测试段里的不算。
+#[test]
+fn a_kept_off_cell_is_found_by_its_type() {
+    let src = "//! 写着 `#[serde(skip)]` 的注释\n\
+        pub struct A {\n    pub x: u32,\n    /// 说明\n    #[serde(skip)]\n    #[cfg_attr(test, ts(skip))]\n    pub y: u32,\n}\n\
+        pub enum B {\n    Plain,\n    V {\n        #[serde(skip)]\n        z: String,\n    },\n}\n\
+        #[cfg(test)]\nmod t {\n    struct C {\n        #[serde(skip)]\n        w: u8,\n    }\n}\n";
+    assert_eq!(
+        skipped_cells(src, &Default::default()),
+        vec!["A.y".to_string(), "B::V.z".to_string()]
+    );
+}
+
+/// 判法自己的正控：`skip_serializing`（连在别的项后面）· 恒真的 `skip_serializing_if` 也认作不上线，
+/// 写成多行的 · 包在 `cfg_attr(…, serde(…))` 里的同样认；只跳反序列化的 · 判法不恒真的 `skip_serializing_if` 照常上线，不算。
+#[test]
+fn a_cell_never_serialized_is_found_in_every_form() {
+    let src = "fn never(_: &u8) -> bool {\n    true\n}\nfn is_off(b: &bool) -> bool {\n    !*b\n}\n\
+        pub struct A {\n    #[serde(default, skip_serializing)]\n    pub x: u8,\n\
+        \x20   #[serde(skip_serializing_if = \"crate::never\")]\n    pub y: u8,\n\
+        \x20   #[serde(skip_deserializing)]\n    pub z: u8,\n\
+        \x20   #[serde(default, skip_serializing_if = \"is_off\")]\n    pub w: bool,\n\
+        \x20   #[serde(default, skip_serializing_if = \"Option::is_none\")]\n    pub v: Option<u8>,\n\
+        \x20   #[serde(\n        default,\n        skip_serializing\n    )]\n    pub m: u8,\n\
+        \x20   #[cfg_attr(feature = \"x\", serde(skip_serializing))]\n    pub c: u8,\n\
+        \x20   #[cfg_attr(feature = \"x\", ts(skip))]\n    pub t: u8,\n}\n";
+    let always = always_true_fns(src).into_iter().collect();
+    assert_eq!(
+        skipped_cells(src, &always),
+        ["A.x", "A.y", "A.m", "A.c"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>()
     );
 }
 

@@ -180,7 +180,7 @@ fn ok(t: &Tmp, cmd: &str, args: Value) -> Value {
 fn code(t: &Tmp, cmd: &str, args: Value) -> String {
     match call(t, cmd, args.clone()) {
         Ok(v) => panic!("{cmd} {args} 本该被拒，却成了：{v}"),
-        Err(f) => f.code_or_fallback().to_string(),
+        Err(f) => cmd_wire::failed::Failed::code_or_fallback(f.code.clone()),
     }
 }
 

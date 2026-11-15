@@ -75,7 +75,7 @@ impl typed::Handle for SessionQueuePutCmd {
 /// 这台这条会话的工作目录（记录按 sid 在这台各家自己的记录根里找，工作目录从会话事实那一处读；同恢复那一支读的那一格）。
 pub(crate) fn cwd_here(sid: &str) -> Option<std::path::PathBuf> {
     use crate::observe::query::locate as hq;
-    let home = crate::history::listing::agent_home();
+    let home = crate::agents::local_homes();
     let path = hq::session_record(&home, sid).ok()?;
     hq::facts_project_dir(&home, path.to_str()?).map(std::path::PathBuf::from)
 }

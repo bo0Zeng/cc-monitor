@@ -292,7 +292,7 @@ pub enum MachineStateKind {
     Unknown,
 }
 
-/// 那台的点画哪一档（闭集，判定只在后端 `deploy::machine::dot`；两端照它挑样子）：`up` 连着 · `pending` 正在连 / 装 / 更新 / 还不知道 ·
+/// 那台的点画哪一档（闭集，判定只在 `copy_core::machine::dot`；两端照它挑样子）：`up` 连着 · `pending` 正在连 / 装 / 更新 / 还不知道 ·
 /// `warn` 连着但那台旧了 · `failed` 没连上 / 指纹不对 / 做不了 · `off` 「连接这台」关着。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -404,6 +404,11 @@ pub struct MachineState {
     /// 待发那一句交了、没等到回执、这一问已结束时那一行（恒有，拨号这一端写的：「{name} 离线 · 连上后补交」；还不知道那台什么样 ⇒ 状态不明那一句）。
     /// 两端输入框上方那一排照摆这一句，不拼。
     pub held_said: String,
+    /// 待发里那一句撤着、那台此刻断着时那一行（恒有，拨号这一端写的：「撤回中 · {name} 离线 · 连上后接着问」）：它不再交，不借 `held_said` 说补交。
+    /// 两端输入框上方那一排照摆这一句，不拼。
+    pub withdraw_held: String,
+    /// 编辑已发的那一句上一版还撤着时退法抽屉里那一句（恒有，拨号这一端写的：「上一版正在撤回 · 等 {name} 答复」）：［回退并发送］灰着时照摆。
+    pub rewind_held: String,
     pub fixes: Vec<FixButton>,
     /// 指纹不对时那台这一次出示的主机指纹（`host_key_changed` 才有）。
     pub seen_host_key: Option<String>,
@@ -430,7 +435,7 @@ pub struct MachineState {
     any(test, feature = "ts"),
     ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
-#[serde(deny_unknown_fields)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct FleetLines {
     /// 首屏大字那一句（「无会话」· 「本机无会话」· 一台都没报完那一句）。
     pub line: String,
@@ -439,7 +444,6 @@ pub struct FleetLines {
     /// 机器列表页头那一句（机器 N · 离线 a · 要更新 b；没有离线 · 要更新的那一段不出）。
     pub count: String,
     /// 各台都报完了活会话清单（「连接这台」关着的不算；没连上 · 连上了还没报完 ⇒ 假）。主窗口「各台都报完」那一刻照它。
-    #[serde(rename = "allListed")]
     pub all_listed: bool,
 }
 
@@ -579,7 +583,7 @@ pub struct MachineStopReq {
     pub machine: String,
 }
 
-/// `machine-stop` 的回包：那台常驻怎么停的（`--resident-stop` 那一行原样的词：`graceful` · `killed` · `not_running`）· 被停的 pid。
+/// `machine-stop` 的回包：那台常驻怎么停的（`--resident-stop` 那一行原样的词：`graceful` · `killed` · `not_running`）· 被停的 pid · 那台写好的那一句（机器页照抄）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -589,4 +593,99 @@ pub struct MachineStopReq {
 pub struct MachineStopped {
     pub stopped: String,
     pub pid: Option<u32>,
+    /// 「停」的结局那一句（`--resident-stop` 那一行里那台写好的，原样）。
+    pub said: String,
+}
+
+/// `machine-interrupts` 的入参：停 / 重启 / 更新 / 卸载一台的 cc-monitor（或退出 cc-monitor 自己）之前会打断什么。
+/// 问的一方：界面（`settings/interrupts.ts`）· 壳关主窗那一下（`shell/src/main_close.rs`）；答的一方：本机后端（`faces/read_face.rs`）。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct MachineInterruptsReq {
+    /// 停的是哪台：别的台 ⇒ 这台后端经那台的常驻流问它自己那一份（会话三格）、再数自己账上通往它的转发；缺 · 本机 ⇒ 只答这台。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
+    pub machine: Option<String>,
+    /// `true` ⇒ 问的是「重启 / 退出 cc-monitor」：这台后端选了随它退出一起停才数会话与账上全部转发，否则全零。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
+    pub app_exit: Option<bool>,
+    /// 带 `appExit` 时 `true` ⇒ 照这台的机器表一并问各台（各照它自己的退出行为答，答到的加起来；问不到的不算）。
+    /// 问到那几台时不带它（不往下扇）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
+    pub fleet: Option<bool>,
+    /// 停多久：停 · 卸载停到再启动，重启 · 更新停几秒（定「中断」那一行的抬头与实时那一项）；缺 ⇒ 停。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
+    pub act: Option<InterruptAct>,
+    /// 问的一方手上各文件窗口的那两个数（壳现读它那张表）；带 `appExit` 却缺 ⇒ 文件窗口那一项说数不出。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
+    pub files: Option<FilewinBusy>,
+}
+
+/// 那一下要停多久（[`MachineInterruptsReq::act`]）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(rename_all = "snake_case")]
+pub enum InterruptAct {
+    #[default]
+    Stop,
+    Restart,
+    Update,
+    Uninstall,
+}
+
+/// 各文件窗口手上的：没存的改动几份 · 「进度」表里还在跑的几趟。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct FilewinBusy {
+    pub unsaved: u32,
+    pub running: u32,
+}
+
+/// 确认框里的一行：抬头（中断 · 保留）＋ 那几项，字都由答的那台后端写好。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct InterruptRow {
+    pub label: String,
+    pub items: Vec<String>,
+}
+
+/// `machine-interrupts` 的回包：会话三格 ＋ 转发；
+/// 问的是别的台而那台问不到 ⇒ `relayedSessions` 是 `null`（说不清，不当成 0），另两格 0，转发照这台账上的数。
+/// `rows`：照这几格与入参的 `act` · `files` 排好的「中断 · 保留」两行（字由答的那台后端写好）；什么都不会断 ⇒ 空。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(rename_all = "camelCase")]
+pub struct MachineInterruptsReply {
+    pub relayed_sessions: Option<u32>,
+    pub relayed_maybe: u32,
+    pub live_streams: u32,
+    pub forwards: u32,
+    #[serde(default)]
+    pub rows: Vec<InterruptRow>,
 }

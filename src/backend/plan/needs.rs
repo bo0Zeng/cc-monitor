@@ -14,7 +14,7 @@
 
 use crate::wire::needs::NeedAt;
 use cmd_wire::plan::{
-    PlanBlock, PlanCell, PlanNeed, PlanRead, PlanReturned, PlanReturnedChild, PlanSlice,
+    PlanBlock, PlanCell, PlanKids, PlanNeed, PlanRead, PlanReturned, PlanReturnedChild, PlanSlice,
     PlanStatusCode, PlanTakeover, PlanWho,
 };
 use copy_core::copy_text;
@@ -112,6 +112,15 @@ fn root_of(b: &PlanBlock) -> Option<String> {
     b.cells.first().cloned()
 }
 
+/// 一块的根格没签收、原因是「底下 d/m」（同行尾短词那一判：算活没签 · 不是待定 · 不在等上一级）⇒ 那一块底下签了几格
+/// （成品里已数好的 `inside`；底下没有算活的 ⇒ `None`）。
+fn inside<'a>(b: &'a PlanBlock, root: &PlanCell) -> Option<&'a PlanKids> {
+    let open = root.status_code == Some(PlanStatusCode::Open)
+        && !root.undecided
+        && !root.why_short.as_ref().is_some_and(|w| w.wait);
+    b.inside.as_ref().filter(|_| open)
+}
+
 fn need(kind: &str, key: String, block: Option<String>, cell: Option<String>) -> PlanNeed {
     PlanNeed {
         key,
@@ -120,18 +129,28 @@ fn need(kind: &str, key: String, block: Option<String>, cell: Option<String>) ->
         cell,
         sid: None,
         red: None,
-        acked: false,
         title: String::new(),
         lines: Vec::new(),
         pos: None,
+        who: None,
     }
 }
 
+/// 负责人名字（需手动那条的负责人那一行 · 块根那一句里的那一段）：只照后端写好的 `label`（会话 ⇒ 标题 · 子 agent · 认不出）。
+pub fn who_name(w: &PlanWho) -> String {
+    w.label.clone()
+}
+
 /// 一条的标题与底下那几行（两端照摆）：顶层全签收 ⇒ 阶段与签了几格；校验不通过 ⇒ 规则 ＋ 那一块，pb 那一句与修法；
-/// 问人 ⇒ 只有标题；负责人停了 ⇒ 底下签了几格（不是「底下」那一种原因 ⇒ 还没签），子 agent 那一块再说由主会话收。负责人那一枚由出口挂。
+/// 问人 ⇒ 只有标题；负责人停了 ⇒ 底下签了几格（不是「底下」那一种原因 ⇒ 还没签），子 agent 那一块再说由主会话收。
+/// 问人 · 负责人停了两种另写负责人那一行（[`who_name`]）；另两种不写。
 fn write_texts(sl: &PlanSlice, n: &mut PlanNeed) {
     let blk = n.block.as_deref().and_then(|b| block(sl, b));
     let root = n.cell.as_deref().and_then(|c| cell(sl, c));
+    n.who = blk
+        .and_then(|b| b.owner.as_ref())
+        .filter(|_| matches!(n.kind.as_str(), ASK | "ended"))
+        .map(who_name);
     let num = |x: u32| x.to_string();
     match n.kind.as_str() {
         "top" => {
@@ -184,10 +203,10 @@ fn write_texts(sl: &PlanSlice, n: &mut PlanNeed) {
         ASK => n.title = copy_text("plan.review.ask", &[]),
         _ => {
             n.title = copy_text("sessionState.planReview.ended", &[]);
-            n.lines = vec![match root.and_then(|r| r.why_code.as_ref()) {
-                Some(cmd_wire::plan::PlanWhyCode::Inside { done, of }) => copy_text(
+            n.lines = vec![match blk.zip(root).and_then(|(b, r)| inside(b, r)) {
+                Some(k) => copy_text(
                     "plan.review.endedWhat",
-                    &[("done", &num(*done)), ("of", &num(*of))],
+                    &[("done", &num(k.done)), ("of", &num(k.of))],
                 ),
                 _ => copy_text("plan.review.endedOpen", &[]),
             }];
@@ -261,20 +280,19 @@ pub(crate) fn of_slice(
     out
 }
 
-/// 照认可记录给每片的 `needs` 标 `acked`（`acked(片, 键)`）。`ask` 那一种不收认可。
+/// 照认可记录摘掉每片 `needs` 里认可过的那几条（`acked(片, 键)`；`ask` 那一种不收认可）：认可过的不出成品，
+/// 认可 · 撤认可读本子里没标的那一份（[`keys_of`] · [`ackable`]）。
 pub(crate) fn mark_acked(doc: &mut PlanRead, acked: &dyn Fn(&str, &str) -> bool) {
     for sl in &mut doc.slices {
-        for x in &mut sl.needs {
-            x.acked = x.kind != ASK && acked(&sl.name, &x.key);
-        }
-        // 没认可的那几条照先后写「第几条 / 共几条」（概览与详情同一个次序）。
-        let total = sl.needs.iter().filter(|x| !x.acked).count().to_string();
-        let mut i = 0usize;
-        for x in &mut sl.needs {
-            x.pos = (!x.acked).then(|| {
-                i += 1;
-                copy_text("plan.review.pos", &[("i", &i.to_string()), ("n", &total)])
-            });
+        let name = sl.name.clone();
+        sl.needs.retain(|x| x.kind == ASK || !acked(&name, &x.key));
+        // 留下的那几条照先后写「第几条 / 共几条」（概览与详情同一个次序）。
+        let total = sl.needs.len().to_string();
+        for (i, x) in sl.needs.iter_mut().enumerate() {
+            x.pos = Some(copy_text(
+                "plan.review.pos",
+                &[("i", &(i + 1).to_string()), ("n", &total)],
+            ));
         }
     }
 }
@@ -302,7 +320,7 @@ pub(crate) fn count_slice(sl: &PlanSlice) -> u32 {
 pub(crate) fn open_cells(sl: &PlanSlice) -> Vec<Option<cmd_wire::needs::NeedsCell>> {
     sl.needs
         .iter()
-        .filter(|x| x.kind != ASK && !x.acked)
+        .filter(|x| x.kind != ASK)
         .map(|x| {
             let id = x.cell.as_deref().filter(|id| cell(sl, id).is_some())?;
             sl.labels.get(id).map(|label| cmd_wire::needs::NeedsCell {

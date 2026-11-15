@@ -38,7 +38,6 @@ import { skeletonRows } from "../kit/skeleton";
 import { emptyState } from "../kit/empty";
 import { openPopover, closePopover, popoverOpenOn } from "../kit/popover";
 import { FindStrip } from "../find-strip";
-import { hitMeta } from "./session-find";
 import sv from "./session-viewer.module.css";
 import { copyText } from "../copy-table";
 
@@ -85,16 +84,6 @@ export function revealCard(container: HTMLElement, uuid: string, tool?: string):
   return el;
 }
 
-/**
- * 历史会话的 jsonl 文件名**就是** sid（口径同 `remote_history::jsonl_stem`）。
- * 远端分叉只认 sid，而查看器手上只有路径，所以从路径取。取不出来 → 空串，
- * 后端的白名单会拒（fail-closed，不会拿一个残缺 id 去跑）。
- */
-function sidFromJsonlPath(p: string): string {
-  const name = p.split(/[\\/]/).pop() ?? "";
-  return name.endsWith(".jsonl") ? name.slice(0, -".jsonl".length) : "";
-}
-
 
 /** 内容头：内容由宿主按那一行的事实拼好，查看器只摆位置。 */
 export interface ViewerHead {
@@ -118,6 +107,8 @@ export function viewerPath(text: string): HTMLElement {
 
 export interface ViewerOptions {
   jsonlPath: string;
+  /** 这一份记录是哪个会话（那一行的 `sessionId`）：分叉照它交。必填：记录文件名不一定是 sid（Codex 的就不是）。 */
+  sessionId: string;
   /** 顶栏标题（后端给的显示标题）。 */
   displayTitle: string;
   head?: ViewerHead;
@@ -397,7 +388,7 @@ export class SessionViewer {
       onCardRendered: opts.suppressBranch
         ? undefined
         : (el, msg) =>
-            this.attachBranchButton(el, msg, opts.jsonlPath, opts.origin),
+            this.attachBranchButton(el, msg, opts.sessionId, opts.origin),
     };
     this.renderCtx = ctx;
     this.renderSink = sink;
@@ -552,15 +543,14 @@ export class SessionViewer {
   private attachBranchButton(
     cardEl: HTMLElement,
     record: LineRecord,
-    jsonlPath: string,
+    sid: string,
     origin: Machine,
   ): void {
     if (record.t !== "said" && record.t !== "reply") return;
     attachBranchButton(cardEl, {
       uuid: record.id,
-      // 历史会话的文件名就是 sid（`sidFromJsonlPath`）；与实时 tab 开同一个框（分叉记录在框里点［新建］才写）。
-      onFork: (at) =>
-        void openNewSession({ origin, fork: { sid: sidFromJsonlPath(jsonlPath), uuid: at, title: this.titleEl.textContent ?? "" } }),
+      // 照打开时交的那一行的 sid；与实时 tab 开同一个框（分叉记录在框里点［新建］才写）。
+      onFork: (at) => void openNewSession({ origin, fork: { sid, uuid: at } }),
     });
   }
 
@@ -922,7 +912,7 @@ export class SessionViewer {
       },
       jumpTo: (to, tool) => this.scrollToMessage(to, tool),
       unjumpableHint: copyText("sessionViewer.build.unjumpable"),
-    }, { meta: (h, scope) => hitMeta(h, scope) }); // 命中头一行同主窗口面板（同一个控件）
+    }, { meta: true }); // 命中头一行同主窗口面板（同一个控件，那台写好的 `meta`）
     tools.append(this.saidBtn, this.find.box);
     view.appendChild(tools);
     // 命中清单：工具行正下方就地展开。

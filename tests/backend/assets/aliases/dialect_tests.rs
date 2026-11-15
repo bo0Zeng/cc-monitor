@@ -142,10 +142,14 @@ fn powershell_knows_the_names_its_own_block_defines() {
 #[test]
 fn hosted_completion_covers_every_hosted_alias_and_only_those() {
     let book = crate::assets::aliases::accounts::with_builtins(
+        crate::agents::REGISTRY,
         crate::assets::aliases::profile::parse_book(
             "[mine]\nfrom = \"cch\"\n\n[plain]\nmodel = \"x\"\n",
         ),
-        &["work".to_string()],
+        &[crate::accounts::manage::aliases::AliasOwner {
+            name: "work".to_string(),
+            agent: None,
+        }],
         true,
         &|a, b| a == b,
     );
@@ -160,15 +164,13 @@ fn fake_ccm_home(tag: &str, rows: &str) -> std::path::PathBuf {
     let bin = home.join("bin");
     std::fs::create_dir_all(&bin).unwrap();
     let ccm = bin.join(crate::ccm_line::SUBCOMMAND_WORD);
-    std::fs::write(
+    // 马上被起 ⇒ 经 `write_exe` 写（本进程写的写端会漏进别的判据线程 fork 出来的子进程 ⇒ ETXTBSY）。
+    test_home::write_exe(
         &ccm,
-        format!(
+        &format!(
             "#!/bin/sh\nif [ \"$1 $2\" = \"-- --hosts\" ]; then printf '%s' '{rows}'; else echo \"unexpected: $*\" >&2; exit 9; fi\n"
         ),
-    )
-    .unwrap();
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(&ccm, std::fs::Permissions::from_mode(0o755)).unwrap();
+    );
     home
 }
 

@@ -1,8 +1,11 @@
 /**
- * 侧栏顶上「需手动 n」点开的那个浮层（400 宽）：在等的会话 · 计划项 · 一条分隔线 · 会话外的每一项（各台 `sessions-needs` 本机合好的那一份，照它的序）；
+ * 侧栏顶上那两颗（「待答请求 n」·「需手动 n」）各点开的那个浮层（400 宽），一颗一列、同一个画法，交进来的事实不同（核心合好的那一列，照它的序）：
+ * - 待答请求：只有会话行（界面答得了的）；
+ * - 需手动：答不了的会话 · 计划项 · 一条分隔线 · 会话外的每一项。
  * 底部断开 / 清单无法读取的那几台各一条虚线。没有小标题：会话行是琥珀点 ＋ 标题，会话外那几行是号 / MCP 图标，靠形就分得开。
  *
- * 这里只排版：会话行第二行是那台写好的会走的那一句（[`waitingNow`]），agent 发的多一行谁要批（`needs.ask.run.text`）；会话外那一行第一行是后端写好的 `said`、第二行是问来那台的机器名
+ * 这里只排版：会话行第二行是那台写好的会走的那一句（[`waitingNow`]），答不了的再接那台写好的那一句（`needs.manualText`，如「在终端里答」），
+ * agent 发的多一行谁要批（`needs.ask.run.text`）；会话外那一行第一行是后端写好的 `said`、第二行是问来那台的机器名
  * （`fix` 为空 ⇒ 后端给的 `why`：为什么没有解法 / 怎么手动修，不画按钮）。点会话行 ⇒ 切过去；点会话外那一行或它的［登录…］⇒ 开登录抽屉。↑↓ 选行 · Enter ＝ 点 · Esc 收起（浮层那一套）。
  */
 import { copyText } from "./copy-table";
@@ -13,7 +16,7 @@ import { statusDot } from "./kit/status-dot";
 import { machineName } from "./ipc/chan-caller";
 import { isRemoteOrigin, type Machine } from "./ipc/origin";
 import type { ManualItem } from "./login-reads";
-import type { BookSession, PlanNeedItem } from "./needs-book";
+import { columnFace, type BookSession, type NeedsCol, type PlanNeedItem } from "./needs-book";
 import type { NeedsCell } from "./generated/NeedsCell";
 import { clockNow } from "./duration-format";
 import s from "./needs-panel.module.css";
@@ -27,13 +30,19 @@ export function waitingNow(b: Pick<BookSession, "session" | "clock" | "receivedA
   return b.clock && n.waitedMs !== null ? clockNow({ text: b.clock.text, from: b.receivedAt - n.waitedMs }, now) : n.text;
 }
 
-/** 会话外那一行的图标：号 · MCP · 权限太宽的秘密文件。 */
-const MANUAL_ICON: Record<ManualItem["kind"], IconName> = { accountLogin: "account", mcpLogin: "plug", secretFile: "warning" };
+/** 会话外那一行的图标：号 · MCP · 权限太宽的秘密文件 · 格式太老的自家状态文件。 */
+const MANUAL_ICON: Record<ManualItem["kind"], IconName> = { accountLogin: "account", accountNoAgent: "account", mcpLogin: "plug", secretFile: "warning", ownFile: "warning" };
+
+/** 一列空了那一句：核心说那一列说得准 ⇒「无…」；说不准（有台还在读 · 没问到 · 会外读不出）⇒ 只说读到的各台没有。准不准只认核心那一判。 */
+const EMPTY_OF: Record<NeedsCol, (sure: boolean) => string> = {
+  answerable: (sure) => (sure ? copyText("needs.asks.empty") : copyText("needs.asks.emptyUnsure")),
+  manual: (sure) => (sure ? copyText("needs.panel.empty") : copyText("needs.panel.emptyUnsure")),
+};
 
 /** 一行里几格之间那一个分隔。 */
 const SEP = copyText("kit.text.sep");
 
-/** 一个在等的会话（已照「需手动」的序排好）。 */
+/** 一个在等的会话（已照核心那一列的序排好）。 */
 export interface PanelSession {
   sid: string;
   origin: Machine;
@@ -44,6 +53,8 @@ export interface PanelSession {
   what: string | null;
   /** 谁要批（agent 发的那一条，后端写好的 `needs.ask.run.text`）；主会话 ⇒ `null`。 */
   by: string | null;
+  /** 界面答不了时那台写好的那一句（`needs.manualText`）；答得了 ⇒ `null`。 */
+  manualText: string | null;
 }
 
 /** 计划那一侧的一条（`NeedsBook.plans()` 第 `i` 条）：落在哪一格（没有 ⇒ `null`）· 哪一片 · 哪个工作区 · 哪台。 */
@@ -61,6 +72,10 @@ export function planRows(items: readonly PlanNeedItem[]): PanelPlan[] {
 }
 
 export interface PanelFacts {
+  /** 画的是哪一列（点的样子 · 读屏名 · 空态那一句照它）。 */
+  col: NeedsCol;
+  /** 核心说那一列的数说不说得准（`NeedsColumn.sure`）：空了那一句照它。 */
+  sure: boolean;
   sessions: readonly PanelSession[];
   plans: readonly PanelPlan[];
   manual: readonly { origin: Machine; item: ManualItem }[];
@@ -74,6 +89,8 @@ export interface PanelActs {
   answer(sid: string): void;
   plan(i: number): void;
   login(origin: Machine, item: ManualItem): void;
+  /** 写了认不出的家的号：去设置里那个号。 */
+  toAccount(origin: Machine, account: { name: string; unknownAgent: string }): void;
 }
 
 /** 画一份浮层内容（`selected` ＝ 键盘选着第几行；浮层开着时数据变了按同一个下标重画）。 */
@@ -82,7 +99,8 @@ export function renderNeedsPanel(f: PanelFacts, acts: PanelActs, selected: numbe
   root.className = s.npPanel;
   root.tabIndex = 0;
   root.setAttribute("role", "listbox");
-  root.setAttribute("aria-label", copyText("beSession.needs.unknown"));
+  const face = columnFace(f.col);
+  root.setAttribute("aria-label", face.name);
   const rows: { el: HTMLElement; go: () => void }[] = [];
   const add = (el: HTMLElement, go: () => void): void => {
     el.addEventListener("click", go);
@@ -92,13 +110,14 @@ export function renderNeedsPanel(f: PanelFacts, acts: PanelActs, selected: numbe
   };
 
   for (const t of f.sessions) {
-    const r = row(statusDot("needs-you", copyText("beSession.needs.unknown"), "compact"));
+    const r = row(statusDot(face.dot, face.name, "compact"));
     r.dataset.row = "session";
     const l1 = lineOne();
-    if (isRemoteOrigin(t.origin)) l1.appendChild(tag(t.origin));
+    if (isRemoteOrigin(t.origin)) l1.appendChild(tag(machineName(t.origin)));
     l1.appendChild(titled(t.title));
     const l2 = lineTwo();
     l2.appendChild(plain(t.state));
+    if (t.manualText) l2.append(plain(SEP), plain(t.manualText));
     if (t.what) l2.append(plain(SEP), coded(t.what));
     r.main.append(l1, l2);
     if (t.by) {
@@ -117,7 +136,7 @@ export function renderNeedsPanel(f: PanelFacts, acts: PanelActs, selected: numbe
     const l1 = lineOne();
     l1.appendChild(titled(p.cell?.label ?? p.slice));
     const l2 = lineTwo();
-    l2.textContent = [...(p.cell ? [p.slice] : []), p.workspace, ...(isRemoteOrigin(p.origin) ? [p.origin] : [])].join(SEP);
+    l2.textContent = [...(p.cell ? [p.slice] : []), p.workspace, ...(isRemoteOrigin(p.origin) ? [machineName(p.origin)] : [])].join(SEP);
     r.main.append(l1, l2);
     add(r.el, () => acts.plan(p.i));
   }
@@ -131,9 +150,21 @@ export function renderNeedsPanel(f: PanelFacts, acts: PanelActs, selected: numbe
     const l1 = lineOne();
     l1.appendChild(titled(item.said));
     const l2 = lineTwo();
-    const why = item.kind !== "accountLogin" && item.fix === null ? (item.why ?? "") : "";
+    const why = (item.kind === "mcpLogin" || item.kind === "secretFile" || item.kind === "ownFile") && item.fix === null ? (item.why ?? "") : "";
     l2.textContent = why ? [machineName(origin), why].join(SEP) : machineName(origin);
     r.main.append(l1, l2);
+    if (item.kind === "accountNoAgent") {
+      const to = (): void => acts.toAccount(origin, { name: item.account, unknownAgent: item.agent });
+      const go = button({ label: item.go, size: "compact", onClick: (ev) => {
+        ev.stopPropagation();
+        to();
+      } });
+      go.dataset.action = "manual-settings";
+      go.tabIndex = -1;
+      r.el.appendChild(go);
+      add(r.el, to);
+      continue;
+    }
     if (item.fix === null) {
       // 没有解法：不画按钮，这一行也不能点。
       r.el.dataset.inert = "true";
@@ -150,7 +181,7 @@ export function renderNeedsPanel(f: PanelFacts, acts: PanelActs, selected: numbe
     add(r.el, () => acts.login(origin, item));
   }
 
-  if (rows.length === 0 && root.querySelector("[data-inert]") === null) root.appendChild(empty());
+  if (rows.length === 0 && root.querySelector("[data-inert]") === null) root.appendChild(empty(EMPTY_OF[f.col](f.sure)));
 
   for (const d of f.offline) {
     const n = note(d.said);
@@ -244,8 +275,8 @@ function rule(): HTMLElement {
   return e;
 }
 
-function empty(): HTMLElement {
-  const e = plain(copyText("needs.panel.empty"));
+function empty(t: string): HTMLElement {
+  const e = plain(t);
   e.className = s.npEmpty;
   return e;
 }

@@ -1,7 +1,8 @@
 //! 那几条命令被拒时的那一句（各条命令自己的「码 → 句」表）：金样里的每个码各一句、两两不同、句子里没有原话；
 //! 后端知道的对象（会话名 · 收件人）在句子里。
 
-use super::{cc_bus_wire, kill, terminal_follow, terminals_wire};
+use super::cc_bus::wire as bus_wire;
+use super::{kill, terminal_follow, terminals_wire};
 use crate::wire::spec::Settle as _;
 
 fn golden(file: &str) -> serde_json::Value {
@@ -59,8 +60,8 @@ fn every_golden_code_has_its_own_sentence_without_raw_words() {
         // 发信与推已读位置的码不在跨语言金样里（界面不发信、不读走信）：取命令自己的码表。
         (
             "bus-send",
-            Box::new(cc_bus_wire::send_said),
-            <cc_bus_wire::BusSendErr as crate::wire::typed::Codes>::ALL
+            Box::new(bus_wire::send_said),
+            <bus_wire::BusSendErr as crate::wire::typed::Codes>::ALL
                 .iter()
                 .map(|c| c.to_string())
                 .collect(),
@@ -68,8 +69,8 @@ fn every_golden_code_has_its_own_sentence_without_raw_words() {
         ),
         (
             "bus-commit",
-            Box::new(cc_bus_wire::commit_said),
-            <cc_bus_wire::BusCommitErr as crate::wire::typed::Codes>::ALL
+            Box::new(bus_wire::commit_said),
+            <bus_wire::BusCommitErr as crate::wire::typed::Codes>::ALL
                 .iter()
                 .map(|c| c.to_string())
                 .collect(),
@@ -116,6 +117,20 @@ fn the_wire_layer_keeps_the_handlers_sentence() {
         let f = crate::wire::spec::fail(code, "处理器那句".to_string());
         let out = f.settle(cmd);
         assert_eq!(out.said, "处理器那句", "{cmd}/{code}");
+    }
+}
+
+/// 码缺着与码是空串同样投成兜底码（补码只经 `Failed::code_or_fallback`）；有码照原样。
+#[test]
+fn settled_code_falls_back_when_missing_or_empty() {
+    for (code, want) in [
+        (None, "failed"),
+        (Some(""), "failed"),
+        (Some("busy"), "busy"),
+    ] {
+        let mut f = crate::common::said::Said::from("那一句");
+        f.code = code.map(str::to_string);
+        assert_eq!(f.settle("bus-list").code, want, "{code:?}");
     }
 }
 

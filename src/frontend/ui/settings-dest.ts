@@ -9,6 +9,7 @@
  * | ↗ 浮层的［接上终端］ | 那台 ›「别名与配置文件」› 接上终端那一节 |
  * | 上下文浮层［设上限］ | 当前标签页那台 › 上下文上限那一折 |
  * | 快捷键一览「改快捷键…」 | 外观 › 快捷键那一节 |
+ * | 栏顶右键 · 栏顶 ⋯「调整栏顶按钮…」 | 外观 › 栏顶按钮那一节 |
  * | 栏底机器条那一行的修法（重新连接以外：连接设置 · 推公钥 · 比对指纹 · 更新 …） | 那台的页 |
  * | 命令面板「加入机器表… · <名字>」 | 机器页、添加框开着、名字预填 |
  * | 状态栏「待办 N」 | 文件与数据（「待办」那一栏是它的默认栏） |
@@ -26,6 +27,19 @@ import type { SettingsTarget } from "./open-settings";
 /** 那台的「账号」栏（没有当前标签页时调用方给本机）。 */
 export function accountsOf(origin: Machine): SettingsTarget {
   return { machine: origin, tab: "acct" };
+}
+
+/**
+ * 账号栏里一个号那一行的锚：`account:<家>:<号名>`（两家同名各一行，所以带家）。家照号表：认得出 ⇒ `agent`，
+ * 写了、认不出 ⇒ 号表里写的原样（`unknownAgent`），都缺 ⇒ 空。
+ */
+export function accountAnchor(a: { name: string; agent?: string; unknownAgent?: string }): string {
+  return `account:${a.agent ?? a.unknownAgent ?? ""}:${a.name}`;
+}
+
+/** 那台的「账号」栏 › 那个号那一行（需手动清单里「认不出是哪一家的号」点进来）。 */
+export function accountOf(origin: Machine, a: { name: string; agent?: string; unknownAgent?: string }): SettingsTarget {
+  return { machine: origin, tab: "acct", anchor: accountAnchor(a) };
 }
 
 /** 那台 ›「别名与配置文件」› 接上终端。 */
@@ -56,6 +70,9 @@ export const CHORES: SettingsTarget = { page: "data" };
 
 /** 快捷键那一节。 */
 export const KEYBINDINGS: SettingsTarget = { page: "appearance", anchor: "keybindings" };
+
+/** 栏顶按钮那一节（栏顶右键 · ⋯ 末一行「调整栏顶按钮…」）。 */
+export const TAB_BAR_HEAD: SettingsTarget = { page: "appearance", anchor: "tab-bar-head" };
 
 /** 机器页的「添加机器」框锚：`add-machine:<打的名字>`（框开着、名字预填；名字空 ⇒ 照常开框）。 */
 export const ADD_MACHINE_ANCHOR = "add-machine:";

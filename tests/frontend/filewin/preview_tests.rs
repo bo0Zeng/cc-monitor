@@ -466,6 +466,8 @@ async fn an_image_over_the_cap_says_why_it_is_not_shown() {
         0.0,
         None,
     );
+    // 头上那几颗照这一份选中的菜单成品出 ⇒ 等它回来。
+    crate::find::testing::await_product_async(&mut w).await;
     p.follow(&w, None);
     let size = copy_core::size_text(IMAGE_MAX_BYTES + 1);
     let limit = copy_core::size_text(IMAGE_MAX_BYTES);

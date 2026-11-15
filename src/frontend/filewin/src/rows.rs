@@ -30,7 +30,7 @@ use copy_core::copy_text;
 use egui::{ScrollArea, Ui};
 
 use super::kind;
-use super::source::{Listed, Sort, SortBy};
+use super::source::{Listed, SortBy};
 use super::theme::metrics;
 use super::theme::palette;
 
@@ -118,6 +118,8 @@ pub struct HitRow {
     /// 修改时间那一格：后端写好的短写法（照抄）。
     pub mtime_text: Option<String>,
     pub size: Option<u64>,
+    /// `size` 写好的字（后端写好；照抄）。
+    pub size_text: Option<String>,
     pub dir: bool,
     /// 画哪种图标（后端判的）。
     pub class: cmd_wire::files::FileClass,
@@ -387,7 +389,7 @@ fn paint_hit(ui: &Ui, rect: egui::Rect, h: &HitRow) {
         if h.dir {
             String::new()
         } else {
-            h.size.map(copy_core::size_text).unwrap_or_default()
+            h.size_text.clone().unwrap_or_default()
         },
         None,
         true,
@@ -517,7 +519,12 @@ pub fn column_label(by: SortBy) -> String {
 }
 
 /// 🔴 **表头**：点一列按它排（再点反向），拖两列之间那条线改列宽。回这一帧点了哪一列。
-pub fn show_header(ui: &mut Ui, cols: &mut Columns, sort: Sort) -> Option<SortBy> {
+/// `caret` 是那台答的那一列与朝向（`LsHead.by` · `descending`），这里不自己算；还没答过 ⇒ `None`，哪一格都不带箭头。
+pub fn show_header(
+    ui: &mut Ui,
+    cols: &mut Columns,
+    caret: Option<super::source::Caret>,
+) -> Option<SortBy> {
     let p = palette(ui.ctx());
     let (rect, _) = ui.allocate_exact_size(
         egui::vec2(ui.available_width(), HEADER_HEIGHT),
@@ -554,16 +561,16 @@ pub fn show_header(ui: &mut Ui, cols: &mut Columns, sort: Sort) -> Option<SortBy
             picked = Some(by);
         }
         let mut text = column_label(by);
-        let mine = sort.by == by;
-        if mine {
-            let caret = if sort.descending() {
+        let mine = caret.filter(|c| c.by == by);
+        if let Some(c) = mine {
+            let caret = if c.descending {
                 egui_phosphor::regular::CARET_DOWN
             } else {
                 egui_phosphor::regular::CARET_UP
             };
             text = format!("{text} {caret}");
         }
-        let color = if mine { p.text } else { p.text2 };
+        let color = if mine.is_some() { p.text } else { p.text2 };
         // 列太窄就截成「…」，悬停看全名。
         let g = one_line(ui, text.clone(), r.width() - 2.0 * PAD, color);
         if g.elided {

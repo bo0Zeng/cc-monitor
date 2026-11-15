@@ -58,9 +58,9 @@ fn a_written_row_is_really_loaded_by_upstream_selection() {
         "上游选择读不动写口产出的文件：{:?}",
         loaded.problem
     );
-    let base = crate::relay::Base::parse("https://api.example.invalid").expect("夹具上游");
+    let base = crate::relay::base_of("https://api.example.invalid").expect("夹具上游");
     let (table, rejected, _notes) =
-        super::super::table::build(loaded.accounts, super::super::CREDENTIALS_FILE_AGENT, &base);
+        super::super::table::build(loaded.accounts, "claude-code", &base);
     assert!(
         rejected.is_empty(),
         "写进去的那一行被上游选择拒了：{} 条",
@@ -68,9 +68,7 @@ fn a_written_row_is_really_loaded_by_upstream_selection() {
     );
     assert_eq!(table.len(), 1, "表里应当恰好这一行");
     assert!(
-        table
-            .lookup(super::super::CREDENTIALS_FILE_AGENT, "work")
-            .is_some(),
+        table.lookup("claude-code", "work").is_some(),
         "上游选择按 (agent, 账号) 查不到写进去的那一行"
     );
     let _ = std::fs::remove_dir_all(&home);
@@ -148,7 +146,7 @@ fn an_unparseable_file_is_refused_and_left_byte_for_byte() {
         "解析不了的文件被动过了"
     );
     // 「表里有哪几行」（`rows_at` 一份）：读坏了 ⇒ 零条。
-    assert!(rows_at_with(&f, &|_| None).is_empty());
+    assert!(rows_at_with(&f, &|_| None).ids.is_empty());
     assert_no_residue(f.parent().unwrap());
     let _ = std::fs::remove_dir_all(&home);
 }
@@ -242,7 +240,7 @@ fn the_plaintext_never_leaves_in_the_answer() {
             );
         }
     }
-    assert_eq!(rows_at_with(&f, &|_| None), vec!["work".to_string()]);
+    assert_eq!(rows_at_with(&f, &|_| None).ids, vec!["work".to_string()]);
     let _ = std::fs::remove_dir_all(&home);
 }
 
@@ -298,7 +296,7 @@ fn rows_that_cannot_be_a_route_segment_are_not_reported() {
         r#"{"accounts":{"ok-1":{"api_key":"sk-a"},"bad id":{"api_key":"sk-b"}}}"#,
     )
     .unwrap();
-    assert_eq!(rows_at_with(&f, &|_| None), vec!["ok-1".to_string()]);
+    assert_eq!(rows_at_with(&f, &|_| None).ids, vec!["ok-1".to_string()]);
     let _ = std::fs::remove_dir_all(&home);
 }
 
@@ -547,15 +545,16 @@ fn us1_the_rows_are_exactly_what_the_table_builder_keeps() {
     .unwrap();
     let doc = store::parse(&std::fs::read_to_string(&path).unwrap()).unwrap();
     assert_eq!(store::read_accounts(&doc).len(), 5, "正控：五行都读得到");
-    assert_eq!(rows_at_with(&path, &|_| None), vec!["good".to_string()]);
+    assert_eq!(rows_at_with(&path, &|_| None).ids, vec!["good".to_string()]);
     // 默认上游旋钮认不出（那一刻中转也起不来）⇒ 零条；文件解析不了 ⇒ 零条。
     assert!(
         rows_at_with(&path, &|k| (k == "CCM_AGENT_UPSTREAM_CLAUDE_CODE")
             .then(|| "not a url".into()))
+        .ids
         .is_empty()
     );
     std::fs::write(&path, "{ not json").unwrap();
-    assert!(rows_at_with(&path, &|_| None).is_empty());
+    assert!(rows_at_with(&path, &|_| None).ids.is_empty());
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -583,7 +582,7 @@ fn us1_what_the_write_side_wrote_is_exactly_the_row_the_launch_answer_uses() {
     // 非空对照排最前：还没写的时候，成品说「不注入」。
     assert!(launch_relay_with(
         &ask("/h/.claude-alt/acct-one"),
-        &rows_at_with(&p, &|_| None),
+        rows_at_with(&p, &|_| None).of("claude-code"),
         &|_| true
     )
     .unwrap()
@@ -595,17 +594,23 @@ fn us1_what_the_write_side_wrote_is_exactly_the_row_the_launch_answer_uses() {
     .expect("写");
     let rows = rows_at_with(&p, &|_| None);
     assert_eq!(
-        launch_relay_with(&ask("/h/.claude-alt/acct-one"), &rows, &|_| true)
-            .unwrap()
-            .as_deref(),
+        launch_relay_with(
+            &ask("/h/.claude-alt/acct-one"),
+            rows.of("claude-code"),
+            &|_| true
+        )
+        .unwrap()
+        .as_deref(),
         Some("http://127.0.0.1:8788/s/claude-code/acct-one"),
         "写口写下的那一行，起会话的成品没用上（表里：{rows:?}）"
     );
-    assert!(
-        launch_relay_with(&ask("/h/.claude-alt/acct-two"), &rows, &|_| true)
-            .unwrap()
-            .is_none()
-    );
+    assert!(launch_relay_with(
+        &ask("/h/.claude-alt/acct-two"),
+        rows.of("claude-code"),
+        &|_| true
+    )
+    .unwrap()
+    .is_none());
     // 账号清单徽章那一格（`accounts-list` 并表）问的同一个人群判定。
     assert_eq!(
         acct_core::apikey_routed_subset(
@@ -613,14 +618,14 @@ fn us1_what_the_write_side_wrote_is_exactly_the_row_the_launch_answer_uses() {
                 "/h/.claude-alt/acct-one".to_string(),
                 "/h/.claude-alt/acct-two".to_string()
             ],
-            &rows,
+            &rows.ids,
             "claude-code",
-            super::super::CREDENTIALS_FILE_AGENT
+            rows.agent
         ),
         vec!["/h/.claude-alt/acct-one".to_string()]
     );
     assert!(
-        !rows.iter().any(|r| r == store::LEGACY_ACCOUNT_ID),
+        !rows.ids.iter().any(|r| r == store::LEGACY_ACCOUNT_ID),
         "写口落在 `default` 那一行上：{rows:?}"
     );
     let _ = std::fs::remove_dir_all(&dir);
@@ -642,7 +647,7 @@ fn hx2_the_account_id_is_derived_here_from_the_config_dir() {
     )
     .expect("写应当成功");
     assert_eq!(
-        rows_at(&f),
+        rows_at(&f).ids,
         vec![want.clone()],
         "写进去的那一行不是规则推出的那个 id"
     );

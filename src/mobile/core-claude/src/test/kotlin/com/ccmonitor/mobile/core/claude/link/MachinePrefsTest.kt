@@ -25,6 +25,7 @@ class MachinePrefsTest {
                 "contextLimits" to emptyMap<String, Any>(),
                 "agentHomes" to emptyMap<String, Any>(),
                 "pbDir" to null,
+                "planDirs" to emptyList<String>(),
                 "childTab" to child,
                 "bgTab" to "show",
             ),

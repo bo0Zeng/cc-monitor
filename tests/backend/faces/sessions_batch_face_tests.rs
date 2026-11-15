@@ -325,7 +325,6 @@ fn one_start_maps_the_open_answer() {
     let opened = |landed, session: Option<&str>, line: Option<&str>| Opened {
         landed,
         session: session.map(str::to_string),
-        host: session.map(|_| crate::wire::TerminalHost::Tmux),
         at: None,
         line: line.map(str::to_string),
         sid: Some("s-1".into()),

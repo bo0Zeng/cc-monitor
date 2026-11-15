@@ -53,7 +53,7 @@ fn a_live_source_knows_account_and_terminal_and_says_where_from() {
     assert_eq!(
         f.terminal,
         known(
-            TerminalFact::Hosted {
+            TerminalFact::Tmux {
                 terminal: "tmux-p".into()
             },
             Whence::TerminalList
@@ -159,6 +159,7 @@ fn proc(sid: &str, config_dir: Option<&str>, account: Option<&str>, alive: bool)
     ProcessRow {
         sid: sid.into(),
         alive,
+        live: alive,
         config_dir: config_dir.map(str::to_string),
         account: account.map(str::to_string),
         bare: alive && config_dir.is_none(),
@@ -219,6 +220,21 @@ fn an_unnamed_dir_or_an_unreadable_environment_is_account_unknown() {
         ..proc(SID, None, None, true)
     };
     assert_eq!(src(&[unreadable], None).account, None);
+}
+
+/// 脸上活着、启动时刻没核上（Windows 上记法恒不等）⇒ 活着；号只认核上了的 ⇒ 说不出（不是「已退出」）。
+#[test]
+fn a_live_row_whose_identity_is_unchecked_is_live_with_account_unknown() {
+    let unchecked = ProcessRow {
+        alive: false,
+        live: true,
+        bare: false,
+        ..proc(SID, Some("/acct/z"), Some("z"), true)
+    };
+    let s = src(&[unchecked], None);
+    assert!(s.live, "活会话表说它活着");
+    assert_eq!(s.account, None);
+    assert_eq!(infer(&s).account, unknown(Why::LiveNoAccount));
 }
 
 #[test]
@@ -301,7 +317,7 @@ fn the_golden_launch_is_what_the_inference_emits() {
 /// 终端那一格的两个 `host` 词与会话容器那一格同字（`wire` 那一份是唯一的字面量出处）。
 #[test]
 fn the_terminal_host_words_are_the_container_words() {
-    let hosted = serde_json::to_value(TerminalFact::Hosted {
+    let hosted = serde_json::to_value(TerminalFact::Tmux {
         terminal: "t".into(),
     })
     .unwrap();

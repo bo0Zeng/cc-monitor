@@ -4,7 +4,6 @@ import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.KeyMod
 import com.ccmonitor.mobile.core.data.db.KeyPress
 import com.ccmonitor.mobile.core.data.db.SpecialKey
-import com.ccmonitor.mobile.core.data.db.pressCap
 import com.ccmonitor.mobile.ui.session.PressVerdict
 import com.ccmonitor.mobile.ui.session.pressVerdict
 

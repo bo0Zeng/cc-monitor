@@ -1,11 +1,11 @@
 //! **落进用户目录只有这一下**（[`land`]）与暂存区（`~/.cc-monitor/staging`）。
 //!
-//! 用到它的两块之间零互相依赖（文件管理那一块是独立的包，只引纯工具与平台两层；原生那一块的传输台也不引它），共用的只许住 `common/`：
+//! 用到它的两块之间零互相依赖（文件管理那一块是独立的包，只引纯工具与平台两层；原生那一块的两台之间复制（`transfer-copy`）也不引它），共用的只许住 `common/`：
 //! - 文件管理那一块：覆盖写 · 读改写 · 复制 · 上传提交（`files/write.rs` · `files/commit.rs`）都经 [`land`] 换上内容；
-//! - 原生那一块的传输台（`control/transfer.rs`）：下载先写进本机暂存区（续传的本钱也住那儿），传完经 [`land`] 上位（落点在别的盘上 ⇒ 退回旁名复制：本机多抄一整份，家目录那个盘先要容得下整份）。
+//! - 原生那一块两台之间复制的 SFTP 腿（`control/transfer.rs`）：下载先写进本机暂存区（续传的本钱也住那儿），传完经 [`land`] 上位（落点在别的盘上 ⇒ 退回旁名复制：本机多抄一整份，家目录那个盘先要容得下整份）。
 //!
 //! 暂存区本身的落点（家目录相对）住契约 crate（`relay_route_core::STAGING_DIR_REL`，家目录相对路径那一张表），这里转出；
-//! 暂存件的键长与后缀两侧（造键的传输台 · 提交的那台后端）认同一份。
+//! 暂存件的键长与后缀两侧（造键的 SFTP 腿 `control/transfer.rs` · 提交的那台后端）认同一份。
 
 use crate::common::root_path::{walk_in_root, Last};
 use crate::common::said::Said;
@@ -42,7 +42,7 @@ pub fn ensure(face: &Face, home: &Path) -> Result<PathBuf, Said> {
     Ok(at)
 }
 
-/// 一次 [`land`] 没成，是谁拦的（文件管理那一块照它换成自己的拒绝，传输台照它换成一句失败）。
+/// 一次 [`land`] 没成，是谁拦的（文件管理那一块照它换成自己的拒绝，两台之间复制照它换成一句失败）。
 #[derive(Debug)]
 pub enum LandErr {
     /// 路径解析拒 · 形状不对（不是普通文件 · 没有名字）。
@@ -55,7 +55,7 @@ pub enum LandErr {
     Io { said: String, raw: String },
 }
 
-/// 只要一句失败的那一侧（传输台）：句子照交，原话跟着。
+/// 只要一句失败的那一侧（两台之间复制）：句子照交，原话跟着。
 impl From<LandErr> for Said {
     fn from(e: LandErr) -> Said {
         match e {

@@ -16,6 +16,8 @@ import { icon } from "../kit/icon";
 import { clearRestartNeeded, markRestartNeeded } from "./restart-notice";
 import { restartNowButton } from "./restart-now";
 import { copyText } from "../copy-table";
+import { openFileWindow } from "../file-window";
+import { LOCAL } from "../ipc/origin";
 import { writeClipboard } from "../clipboard";
 import type { DiagnosticsConfig } from "../generated/DiagnosticsConfig";
 import type { DiagnosticsReport } from "../generated/DiagnosticsReport";
@@ -295,7 +297,7 @@ export class DiagnosticsSection {
       );
       if (today) {
         const open = button({ label: copyText("mobTerms.row.attach"), size: "compact", onClick: () => void openFile(today) });
-        const dir = button({ label: copyText("data.item.reveal"), kind: "icon", icon: "folder", size: "compact", onClick: () => void openDir() });
+        const dir = button({ label: copyText("data.item.reveal"), kind: "icon", icon: "folder", size: "compact", onClick: () => void openFileWindow(LOCAL, { dir: info.dir }) });
         this.todayRow.append(...sizeOf(info.current_size_text), open, dir);
       }
       const latest = info.backend_stderr[0];
@@ -353,13 +355,5 @@ async function openFile(path: string): Promise<void> {
     await commands.os_open({ kind: "path", path });
   } catch (e) {
     failToast(copyText("diagnostics.openFile.failed"), e);
-  }
-}
-
-async function openDir(): Promise<void> {
-  try {
-    await commands.os_open({ kind: "logDir" });
-  } catch (e) {
-    failToast(copyText("diagnostics.openDir.failed"), e);
   }
 }

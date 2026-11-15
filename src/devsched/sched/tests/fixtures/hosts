@@ -1,0 +1,11 @@
+# 夹具主机表：假机器名，形状照真表（名 位 去法 门槛与选项）。行序 = 挑的先后。
+# alpha：主力
+alpha    8  ssh:alpha     psi=25/60  tc=1.98.1 base=/srv/ccm jobs=16 caps=node,tmux,tmuxnew maxbuild=1000 slurm=-p,cpu,-c,16,--mem=32G
+beta     3  ssh:beta      disk=500/200 mem=40/16 psi=25/60  tc=1.98.1 base=/srv/ccm jobs=16 nice=19 caps=tmux
+# gamma：0 位，不派
+gamma    0  ssh:gamma     threads=170/210 tmp=2/1 peak=80  base=/home/someone/dsroot jobs=4 nice=19 path=~/bin/node22/bin
+  # 缩进的注释也认
+delta    3  ssh:delta     mem=6/2 psi=25/60 base=/home/someone/devsched jobs=6 nice=19 small=1 caps=gui,node,tmux,tmuxnew trust=own futurekey=xyz
+
+local    2  local         mem=24/2 psi=20/60 fallback=15 trust=own wbudget=600 wdev=nvme0n1
+broken   x  ssh:broken

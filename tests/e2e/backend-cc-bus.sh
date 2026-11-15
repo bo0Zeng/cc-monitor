@@ -91,7 +91,7 @@ case " $* " in
   *" --bus-"*) exec "$D" "$@" ;;
   *" --session-self "*)
     if [ -n "${SELF_SID:-}" ]; then printf '{"sid":"%s","groups":[],"looked":"this_machine"}\n' "$SELF_SID"
-    else printf '{"code":"not_in_session","message":"no session above","detail":""}\n' >&2; exit 2; fi ;;
+    else printf '{"code":"not_in_session","said":"台架：不在会话里","detail":"台架：往上没找到会话"}\n' >&2; exit 2; fi ;;
   *) echo "fake ccm: 没想到会被问 $*" >&2; exit 9 ;;
 esac
 EOF
@@ -287,6 +287,8 @@ done
 AGENT=claude
 CCM="$FK/ccm" SELF_SID="" idrun whoami >/dev/null; _rc=$?
 ck "★ ccm 说不在会话里：cc-bus whoami 退 1（不退回去认诱饵）" "1" "$_rc"
+ck "★ ccm 说不在会话里：whoami 照印后端那一句与原话（said · detail 各一行）" "1|1" \
+  "$(grep -c '台架：不在会话里' "$SANDBOX/id.err")|$(grep -c '台架：往上没找到会话' "$SANDBOX/id.err")"
 IDPATH="$_NC" SELF_SID="$SC" idrun whoami >/dev/null; _rc=$?
 ck "★ 没装 ccm：cc-bus whoami 退 1、说没装 cc-monitor（诱饵一个不认）" "1|1" "$_rc|$(grep -c 'no cc-monitor backend' "$SANDBOX/id.err")"
 FROM="$SA" snd "$SC" --act inform --title "没装时留着的一封" "x" >/dev/null
@@ -329,6 +331,16 @@ env HOME="$IH" PATH="$IH/.local/bin:/usr/bin:/bin" cc-bus nosuchverb >/dev/null 
 ck "  不认识的动词退 2" "2" "$_rc"
 env HOME="$IH" PATH="$IH/.local/bin:/usr/bin:/bin" bash "$SCRIPTS/cc-bus-install.sh" >/dev/null 2>&1
 ck "  再装一次：照旧是那三个（幂等）" "cc-bus cc-recv cc-whoami " "$(ls "$IH/.local/bin" | tr '\n' ' ')"
+# 钩子片段只有后端那一份（`hooks-diag` 那一家的 `.snippet`）：装脚本照印它，不自己写一份。
+IC="$IH/.claude"; mkdir -p "$IC/skills/cc-bus/scripts"
+printf '#!/bin/sh\n' > "$IC/skills/cc-bus/scripts/cc-bus"; chmod +x "$IC/skills/cc-bus/scripts/cc-bus"
+_snip="$(env CLAUDE_CONFIG_DIR="$IC" HOME="$IH" "$TIMEOUT" "$WALL_CEILING_S" "$D" -- --hooks-diag --within-ms 10000 </dev/null 2>/dev/null | jq -r '(.data // .).families[]? | select(.kind == "claude") | .snippet // empty')"
+_io="$(env CCM_BIN="$D" CLAUDE_CONFIG_DIR="$IC" HOME="$IH" PATH="$IH/.local/bin:/usr/bin:/bin" bash "$SCRIPTS/cc-bus-install.sh" 2>&1)"
+ck "  台架自检：后端给了片段（指向装进的那个入口）" "1" "$(printf '%s' "$_snip" | grep -c 'cc-bus/scripts/cc-bus\\" stop-hook')"
+ck "★ 装脚本印的钩子就是后端 --hooks-diag 那一份（逐字）" "有" "$(case "$_io" in *"$_snip"*) echo 有 ;; *) echo 没有 ;; esac)"
+_io="$(env HOME="$IH" PATH="$IH/.local/bin:/usr/bin:/bin" bash "$SCRIPTS/cc-bus-install.sh" 2>&1)"
+ck "  找不到 cc-monitor 后端 ⇒ 不自己编一段钩子，照实说先在扩展页装" "0|1" \
+  "$(printf '%s' "$_io" | grep -c '"command"')|$(printf '%s' "$_io" | grep -c '扩展页')"
 
 echo "[SH1-b] ★ 驾驶舱读面 —— 名单只认会话 id 形状的收件箱 · 收件箱只看尾巴、不推位置"
 # 台架造一个**脏**的收件箱目录（只采结构：名字不是会话 id 的 · 坏行）。

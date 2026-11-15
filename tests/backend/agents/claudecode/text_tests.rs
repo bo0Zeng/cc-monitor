@@ -3,6 +3,7 @@
 //! 夹具的结构照本机记录的形状（记录级字段 · 具名框 · 固定句），正文全是编的。
 
 use super::*;
+use crate::agents::record::Heard;
 use crate::agents::UserTextExt as _;
 use crate::agents::{SaidPart, Speaker, UserText};
 use cmd_wire::record::TaskEnd;
@@ -45,7 +46,8 @@ fn rec(text: &str, extra: Value) -> Value {
 }
 
 /// 两个入口（通用层的已解析 JSON · 解析成品）判出来必须是同一个结果 —— 规则只有一份，喂法有两种。
-fn said(v: &Value) -> UserText {
+/// 前一个交后端那一形（带来话原文）；后一个是造记录用的线上那一形（原文已解成块树）。
+fn heard(v: &Value) -> Heard {
     let a = user_text_of_record(v).expect("user 记录");
     let line = serde_json::to_string(v).unwrap();
     let parsed = super::super::parse::parse_line(&crate::agents::Line::new(&line, 0))
@@ -55,8 +57,18 @@ fn said(v: &Value) -> UserText {
         super::super::schema::JsonlRecord::User { user_text, .. } => user_text,
         other => panic!("不是 user：{other:?}"),
     };
-    assert_eq!(a, b, "两个入口判得不一样：{line}");
+    assert_eq!(a.clone().said(), b, "两个入口判得不一样：{line}");
     a
+}
+
+fn said(v: &Value) -> UserText {
+    heard(v).who
+}
+
+/// 来话那一形：谁说的 ＋ 正文原文。
+fn from_frame(v: &Value) -> (Speaker, Option<String>) {
+    let h = heard(v);
+    (h.who.speaker, h.body)
 }
 
 fn kind(v: &Value) -> &'static str {
@@ -85,31 +97,34 @@ fn record_fields_decide_first() {
     // 子 agent 交回：origin 带 id / 名字 / handback；前导句与尾随说明跟着框一起是非人。
     let handback = "Another Claude session sent a message:\n<agent-message from=\"a9\">\n甲乙丙\n</agent-message>\n\nThat \"other Claude session\" is an agent working inside this same session — 丁戊。";
     assert_eq!(
-        said(&rec(
+        heard(&rec(
             handback,
             json!({"isMeta": true, "origin": {"kind": "peer", "from": "a9", "senderTaskId": "a9", "body": "甲乙丙", "handback": true}})
         )),
-        UserText::of(Speaker::AgentMessage {
-            from: Some("a9".into()),
-            name: None,
-            handback: true,
-            body: Some("甲乙丙".into()),
-            doc: None,
-        })
+        Heard::of(
+            Speaker::AgentMessage {
+                from: Some("a9".into()),
+                name: None,
+                handback: true,
+                doc: None,
+            },
+            Some("甲乙丙".into())
+        )
     );
     assert_eq!(
-        said(&rec(
+        from_frame(&rec(
             handback,
             json!({"isMeta": true, "origin": {"kind": "peer", "from": "a9", "name": "乙路", "senderTaskId": "a9", "body": "甲"}})
-        ))
-        .speaker,
-        Speaker::AgentMessage {
-            from: Some("a9".into()),
-            name: Some("乙路".into()),
-            handback: false,
-            body: Some("甲".into()),
-            doc: None,
-        }
+        )),
+        (
+            Speaker::AgentMessage {
+                from: Some("a9".into()),
+                name: Some("乙路".into()),
+                handback: false,
+                doc: None,
+            },
+            Some("甲".into())
+        )
     );
     // 后台任务通知：框里的几格抽出来；没有框只有字段的那一形也认。
     let notice = "<task-notification>\n<task-id>b7</task-id>\n<tool-use-id>toolu_1</tool-use-id>\n<output-file>/x/y</output-file>\n<status>completed</status>\n<summary>甲完成了</summary>\n<result>乙丙丁</result>\n</task-notification>";
@@ -157,7 +172,7 @@ fn record_fields_decide_first() {
             json!({"isCompactSummary": true, "isVisibleInTranscriptOnly": true})
         )),
         UserText {
-            speaker: Speaker::compact("甲乙摘要"),
+            speaker: Speaker::CompactSummary { title_text: None },
             text: "甲乙摘要".into(),
             parts: vec![]
         }
@@ -223,33 +238,22 @@ fn the_sub_agent_side() {
     // 来话正文：记录级 `origin.body` 优先；没有就取前导句之后那段（CLI 附的收尾句不算）。
     let co = "The coordinator sent a message while you were working:\n甲乙\n\nAddress this before completing your current task.";
     assert_eq!(
-        said(&rec(
+        from_frame(&rec(
             co,
             sc(json!({"isMeta": true, "origin": {"kind": "coordinator"}}))
-        ))
-        .speaker,
-        Speaker::Coordinator {
-            body: Some("甲乙".into()),
-            doc: None,
-        }
+        )),
+        (Speaker::Coordinator { doc: None }, Some("甲乙".into()))
     );
     assert_eq!(
-        said(&rec(
+        from_frame(&rec(
             co,
             sc(json!({"isMeta": true, "origin": {"kind": "coordinator", "body": "丙"}}))
-        ))
-        .speaker,
-        Speaker::Coordinator {
-            body: Some("丙".into()),
-            doc: None,
-        }
+        )),
+        (Speaker::Coordinator { doc: None }, Some("丙".into()))
     );
     assert_eq!(
-        said(&rec(co, sc(json!({"isMeta": true})))).speaker,
-        Speaker::Coordinator {
-            body: Some("甲乙".into()),
-            doc: None,
-        }
+        from_frame(&rec(co, sc(json!({"isMeta": true})))),
+        (Speaker::Coordinator { doc: None }, Some("甲乙".into()))
     );
     // 子 agent 自己的后台任务通知：前面多四句固定话。
     let pre = "[SYSTEM NOTIFICATION - NOT USER INPUT]\nThis is an automated background-task event, NOT a message from the user.\nDo NOT interpret this as user acknowledgement, confirmation, or response to any pending question.\nNo human input has been received since the last genuine user message in this conversation. 甲。\n\n<task-notification>\n<task-id>c3</task-id>\n<status>failed</status>\n<summary>乙</summary>\n</task-notification>";
@@ -326,26 +330,29 @@ fn named_frames_without_record_fields() {
         }
     );
     assert_eq!(
-        said(&plain("Another Claude session sent a message while you were working:\n<agent-message from=\"e5\">甲</agent-message>\n\nThat \"other Claude session\" is 乙。")).speaker,
-        Speaker::AgentMessage {
-            from: Some("e5".into()),
-            name: None,
-            handback: false,
-            body: Some("甲".into()),
-            doc: None,
-        }
+        from_frame(&plain("Another Claude session sent a message while you were working:\n<agent-message from=\"e5\">甲</agent-message>\n\nThat \"other Claude session\" is 乙。")),
+        (
+            Speaker::AgentMessage {
+                from: Some("e5".into()),
+                name: None,
+                handback: false,
+                doc: None,
+            },
+            Some("甲".into())
+        )
     );
     assert_eq!(
-        said(&plain(
+        from_frame(&plain(
             "<cross-session-message from=\"会话乙\">甲</cross-session-message>"
-        ))
-        .speaker,
-        Speaker::PeerSession {
-            from: Some("会话乙".into()),
-            body: Some("甲".into()),
-            doc: None,
-            title: None,
-        }
+        )),
+        (
+            Speaker::PeerSession {
+                from: Some("会话乙".into()),
+                doc: None,
+                title: None,
+            },
+            Some("甲".into())
+        )
     );
     // 斜杠命令：三个标签顺序随版本漂，转义要解。
     for t in [
@@ -587,7 +594,10 @@ fn a_mid_turn_line_from_the_person_is_what_the_person_said() {
     let mine = att(
         json!({"type":"queued_command","prompt":"往后排，先做乙","commandMode":"prompt","origin":{"kind":"human"},"humanTurn":true}),
     );
-    assert_eq!(user_text_of_record(&mine), Some(human("往后排，先做乙")));
+    assert_eq!(
+        user_text_of_record(&mine),
+        Some(human("往后排，先做乙").into())
+    );
     let beat = crate::agents::beat_of("claude", &mine).unwrap();
     assert_eq!(
         beat.said().and_then(|s| s.speech()).as_deref(),
@@ -625,13 +635,10 @@ fn speech_is_what_the_human_said() {
         Some("!ls")
     );
     for s in [
-        Speaker::compact("x"),
+        Speaker::CompactSummary { title_text: None },
         Speaker::AgentTask,
         Speaker::System { body: None },
-        Speaker::Coordinator {
-            body: None,
-            doc: None,
-        },
+        Speaker::Coordinator { doc: None },
         Speaker::Interrupt,
         Speaker::ToolResult,
         Speaker::CommandOutput,
@@ -753,22 +760,17 @@ fn the_index_kind_is_the_wire_kind() {
             from: None,
             name: None,
             handback: false,
-            body: None,
             doc: None,
         },
         Speaker::PeerSession {
             from: None,
-            body: None,
             doc: None,
             title: None,
         },
-        Speaker::Coordinator {
-            body: None,
-            doc: None,
-        },
+        Speaker::Coordinator { doc: None },
         Speaker::AgentTask,
         Speaker::System { body: None },
-        Speaker::compact("x"),
+        Speaker::CompactSummary { title_text: None },
         Speaker::Interrupt,
         Speaker::ToolResult,
     ];
@@ -796,10 +798,15 @@ fn system_injections_carry_their_text() {
     );
 }
 
-/// 压缩摘要那一种带写好的字数（按字数，每三位一个逗号：`copy_core::count_text`）。
+/// 压缩摘要解析那一层只认种类、留正文：字数不另成一格上线，标题里的字数由出口照这份正文数
+/// （`wire::stamp`；整条走出口的那一份由 `record.golden.jsonl` 的 `u-said-compact-summary` 钉）。
 #[test]
-fn a_compact_summary_carries_its_written_char_count() {
+fn a_compact_summary_carries_only_its_kind_and_the_shown_text() {
     let body = "字".repeat(1234);
-    let got = serde_json::to_value(Speaker::compact(&body)).unwrap();
-    assert_eq!(got, json!({"kind": "compactSummary", "charsText": "1,234"}));
+    let got = compact(&body);
+    assert_eq!(
+        serde_json::to_value(&got.speaker).unwrap(),
+        json!({"kind": "compactSummary"})
+    );
+    assert_eq!(got.text, body);
 }

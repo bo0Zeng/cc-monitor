@@ -153,10 +153,6 @@ pub struct TerminalItem {
     pub input: TermInput,
     /// 此刻的样子。
     pub state: TermState,
-    /// 最近动静（秒；后端排先后用，不上线）。
-    #[serde(skip)]
-    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
-    pub last_activity: u64,
     /// 这个调用方能做什么（抓屏不过身份门、恒可用，不在这里）。
     pub can: TerminalCan,
 }
@@ -184,8 +180,6 @@ pub enum TermInput {
     ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 pub struct InputHolder {
-    /// 哪一端。
-    pub who: HolderWho,
     /// 是不是这次请求自报的那个前端。
     pub mine: bool,
     /// 给人看的那一句（「输入在此处」·「输入在手机」…，后端写好，出口照抄）。
@@ -212,25 +206,6 @@ pub struct InputNow {
 )]
 pub struct TerminalEnded {
     pub terminal: String,
-}
-
-/// 持有输入的是哪一端。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(
-    any(test, feature = "ts"),
-    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
-)]
-#[serde(rename_all = "kebab-case")]
-pub enum HolderWho {
-    /// 一个真终端（用户的终端窗口 · ssh 进来的终端 · 手机的 SSH 终端）。
-    TerminalWindow,
-    /// 桌面经后端持有。
-    Desktop,
-    /// 手机经后端持有。
-    Mobile,
-    /// 此刻没人持有。
-    None,
 }
 
 /// 名单一行里跑着的会话。
@@ -277,10 +252,6 @@ pub struct Attached {
     /// 连上的时刻（秒）。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub since: u64,
-    /// 最近动静（秒；后端排先后用，不上线）。
-    #[serde(skip)]
-    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
-    pub last_activity: u64,
 }
 
 /// 名单一行此刻的样子。
@@ -497,8 +468,8 @@ pub enum Tab {
     Hide,
 }
 
-/// 恢复会话不说放在哪时这台落在哪（这台偏好 `resumeWhere`）：托管 · tmux · 照那条会话起时那一种（记不着 ⇒ 托管）。缺省托管。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+/// 恢复会话不说放在哪时这台落在哪（这台偏好 `resumeWhere`）：托管 · tmux · 照那条会话起时那一种（记不着 ⇒ 托管）。缺省住后端偏好那一处。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -506,7 +477,6 @@ pub enum Tab {
     ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 pub enum ResumeWhere {
-    #[default]
     Managed,
     Tmux,
     AsStarted,
@@ -631,10 +601,6 @@ pub struct Opened {
     pub landed: Landed,
     /// 落在哪个终端（tmux 会话名 · 托管终端的句柄；`window` ⇒ `null`）。
     pub session: Option<String>,
-    /// `session` 那个终端住在哪种宿主里（`tmux` · `managed`；`window` ⇒ 缺）。等报到那一问照抄这一格（`arrival.host`），下游不另猜；不上线。
-    #[serde(skip)]
-    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
-    pub host: Option<crate::frame::TerminalHost>,
     /// 接上的是哪个终端（那台照宿主写好：「tmux 会话「名」」·「托管终端「名」」）；没落在终端里 ⇒ 缺。出口照摆、不按宿主挑字。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
@@ -674,7 +640,7 @@ pub struct ArriveAsk {
     pub since: u64,
     /// 起在哪个终端里（tmux 会话名 · 托管终端的句柄；没见到时抓那一屏当原话）；开窗起的 ⇒ `null`。
     pub session: Option<String>,
-    /// `session` 那个终端住在哪种宿主里（同 `session-open` 回包的 `host`）；开窗起的 ⇒ `null`。
+    /// `session` 那个终端住在哪种宿主里（起会话那一下定的）；开窗起的 ⇒ `null`。
     pub host: Option<crate::frame::TerminalHost>,
 }
 
@@ -691,7 +657,7 @@ pub enum ArriveBy {
     Cwd { cwd: String },
 }
 
-/// `session-arrive` 的应答：报到了（那个 sid）· 期限内没见到（那一句 ＋ 起在的那个终端还在 ⇒ 它的句柄）。
+/// `session-arrive` 的应答：报到了（那个 sid）· 期限内没见到（标题 · 那一句 · 画面末几行 ＋ 起在的那个终端还在 ⇒ 它的句柄）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -704,8 +670,12 @@ pub enum ArriveEnd {
         sid: String,
     },
     Missed {
-        /// 第一行是标题，其余是正文（含那一屏末几行）。
+        /// 标题（一行）。
+        title: String,
+        /// 等了多久 · 那个终端怎样（一行）。
         said: String,
+        /// 那个终端画面的末几行（原样，多行）；画面空 · 不在 · 读不到 · 开窗起的 ⇒ `null`。
+        words: Option<String>,
         /// 起在的那个终端此刻还在 ⇒ 它在终端名单里的句柄；不在 · 读不到 · 开窗起的 ⇒ `null`。
         terminal: Option<String>,
     },
@@ -758,10 +728,6 @@ pub struct RecentDir {
     pub cwd: String,
     /// 那台按自己的家目录写好的显示形（`~/…`），两端照抄。
     pub shown: String,
-    /// 那个目录最近一次会话的修改时刻（毫秒；后端排先后用，不上线）。
-    #[serde(skip)]
-    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
-    pub last_ms: i64,
     /// 同一刻按请求的 `tz` 写给人看的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年）。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "string"))]
     pub last_text: String,
@@ -799,12 +765,22 @@ pub struct AgentFacts {
     any(test, feature = "ts"),
     ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
+#[serde(rename_all = "camelCase")]
 pub struct AgentPick {
     /// 原值（`session-open` 的 `model` / `permissionMode` 收的就是它）。
     pub value: String,
     /// 写给人看的字。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "string"))]
     pub text: String,
+    /// 这个模型能选的推理档：原值（`session-model` 的 `effort` 收的就是其一）＋ 后端写好的字，那一家排的先后；
+    /// 不在 · 空 ⇒ 这个模型不给选推理档（不是模型的那几项也不在）。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<Vec<AgentPick>>"))]
+    pub efforts: Vec<AgentPick>,
+    /// 不选推理档时那一家用哪一档（`efforts` 里一项的原值）；那一家没说 ⇒ 不在。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub default_effort: Option<String>,
 }
 
 /// 分叉源会话的那几格。
@@ -825,6 +801,8 @@ pub struct ForkFacts {
     pub turn: Option<u64>,
     /// 那一轮那句在看的那一台钟上的（请求的 `tz`） `HH:MM`（说不出 ⇒ `null`）。
     pub start_text: Option<String>,
+    /// 框顶那一句：「分叉自「{源会话的标题}」 · 轮次 n · 钟面」；说不出第几轮 ⇒ 只「分叉自「{标题}」」。标题照这台的规则取（改过的名 ＞ 记录里的标题），出口照抄。
+    pub from_text: String,
 }
 
 /// 「知道」那一格从哪知道：会话记录 · 源会话的进程 · 终端名单。
@@ -876,11 +854,9 @@ pub enum ForkSlot<T> {
     any(test, feature = "ts"),
     ts(export, rename = "ForkTerminal", export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
-#[serde(tag = "host")]
+#[serde(tag = "host", rename_all = "lowercase")]
 pub enum ForkTerminal {
-    #[serde(rename = "tmux")]
-    Hosted { terminal: String },
-    #[serde(rename = "none")]
+    Tmux { terminal: String },
     None,
 }
 
@@ -913,6 +889,8 @@ pub enum SwitchResult {
     Unsure,
     /// 没按（`why` 说为什么）。
     Refused,
+    /// 那一句送到了、那一家换了不写读回（只有换模型那一形）：照实说已发出，不说结果未知（`said` 是后端写好的那一句）。
+    Sent,
 }
 
 /// `session-model` 的入参。
@@ -932,6 +910,10 @@ pub struct SessionModelReq {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub client: Option<String>,
+    /// 推理档（必须是那个模型 `efforts` 里的一个）；不给 ⇒ 那一家照它自己的缺省。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub effort: Option<String>,
 }
 
 /// `session-permission` 的入参。

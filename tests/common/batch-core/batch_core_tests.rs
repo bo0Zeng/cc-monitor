@@ -171,41 +171,6 @@ fn a_chmod_undo_is_all_or_nothing() {
     );
 }
 
-/// 🔴 复制一组：同一个父目录 ⇒ 根是那个目录的上一级公共处；目标在别的分支 ⇒ 根是两边的公共上级，`from` / `to` 是根下相对段。
-#[test]
-fn a_copy_plan_roots_at_the_common_parent() {
-    let p = copy_plan(
-        b"/srv/a",
-        &[b"x".to_vec(), b"d".to_vec()],
-        b"/srv/a/sub",
-        "devbox",
-    )
-    .unwrap();
-    assert_eq!(
-        p.args,
-        serde_json::json!({"root": "/srv/a", "items": [{"from": "x", "to": "sub/x"}, {"from": "d", "to": "sub/d"}]})
-    );
-    assert_eq!(p.names, vec!["x", "d"]);
-    assert_eq!(p.into.as_deref(), Some("/srv/a/sub"));
-    let p = copy_plan(b"/srv/a/b", &[b"x".to_vec()], b"/srv/c/", "devbox").unwrap();
-    assert_eq!(
-        p.args,
-        serde_json::json!({"root": "/srv", "items": [{"from": "a/b/x", "to": "c/x"}]})
-    );
-    let p = copy_plan(b"/a", &[b"x".to_vec()], b"/b", "devbox").unwrap();
-    assert_eq!(
-        p.args,
-        serde_json::json!({"root": "/", "items": [{"from": "a/x", "to": "b/x"}]}),
-        "只在根下相交"
-    );
-    let p = copy_plan(b"/w", &[b"d".to_vec()], b"/w/d", "devbox").unwrap();
-    assert_eq!(
-        p.args,
-        serde_json::json!({"root": "/w", "items": [{"from": "d", "to": "d/d"}]}),
-        "复制进它自己底下：根按上一级算"
-    );
-}
-
 /// 🔴 同名那一问的答：整组一个答 ⇒ 每个键同一格；逐项选 ⇒ 点过的照点、没点的跳过；取消 ⇒ `None`。
 #[test]
 fn an_answer_has_one_cell_per_key_and_unpicked_rows_skip() {
@@ -271,4 +236,119 @@ fn the_clash_choices_carry_their_own_words_in_one_order() {
         "并起来照同一个先后，不照哪一项先出现"
     );
     assert!(choices(&[]).is_empty());
+}
+
+/// 🔴 本机那一侧的同名清单与后端那一形同一份：要放的名字撞了已有的（分不分大小写由调用方说）⇒ 一项一格 `Conflict`，
+/// 键是序号、两头都是文件、答法照 [`answers_of`]（文件之间：覆盖 · 跳过 · 保留两份）。保留两份起名「名 (2).ext」起、跳过已占的。
+#[test]
+fn a_local_name_list_clashes_like_the_backend_and_keeps_both_from_two() {
+    let names = ["a.txt".to_string(), "b.md".to_string(), "c".to_string()];
+    let here = ["A.TXT".to_string(), "c".to_string(), "c (2)".to_string()];
+    let got = local_clashes(&names, &here, true);
+    let want: Vec<Conflict> = serde_json::from_value(serde_json::json!([
+        {"key": "0", "name": "a.txt", "kind": "file", "there": "file", "answers": ["overwrite", "skip", "keep_both"]},
+        {"key": "2", "name": "c", "kind": "file", "there": "file", "answers": ["overwrite", "skip", "keep_both"]},
+    ]))
+    .unwrap();
+    assert_eq!(got, want);
+    assert_eq!(
+        answers_of(false, true),
+        vec![Decide::Overwrite, Decide::Skip, Decide::KeepBoth]
+    );
+    assert_eq!(
+        answers_of(true, false),
+        vec![Decide::KeepBoth],
+        "目录不合并、提交不收跳过"
+    );
+    assert_eq!(
+        local_clashes(&names, &here, false).len(),
+        1,
+        "分大小写 ⇒ A.TXT 不撞 a.txt"
+    );
+    assert_eq!(taken_as("a.txt", &here, true), Some("A.TXT"));
+
+    assert_eq!(minted("notes.tar.gz", 2), "notes.tar (2).gz");
+    assert_eq!(minted(".env", 3), ".env (3)");
+    assert_eq!(
+        keep_both_name("a.txt", &here, true).as_deref(),
+        Some("a (2).txt")
+    );
+    assert_eq!(
+        keep_both_name("c", &here, true).as_deref(),
+        Some("c (3)"),
+        "(2) 已占 ⇒ 往后试"
+    );
+    assert!(MINT_TRIES >= 2);
+}
+
+/// 🔴 删除 · 改权限一组的入参照线上类型拼：args 解得回 `FilesDeleteReq` / `FilesChmodReq`，目录项带 `recursive`，
+/// 命令名是那两条命令的 NAME。
+#[test]
+fn delete_and_chmod_plans_are_typed_requests() {
+    use cmd_wire::files::{FilesChmodReq, FilesDeleteReq};
+    let root = WirePath::from("/srv/p");
+    let p = delete_plan(
+        root.clone(),
+        &[
+            (WirePath::from("a.txt"), "a.txt".to_string(), false),
+            (WirePath::from("d"), "d".to_string(), true),
+        ],
+        "devbox",
+    );
+    assert_eq!(p.verb, Verb::Delete);
+    assert_eq!(p.cmd, <FilesDeleteReq as Call>::NAME);
+    assert_eq!(p.names, vec!["a.txt", "d"]);
+    assert_eq!(p.machine, "devbox");
+    let req: FilesDeleteReq = serde_json::from_value(p.args.clone()).unwrap();
+    assert_eq!(req.root, root);
+    assert_eq!(req.items[0].recursive, None);
+    assert_eq!(req.items[1].recursive, Some(true));
+    assert_eq!(req.ticket, None);
+
+    let c = chmod_plan(
+        root.clone(),
+        &[(WirePath::from("a.txt"), "a.txt".to_string())],
+        "755",
+        "devbox",
+    );
+    assert_eq!(c.verb, Verb::Chmod);
+    assert_eq!(c.cmd, <FilesChmodReq as Call>::NAME);
+    let req: FilesChmodReq = serde_json::from_value(c.args.clone()).unwrap();
+    assert_eq!(req.mode, "755");
+    assert_eq!(req.items.len(), 1);
+}
+
+/// 🔴 改权限那一框的标题与现值行：一项 ⇒ 带名字；几项 ⇒ 按件数。现值全同 ⇒ 那一值、预填；不同 ⇒ mixed、不预填；
+/// 有一项读不到 · 空 ⇒ 读不到、不预填（不猜）。
+#[test]
+fn the_chmod_box_title_and_line_come_from_here() {
+    assert_eq!(
+        chmod_title(&["a.txt".to_string()]),
+        copy_text("rsFilewinWriteops.heading.chmodOne", &[("name", "a.txt")])
+    );
+    assert_eq!(
+        chmod_title(&["a".to_string(), "b".to_string()]),
+        copy_text("rsFilewinSelect.label.chmodMany", &[("n", "2")])
+    );
+    let now = mode_line(&[Some(0o644), Some(0o644)]);
+    assert_eq!(
+        now.line,
+        copy_text("rsFilewinWriteops.mode.now", &[("mode", "644")])
+    );
+    assert_eq!(now.prefill.as_deref(), Some("644"));
+    let mixed = mode_line(&[Some(0o644), Some(0o755)]);
+    assert_eq!(mixed.line, copy_text("rsFilewinWriteops.mode.mixed", &[]));
+    assert_eq!(mixed.prefill, None);
+    for m in [&[Some(0o644), None][..], &[][..]] {
+        let u = mode_line(m);
+        assert_eq!(u.line, copy_text("rsFilewinWriteops.mode.unreadable", &[]));
+        assert_eq!(u.prefill, None);
+    }
+}
+
+/// 复制一组的公共根照 `WirePath::parent` 切：源带好几个尾 `/` 也是它的上一级。
+#[test]
+fn copy_root_drops_every_trailing_slash_of_a_source() {
+    let req = copy_req(&[(b"/x/y//".to_vec(), b"/x/y/b".to_vec())]).unwrap();
+    assert_eq!(req.root.0, b"/x");
 }

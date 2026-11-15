@@ -302,8 +302,7 @@ fn the_carried_window_binary_is_placed_and_returned_even_with_one_beside_the_exe
     std::fs::create_dir_all(&denied).expect("建不出只读目录");
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&denied, std::fs::Permissions::from_mode(0o500)).unwrap();
+        test_home::set_dir_mode(&denied, 0o500);
         let e =
             resolve_window_bin_in(None, Some(b"x"), Some(&ro)).expect_err("只读目录里竟然写进去了");
         // root 跑测试时只读挡不住 —— 那一形不判。
@@ -314,7 +313,7 @@ fn the_carried_window_binary_is_placed_and_returned_even_with_one_beside_the_exe
                 "写不进去说成了别的：{e:?}"
             );
         }
-        std::fs::set_permissions(&denied, std::fs::Permissions::from_mode(0o700)).unwrap();
+        test_home::set_dir_mode(&denied, 0o700);
     }
     std::fs::remove_dir_all(&root).ok();
 }
@@ -514,15 +513,14 @@ fn scripted_stand_in(
     say: &str,
     linger: u32,
 ) -> std::path::PathBuf {
-    use std::os::unix::fs::PermissionsExt;
     let p = dir.join(format!("stand-in-{tag}.sh"));
     let body = if say.is_empty() {
         format!("#!/bin/sh\nread -r _seed\nsleep {linger}\nexit 3\n")
     } else {
         format!("#!/bin/sh\nread -r _seed\nprintf '%s\\n' '{say}' >&2\nsleep {linger}\n")
     };
-    std::fs::write(&p, body).expect("写不出替身脚本");
-    std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    // 马上被起 ⇒ 经 `write_exe` 写（本进程写的写端会漏进别的判据线程 fork 出来的子进程 ⇒ ETXTBSY）。
+    test_home::write_exe(&p, &body);
     p
 }
 
@@ -599,7 +597,6 @@ fn the_window_process_lists_first_and_the_parent_carries_its_words() {
 #[cfg(unix)]
 #[test]
 fn a_window_that_dies_after_being_judged_open_is_still_reported() {
-    use std::os::unix::fs::PermissionsExt;
     let _g = ENV.lock().unwrap_or_else(|e| e.into_inner());
     let dir = std::env::temp_dir().join(format!("filewin-late-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("造不出临时目录");
@@ -617,14 +614,12 @@ fn a_window_that_dies_after_being_judged_open_is_still_reported() {
     let listed = encode_ready(&Ready::Listed(3)).trim().to_string();
     let run = |code: u32| {
         let p = dir.join(format!("late-{code}.sh"));
-        std::fs::write(
+        test_home::write_exe(
             &p,
-            format!(
+            &format!(
                 "#!/bin/sh\nread -r _seed\nprintf '%s\\n' '{listed}' >&2\nsleep 0.6\nexit {code}\n"
             ),
-        )
-        .unwrap();
-        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        );
         std::env::set_var(BIN_ENV, &p);
         let (tx, rx) = std::sync::mpsc::channel::<ProcFail>();
         let r = open_in_new_process(&req, Box::new(move |said| tx.send(said).unwrap()));
@@ -939,19 +934,16 @@ fn the_spawn_result_is_never_thrown_away() {
 #[cfg(unix)]
 #[test]
 fn the_window_process_own_reason_reaches_the_sentence() {
-    use std::os::unix::fs::PermissionsExt;
     let _g = ENV.lock().unwrap_or_else(|e| e.into_inner());
     let dir = std::env::temp_dir().join(format!("filewin-stderr-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("造不出临时目录");
     let req = synthetic_request();
     let run = |tag: &str, err: &str| {
         let p = dir.join(format!("err-{tag}.sh"));
-        std::fs::write(
+        test_home::write_exe(
             &p,
-            format!("#!/bin/sh\nread -r _seed\nprintf '%s\\n' {err} >&2\nexit 1\n"),
-        )
-        .unwrap();
-        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+            &format!("#!/bin/sh\nread -r _seed\nprintf '%s\\n' {err} >&2\nexit 1\n"),
+        );
         std::env::set_var(BIN_ENV, &p);
         let r = open_in_new_process(&req, Box::new(|_| {}));
         std::env::remove_var(BIN_ENV);
@@ -1001,7 +993,6 @@ fn the_window_process_own_reason_reaches_the_sentence() {
 #[cfg(unix)]
 #[test]
 fn reopening_after_a_crash_starts_a_clean_new_process() {
-    use std::os::unix::fs::PermissionsExt;
     let _g = ENV.lock().unwrap_or_else(|e| e.into_inner());
     let dir = std::env::temp_dir().join(format!("filewin-reopen-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("造不出临时目录");
@@ -1009,14 +1000,12 @@ fn reopening_after_a_crash_starts_a_clean_new_process() {
     let listed = encode_ready(&Ready::Listed(2)).trim().to_string();
     let run = |tag: &str, tail: &str, code: u32| {
         let p = dir.join(format!("reopen-{tag}.sh"));
-        std::fs::write(
+        test_home::write_exe(
             &p,
-            format!(
+            &format!(
                 "#!/bin/sh\nread -r _seed\nprintf '%s\\n' '{listed}' >&2\nsleep 0.6\n{tail}exit {code}\n"
             ),
-        )
-        .unwrap();
-        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        );
         std::env::set_var(BIN_ENV, &p);
         let (tx, rx) = std::sync::mpsc::channel::<ProcFail>();
         let r = open_in_new_process(&req, Box::new(move |said| tx.send(said).unwrap()));

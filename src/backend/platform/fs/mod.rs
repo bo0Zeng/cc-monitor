@@ -22,7 +22,7 @@ pub use face::{Face, FaceFile, NewFile, NewFileFail, Resolved};
 pub use own::{
     inside_own_dir, AccountCreds, CredsLock, DiagFile, OwnPath, RenewLock, PRIVATE_DIR_MODE,
 };
-pub use own::{DiagLog, Own, OwnLock};
+pub use own::{DiagLog, FileLockHeld, LoginLockForm, McpLoginsFile, Own, OwnLock, WriteLockForm};
 pub use ro::{Metadata, Perms, Ro, RoFile, Stamp};
 
 /// Windows 的系统错号：拒绝访问。

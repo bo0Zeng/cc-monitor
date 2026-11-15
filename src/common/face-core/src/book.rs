@@ -1,5 +1,5 @@
-//! **一台的会话簿**：那台后端在这条连接上说过的会话成品，折成此刻的整份 —— 桌面壳（`session_book`，每台一本）与手机核心
-//! （`mobcore::resident`，每台一本）都只调这里的 [`SessionBook::fold`]，各端不另写一份折法。
+//! **一台的会话簿**：那台后端在这条连接上说过的会话成品，折成此刻的整份 —— 本机后端（替各台 `control/feeds.rs`、替本机那条要成品的连接
+//! `observe/watcher.rs`，推 [`SessionBook::step`] 回的那一格，桌面壳不折）与手机核心（`mobcore::resident`，每台一本）都只调这里，各端不另写一份折法。
 //!
 //! 只记、不裁：活 / 可重连 / 已结束、脸、标题都是那台后端裁好的（帧 `session_added` · `session_status` · `session_left` …），
 //! 这里只照帧把整份换到此刻。连接断了那一刻的说不清也是一帧 `session_left`（`face.life = unclear`），脸是 [`unseen`] 那一张：
@@ -10,6 +10,7 @@ use std::collections::BTreeMap;
 use cmd_wire::cells::{Tone, Words};
 use cmd_wire::frame::{Allow, CanClose, CanSay, CanView, SessionCan, SessionDot};
 use cmd_wire::frame::{Frame, Life, SessionAdded, SessionFace, SessionLeft, SessionRuns};
+use cmd_wire::frame::{SessionSeat, SessionSeats};
 use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
 
@@ -79,6 +80,10 @@ pub struct SessionBook {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub unseen: Option<SessionFace>,
+    /// 这条连接上各条会话的未读（那台写好的字，`session_unread`；没有的不在）。连接断了那一刻整份作废（[`SessionBook::unseen_now`]）。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[cfg_attr(test, ts(optional, type = "{ [key in string]: string }"))]
+    pub unread: BTreeMap<String, Words>,
 }
 
 /// 簿里一条会话此刻是哪一种（按 sid 的先后读整份用）。
@@ -128,9 +133,68 @@ impl SessionBook {
             Frame::SessionRuns(r) => {
                 self.runs.insert(r.sid.clone(), r.clone());
             }
+            Frame::SessionUnread(u) => match &u.said {
+                Some(said) => {
+                    self.unread.insert(u.sid.clone(), said.clone());
+                }
+                None => {
+                    self.unread.remove(&u.sid);
+                }
+            },
             _ => return false,
         }
         true
+    }
+
+    /// **折一帧，回要推给只收成品那一头的那一格**（各处推会话成品只调它：本机后端替各台 · 替本机那条要成品的连接）：
+    /// 改整条的那几种（宣告 · 状态 · 离开 · 运行表）⇒ 那一条此刻整条；清单报完了 ⇒ 只带 `listed` 的一格；
+    /// 别的会话帧（预读完了 · 主线外清单 · 记录文件怎么了）折进簿、回 `None`；不是会话帧 ⇒ `None`。
+    pub fn step<R>(&mut self, frame: &Frame<R>) -> Option<SessionSeats> {
+        let sid = match frame {
+            Frame::SessionAdded(m) => Some(m.sid.clone()),
+            Frame::SessionStatus(s) => Some(s.sid.clone()),
+            Frame::SessionLeft(s) => Some(s.sid.clone()),
+            Frame::SessionRuns(r) => Some(r.sid.clone()),
+            Frame::SessionUnread(u) => Some(u.sid.clone()),
+            Frame::SessionsReplayed(_) => None,
+            f => {
+                self.fold(f);
+                return None;
+            }
+        };
+        self.fold(frame);
+        Some(SessionSeats {
+            seats: sid.iter().map(|s| self.seat_now(s)).collect(),
+            listed: self.listed,
+            whole: false,
+        })
+    }
+
+    /// 那一条此刻的整条（拼一条只经 [`SessionSeat::of`]）。
+    pub fn seat_now(&self, sid: &str) -> SessionSeat {
+        SessionSeat::of(
+            sid,
+            self.live.get(sid),
+            self.left.get(sid),
+            self.runs.get(sid),
+            self.unread.get(sid),
+        )
+    }
+
+    /// 整本（按 sid 的先后，带 `whole`：照它换掉手上那一份）：簿里的每一条，连只剩未读的那几条。
+    pub fn whole(&self) -> SessionSeats {
+        let mut sids: Vec<&String> = self
+            .seats()
+            .map(|(sid, _)| sid)
+            .chain(self.unread.keys())
+            .collect();
+        sids.sort();
+        sids.dedup();
+        SessionSeats {
+            seats: sids.into_iter().map(|sid| self.seat_now(sid)).collect(),
+            listed: self.listed,
+            whole: true,
+        }
     }
 
     /// 那一条此刻的整份脸（活的 ⇒ 最新状态；走了的 ⇒ 去向那一张；不在 ⇒ `None`）。
@@ -163,7 +227,9 @@ impl SessionBook {
 
     /// **那台这一条连接断的那一刻**（全仓唯一的落法）：簿里活的 · 可重连的每一条落成说不清（[`unseen`]，`offline` 是那台的离线那一句），
     /// 自己先折进簿、记下那一张（[`SessionBook::unseen`]），交回那几帧（按 sid 排；要转出去的照它发）。已结束 · 记录已不在的不说。
+    /// 未读是那一条连接上数的，连接断了就说不清 ⇒ 整份作废（不留一个再也不会变的数）。
     pub fn unseen_now(&mut self, offline: Words) -> Vec<SessionLeft> {
+        self.unread.clear();
         let face = unseen(offline);
         let open: Vec<String> = self
             .seats()
@@ -193,6 +259,7 @@ impl SessionBook {
         self.left.remove(sid);
         self.runs.remove(sid);
         self.file_said.remove(sid);
+        self.unread.remove(sid);
     }
 }
 

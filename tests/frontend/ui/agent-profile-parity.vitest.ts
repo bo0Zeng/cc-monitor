@@ -25,6 +25,8 @@ import {
 } from "../../../src/frontend/ui/agent-profile";
 import {
   AGENT_PROFILE_TABLE,
+  FAMILY_SAID,
+  FAMILY_UNSAID,
   type AgentProfileRow,
 } from "../../../src/frontend/ui/generated/agent-profile-table";
 import { stripComments } from "../../test-support/strip-comments";
@@ -85,14 +87,24 @@ describe("前端那份 agent 画像：值来自后端", () => {
       expect(p.launcherAlias).toBe(r.launcherAlias);
       expect(p.resumeKind).toBe(r.resumeKind);
       expect(p.resumeFlag).toBe(r.resumeToken);
-      // 名字（卡头的短名 · 话里的全称）同样从那一行来；认不出 / 还不知道是哪一家 ⇒ `null`，不顶替成哪一家。
+      // 卡头的短名同样从那一行来；认不出 / 还不知道是哪一家 ⇒ `null`，不顶替成哪一家。
       expect(speakerNameOf(a)).toBe(r.speakerName);
-      expect(displayNameOf(a)).toBe(r.displayName);
+      // 话里的全称不在这一行：住生成物那张家名表（注册表每一家，不只起会话那几家）。
+      expect(displayNameOf(a)).toBe(FAMILY_SAID[a]);
     }
     expect(listAgents().slice().sort(), "前端认的 agent 集合不是生成物那几行").toEqual(AGENT_PROFILE_TABLE.map((r) => r.agent).sort());
     expect(speakerNameOf(null)).toBeNull();
     expect(speakerNameOf("nope")).toBeNull();
-    expect(displayNameOf("nope")).toBeNull();
+  });
+
+  it("★ 一家的叫法照抄后端那张家名表：没有起会话面的家也说得出；表里没有的家照实说，不露 kind", () => {
+    // 替身家名表：一家没有起会话面（不在画像那几行里）、行头声明了叫法；一家连表里都没有。
+    const said: Record<string, string> = { "stand-said": "替身丙" };
+    expect(lookupAgentProfile("stand-said").known, "替身家不该在画像那几行里").toBe(false);
+    expect(displayNameOf("stand-said", said)).toBe("替身丙");
+    const unsaid = displayNameOf("stand-unknown", said);
+    expect(unsaid).toBe(FAMILY_UNSAID);
+    expect(unsaid).not.toContain("stand-unknown");
   });
 
   it("★ `agent-profile.ts` 的生产段里不许出现生成物里的任何一个值", () => {
@@ -109,7 +121,9 @@ describe("前端那份 agent 画像：值来自后端", () => {
     const codex = row("codex");
     expect(codex, "两个 agent 拿到的是同一份画像").not.toEqual(claude);
     const keys = Object.keys(claude) as Array<keyof AgentProfileRow>;
-    const same = keys.filter((k) => JSON.stringify(claude[k]) === JSON.stringify(codex[k]));
+    // 真巧合、点名说清：`hasAccounts` —— Codex 有了账号面以后（P3 · P4，11-09）两家都有号，值同是 true。
+    const COINCIDE = new Set<keyof AgentProfileRow>(["hasAccounts"]);
+    const same = keys.filter((k) => !COINCIDE.has(k) && JSON.stringify(claude[k]) === JSON.stringify(codex[k]));
     expect(
       same,
       "这几格两个 agent 拿到的**是同一个值** —— 要么是真巧合（那就在这里点名说清），要么是 codex 那一格又被 claude 那份顶上了",

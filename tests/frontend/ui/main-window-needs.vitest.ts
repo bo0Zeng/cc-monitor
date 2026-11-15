@@ -58,7 +58,7 @@ function tab(sid: string, over: Partial<Tab> = {}): Tab {
     origin: LOCAL,
     forkedLine: null,
     writers: [],
-    unread: 0,
+    unreadSaid: null,
     needs: null,
     autoAnswer: null,
     autoAnswerChoices: [],
@@ -75,7 +75,7 @@ const waiting = { face: liveFace("needs_you") };
 /** 那台在 `NOW` 答出、本机同一刻收到（两台钟一样快）；已等多久由那台算好。 */
 const approve = (sinceMs: number | null = NOW - 120_000): Needs => {
   const waitedMs = sinceMs === null ? null : NOW - sinceMs;
-  return { kind: "approve", tool: "Bash", call: "toolu_b", what: "rm -rf build/", text: copyText("beSession.needs.approve"), head: "核心·等批准 · Bash", headCode: "rm -rf build/", tone: "need", rank: 1, waitedMs, ask: null, manualText: null, receivedAt: NOW };
+  return { kind: "approve", tool: "Bash", call: "toolu_b", what: "rm -rf build/", text: copyText("beSession.needs.approve"), head: "核心·等批准 · Bash", headCode: "rm -rf build/", tone: "need", rank: 1, waitedMs, ask: null, manualText: "核心·只能在终端里答", receivedAt: NOW };
 };
 
 /** 本机那台的成品（`machine-read` 那一份里的名字）：界面上「这台叫什么」照它。 */
@@ -125,18 +125,18 @@ describe("一个会话读成什么（session-face）：点 · 状态一句 · �
     expect([nextNeedsStep(order, "c", null, 2), nextNeedsStep(order, null, 0, 2), nextNeedsStep(order, null, 1, 2)]).toEqual([{ plan: 0 }, { plan: 1 }, { sid: "e" }]);
   });
 
-  it("★ 问后端：只问本机后端一次 `sessions-needs-merge {}`（它照自己的机器表问到各台），界面不交名单、不逐台问、不当信差；没问到的那台照后端说的记下；数 ＝ 合好的 `total`；推送连着来合成一问", async () => {
+  it("★ 问后端：只问本机后端一次 `sessions-needs-merge {}`（它照自己的机器表问到各台），界面不交名单、不逐台问、不当信差；没问到的那台照后端说的记下；两列的数照核心各自的 `total`；推送连着来合成一问", async () => {
     vi.useFakeTimers();
     const asked: { origin: string; op: string; args: unknown }[] = [];
     const call = vi.fn(async (origin: string, op: string, args: unknown) => {
       asked.push({ origin, op, args });
-      return { items: [], total: 5, unreadable: [], down: [{ origin: "gpu-01", said: "gpu-01 后端未在运行", detail: "" }], head: "", sure: true };
+      return { asks: { items: [], total: 2, head: "", sure: true }, manual: { items: [], total: 3, head: "", sure: true }, unreadable: [], down: [{ origin: "gpu-01", said: "gpu-01 后端未在运行", detail: "" }], ended: [], windowTitle: "" };
     });
     typed.fake = call as never;
     const book = new NeedsBook();
     await book.again();
     expect(asked, "只问本机后端那一条，不带名单").toEqual([{ origin: "<local>", op: "sessions-needs-merge", args: {} }]);
-    expect(book.total(), "照后端合好的总数").toBe(5);
+    expect([book.total("answerable"), book.total("manual")], "照后端合好的两列各自的数").toEqual([2, 3]);
     expect(book.offline()).toEqual([{ origin: "gpu-01", said: "gpu-01 后端未在运行" }]);
     asked.length = 0;
     book.poke();
@@ -197,8 +197,8 @@ async function bar(tabs: Tab[], ranked?: string[]) {
 
 describe("标签页栏：「需手动 N」与机器离线条", () => {
   it("★ 「需手动」只在有人等你时出、写数；点它开浮层、点那一行跳过去；行尾「等批准」换掉未读数", async () => {
-    const r = await bar([tab("a"), tab("b", { ...waiting, needs: approve(NOW - 10_000), unread: 3 }), tab("c")]);
-    const strip = r.el.querySelector<HTMLElement>(".tab-needs")!;
+    const r = await bar([tab("a"), tab("b", { ...waiting, needs: approve(NOW - 10_000), unreadSaid: "3" }), tab("c")]);
+    const strip = r.el.querySelector<HTMLElement>(`.tab-needs[data-col="manual"]`)!;
     expect(strip.style.display).toBe("");
     expect(strip.querySelector(".tab-needs-count")?.textContent).toBe("1");
     const b = r.view.tabButtons.get("b")!;
@@ -216,17 +216,17 @@ describe("标签页栏：「需手动 N」与机器离线条", () => {
     expect(b.badge.textContent).toBe("3");
   });
 
-  it("★ 悬停「需手动」不再开菜单（并进点开的那个浮层）；`Ctrl+J` 照旧直接跳后端排在最前的、不开浮层", async () => {
+  it("★ 悬停「需手动」不再开菜单（并进点开的那个浮层）；下一个需手动照旧直接跳后端排在最前的、不开浮层", async () => {
     vi.useFakeTimers();
     try {
       const r = await bar([tab("a", { ...waiting, needs: approve(NOW - 10_000) }), tab("b", { ...waiting, needs: approve(NOW - 60_000) })], ["b", "a"]);
-      const strip = r.el.querySelector<HTMLElement>(".tab-needs")!;
+      const strip = r.el.querySelector<HTMLElement>(`.tab-needs[data-col="manual"]`)!;
       strip.dispatchEvent(new Event("mouseenter"));
       vi.advanceTimersByTime(2_000);
       expect(document.querySelector('[role="menu"]'), "悬停不开").toBeNull();
       expect(document.querySelector('[role="dialog"]'), "悬停不开").toBeNull();
       r.needs.asked.length = 0;
-      await r.view.nextNeeds();
+      await r.view.nextNeeds("manual");
       expect(r.needs.asked, "跳之前先重问一回").toEqual([LOCAL]);
       expect(r.host.answerAt).toHaveBeenCalledWith("b");
       expect(document.querySelector('[role="dialog"]'), "Ctrl+J 不开浮层").toBeNull();
@@ -243,13 +243,14 @@ describe("标签页栏：「需手动 N」与机器离线条", () => {
     const el = document.createElement("div");
     document.body.appendChild(el);
     const view = new TabBarView(store, { collections: [] } as unknown as TabBarPrefs, el, (await bar([])).host);
-    const needs = fakeNeedsBook({ [LOCAL]: listOf([sessionItem("a", approve())]) }, (m) => ({ items: m.flatMap((x) => x.list.items.map((item) => ({ origin: x.origin, item }))), total: 5, unreadable: [], down: [], head: "", sure: true }));
+    const needs = fakeNeedsBook({ [LOCAL]: listOf([sessionItem("a", approve())]) }, (m) => ({ asks: { items: [], total: 0, head: "", sure: true }, manual: { items: m.flatMap((x) => x.list.items.map((item) => ({ origin: x.origin, item }))), total: 5, head: "核心·需手动那一句", sure: true }, unreadable: [], down: [], ended: [], windowTitle: "" }));
     view.needs = { book: needs.book, login: vi.fn() };
     needs.book.subscribe(() => view.planNeedsChanged());
     await needs.book.again();
     view.refresh();
-    expect(view.needsCountNow()).toBe(5);
-    expect(el.querySelector(".tab-needs .tab-needs-count")?.textContent).toBe("5");
+    expect(el.querySelector(`.tab-needs[data-col="manual"] .tab-needs-count`)?.textContent).toBe("5");
+    // 读屏念的是核心合好的头那一句（数说得准才带数、说不准就不带），出口不自己拼数。
+    expect(el.querySelector(`.tab-needs[data-col="manual"]`)?.getAttribute("aria-label")).toBe("核心·需手动那一句");
   });
 
   it("★ 点标签上那颗「需手动」的点 ⇒ 跳过去、焦点进答题块；点标签别处 / 不在等的点 ⇒ 照常切", async () => {
@@ -267,7 +268,7 @@ describe("标签页栏：「需手动 N」与机器离线条", () => {
     r.store.subscribe((x) => seen.push(x));
     const n0 = seen.length;
     const t = r.store.tabs.get("a") as Tab;
-    t.needs = { ...approve(NOW - 10_000), ask: { id: "ask-1" } as never };
+    t.needs = { ...approve(NOW - 10_000), ask: { id: "ask-1" } as never, manualText: null };
     r.store.notify();
     expect(seen.length, "ask 挂上").toBe(n0 + 1);
     t.needs = { ...approve(NOW - 10_000), ask: null, manualText: "核心·那一句" };
@@ -301,15 +302,15 @@ describe("标签页栏：「需手动 N」与机器离线条", () => {
 });
 
 describe("「需手动」· 窗口标题（消息流底部那一块见 answer-block.vitest.ts）", () => {
-  it("★ 标题：`cc-monitor · 需手动 N`，0 个时只有 `cc-monitor`；变了才写", () => {
+  it("★ 标题照抄核心合好的那一句（`NeedsMerged.windowTitle`）；变了才写", () => {
     const titles: string[] = [];
     const w = new NeedsTitle((t) => titles.push(t));
-    w.observe(0);
-    w.observe(0);
-    w.observe(2);
-    // N 同侧栏入口（会话 ＋ 计划项 ＋ 会话外的每一项）：会话没变、会话外多了一项 ⇒ 标题跟着变。
-    w.observe(3);
-    expect(titles).toEqual([copyText("needs.windowTitle.base"), copyText("needs.windowTitle.count", { n: 2 }), copyText("needs.windowTitle.count", { n: 3 })]);
+    w.observe(null);
+    w.observe("t0");
+    w.observe("t0");
+    w.observe("t2");
+    w.observe("t3");
+    expect(titles).toEqual(["t0", "t2", "t3"]);
   });
 });
 
@@ -774,6 +775,23 @@ describe("那台接上 ⇒ 需手动只经订阅重问一次", () => {
     const body = main.slice(at, main.indexOf("\n  });", at));
     expect(body).not.toMatch(/needsBook\.(again|poke)\(/);
     expect(main.split("needsBook.poke();").length - 1).toBe(1);
+  });
+});
+
+// **接线判据**：命令面板那一份在 main.ts 现拼（没有 DOM 判据够得着）⇒ 读源码：会话行进哪一组只问账（`columnOf`），拼命令那一段不读 `waiting`。
+describe("命令面板的会话分组照账的两列", () => {
+  it("★ buildCommands 里会话行的 group 照 `needsBook.columnOf`，不看 `waiting`", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const { REPO_ROOT } = await import("../../test-support/repo-root.ts");
+    const main = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/main.ts"), "utf8");
+    const at = main.indexOf("const buildCommands = ");
+    expect(at, "main.ts 里找不到 buildCommands").toBeGreaterThan(-1);
+    // 剥掉行注释再比（注释里照常写得出 `waiting`）。
+    const body = main.slice(at, main.indexOf("\n  };", at)).replace(/\/\/.*$/gm, "");
+    expect(body).toMatch(/group: g/);
+    expect(body).toMatch(/const g = needsBook\.columnOf\(/);
+    expect(body).not.toMatch(/waiting/);
   });
 });
 

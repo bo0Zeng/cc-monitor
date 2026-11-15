@@ -7,19 +7,17 @@ import com.ccmonitor.mobile.core.data.db.Host
 import com.ccmonitor.mobile.core.data.db.HostRemovalDao
 import com.ccmonitor.mobile.core.data.db.HostRows
 import com.ccmonitor.mobile.core.data.db.Identity
-import com.ccmonitor.mobile.core.data.db.machineTable
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
 import com.ccmonitor.mobile.core.rs.Core
 import com.ccmonitor.mobile.core.ssh.SshConfigParser
 import com.ccmonitor.mobile.core.ssh.forgetHostKey
-import com.ccmonitor.mobile.core.wire.Wire
 import com.ccmonitor.mobile.core.wire.gen.ConfigHost
 import com.ccmonitor.mobile.core.wire.gen.Endpoint
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
-import com.ccmonitor.mobile.core.wire.gen.MachineCheck
 import com.ccmonitor.mobile.core.wire.gen.MachineDot
 import com.ccmonitor.mobile.link.HostBackends
+import com.ccmonitor.mobile.ssh.machineCheck
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -110,7 +108,7 @@ internal fun dialEndpoints(
     table: List<Host>,
     at: Int,
 ): List<Endpoint> =
-    (Wire.read<MachineCheck>(Core.machineCheck(table.machineTable(), at)) ?: error("wire contract mismatch: machine check")).endpoints
+    machineCheck(table, at).endpoints
 
 /**
  * 删 [id] 那一台要忘的主机钥匙：它的拨号地址里，表里别的机器都没用着的那几个（同址的另一台还要那把钥匙）。
@@ -169,7 +167,7 @@ data class HostRowLook(
 )
 
 /**
- * 核心交的那一行 ⇒ 行首那颗点与尾字：点是成品的 `dot`（`deploy::machine::dot`，桌面同一份），尾字是成品的 `word`；
+ * 核心交的那一行 ⇒ 行首那颗点与尾字：点是成品的 `dot`（`copy_core::machine::dot`，桌面同一份），尾字是成品的 `word`；
  * 核心还没交过（这台没起常驻流）⇒ 不画。手机不照态另挑。
  */
 internal fun hostRowLook(line: LinkLine?): HostRowLook {

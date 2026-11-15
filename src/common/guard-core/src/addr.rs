@@ -14,6 +14,15 @@ pub fn repo_root() -> PathBuf {
         .to_path_buf()
 }
 
+/// 现打的金样落在仓根下的这个目录：金样判据只比不写，不等 ⇒ 现打的那份落这里，`tests/scripts/bless-golden.sh` 从这里拷回。
+pub const FRESH_GOLDEN_DIR: &str = ".build/golden";
+
+/// 一份金样（仓相对路径 `rel`）现打的那份落在哪：`<root>/.build/golden/<rel>`。
+/// `root` 一般给 [`repo_root`]；判据自己造的合成仓给它自己的根。
+pub fn fresh_golden(root: &Path, rel: &str) -> PathBuf {
+    root.join(FRESH_GOLDEN_DIR).join(rel)
+}
+
 /// 仓里的 `src/`。
 pub fn repo_src_root() -> PathBuf {
     repo_root().join("src")

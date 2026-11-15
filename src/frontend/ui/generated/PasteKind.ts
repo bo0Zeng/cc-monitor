@@ -3,4 +3,4 @@
 /**
  * 粘回来的是什么。
  */
-export type PasteKind = "code" | "redirectUrl";
+export type PasteKind = "code" | "redirectUrl" | "showCode" | "noPaste";

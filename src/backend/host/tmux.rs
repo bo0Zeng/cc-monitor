@@ -3,6 +3,9 @@
 //! 别处要对 tmux 下命令，经 [`child`] 拿一个已指好 server 的命令，argv 由调用方给；
 //! 经 [`child`] 起的算调用方那一处起进程：[`child`] 在后端 `clippy.toml` 的名单上，每个调用点放行、写清发什么。
 //! 名单（`list-panes` · `list-clients` 两发）、一次列全部会话（`list-sessions`，快照的探测器）也住这里。
+//! 一个进程是不是它 `TMUX_PANE` 那个窗格前台的那一个，判法住 [`seat`]（只读 `/proc`，不起 tmux）。
+
+pub mod seat;
 
 use super::TermRow;
 use crate::common::session_snapshot::SessionRow;

@@ -43,12 +43,11 @@ fn the_first_candidate_that_exists_wins() {
     std::fs::create_dir_all(&b).expect("mkdir b");
     for d in [&a, &b] {
         let f = d.join("tool");
-        std::fs::write(&f, b"#!/bin/sh\n").expect("write");
+        // 可执行的文件只经 `write_exe` 写（设可执行位只此一处）。
         #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o755)).expect("chmod");
-        }
+        test_home::write_exe(&f, "#!/bin/sh\n");
+        #[cfg(not(unix))]
+        std::fs::write(&f, b"#!/bin/sh\n").expect("write");
     }
     let fixed = vec![b.join("tool"), a.join("tool")];
     let got = find("tool", &fixed, false, "").expect("应当找得到");

@@ -42,13 +42,13 @@ enum Class {
 const CRATES: &[(&str, Class, &str)] = &[
     ("acct-core", Class::Core, "账号能不能用 · 走哪一支（`auth_ready` · `apikey_routed_subset`）在这里判；后端链，界面那份 `AUTH_KINDS` 由测试档的生成器现生成（monitor 只在 dev 侧链它）"),
     ("cmd-wire", Class::Contract, "线上类型与它的纯编解码：机器名（`Machine`）· typed 命令的形状指纹表（后端 hello 交出去、客户端比）· 文件管理那一族的入参与回包 · 会话族手机问的那几条的回包 · b64 · fnv"),
-    ("face-core", Class::Core, "照线上类型与结局 · 原因取文案表写成给人看的那一张（↗ 浮层 · 会话簿 · 活卡板的折法）：写句子 · 汇总在这里；后端与手机嵌的核心链，壳链着的照实登欠账"),
-    ("chunk-core", Class::Core, "分块传那一圈带状态的循环：块多大 · 块号连着 · 整份摘要怎么算 · 读到哪为止；手机嵌的核心链，壳（附件 `attach_stage`）与文件窗口链着的照实登欠账"),
+    ("face-core", Class::Core, "照线上类型与结局 · 原因取文案表写成给人看的那一张（↗ 浮层 · 会话簿 · 活卡板的折法）：写句子 · 汇总在这里；后端与手机嵌的核心链，壳不链"),
+    ("chunk-core", Class::Core, "分块传那一圈带状态的循环：块多大 · 块号连着 · 整份摘要怎么算 · 读到哪为止；后端（桌面附件草稿那一圈 · 两台之间复制）与手机嵌的核心链，文件窗口链着的照实登欠账"),
     ("batch-core", Class::Core, "一组一条命令：带票发 · 同名问一次 · 断了同票再问 · 重试与撤销计划（`retry_plan` · `undo_plan`）· 标题 · 结局句，判与写字都在这里；后端与手机嵌的核心链，文件窗口链着的照实登欠账"),
-    ("pick-core", Class::Core, "选中几项 ⇒ 给哪几项、灰着说什么（`blocked` · `refused_here` · `why_not_editable` 回的都是句子）；手机嵌的核心链，文件窗口链着的照实登欠账"),
+    ("pick-core", Class::Core, "选中几项 ⇒ 给哪几项、灰着说什么（`blocked` · `refused_here` · `why_not_editable` 回的都是句子）；只两个核心链（本机后端 · 手机核心）"),
     ("copy-core", Class::Contract, "文案表：按同一个键取同一句（`copy_text` / `copy_static`），连带出口照它写的格式化（大小 · 时长 · 个数 · 截字）与通道那几句（said · reason · discard · detail）；各家照同一份取，判好的结局由调用方交进来"),
     ("creds-core", Class::Core, "凭据落盘格式与文件名 · 写半边（`harden`）；后端链"),
-    ("deploy-contract", Class::Contract, "部署那一族两侧对上的：表 A 的键与行 · 拒绝的形状与话 · 身份戳格式 · 计划答话；包里另有 `build_relation` · `build_order` · `key_from_uname` · 读身份戳那几样判定（壳 `local_backend_host` 还调 `build_relation`），挪进后端 `deploy` 之前照实记在这里"),
+    ("deploy-contract", Class::Contract, "部署那一族两侧对上的：表 A 的键与行 · 拒绝的形状与话 · 身份戳界标与读手上字节那一份 · 计划答话；包里另有 `build_relation` · `build_order`（壳 `local_backend_host` 还调 `build_relation`），照实记在这里；问那台的命令与回话的解读住后端 `deploy`"),
     ("filewin-contract", Class::Contract, "monitor 与文件窗口进程两边对上的形状：开窗种子（连同主窗所在显示器的工作区 `WorkArea`）· 就绪那一行 · 「在此打开终端」那一问的名字与参数 · 主题令牌名单"),
     ("test-home", Class::TestInfra, "测试档的家一开始就是沙箱：各 crate 只在 dev 侧引它，不判业务"),
     ("guard-core", Class::TestInfra, "源码扫描判据的原语，两侧都只在 dev 侧"),
@@ -63,7 +63,7 @@ const CRATES: &[(&str, Class, &str)] = &[
     ("md-core", Class::Core, "助手正文怎么解析成块树 · 代码高亮成哪一类 · 长正文在哪分段在这里判：后端链，两端只照 cmd-wire 的 `Doc` 排版"),
     ("win-manifest", Class::HostPrimitive, "两个前端包在 Windows 上带的进程清单（通用控件 v6）：清单本身 · 构建脚本里的编法 · 测试程序读回，只一份；后端不链"),
     ("plain-path-core", Class::Core, "一段相对路径是不是根底下的普通段（绝对 · `..` · `.` 怎么判）只在这里判：后端写面 · 远端写围栏（拨号核心）· 解压条目都调这一份；出口不链"),
-    ("upstream-url-core", Class::Core, "上游 URL 能不能用在这里判；后端 · 中转 · 出网口链，界面不判（只画后端拒的那一句），monitor 只在 dev 侧为金样判据链它"),
+    ("upstream-url-core", Class::Core, "上游 URL 能不能用在这里判；后端 · 中转 · 出网口链，界面不判（只画后端拒的那一句）；monitor 生产与 dev 侧都不链，金样住本包判据"),
 ];
 
 /// ② 出口：(名字, 它的清单（仓根相对）)。每个出口自己出一个程序，各自的生产闭包分开量。
@@ -76,16 +76,6 @@ const OUTLETS: &[(&str, &str)] = &[
 /// 表空了，整张连同 ② 里认它的那几行一起删。
 const OUTLET_DEBT: &[(&str, &str, &str)] = &[
     (
-        "monitor",
-        "face-core",
-        "W37（会话簿 · 活卡板照本机后端推的成品）做完才删",
-    ),
-    (
-        "monitor",
-        "chunk-core",
-        "W79（附件草稿整圈随上传路进核心，壳只交暂存文件的路径）",
-    ),
-    (
         "文件窗口",
         "batch-core",
         "G31 在 A24 下立的待排施工单（一组动作由后端跑、`files_batch` 帧带写好的成品）",
@@ -94,11 +84,6 @@ const OUTLET_DEBT: &[(&str, &str, &str)] = &[
         "文件窗口",
         "chunk-core",
         "G31 在 A24 下立的待排施工单（上传 · 编辑存大文本 · 预览拉取走后端那条传输路）",
-    ),
-    (
-        "文件窗口",
-        "pick-core",
-        "W14（选中变了问本机后端要菜单成品）",
     ),
 ];
 
@@ -139,6 +124,8 @@ const DEPLOY_DECISIONS: &[(&str, &str)] = &[
     ("promised", DEPLOY_HOME),
     ("identity_decision", DEPLOY_HOME),
     ("interpret_target_probe", DEPLOY_HOME),
+    ("key_from_uname", DEPLOY_HOME),
+    ("interpret_stamp_scan", DEPLOY_HOME),
     ("place_verdict", "src/backend/control/deploy_plan.rs"),
 ];
 
@@ -168,8 +155,23 @@ fn is_production_section(header: &str) -> bool {
         && (last == "dependencies" || last == "build-dependencies")
 }
 
+/// dev 段：`[dev-dependencies]` · `[target.<cfg>.dev-dependencies]`。
+fn is_dev_section(header: &str) -> bool {
+    let h = header
+        .trim()
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .trim();
+    h == "dev-dependencies" || (h.starts_with("target.") && h.ends_with(".dev-dependencies"))
+}
+
 /// 一份 manifest 生产段里的 path 依赖 → (依赖名, 解析后的目录)。
 fn production_path_deps(manifest: &Path) -> Vec<(String, PathBuf)> {
+    path_deps_in(manifest, is_production_section)
+}
+
+/// 一份 manifest 里 `in_section` 认的那几段的 path 依赖 → (依赖名, 解析后的目录)。
+fn path_deps_in(manifest: &Path, in_section: fn(&str) -> bool) -> Vec<(String, PathBuf)> {
     let raw = std::fs::read_to_string(manifest)
         .unwrap_or_else(|e| panic!("读 {}: {e}", manifest.display()));
     let text = guard_core::strip_hash_comment_lines(&raw);
@@ -182,7 +184,7 @@ fn production_path_deps(manifest: &Path) -> Vec<(String, PathBuf)> {
             section = t.to_string();
             continue;
         }
-        if !is_production_section(&section) {
+        if !in_section(&section) {
             continue;
         }
         for p in guard_core::inline_table_paths(line) {
@@ -567,6 +569,31 @@ fn backend_closure() -> Vec<(String, String, PathBuf)> {
         "backend".to_string(),
         root().join("src/backend/Cargo.toml"),
     )])
+}
+
+/// 上游地址那一条判定（`upstream-url-core`）界面不判，它的金样也只由本包自己的判据读 ⇒ monitor 生产闭包与 dev 闭包（dev 段直接链的 ＋ 它们的生产闭包）里都没有它。
+/// 正控：同一把量法在 dev 闭包里量得到 `acct-core`（只在 dev 侧为生成器链）。
+#[test]
+fn the_monitor_links_no_upstream_url_core_even_on_the_dev_side() {
+    let manifest = root().join("src/frontend/shell/Cargo.toml");
+    let dev_direct = path_deps_in(&manifest, is_dev_section);
+    let mut names: BTreeSet<String> = dev_direct.iter().map(|(n, _)| n.clone()).collect();
+    let dev_closure = production_closure(
+        dev_direct
+            .into_iter()
+            .map(|(n, d)| (n, d.join("Cargo.toml")))
+            .collect(),
+    );
+    names.extend(dev_closure.into_iter().map(|(_, n, _)| n));
+    names.extend(monitor_production_closure().into_iter().map(|(_, n, _)| n));
+    assert!(
+        names.contains("acct-core"),
+        "正控：dev 闭包里没量到 acct-core —— 量法瞎了"
+    );
+    assert!(
+        !names.contains("upstream-url-core"),
+        "monitor 的生产或 dev 闭包里链着 upstream-url-core —— 金样判据住 `tests/common/upstream-url-core/lib_tests.rs`，壳不链它"
+    );
 }
 
 /// ⑤ 前端包自己出程序、monitor 不链它：monitor 的清单生产段不点名它，monitor 生产源码（壳 `src/` ＋ 通信层面 A 那个 crate）一处都不提它的 crate 名；

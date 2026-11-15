@@ -12,4 +12,4 @@ cell: string | null,
 /**
  * 根节点的标题；最上面那一个 ⇒ `null`。
  */
-title: string | null, top: boolean, phase: string | null, at: string | null, atTitle: string | null, via: "session" | "subagent", said: PlanSessionSaid, };
+title: string | null, top: boolean, phase: string | null, at: string | null, via: "session" | "subagent", said: PlanSessionSaid, };

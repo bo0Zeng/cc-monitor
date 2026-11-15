@@ -55,9 +55,11 @@ fn the_core_name_of_a_codex_session_is_its_first_human_line() {
             if a.kind == crate::agents::codex::AGENT_KIND {
                 crate::agents::Adapter {
                     history: Some(crate::agents::HistoryFace {
-                        root: label_root,
+                        roots: |hs| hs.iter().filter_map(|_| label_root()).collect(),
                         ..crate::agents::codex::HISTORY
                     }),
+                    // 账号 0 的家说得出（根表照家问根；根上面那一行写死）。
+                    home: label_root,
                     upstream: None,
                     ..*a
                 }

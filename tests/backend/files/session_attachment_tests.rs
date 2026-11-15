@@ -118,7 +118,10 @@ fn a_corrupt_stage_leaves_no_numbered_dir_behind() {
         &utc(),
     )
     .expect_err("摘要不等该拒");
-    assert_eq!(err.code_or_fallback(), "stale");
+    assert_eq!(
+        cmd_wire::failed::Failed::code_or_fallback(err.code.clone()),
+        "stale"
+    );
     let tried = format!("1023-1529-{}", &sha(b"expected")[..4]);
     assert!(cwd.join(".ccm-attach/.gitignore").is_file());
     assert!(
@@ -142,7 +145,10 @@ fn an_oversized_file_is_refused_before_and_at_commit() {
     let mut r = req("dataset.zip", b"x");
     r.bytes = MAX_ONE_BYTES.bytes + 1;
     let err = commit(&Face::issue(), &home, &cwd, r, AT, &utc()).expect_err("该拒");
-    assert_eq!(err.code_or_fallback(), "too_big");
+    assert_eq!(
+        cmd_wire::failed::Failed::code_or_fallback(err.code.clone()),
+        "too_big"
+    );
     assert!(!cwd.join(".ccm-attach").exists());
 }
 
@@ -220,7 +226,6 @@ fn each_verdict_carries_the_class_of_its_name() {
 #[cfg(unix)]
 #[test]
 fn a_missing_or_read_only_workdir_is_refused_without_falling_back() {
-    use std::os::unix::fs::PermissionsExt as _;
     let (home, cwd) = rig("ro");
     let one = [AttachItem {
         name: "a".into(),
@@ -231,12 +236,15 @@ fn a_missing_or_read_only_workdir_is_refused_without_falling_back() {
         check(&cwd.join("nope"), &one)[0].why,
         Some(AttachRefused::NoSession)
     );
-    std::fs::set_permissions(&cwd, std::fs::Permissions::from_mode(0o555)).expect("改只读");
+    test_home::set_dir_mode(&cwd, 0o555);
     assert_eq!(check(&cwd, &one)[0].why, Some(AttachRefused::NotWritable));
     stage(&home, KEY, b"a");
     let err = commit(&Face::issue(), &home, &cwd, req("a", b"a"), AT, &utc()).expect_err("该拒");
-    std::fs::set_permissions(&cwd, std::fs::Permissions::from_mode(0o755)).expect("改回");
-    assert_eq!(err.code_or_fallback(), "not_writable");
+    test_home::set_dir_mode(&cwd, 0o755);
+    assert_eq!(
+        cmd_wire::failed::Failed::code_or_fallback(err.code.clone()),
+        "not_writable"
+    );
     assert!(!cwd.join(".ccm-attach").exists());
 }
 
@@ -250,9 +258,11 @@ fn dropping_removes_the_numbered_dir_and_is_idempotent() {
     assert!(!cwd.join(".ccm-attach").join(&a.id).exists());
     assert!(!drop_one(&Face::issue(), &cwd, &a.id).expect("再撤"));
     assert_eq!(
-        drop_one(&Face::issue(), &cwd, "../x")
-            .expect_err("不合形")
-            .code_or_fallback(),
+        cmd_wire::failed::Failed::code_or_fallback(
+            drop_one(&Face::issue(), &cwd, "../x")
+                .expect_err("不合形")
+                .code
+        ),
         "bad_args"
     );
 }

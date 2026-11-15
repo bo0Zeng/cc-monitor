@@ -19,12 +19,12 @@
 use super::{Live, WhoPort, Whose};
 use crate::wire::SessionFaceExt as _;
 use cmd_wire::plan::{
-    PlanArchived, PlanAudit, PlanAuditBy, PlanAuditSaid, PlanAuditStatus, PlanBlock, PlanBlockSaid,
-    PlanCell, PlanCellSaid, PlanCheck, PlanDomain, PlanEdgeWords, PlanEdges, PlanFile,
-    PlanFileState, PlanKids, PlanKind, PlanListSlice, PlanListWorkspace, PlanLook, PlanPendingSet,
-    PlanPhase, PlanProgress, PlanRead, PlanReadError, PlanRed, PlanRef, PlanRefs, PlanSessionBlock,
-    PlanSessionSaid, PlanSetsTo, PlanSlice, PlanSliceSaid, PlanStale, PlanState, PlanStatusCode,
-    PlanTakeover, PlanUnbuilt, PlanUndecidable, PlanUnowned, PlanWho, PlanWhyCode, PlanWhyShort,
+    PlanAudit, PlanAuditBy, PlanAuditSaid, PlanAuditStatus, PlanBlock, PlanBlockSaid, PlanCell,
+    PlanCellSaid, PlanCheck, PlanDomain, PlanEdgeWords, PlanEdges, PlanFile, PlanFileState,
+    PlanKids, PlanKind, PlanListSlice, PlanListWorkspace, PlanLook, PlanPendingSet, PlanProgress,
+    PlanRead, PlanReadError, PlanRed, PlanRef, PlanRefs, PlanSessionBlock, PlanSessionSaid,
+    PlanSetsTo, PlanSlice, PlanSliceSaid, PlanStale, PlanState, PlanStatusCode, PlanTakeover,
+    PlanUnbuilt, PlanUnowned, PlanWho, PlanWhyShort,
 };
 use copy_core::copy_text;
 use serde_json::Value;
@@ -112,13 +112,21 @@ pub(crate) fn state_line(state: &[PlanState]) -> Option<String> {
     })
 }
 
+/// 没签收的原因（后端私有，只为写行尾短词）：叶子没签 · 底下 d/m · 等上一级执行交回的那一条 · 待定还没人定。
+enum WhyCode {
+    Nosign,
+    Inside { done: u32, of: u32 },
+    Upper,
+    Undecided,
+}
+
 /// 原因 ⇒ 行尾那一个短词。
-fn why_short(code: &PlanWhyCode) -> PlanWhyShort {
+fn why_short(code: &WhyCode) -> PlanWhyShort {
     let (text, wait) = match code {
-        PlanWhyCode::Nosign => (copy_text("plan.whyShort.nosign", &[]), false),
-        PlanWhyCode::Upper => (copy_text("plan.whyShort.upper", &[]), true),
-        PlanWhyCode::Undecided => (copy_text("plan.whyShort.undecided", &[]), false),
-        PlanWhyCode::Inside { done, of } => (
+        WhyCode::Nosign => (copy_text("plan.whyShort.nosign", &[]), false),
+        WhyCode::Upper => (copy_text("plan.whyShort.upper", &[]), true),
+        WhyCode::Undecided => (copy_text("plan.whyShort.undecided", &[]), false),
+        WhyCode::Inside { done, of } => (
             copy_text(
                 "plan.whyShort.inside",
                 &[("done", &done.to_string()), ("of", &of.to_string())],
@@ -218,18 +226,19 @@ pub(crate) fn who_of(id: Option<&str>, who: WhoPort) -> Option<PlanWho> {
             .and_then(|l| serde_json::to_value(l.needs).ok())
             .and_then(|v| v.as_str().map(str::to_string))
     };
-    let face_of = |l: &Option<Live>| {
-        crate::wire::SessionFace::of(match l {
-            Some(l) => crate::wire::Life::Live {
+    // 与清单那一路同一个口造（[`crate::wire::SessionFaceExt::listed`]）：活着 ⇒ 住处照名单判的那一格；不活 ⇒ 已结束。
+    let face_of = |l: &Option<Live>| match l {
+        Some(l) => crate::wire::SessionFace::listed(
+            &crate::wire::WireLife::Live {
                 activity: l.activity,
-                host: None,
             },
-            None => crate::wire::Life::Ended,
-        })
+            l.housed.as_ref(),
+        ),
+        None => crate::wire::SessionFace::of(crate::wire::Life::Ended),
     };
     let (kind, sid, needs, face, label) = match who(id) {
-        Whose::Session { sid, live } => {
-            ("session", Some(sid), needs_of(&live), face_of(&live), None)
+        Whose::Session { sid, title, live } => {
+            ("session", Some(sid), needs_of(&live), face_of(&live), title)
         }
         Whose::Subagent {
             parent,
@@ -242,7 +251,7 @@ pub(crate) fn who_of(id: Option<&str>, who: WhoPort) -> Option<PlanWho> {
                 Some(parent),
                 needs_of(&live),
                 face_of(&live),
-                Some(label),
+                label,
             )
         }
         Whose::Unknown => (
@@ -250,7 +259,7 @@ pub(crate) fn who_of(id: Option<&str>, who: WhoPort) -> Option<PlanWho> {
             None,
             None,
             crate::wire::SessionFace::of(crate::wire::Life::Unclear),
-            Some(copy_text("plan.who.unknown", &[("id", &short_id(id))])),
+            copy_text("plan.who.unknown", &[("id", &short_id(id))]),
         ),
     };
     Some(PlanWho {
@@ -276,7 +285,7 @@ fn kinds_of(v: &Value) -> Vec<PlanKind> {
                 name: s(k, "name"),
                 edge_words: PlanEdgeWords {
                     to: w("to"),
-                    with_: w("with"),
+                    with: w("with"),
                     after: w("after"),
                     replaces: w("replaces"),
                 },
@@ -286,14 +295,7 @@ fn kinds_of(v: &Value) -> Vec<PlanKind> {
         .collect()
 }
 
-/// 阶段表（一片的 · 能选的那几档的，同一形）。
-fn phases_of(v: &Value) -> Vec<PlanPhase> {
-    arr(v, "phases")
-        .map(|p| PlanPhase { name: s(p, "name") })
-        .collect()
-}
-
-/// 能选的领域（`pb dump` 与 `pb dump --domains` 顶上那一列，同一形）：表读不成 ⇒ `error`、类与阶段空。
+/// 能选的领域（`pb dump` 与 `pb dump --domains` 顶上那一列，同一形）：表读不成 ⇒ `error`、类空。
 pub(crate) fn domains_of(doc: &Value) -> Vec<PlanDomain> {
     arr(doc, "domains")
         .map(|d| match d.get("error").filter(|e| !e.is_null()) {
@@ -301,13 +303,11 @@ pub(crate) fn domains_of(doc: &Value) -> Vec<PlanDomain> {
                 name: s(d, "name"),
                 error: Some(said(e)),
                 kinds: Vec::new(),
-                phases: Vec::new(),
             },
             None => PlanDomain {
                 name: s(d, "name"),
                 error: None,
                 kinds: kinds_of(d),
-                phases: phases_of(d),
             },
         })
         .collect()
@@ -331,12 +331,11 @@ pub fn make(doc: &Value, who: WhoPort, rev: String, read_at: u64) -> PlanRead {
         by_session,
         rev,
         read_at,
-        read_at_text: None,
         seen: None,
         stale: None,
         need_count: 0,
     };
-    write_said(&mut v);
+    write_said(&mut v, &|_| None);
     v
 }
 
@@ -378,7 +377,6 @@ pub(crate) fn by_session(slices: &[PlanSlice]) -> BTreeMap<String, PlanSessionBl
                         top,
                         phase: b.phase.clone(),
                         at: b.at.clone(),
-                        at_title: b.at.as_deref().and_then(title_of),
                         via: pass.to_string(),
                         said: Default::default(),
                     },
@@ -401,11 +399,14 @@ pub(crate) fn label(id: &str, title: Option<&str>) -> String {
 fn edges_of(get: impl Fn(&str) -> Vec<String>) -> PlanEdges {
     PlanEdges {
         to: get("to"),
-        with_: get("with"),
+        with: get("with"),
         after: get("after"),
         replaces: get("replaces"),
     }
 }
+
+/// 一片里在「等上一级收下」的那几格（编号）：后端私有，只用来判 [`WhyCode`]。
+type UpperWaits = std::collections::BTreeSet<String>;
 
 fn op_of(v: &Value) -> String {
     s(v, "op").unwrap_or_else(|| "add".to_string())
@@ -426,8 +427,6 @@ fn empty_slice(sl: &Value, repo: Option<&str>) -> PlanSlice {
         stale: None,
         bare: false,
         kinds: Vec::new(),
-        phases: Vec::new(),
-        done_value: None,
         top: Vec::new(),
         progress: None,
         open_cells: 0,
@@ -442,11 +441,9 @@ fn empty_slice(sl: &Value, repo: Option<&str>) -> PlanSlice {
             unreadable: Vec::new(),
             unparsed: Vec::new(),
             red: Vec::new(),
-            undecidable: Vec::new(),
         },
         labels: BTreeMap::new(),
         cells: Vec::new(),
-        archived: Vec::new(),
         audits: Vec::new(),
         needs: Vec::new(),
         need_count: 0,
@@ -465,9 +462,7 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort) -> PlanSlice {
         return out;
     }
     out.kinds = kinds_of(sl);
-    out.phases = phases_of(sl);
     let done = done_value(sl);
-    out.done_value = done.clone();
     // 算活的类：许记收的值。
     let work_kinds: Vec<String> = match &done {
         Some(v) => out
@@ -492,18 +487,28 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort) -> PlanSlice {
     let kept_ids: Vec<String> = kept.iter().map(|c| id_of(c)).collect();
     let is_cell = |id: &str| kept_ids.iter().any(|k| k == id);
 
+    // 「等上一级收下」的那几格（后端私有：原因照它判，pb 的值 · 加去 · 代号不上线）：
+    // 一条加收的值的 sets 没执行、代号是 `WAITS_UPPER` ⇒ 它的目标在等。
+    let mut upper_waits: UpperWaits = std::collections::BTreeSet::new();
     out.pending_sets = arr(sl, "pending_sets")
         .map(|p| {
             let value = s(p, "value");
             let op = op_of(p);
+            let target = s(p, "target");
+            if let Some(t) = &target {
+                if done.is_some()
+                    && value == done
+                    && op == "add"
+                    && s(p, "blocked_code").as_deref() == Some(WAITS_UPPER)
+                {
+                    upper_waits.insert(t.clone());
+                }
+            }
             PlanPendingSet {
                 source: s(p, "source"),
-                target: s(p, "target"),
+                target,
                 said: set_said(value.as_deref(), &op),
-                value,
-                op,
                 blocked_reason: s(p, "blocked_reason"),
-                blocked_code: s(p, "blocked_code"),
             }
         })
         .collect();
@@ -601,24 +606,19 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort) -> PlanSlice {
             let undecided = s(c, "kind").as_deref() == Some(PENDING_KIND)
                 && !state.iter().any(|x| x.value == DECIDED && x.count > 0);
             let why_code = if undecided {
-                Some(PlanWhyCode::Undecided)
+                Some(WhyCode::Undecided)
             } else if status_code == Some(PlanStatusCode::Open) {
-                let waits = out.pending_sets.iter().any(|p| {
-                    p.target.as_deref() == Some(id.as_str())
-                        && p.value == done
-                        && p.op == "add"
-                        && p.blocked_code.as_deref() == Some(WAITS_UPPER)
-                });
+                let waits = upper_waits.contains(&id);
                 let kids = kids_of(&children);
                 Some(if waits {
-                    PlanWhyCode::Upper
+                    WhyCode::Upper
                 } else if kids.of > 0 {
-                    PlanWhyCode::Inside {
+                    WhyCode::Inside {
                         done: kids.done,
                         of: kids.of,
                     }
                 } else {
-                    PlanWhyCode::Nosign
+                    WhyCode::Nosign
                 })
             } else {
                 None
@@ -659,9 +659,9 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort) -> PlanSlice {
                 status_code,
                 undecided,
                 why_short: short,
-                why_code,
                 sets,
                 block: s(c, "children_in"),
+                root_of: None,
                 owner: who_at(c, "assignee", who),
                 signer: who_at(c, "signer", who),
                 covers: strs(c.get("edges").and_then(|e| e.get("covers"))),
@@ -759,25 +759,14 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort) -> PlanSlice {
                 refs: refs16(r.get("message").and_then(Value::as_str), r.get("refs")),
             })
             .collect(),
-        undecidable: arr(check, "unknown")
-            .map(|r| PlanUndecidable {
-                rule: s(r, "rule"),
-                why: s(r, "reason"),
-            })
-            .collect(),
     };
-    out.archived = arr(sl, "archived")
-        .map(|a| PlanArchived {
-            id: s(a, "id").unwrap_or_default(),
-            title: s(a, "title"),
-            kind: s(a, "kind"),
-        })
-        .collect();
     out.audits = arr(sl, "audits").map(|a| audit(a, who)).collect();
+    // 编号 ⇒「编号 标题」：图上每个节点，连归档里的（被替换的那几个只为这一张表读）。
     out.labels = nodes
         .iter()
+        .copied()
+        .chain(arr(sl, "archived"))
         .map(|c| (id_of(c), s(c, "title")))
-        .chain(out.archived.iter().map(|a| (a.id.clone(), a.title.clone())))
         .filter(|(id, _)| !id.is_empty())
         .map(|(id, title)| {
             let l = label(&id, title.as_deref());
@@ -787,7 +776,8 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort) -> PlanSlice {
     out
 }
 
-/// 一份审图（pb 的 `audits[]`）。给人看的那几句先空着：[`write_said`] 照 `labels` 写，时刻由 [`with_time_texts`] 写。
+/// 一份审图（pb 的 `audits[]`）。结果那一句当场写（报了几条 · 起不了为什么只拼进它，不上线）；
+/// 审哪 · 谁按的那两句由 [`write_said`] 照 `labels` 写，时刻由 [`with_time_texts`] 写。
 fn audit(a: &Value, who: WhoPort) -> PlanAudit {
     let by = match a.get("by").and_then(Value::as_str) {
         Some("person") => Some(PlanAuditBy::Person),
@@ -801,6 +791,22 @@ fn audit(a: &Value, who: WhoPort) -> PlanAudit {
         _ => None,
     };
     let n = |k: &str| a.get(k).and_then(Value::as_u64).map(n32);
+    let result = match status {
+        Some(PlanAuditStatus::Done) => copy_text(
+            "plan.audit.done",
+            &[("n", &n("findings").unwrap_or(0).to_string())],
+        ),
+        Some(PlanAuditStatus::Failed) => copy_text(
+            "plan.audit.failed",
+            &[(
+                "why",
+                &s(a, "failed_reason")
+                    .filter(|r| !r.is_empty())
+                    .unwrap_or_default(),
+            )],
+        ),
+        Some(PlanAuditStatus::Unfinished) | None => copy_text("plan.audit.unfinished", &[]),
+    };
     PlanAudit {
         file: s(a, "file").unwrap_or_default(),
         who: match by {
@@ -813,14 +819,15 @@ fn audit(a: &Value, who: WhoPort) -> PlanAudit {
         due: n("due").unwrap_or(0),
         nodes: strs(a.get("nodes")),
         status,
-        failed_reason: s(a, "failed_reason").filter(|r| !r.is_empty()),
         check: n("check").unwrap_or(0),
-        findings: n("findings"),
-        said: PlanAuditSaid::default(),
+        said: PlanAuditSaid {
+            result,
+            ..PlanAuditSaid::default()
+        },
     }
 }
 
-/// 一份审图那几句（时刻那一句不动：它由 [`with_time_texts`] 写）。
+/// 一份审图那几句（结果那一句 [`audit`] 已写；时刻那一句不动：它由 [`with_time_texts`] 写）。
 fn audit_said(a: &PlanAudit, labels: &BTreeMap<String, String>) -> PlanAuditSaid {
     let what = match a.tree.as_deref() {
         Some(super::needs::TOP_BLOCK) => copy_text("plan.audit.whole", &[]),
@@ -830,21 +837,10 @@ fn audit_said(a: &PlanAudit, labels: &BTreeMap<String, String>) -> PlanAuditSaid
         }
         None => copy_text("plan.audit.changed", &[("n", &a.due.to_string())]),
     };
-    let result = match a.status {
-        Some(PlanAuditStatus::Done) => copy_text(
-            "plan.audit.done",
-            &[("n", &a.findings.unwrap_or(0).to_string())],
-        ),
-        Some(PlanAuditStatus::Failed) => copy_text(
-            "plan.audit.failed",
-            &[("why", a.failed_reason.as_deref().unwrap_or_default())],
-        ),
-        Some(PlanAuditStatus::Unfinished) | None => copy_text("plan.audit.unfinished", &[]),
-    };
     PlanAuditSaid {
         what,
         by: (a.by == Some(PlanAuditBy::Person)).then(|| copy_text("plan.audit.person", &[])),
-        result,
+        result: a.said.result.clone(),
         at: a.said.at.clone(),
     }
 }
@@ -883,7 +879,6 @@ pub fn with_time_texts(v: &mut PlanRead, now_ms: i64, tz: &crate::common::time::
     let text =
         |ms: i64| crate::common::time::fmt_at(ms.div_euclid(1000), now_ms.div_euclid(1000), tz);
     let ms = |n: u64| i64::try_from(n).unwrap_or(i64::MAX);
-    v.read_at_text = Some(text(ms(v.read_at)));
     v.seen = Some(crate::common::last_seen_store::seen_at(
         v.read_at,
         &crate::common::time::TextClock::new(
@@ -891,13 +886,7 @@ pub fn with_time_texts(v: &mut PlanRead, now_ms: i64, tz: &crate::common::time::
             tz,
         ),
     ));
-    if let Some(st) = &mut v.stale {
-        st.since_text = Some(text(ms(st.since)));
-    }
     for sl in &mut v.slices {
-        if let Some(st) = &mut sl.stale {
-            st.since_text = Some(text(ms(st.since)));
-        }
         if let Some(r) = &mut sl.returned {
             r.at_text = Some(text(ms(r.at)));
         }
@@ -912,11 +901,12 @@ pub fn with_time_texts(v: &mut PlanRead, now_ms: i64, tz: &crate::common::time::
             }
         }
     }
-    write_said(v);
+    write_said(v, &|since| Some(text(ms(since))));
 }
 
-/// 随数据变的那几句（`said`）照这台的文案表写好：两端照摆、不拼。要时刻的字 ⇒ 由 [`with_time_texts`] 写完时刻接着写。
-fn write_said(v: &mut PlanRead) {
+/// 随数据变的那几句（`said`）照这台的文案表写好：两端照摆、不拼。要时刻的字 ⇒ 由 [`with_time_texts`] 写完时刻接着写：
+/// `since_text` ＝ 一个时刻写成字（读到的时刻 · 读不成那一份的时刻都经它；还没到写时刻那一下 ⇒ `None`：读到那一句不出、读不成那一句里写成空）。
+fn write_said(v: &mut PlanRead, since_text: &dyn Fn(u64) -> Option<String>) {
     let sep = copy_text("kit.text.sep", &[]);
     let reason = |st: &PlanStale| st.said.clone().unwrap_or_default();
     let strip = |first: String, st: &PlanStale| {
@@ -924,7 +914,7 @@ fn write_said(v: &mut PlanRead) {
             first,
             copy_text(
                 "plan.strip.stale",
-                &[("time", st.since_text.as_deref().unwrap_or_default())],
+                &[("time", &since_text(st.since).unwrap_or_default())],
             ),
         ]
         .join(&sep)
@@ -935,10 +925,7 @@ fn write_said(v: &mut PlanRead) {
             st,
         )
     });
-    let read_at = v
-        .read_at_text
-        .as_deref()
-        .map(|t| copy_text("plan.overview.readAt", &[("time", t)]));
+    let read_at = since_text(v.read_at).map(|t| copy_text("plan.overview.readAt", &[("time", &t)]));
     let n = |x: u32| x.to_string();
     for sl in &mut v.slices {
         let top = sl.progress.as_ref().map(|p| {
@@ -995,8 +982,9 @@ fn write_said(v: &mut PlanRead) {
             };
         }
         let said = cell_said(sl, &sep);
-        for (c, s) in sl.cells.iter_mut().zip(said) {
+        for (c, (s, root_of)) in sl.cells.iter_mut().zip(said) {
             c.said = s;
+            c.root_of = root_of;
         }
         let audits: Vec<PlanAuditSaid> = sl
             .audits
@@ -1036,13 +1024,14 @@ fn write_said(v: &mut PlanRead) {
     }
 }
 
-/// 每一格的上面几层（「编号 标题」从顶层往下连）与块根那一句，照 `sl.cells` 的先后。
-fn cell_said(sl: &PlanSlice, sep: &str) -> Vec<PlanCellSaid> {
-    let roots: std::collections::BTreeSet<&str> = sl
+/// 每一格的上面几层（「编号 标题」从顶层往下连）· 块根那一整句 · 它是哪一块的根格，照 `sl.cells` 的先后。
+/// 块根那一整句 ＝ 块根那句 · 负责人名字（[`super::needs::who_name`]）· 阶段，没有的那一段不写；`project` 的根格不算根格。
+fn cell_said(sl: &PlanSlice, sep: &str) -> Vec<(PlanCellSaid, Option<String>)> {
+    let roots: BTreeMap<&str, &cmd_wire::plan::PlanBlock> = sl
         .blocks
         .iter()
         .filter(|b| b.id != super::needs::TOP_BLOCK)
-        .flat_map(|b| b.cells.iter().map(String::as_str))
+        .flat_map(|b| b.cells.iter().map(move |c| (c.as_str(), b)))
         .collect();
     let parent: BTreeMap<&str, Option<&str>> = sl
         .cells
@@ -1060,18 +1049,30 @@ fn cell_said(sl: &PlanSlice, sep: &str) -> Vec<PlanCellSaid> {
                 at = parent.get(p).copied().flatten();
             }
             up.reverse();
-            PlanCellSaid {
-                trail: (!up.is_empty()).then(|| up.join(sep)),
-                block_root: roots
-                    .contains(c.id.as_str())
-                    .then(|| copy_text("plan.cell.blockRoot", &[("block", &label_of(&c.id))])),
-            }
+            let root = roots.get(c.id.as_str());
+            let block_root = root.map(|b| {
+                let head = copy_text("plan.cell.blockRoot", &[("block", &label_of(&c.id))]);
+                let owner = b.owner.as_ref().map(super::needs::who_name);
+                [Some(head), owner, b.phase.clone()]
+                    .into_iter()
+                    .flatten()
+                    .filter(|x| !x.is_empty())
+                    .collect::<Vec<_>>()
+                    .join(sep)
+            });
+            (
+                PlanCellSaid {
+                    trail: (!up.is_empty()).then(|| up.join(sep)),
+                    block_root,
+                },
+                root.map(|b| b.id.clone()),
+            )
         })
         .collect()
 }
 
 /// 认不出的 id 写进那一句时截成前六位 ＋ 后四位（整串在复制那一下给）。
-fn short_id(id: &str) -> String {
+pub(crate) fn short_id(id: &str) -> String {
     let c: Vec<char> = id.chars().collect();
     if c.len() <= 12 {
         return id.to_string();

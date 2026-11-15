@@ -24,6 +24,7 @@ vi.mock("../../../../src/frontend/ui/kit/toast", () => ({
 }));
 
 import { openPortForwardPanel } from "../../../../src/frontend/ui/settings/port-forward";
+import { listForwards } from "../../../../src/frontend/ui/port-forward-reads";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -45,5 +46,15 @@ describe("端口转发面板起一条", () => {
     await flush();
     expect(started).toEqual([{ origin: "", localPort: " 15432x", remoteHost: "localhost", remotePort: "" }]);
     expect(toasts.map((t) => t.title)).toEqual(["后端那一句"]);
+  });
+
+  it("★ 列表那一行照抄后端写好的那一句（不拿端口 · 连接数自己拼）", async () => {
+    vi.mocked(listForwards).mockResolvedValueOnce([
+      { id: "fwd-1", origin: "dev", localPort: 15432, remoteHost: "localhost", remotePort: 5432, state: "running", said: "那一行（夹具）" },
+    ]);
+    openPortForwardPanel();
+    await flush();
+    await flush();
+    expect([...document.querySelectorAll(".pf-desc")].map((e) => e.textContent)).toEqual(["那一行（夹具）"]);
   });
 });

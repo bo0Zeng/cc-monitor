@@ -13,13 +13,11 @@ export function windowStatus(s: ViewerStatus): string {
   return copyText("viewerWindow.status.plain", { n: s.n });
 }
 
-/** 系统标题：`{会话标题} · {状态} · {项目}`，远端再加 `· {机器}`（那台怎么称呼照成品，`machineName`）。 */
+/** 系统标题：`{会话标题} · {状态} · {项目} · {机器}`，本机远端同一句（那台怎么称呼照成品，`machineName`）。 */
 export function windowTitle(r: HistoryRow, live: boolean | null): string {
   const title = r.label;
   const state =
     live === null ? copyText("runs.state.unknown") : live ? copyText("runs.state.running") : copyText("sessionState.ended.name");
-  return r.origin
-    ? copyText("viewerWindow.title.remote", { title, state, project: r.projectName, machine: machineName(r.origin) })
-    : copyText("viewerWindow.title.local", { title, state, project: r.projectName });
+  return copyText("viewerWindow.title.remote", { title, state, project: r.projectName, machine: machineName(r.origin) });
 }
 

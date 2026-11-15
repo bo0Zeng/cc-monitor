@@ -109,7 +109,7 @@ export function putAccounts(d: MachineDisk, accounts: AccountSpec[], opts: { zer
   for (const a of accounts) {
     d.files[`${ACCTS}/${a.name}/.keep`] = "";
     if (a.signedIn === false) continue;
-    if (a.kind === "sub") signIn(d, `${ACCTS}/${a.name}`, `${ACCTS}/${a.name}/.claude.json`, a.name);
+    if (a.kind === "sub") signIn(d, `${ACCTS}/${a.name}`, accountConfigFile(a.name), a.name);
     else keys[a.name] = { api_key: `sk-placeholder-${a.name}-a1b2`, base_url: a.baseUrl ?? "https://api.example.com" };
   }
   if (Object.keys(keys).length > 0) {
@@ -127,17 +127,35 @@ export function putBrokenAccounts(d: MachineDisk): void {
 /** 那个号记「MCP 要登录」的那一笔（相对家目录；Claude Code 连它碰到要登录时写、登完自己删掉那一条）。 */
 export const needsAuthFile = (account: string): string => `${ACCTS}/${account}/mcp-needs-auth-cache.json`;
 
+/** 那个号自己那份账号级配置（相对家目录；它的 MCP 住这里，后端逐号读）。 */
+const accountConfigFile = (account: string): string => `${ACCTS}/${account}/.claude.json`;
+
+/** 往一份 `.claude.json` 里放（`servers` 给了）或摘掉（`null`）`mcpServers`，别的格（身份那一格）原样留着。 */
+function setServers(d: MachineDisk, file: string, servers: Record<string, unknown> | null): void {
+  const { mcpServers: _, ...cfg } = JSON.parse(d.files[file] ?? "{}") as Record<string, unknown>;
+  d.files[file] = json(servers === null ? cfg : { ...cfg, mcpServers: servers });
+}
+
 /**
  * 这台的用户级 MCP 整份（之前写的那一份连同各号的「要登录」那几笔一并换掉）：`~/.claude.json` 的 `mcpServers`（并进登录那一份身份里）＋
  * 哪几个号连它时碰到要登录（[`needsAuthFile`]：服务器名 → `{timestamp}`；后端只认 15 分钟内的）。
+ * 后端逐号读：一个号的 MCP 只看它自己那份配置、配它自己家里那几笔 ⇒ 记了「要登录」的号，自己那份里也带上这几个服务器
+ * （产品同步后各号都带；台架只给记了那一笔的号写，别的号不画它的状态）；别的号那一份里之前放的摘掉。
+ * 各号那一份由 [`putAccounts`] 整份重写 ⇒ 先写账号库、再调它。
  */
 export function putMcp(d: MachineDisk, servers: Record<string, unknown>, needsAuth: { account: string; atMs: number; server: string }[] = []): void {
-  const cfg = JSON.parse(d.files[".claude.json"] ?? "{}") as Record<string, unknown>;
-  d.files[".claude.json"] = json({ ...cfg, mcpServers: servers });
-  for (const f of Object.keys(d.files)) if (f.startsWith(`${ACCTS}/`) && f.endsWith("/mcp-needs-auth-cache.json")) delete d.files[f];
+  setServers(d, ".claude.json", servers);
+  for (const f of Object.keys(d.files)) {
+    if (!f.startsWith(`${ACCTS}/`)) continue;
+    if (f.endsWith("/mcp-needs-auth-cache.json")) delete d.files[f];
+    else if (f.endsWith("/.claude.json") && "mcpServers" in (JSON.parse(d.files[f]!) as Record<string, unknown>)) setServers(d, f, null);
+  }
   const caches = new Map<string, Record<string, { timestamp: number }>>();
   for (const n of needsAuth) caches.set(n.account, { ...(caches.get(n.account) ?? {}), [n.server]: { timestamp: n.atMs } });
-  for (const [account, cache] of caches) d.files[needsAuthFile(account)] = json(cache);
+  for (const [account, cache] of caches) {
+    d.files[needsAuthFile(account)] = json(cache);
+    setServers(d, accountConfigFile(account), servers);
+  }
 }
 
 /** 订阅号登着：配置目录里一份 `.credentials.json`（令牌是占位串）＋ 那份配置里的账号身份（`oauthAccount.accountUuid`，按名字编的）。 */

@@ -172,7 +172,7 @@ class RecordUnits {
             is Speaker.SlashCommand -> RenderUnit.SlashCommand(id, s.name, s.args, id)
             is Speaker.BashInput -> RenderUnit.BashInput(id, s.command, id)
             is Speaker.BashOutput -> RenderUnit.BashOutput(id, s.stdout, s.stderr, id, s.stdoutFold, s.stderrFold)
-            is Speaker.CompactSummary -> RenderUnit.CompactSummary(id, text, id)
+            is Speaker.CompactSummary -> RenderUnit.CompactSummary(id, text, s.titleText, id)
             Speaker.Interrupt -> RenderUnit.Interrupt(id, r.timeText, id)
             Speaker.AgentTask -> RenderUnit.Brief(id, text, r.timeText, id, briefFold(r))
             is Speaker.PeerSession -> RenderUnit.Peer(id, s.title, r.timeText, s.doc, id)

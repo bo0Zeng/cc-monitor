@@ -1,7 +1,6 @@
 package com.ccmonitor.mobile.core.data.db
 
 import androidx.sqlite.db.SupportSQLiteDatabase
-import com.ccmonitor.mobile.core.copy.copyText
 
 /*
  * 默认三组：常用 · shell · vim。每组最左一颗 ⇌（单击切到下一组、长按编辑按键）。
@@ -9,7 +8,13 @@ import com.ccmonitor.mobile.core.copy.copyText
  *
  * 新装走 AppDatabase 的 onCreate、「恢复默认」走 [KeyDao.replaceAll]，读的是同一份 [defaultKeyGroups] / [defaultKeys]。
  * 默认那几颗 id 固定、[TermKey.defaultId] 等于自己的 id；「还原一颗」照 defaultId 找回原样。
+ * 「常用」那个组名是上屏的字，取字在 app（文案表）：这里只收成品（`common`；新装那一下经注入的 [CommonGroupName]）。
  */
+
+/** 「常用」那一组的名字（上屏的字，app 照文案表给）：新装种默认那一下 DataModule 经注入拿它，app 的 AppModule 绑文案表那一份。 */
+fun interface CommonGroupName {
+    fun name(): String
+}
 
 const val DEFAULT_GROUP_COMMON = "kg-common"
 const val DEFAULT_GROUP_SHELL = "kg-shell"
@@ -87,10 +92,10 @@ private val SEEDS: List<Pair<String, List<Seed>>> =
             ),
     )
 
-/** 默认三组，先后就是下标。「常用」的名字取自文案表；shell · vim 是原样的词。 */
-fun defaultKeyGroups(): List<KeyGroup> =
+/** 默认三组，先后就是下标。「常用」的名字是 [common]（app 照文案表给）；shell · vim 是原样的词。 */
+fun defaultKeyGroups(common: String): List<KeyGroup> =
     listOf(
-        KeyGroup(DEFAULT_GROUP_COMMON, copyText("mobKeys.seed.common"), 0),
+        KeyGroup(DEFAULT_GROUP_COMMON, common, 0),
         KeyGroup(DEFAULT_GROUP_SHELL, "shell", 1),
         KeyGroup(DEFAULT_GROUP_VIM, "vim", 2),
     )
@@ -104,10 +109,13 @@ fun defaultKeys(): List<TermKey> =
     }
 
 /** 新装那一次把默认三组写进库（onCreate 只有 raw db）。 */
-fun seedDefaultKeys(db: SupportSQLiteDatabase) = insertKeyRows(db, defaultKeyGroups(), defaultKeys())
+fun seedDefaultKeys(
+    db: SupportSQLiteDatabase,
+    common: String,
+) = insertKeyRows(db, defaultKeyGroups(common), defaultKeys())
 
 /** 恢复默认：真的回到默认（自建组与改过的按键都没了），不是只补缺的。 */
-suspend fun KeyDao.restoreDefaults() = replaceAll(defaultKeyGroups(), defaultKeys())
+suspend fun KeyDao.restoreDefaults(common: String) = replaceAll(defaultKeyGroups(common), defaultKeys())
 
 /** 这颗默认按键原来的样子；不是从默认来的（或那颗默认已不在默认里）⇒ null。 */
 fun TermKey.defaultShape(): TermKey? = defaultId?.let { d -> defaultKeys().firstOrNull { it.id == d } }
@@ -162,8 +170,9 @@ data class ResetPreview(
 fun resetPreview(
     groups: List<KeyGroup>,
     keys: List<TermKey>,
+    common: String,
 ): ResetPreview {
-    val defaults = defaultKeyGroups()
+    val defaults = defaultKeyGroups(common)
     val defaultIds = defaults.map { it.id }.toSet()
     val defaultKeysByGroup = defaultKeys().groupBy { it.groupId }
     val changedKeys =

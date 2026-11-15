@@ -297,8 +297,7 @@ fn no_e2e_suite_isolates_with_tmux_tmpdir() {
                 "gen-idle-tmux.sh",
                 "**夹具生成器**，不是套件：它被别的套件调用，隔离由**调用方**的 shim 提供\
                      （调用方 PATH 上有 shim ⇒ 这里的裸 `tmux` 一样被强插 `-L`）。\
-                     ⚠ 直接手跑它会打到默认 socket —— 那是它作为「手动造夹具」工具的固有形态，\
-                     文件头注已写明用途。",
+                     PATH 上的 tmux 不是那份 shim ⇒ 它在第一条 tmux 之前退 2，直接手跑也落不到默认 socket。",
             ),
         ];
         let exempt = BARE_TMUX_OK.iter().any(|(f, _)| *f == name);
@@ -816,19 +815,21 @@ fn read_e2e(name: &str) -> String {
 /// `backend-path`，由 app 经 SSH 执行）—— SSH exec 不带 env，所以认的是那个文件。
 /// 两向：① 仓里那份直接跑 ⇒ 退 2、说清是夹具、替身后端一次都没被叫到、tap 一个字节没写；
 /// ①b 台架目录缺 `tmux-sock` ⇒ 同样退 2（没有私有 socket 名就没有隔离可给后端）；
-/// ② 正控：台架那一形 ⇒ 真转到替身（否则 ① 可以靠「这脚本什么都转不过去」绿）。
-/// PATH 只放它要的那几个工具、**不放 tmux** ⇒ 正控那一趟不在 `/tmp` 下建 tmux 垫片目录。
+/// ①c 名字在、PATH 上没有 tmux ⇒ 垫片装不上，同样退 2、替身没被叫到（没有垫片的后端裸调 tmux 落到缺省 server）；
+/// ② 正控：台架那一形 ⇒ 真转到替身（否则 ① 可以靠「这脚本什么都转不过去」绿），替身拿到的 `PATH` 串首是台架目录里的垫片、
+/// 外面带进来的 `TMUX` 摘掉了。PATH 只放它要的那几个工具；tmux 是一份假的（只是可执行文件，不连任何 server），
+/// 垫片落在台架目录（判据的临时目录里，随它删）。
 #[cfg(unix)]
 #[test]
 fn the_backend_wrapper_fixture_refuses_to_run_outside_a_rig() {
-    use std::os::unix::fs::PermissionsExt;
     let d = std::env::temp_dir().join(format!("ccm-wrapper-guard-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     let bin = d.join("bin");
     std::fs::create_dir_all(&bin).expect("建临时目录");
     let path = std::env::var_os("PATH").unwrap_or_default();
     for tool in [
-        "sh", "cat", "dirname", "date", "head", "stdbuf", "tee", "env",
+        "sh", "cat", "dirname", "date", "head", "stdbuf", "tee", "env", "mkdir", "printf", "chmod",
+        "mv",
     ] {
         let found = std::env::split_paths(&path)
             .map(|p| p.join(tool))
@@ -837,16 +838,17 @@ fn the_backend_wrapper_fixture_refuses_to_run_outside_a_rig() {
         std::os::unix::fs::symlink(found, bin.join(tool)).expect("链工具");
     }
     let reached = d.join("reached");
+    let seen = d.join("seen");
     let stub = d.join("stub-backend");
-    std::fs::write(
+    // 马上被起 ⇒ 经 `write_exe` 写（本进程写的写端会漏进别的判据线程 fork 出来的子进程 ⇒ ETXTBSY）。
+    test_home::write_exe(
         &stub,
-        format!(
-            "#!/bin/sh\nprintf '%s\\n' \"$*\" > '{}'\n",
-            reached.display()
+        &format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$*\" > '{}'\nprintf '%s %s %s\\n' \"${{PATH%%:*}}\" \"${{TMUX-<无>}}\" \"${{TMUX_PANE-<无>}}\" > '{}'\n",
+            reached.display(),
+            seen.display()
         ),
-    )
-    .expect("写替身后端");
-    std::fs::set_permissions(&stub, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    );
     let tap = d.join("tap");
     let run = |script: &std::path::Path| {
         std::process::Command::new(bin.join("sh"))
@@ -855,6 +857,8 @@ fn the_backend_wrapper_fixture_refuses_to_run_outside_a_rig() {
             .env_clear()
             .env("PATH", &bin)
             .env("HOME", &d)
+            .env("TMUX", "/nonexistent/wrapper-guard,1,1")
+            .env("TMUX_PANE", "%9")
             .env("CCM_E2E_BACKEND", &stub)
             .env("CCM_E2E_FRAME_TAP", &tap)
             .env("CCM_E2E_CLAUDE_DIR", d.join("claude"))
@@ -895,8 +899,20 @@ fn the_backend_wrapper_fixture_refuses_to_run_outside_a_rig() {
     );
     assert!(!reached.exists(), "缺 tmux-sock 时已经把参数交给后端了");
 
-    // ② 正控：台架那一形（两份文件都在）。
+    // ①c 名字在、PATH 上没有 tmux ⇒ 垫片装不上 ⇒ 拒。
     std::fs::write(rig.join("tmux-sock"), b"e2eWrapperProbe").expect("写 tmux-sock");
+    let out = run(&rig.join("backend-wrapper.sh"));
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "PATH 上没有 tmux、垫片装不上却没被拒：{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(!reached.exists(), "垫片装不上时已经把参数交给后端了");
+
+    // ② 正控：台架那一形（两份文件都在、PATH 上有一份假 tmux）。
+    let fake_tmux = bin.join("tmux");
+    test_home::write_exe(&fake_tmux, "#!/bin/sh\nexit 0\n");
     let out = run(&rig.join("backend-wrapper.sh"));
     assert!(
         out.status.success(),
@@ -908,7 +924,109 @@ fn the_backend_wrapper_fixture_refuses_to_run_outside_a_rig() {
         Some("-- --ping\n"),
         "台架那一形没把参数原样交给后端"
     );
+    let shim = rig.join(".tmux-shim");
+    assert_eq!(
+        std::fs::read_to_string(&seen).ok(),
+        Some(format!("{} <无> <无>\n", shim.display())),
+        "后端拿到的 PATH 串首不是台架目录里的垫片，或外面的 TMUX / TMUX_PANE 没摘"
+    );
+    let shim_text = std::fs::read_to_string(shim.join("tmux")).unwrap_or_default();
+    assert_eq!(
+        shim_text,
+        format!(
+            "#!/bin/sh\nexec {} -L e2eWrapperProbe \"$@\"\n",
+            fake_tmux.display()
+        ),
+        "台架目录里的垫片没钉台架那份私有名"
+    );
     let _ = std::fs::remove_dir_all(&d);
+}
+
+/// `gen-idle-tmux.sh` 是夹具生成器、自己不装隔离：PATH 上的 tmux 不是强插私有选择器的 shim ⇒ 退 2，一条 tmux 都不起。
+/// PATH 只给 `bash` · `grep` · `dirname` 与一份记自己被叫过的假 tmux（不连任何 server）。
+/// 正控：同一份假 tmux 外面套一层 shim 形（`exec <假 tmux> -L <名> "$@"`）⇒ 照造，假 tmux 收到的命令带着那个名字
+/// （否则「退 2」可以靠「这脚本什么都不造」绿）。
+#[cfg(unix)]
+#[test]
+fn the_idle_tmux_generator_refuses_without_a_shim() {
+    let d = test_home::scratch("idle-gen-guard");
+    let bin = d.join("bin");
+    std::fs::create_dir_all(&bin).expect("建临时目录");
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    for tool in ["bash", "grep", "dirname"] {
+        let found = std::env::split_paths(&path)
+            .map(|p| p.join(tool))
+            .find(|p| p.is_file())
+            .unwrap_or_else(|| panic!("这台机器上没有 {tool}"));
+        std::os::unix::fs::symlink(found, bin.join(tool)).expect("链工具");
+    }
+    let calls = d.join("calls");
+    let fake = d.join("fake-tmux");
+    // 马上被起 ⇒ 经 `write_exe` 写（本进程写的写端会漏进别的判据线程 fork 出来的子进程 ⇒ ETXTBSY）。
+    test_home::write_exe(
+        &fake,
+        &format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '{}'\n",
+            calls.display()
+        ),
+    );
+    let script = guard_core::addr::repo_root()
+        .join("tests")
+        .join("e2e")
+        .join("gen-idle-tmux.sh");
+    let run = |tmux: &std::path::Path| {
+        // 随后经 `PATH` 被起 ⇒ 照抄一份也经 `write_exe` 落盘（`fs::copy` 的写端在本进程里，同样会 ETXTBSY）。
+        let body = std::fs::read_to_string(tmux).expect("读替身 tmux");
+        test_home::write_exe(&bin.join("tmux"), &body);
+        std::process::Command::new(bin.join("bash"))
+            .arg(&script)
+            .arg("12345678-0000-4000-8000-000000000000")
+            .env_clear()
+            .env("PATH", &bin)
+            .env("HOME", &d)
+            .output()
+            .expect("起 bash")
+    };
+
+    // ① PATH 上的 tmux 是那份假的本身（不是 shim 形）⇒ 拒，一次都没叫它。
+    let out = run(&fake);
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "PATH 上的 tmux 不是 shim 却没被拒：{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        !calls.exists(),
+        "拒之前已经调了 tmux：{:?}",
+        std::fs::read_to_string(&calls)
+    );
+
+    // ② 正控：shim 形 ⇒ 照造，命令都带着那个私有名。
+    let shim = d.join("shim-tmux");
+    test_home::write_exe(
+        &shim,
+        &format!(
+            "#!/bin/sh\nexec '{}' -L e2eIdleProbe \"$@\"\n",
+            fake.display()
+        ),
+    );
+    let out = run(&shim);
+    assert!(
+        out.status.success(),
+        "shim 形的 tmux 下没造出来：{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let got = std::fs::read_to_string(&calls).unwrap_or_default();
+    // 每一行头两个词就是 shim 强插的那一对（按词比，不按子串）。
+    let heads: Vec<Vec<&str>> = got
+        .lines()
+        .map(|l| l.split_whitespace().take(2).collect())
+        .collect();
+    assert!(
+        heads.len() == 2 && heads.iter().all(|h| h == &["-L", "e2eIdleProbe"]),
+        "假 tmux 收到的命令没都带着私有名（要两条：new-session · set-option）：{got:?}"
+    );
 }
 
 /// `tests/e2e/` 底下**一处模式杀都不许有**（`pkill` / `killall`，剥注释后）。
@@ -1080,7 +1198,7 @@ fn every_tmux_call_names_its_server_and_drops_the_inherited_tmux() {
     const ALLOWED: &[(&str, &str)] = &[
         (
             "tests/e2e/gen-idle-tmux.sh",
-            "夹具生成器，被别的套件调：隔离与摘 `$TMUX` 由调用方给（调用方 PATH 上有强插 `-L` 的 shim）",
+            "夹具生成器，被别的套件调：隔离由调用方 PATH 上强插 `-L` 的 shim 给（选择器压过 `$TMUX`）；PATH 上的 tmux 不是 shim ⇒ 第一条 tmux 之前退 2",
         ),
     ];
     const SPAWNS: &[&str] = &[

@@ -1,18 +1,18 @@
 //! issue #28：全文搜索（帧命令 `history-search`，宿主 `faces/read_face.rs`）与会话内查找的内核。
 //!
-//! backend 在会话所在那台的 CPU 上扫 `<claude_dir>/projects/**/*.jsonl`、做服务端搜索（避免拉
+//! backend 在会话所在那台的 CPU 上扫记录树与各家合成历史面的根（[`Trees`]）、做服务端搜索（避免拉
 //! 整库回本地），输出**每命中会话一行** camelCase JSON（与 monitor `search::SessionHits`
 //! 形状严格一致，可直接反序列化）：
-//! `{agent,sessionId,projectPath,projectName,jsonlPath,title,updatedAt,moreHits,hits:[{uuid,tsMs,kind,before,matched,after}]}`
+//! `{agent,sessionId,projectPath,projectName,jsonlPath,title,updatedAt,moreHits,hits:[{uuid,who,before,matched,after,…}]}`
 //!
 //! 🔴 口径只有一个家：抽取 / 匹配 / snippet 的助手、口径常量、snippet 预算与预算顺序 —— 通用那一半住
 //! `history/search_rules.rs`，记录文本那一半（正文 / 工具内容怎么抽 · 注入怎么剥）住适配层（经注册表 `agents::TextFace` 够）。
 //! 本文件不再写一遍那几个：两份逐字相同的实现没有判据拦着就会漂开。守它的判据是
 //! `tests/backend/history/search_rules_tests.rs::the_search_kou_jing_has_exactly_one_home`。
-//! 一条记录是谁说的 · 何时 · 消息 id 只照适配层翻好的那一行（`agents::session_line_of`），sid 只照 `agents::sid_of`；
-//! 本模块不读记录的原文格名，只把已解析的那一条交适配层取正文 / 工具内容。
+//! 一条记录是谁说的 · 何时 · 消息 id 只照适配层翻好的那一行（`agents::session_line_of`），
+//! sid 只照那一家的文件命名（`RecordFace.sid`）；本模块不读记录的原文格名，只把已解析的那一条交适配层取正文 / 工具内容。
 //!
-//! 安全：路径严格限 `<claude_dir>/projects/`（经 observe 唯一那道围栏 `common/fence.rs::Fence`，不在这里内联第二份）；
+//! 安全：路径严格限在走的那几棵下（各过 observe 唯一那道围栏 `common/fence.rs::Fence`，不在这里内联第二份）；
 //! 只读铁律（cc-monitor 不写远端）成立——本模块只 read_dir / read。
 
 use crate::common::append_read::{Blocks, Step, Tailed};
@@ -56,11 +56,13 @@ pub(crate) use cmd_wire::search::{SearchHit, SessionHits};
 
 /// 帧面那条（`history-search`）的入口：每命中会话一行交给 `push`。回「读不动、没搜到」的会话数（帧面那条把它交给界面说出来）。
 pub fn search_into(
-    agent_home: &Path,
+    agent_home: impl crate::agents::IntoHomes,
     query: &str,
     opts: &SearchOpts,
     push: &mut dyn FnMut(SessionHits) -> Result<(), String>,
 ) -> Result<usize, String> {
+    let agent_home_v = crate::agents::IntoHomes::into_homes(agent_home);
+    let agent_home: &[crate::agents::AgentHome] = &agent_home_v;
     let unreadable = search_counting(agent_home, query, opts, push)?;
     if let Some(note) = unreadable_note(unreadable) {
         tracing::warn!("{note}");
@@ -79,28 +81,28 @@ pub(crate) fn unreadable_note(n: usize) -> Option<String> {
 /// [`search`] 的本体：回「读不动、没搜到」的会话数（判据直接看这个数，不看日志）。
 /// 走进程级常驻索引（本机常驻后端 / 远端流后端同一条路）；只在内存、随进程死 ——。
 pub(crate) fn search_counting(
-    agent_home: &Path,
+    agent_home: impl crate::agents::IntoHomes,
     query: &str,
     opts: &SearchOpts,
     push: &mut dyn FnMut(SessionHits) -> Result<(), String>,
 ) -> Result<usize, String> {
+    let agent_home_v = crate::agents::IntoHomes::into_homes(agent_home);
+    let agent_home: &[crate::agents::AgentHome] = &agent_home_v;
     let q = query.trim().to_lowercase();
-    let Some(root) = crate::agents::records_root(agent_home) else {
-        return Ok(0);
+    let Some(trees) = Trees::at(agent_home).filter(|t| !t.is_empty()) else {
+        return Ok(0); // 一棵都没有 → 无输出（exit 0）
     };
-    if q.is_empty() || !root.is_dir() {
-        return Ok(0); // 空查询 / 无 projects → 无输出（exit 0）
+    if q.is_empty() {
+        return Ok(0);
     }
-    // 路径白名单根（read 的文件必须在其下，挡 symlink 逃逸）：observe 唯一那道围栏（`common/fence.rs`）。
-    let fence = Fence::at(&root)?;
     // 锁只管取放：借出那一棵就放锁，读盘 · 逐份搜 · 交行都在锁外，同时来的会话内查找不排在这一问后面。
     // 那一棵已被前一问借走 ⇒ 这一问拿一棵空的现扫（答案逐字相同，只是整份读、不留），不等它。
-    let root = fence.root().to_path_buf();
+    let root = trees.key.clone();
     let borrowed = lend(&mut resident(), &root);
     let mut held = Lent::of(borrowed, |back| hand_back(&mut resident(), &root, back));
     let index = &mut held.index;
     let live = crate::history::live_table::now(agent_home);
-    let unreadable = index.search(&fence, &q, opts, &live, push)?;
+    let unreadable = index.search_in(&trees, &q, opts, &live, push)?;
     let r = index.last;
     // 〔perfC2〕这一问整份重读过一大批（含工具时常驻装不下的那几份）⇒ 读完放掉的那些空洞还给系统，常驻不停在这一问的高水位。
     crate::platform::proc::return_freed_memory(r.bytes);
@@ -115,9 +117,9 @@ pub(crate) fn search_counting(
 }
 
 /// 会话内查找走同一份常驻索引：这一份 (mtime, 长度) 没变不读、变长只读尾巴。
-/// 回 `None` = 这一份不归索引管（不在 projects 下 / 读不动）⇒ 调用方退回现扫（[`scan_session_find`]，口径同一套）。
+/// 回 `None` = 这一份不归索引管（不在走的那几棵下 / 读不动）⇒ 调用方退回现扫（[`scan_session_find`]，口径同一套）。
 pub fn find_indexed(
-    agent_home: &Path,
+    agent_home: impl crate::agents::IntoHomes,
     target: &Path,
     query: &str,
     include_tools: bool,
@@ -125,20 +127,130 @@ pub fn find_indexed(
     page: FindPage,
     on_hit: impl FnMut(&FindHit) -> std::io::Result<()>,
 ) -> Option<std::io::Result<(u64, u64)>> {
+    let agent_home_v = crate::agents::IntoHomes::into_homes(agent_home);
+    let agent_home: &[crate::agents::AgentHome] = &agent_home_v;
     let include_tools = tools_in(scope, include_tools);
     let q = query.trim().to_lowercase();
     if q.is_empty() {
         return Some(Ok((0, 0)));
     }
-    let fence = Fence::at(&crate::agents::records_root(agent_home)?).ok()?;
-    let path = fence.admit(target).ok()?;
+    let trees = Trees::at(agent_home)?;
+    let path = trees.admit(target)?;
     // 只读这一份：在锁里读（短）。那一棵正借给一问全文搜索 ⇒ 不等它，交调用方现扫。
     let mut resident = resident();
-    let index = resident.entry(fence.root().to_path_buf()).or_default();
+    let index = resident.entry(trees.key.clone()).or_default();
     if index.lent {
         return None;
     }
     index.find(&path, &q, include_tools, scope, page, on_hit)
+}
+
+/// 全文搜索走的那几棵：这台的记录树（`<项目>/<会话>` 两层，一份记录归哪一家照它认，[`crate::agents::record_kind_of`]）
+/// ＋ 注册表里各家合成历史面的根（布局由那一家定 ⇒ 往下不限层，里面的记录都归那一家）。
+/// 每一棵各过自己那道围栏（observe 唯一那道，`common/fence.rs`）：读的文件解开链接之后仍须在那一棵下。
+pub(crate) struct Trees {
+    /// 常驻表上这几棵那一格的键：各家记录树的根（规范化过的那一形；不在 ⇒ 原样），逐行接起来。
+    key: PathBuf,
+    /// 住记录树的每一家在它家下那一棵（那一家 · 围栏）；不在的不算。
+    trees: Vec<(&'static str, Fence)>,
+    synth: Vec<(&'static str, Fence)>,
+}
+
+impl Trees {
+    /// 这台：记录树 ＋ 根表上各家合成历史面的那几个根（各号 · 日期树与归档根，[`crate::agents::history_roots_among`]）。`agent_home` 里哪一家都不住记录树 ⇒ `None`。
+    pub(crate) fn at(agent_home: impl crate::agents::IntoHomes) -> Option<Trees> {
+        let agent_home_v = crate::agents::IntoHomes::into_homes(agent_home);
+        let agent_home: &[crate::agents::AgentHome] = &agent_home_v;
+        Self::among(
+            agent_home,
+            &crate::agents::history_roots_among(crate::agents::REGISTRY),
+        )
+    }
+
+    /// [`Self::at`] 的本体，合成历史面的那几个根（`(那一家, 根)`）是参数；不在的根不算。
+    pub(crate) fn among(
+        agent_home: impl crate::agents::IntoHomes,
+        synth: &[(&'static str, PathBuf)],
+    ) -> Option<Trees> {
+        let agent_home_v = crate::agents::IntoHomes::into_homes(agent_home);
+        let agent_home: &[crate::agents::AgentHome] = &agent_home_v;
+        let roots: Vec<(&'static str, PathBuf)> = agent_home
+            .iter()
+            .filter_map(|h| Some((h.kind, h.records_root()?)))
+            .collect();
+        if roots.is_empty() {
+            return None;
+        }
+        let mut key = std::ffi::OsString::new();
+        let mut trees = Vec::new();
+        for (kind, root) in roots {
+            let fence = root.is_dir().then(|| Fence::at(&root).ok()).flatten();
+            if !key.is_empty() {
+                key.push("\n");
+            }
+            key.push(
+                fence
+                    .as_ref()
+                    .map_or(root.as_os_str(), |f| f.root().as_os_str()),
+            );
+            trees.extend(fence.map(|f| (kind, f)));
+        }
+        Some(Trees {
+            key: PathBuf::from(key),
+            trees,
+            synth: synth
+                .iter()
+                .filter(|(_, r)| r.is_dir())
+                .filter_map(|(kind, r)| Some((*kind, Fence::at(r).ok()?)))
+                .collect(),
+        })
+    }
+
+    fn is_empty(&self) -> bool {
+        self.trees.is_empty() && self.synth.is_empty()
+    }
+
+    /// 这份记录过得了哪一棵的围栏 ⇒ 解开之后的路径；哪一棵都不在 ⇒ `None`。
+    fn admit(&self, target: &Path) -> Option<PathBuf> {
+        self.trees
+            .iter()
+            .chain(self.synth.iter())
+            .find_map(|(_, f)| f.admit(target).ok())
+    }
+
+    /// 这几棵下的会话文件与它们归哪一家，按最近优先排。防 symlink 逃逸：解开之后仍须在那一棵下；解不开 / 越界 ⇒ 跳过这一份。
+    fn files(&self) -> Vec<(PathBuf, i64, &'static str)> {
+        let mut files: Vec<(PathBuf, i64, &'static str)> = Vec::new();
+        for (kind, f) in &self.trees {
+            for (p, m) in session_files(kind, f) {
+                if f.admit(&p).is_ok() {
+                    files.push((p, m, *kind));
+                }
+            }
+        }
+        for (kind, f) in &self.synth {
+            let found = WalkDir::new(f.root())
+                .into_iter()
+                .filter_map(Result::ok)
+                .filter(|e| {
+                    e.file_type().is_file()
+                        && crate::agents::is_session_file_among(
+                            crate::agents::REGISTRY,
+                            kind,
+                            e.path(),
+                        )
+                        && f.admit(e.path()).is_ok()
+                });
+            for e in found {
+                let p = e.into_path();
+                let m = Ro::mtime_ms(&p);
+                files.push((p, m, *kind));
+            }
+        }
+        // 🔴 **snippet 预算按最近优先花**（`search_rules::sort_by_recency`，理由在它的文档注释里）：几棵并成一列再排。
+        search_rules::sort_by_recency(&mut files, |(_, m, _)| *m);
+        files
+    }
 }
 
 /// 从常驻表借出 `root` 那一棵：表上留一格「借出去了」，借的人在锁外用；已借出 ⇒ `None`。
@@ -209,22 +321,22 @@ fn resident() -> std::sync::MutexGuard<'static, BTreeMap<PathBuf, SearchIndex>> 
     })
 }
 
-/// 一棵 projects 下的会话文件，按最近优先排。
-fn session_files(fence: &Fence) -> Vec<(PathBuf, i64)> {
-    let mut files: Vec<(PathBuf, i64)> = WalkDir::new(fence.root())
+/// 一棵 projects 下的会话文件（不排序：[`Trees::files`] 几棵并成一列后统一按最近优先排）。
+fn session_files(kind: &str, fence: &Fence) -> Vec<(PathBuf, i64)> {
+    WalkDir::new(fence.root())
         .max_depth(2)
         .into_iter()
         .filter_map(Result::ok)
-        .filter(|e| e.file_type().is_file() && crate::agents::is_tree_session_file(e.path()))
+        .filter(|e| {
+            e.file_type().is_file()
+                && crate::agents::is_session_file_among(crate::agents::REGISTRY, kind, e.path())
+        })
         .map(|e| {
             let p = e.into_path();
             let m = Ro::mtime_ms(&p);
             (p, m)
         })
-        .collect();
-    // 🔴 **snippet 预算按最近优先花**（`search_rules::sort_by_recency`，理由在它的文档注释里）。
-    search_rules::sort_by_recency(&mut files, |(_, m)| *m);
-    files
+        .collect()
 }
 
 /// 一棵 projects 的索引：每份会话文件一格，按 (mtime, 长度) 增量读。
@@ -322,7 +434,7 @@ impl Facts {
             let text = raw.strip_suffix('\n').unwrap_or(raw);
             let text = text.strip_suffix('\r').unwrap_or(text);
             // 那一家不读的行不整行建树（[`crate::agents::Line::of`]）：它们不进索引，只吸收身份那几格。
-            let Some(v) = crate::agents::Line::of(kind, text, 0).into_value() else {
+            let Some(v) = crate::agents::Line::of(Some(kind), text, 0).into_value() else {
                 continue;
             };
             let said = self.session.absorb_value(kind, &v);
@@ -586,7 +698,7 @@ impl SearchIndex {
                 result = on_hit(&find_hit(
                     &rec.rt,
                     (&rec.uuid, rec.line),
-                    kind,
+                    who_of(entry.kind, kind),
                     hit,
                     q,
                     turn,
@@ -599,16 +711,16 @@ impl SearchIndex {
         Some(result.map(|()| (count, total)))
     }
 
-    /// 扫 projects/**/*.jsonl（与旧现扫同一个 walk、同一个排序、同一道围栏），每命中会话输出一行 JSON。`q` 已小写、已 trim。
-    fn search(
+    /// 扫那几棵下的会话记录（[`Trees::files`]：各过各的围栏、并成一列按最近优先），每命中会话输出一行 JSON。`q` 已小写、已 trim。
+    pub(crate) fn search_in(
         &mut self,
-        fence: &Fence,
+        trees: &Trees,
         q: &str,
         opts: &SearchOpts,
         live: &crate::history::live_table::LiveTable,
         push: &mut dyn FnMut(SessionHits) -> Result<(), String>,
     ) -> Result<usize, String> {
-        let files = session_files(fence);
+        let files = trees.files();
 
         // 这一趟 walk 没走到的（删了 / 改名）随旧表一起丢掉。
         let mut prev = std::mem::take(&mut self.files);
@@ -617,25 +729,22 @@ impl SearchIndex {
         let mut unreadable = 0usize;
         // 按最近优先留到上界（`files` 已是这个序；正文层优先，见 [`SearchIndex::retain`]）；留不下的这一问照样搜，只是不留。
         let mut kept = Retained::default();
-        // 防 symlink 逃逸：解开之后仍须在 projects/ 下；解不开 / 越界 ⇒ 跳过这一份。
-        let files: Vec<(PathBuf, i64)> = files
-            .into_iter()
-            .filter(|(path, _)| fence.admit(path).is_ok())
-            .collect();
         let mut found: Vec<SessionHits> = Vec::new();
+        // 命中的活会话住在哪（这一问至多列一次名单，一条活的都没命中就不列）。
+        let housing = crate::host::Housing::here();
         // 〔perfC2〕一批批带到这一问：每批在几条线程上同时读（常驻装不下的那几份每问整份重读重解，这是大头），再按最近优先逐份搜。
         for batch in files.chunks(SEARCH_BATCH) {
-            let work: Vec<(PathBuf, Option<FileEntry>)> = batch
+            let work: Vec<(&'static str, PathBuf, Option<FileEntry>)> = batch
                 .iter()
-                .map(|(path, _)| (path.clone(), prev.remove(path)))
+                .map(|(path, _, kind)| (*kind, path.clone(), prev.remove(path)))
                 .collect();
             let tools = opts.include_tools;
-            let brought = crate::common::par::par_in_order(work, |(path, prev)| {
+            let brought = crate::common::par::par_in_order(work, |(kind, path, prev)| {
                 let mut last = Refresh::default();
-                let got = bring_up(&path, prev, tools, &mut last);
+                let got = bring_up_as(kind, &path, prev, tools, &mut last);
                 (got, last)
             });
-            for ((path, updated_at), (got, last)) in batch.iter().zip(brought) {
+            for ((path, updated_at, _), (got, last)) in batch.iter().zip(brought) {
                 self.last.add(last);
                 let (path, updated_at) = (path.clone(), *updated_at);
                 // 读不动 ⇒ 说出来、记一笔（原先 `.ok()?` 折成「无命中」静默消失）。
@@ -664,9 +773,12 @@ impl SearchIndex {
                 if let Some(mut session) = session {
                     // 能不能恢复由这台判（活不活看这台的 pidfile），与历史清单的行同一个函数。
                     let life = live.life_of(&session.session_id);
-                    session.face = crate::wire::SessionFace::of(crate::wire::Life::of_wire(&life));
+                    session.face = crate::wire::SessionFace::listed(
+                        &life,
+                        housing.live(&session.session_id, &life).as_ref(),
+                    );
                     session.is_bg = bg;
-                    session.can = crate::history::listing::can_of(&session.agent, &life, bg);
+                    session.can = crate::history::listing::can_of(Some(&session.agent), &life, bg);
                     found.push(session);
                 }
             }
@@ -680,7 +792,21 @@ impl SearchIndex {
 
 /// 这一份带到这一问：(mtime, 长度) 没变不读 · 变长且见证对得上只读尾巴 · 其余整份重读（[`Tailed::step`]）。打不开 / 读不了 ⇒ `Err(原因)`。
 /// 读盘的账记进 `last`（不碰索引本身 ⇒ 几份可以在几条线程上同时带，见 [`SearchIndex::search`]）。
+/// 这一份归哪一家照它落在哪棵树下认（[`crate::agents::record_kind_of`]）；认不出是哪一家的 ⇒ `Err`（文本怎么抽没有那一家可问，不进索引）。
 fn bring_up(
+    path: &Path,
+    prev: Option<FileEntry>,
+    tools: bool,
+    last: &mut Refresh,
+) -> Result<FileEntry, String> {
+    let kind = crate::agents::record_kind_of(path)
+        .ok_or_else(|| copy_core::copy_text("rsAgents.family.unknown", &[]))?;
+    bring_up_as(kind, path, prev, tools, last)
+}
+
+/// [`bring_up`] 的本体，这一份归哪一家（`kind`）由调用方给（走到它的那一棵知道）。
+fn bring_up_as(
+    kind: &'static str,
     path: &Path,
     prev: Option<FileEntry>,
     tools: bool,
@@ -713,7 +839,6 @@ fn bring_up(
         (Step::Appended(_), None) | (Step::Whole, _) => {
             let mut blocks = Blocks::open(path)?;
             last.full += 1;
-            let kind = crate::agents::record_kind_of(path).unwrap_or_default();
             let mut e = FileEntry::empty(kind, tools);
             let got = e.take(seen.0, &mut blocks);
             last.bytes += blocks.read();
@@ -770,7 +895,7 @@ fn session_hits_in(
     budget: &mut SnippetBudget,
     updated_at: i64,
 ) -> Option<SessionHits> {
-    let session_id = crate::agents::sid_of(path)?;
+    let session_id = sid_in(entry, path)?;
 
     let mut hits: Vec<SearchHit> = Vec::new();
     let mut hit_count: u32 = 0;
@@ -796,8 +921,7 @@ fn session_hits_in(
                 let (before, matched, after) = search_rules::make_snippet(text, q_lc);
                 hits.push(SearchHit {
                     uuid: rec.uuid.clone(),
-                    ts_ms: rec.ts_ms,
-                    kind: hkind.to_string(),
+                    who: who_of(entry.kind, hkind),
                     before,
                     matched,
                     after,
@@ -826,6 +950,11 @@ fn session_hits_in(
     ))
 }
 
+/// 这份记录的 sid：照它归的那一家（索引格建起来时就定了）的文件命名（[`crate::agents::RecordFace::sid`]）。
+fn sid_in(entry: &FileEntry, path: &Path) -> Option<String> {
+    crate::agents::record_face(entry.kind).and_then(|r| (r.sid)(path))
+}
+
 /// 只比标题与第一句（帧面的 `titles`）：标题 ／ 第一句里有这几个字 ⇒ 一行（`hits` 空、`moreHits` 0）。
 fn session_title_row(
     path: &Path,
@@ -833,7 +962,7 @@ fn session_title_row(
     q_lc: &str,
     updated_at: i64,
 ) -> Option<SessionHits> {
-    let session_id = crate::agents::sid_of(path)?;
+    let session_id = sid_in(entry, path)?;
     let s = entry.session();
     let (title, excerpt) = (s.title(), s.excerpt());
     let found = title.is_some_and(|t| t.to_lowercase().contains(q_lc))
@@ -863,7 +992,7 @@ fn session_row(
     SessionHits {
         // 活不活 · 分身 · 能做什么由扫的那一层按这台的 pidfile 补（[`SearchIndex::search`]）；这里先按「已结束、不是分身」占位。
         can: crate::history::listing::can_of(
-            &agent,
+            Some(entry.kind),
             &crate::wire::WireLife::Ended { by: None },
             false,
         ),
@@ -951,11 +1080,11 @@ pub(crate) fn record_text(
     })
 }
 
-/// 这一条来话是 agent 回报（搜索里单列的那一种）⇒ 搜它的正文（框里那一段，适配层给的 `body`；没有就原文）。
-fn report_text(u: crate::agents::UserText) -> Option<String> {
-    match u.speaker {
-        crate::agents::Speaker::AgentMessage { body, .. }
-        | crate::agents::Speaker::PeerSession { body, .. } => Some(body.unwrap_or(u.text)),
+/// 这一条来话是 agent 回报（搜索里单列的那一种）⇒ 搜它的正文（框里那一段，适配层给的 `Heard::body`；没有就原文）。
+fn report_text(h: crate::agents::record::Heard) -> Option<String> {
+    match h.who.speaker {
+        crate::agents::Speaker::AgentMessage { .. }
+        | crate::agents::Speaker::PeerSession { .. } => Some(h.body.unwrap_or(h.who.text)),
         _ => None,
     }
 }
@@ -976,7 +1105,7 @@ pub(crate) fn in_scope(scope: &str, rt: &RecordText) -> bool {
 }
 
 /// 命中判定：先看正文、再看工具内容（大小写不敏感子串）。命中 ⇒ `(种类, 命中的那段文本)`，
-/// 种类是 `"user"` / `"assistant"` / `"report"` / `"tool"`（与 `Hit.kind` 同一套词）。`q_lc` 已小写、已 trim。
+/// 种类是 `"user"` / `"assistant"` / `"report"` / `"tool"`（谁说的那个词照它与这条会话是哪一家写，[`who_of`]）。`q_lc` 已小写、已 trim。
 /// 工具内容只在 `include_tools` 时看（索引里的那一格可能抽过工具文本，不看时当它是空串）。
 pub(crate) fn record_hit<'a>(
     rt: &'a RecordText,
@@ -1044,12 +1173,12 @@ impl FindPager {
 }
 
 /// 一条命中的成品：片段三段 ＋ 第几轮（你说的第几句之后；第一句之前 ＝ 0）＋ 那条记录的时刻（毫秒，读不出 ＝ 0）
-/// （按看的那一台的钟写好的样子 `tsText` 在出口那一下添，[`with_hit_text`]）。
+/// （按看的那一台的钟写好的时刻在出口那一下写进头一行 `meta`，[`with_hit_text`]）。
 /// 收在某次工具调用那一块里的（[`RecordText::lands_in`]）再带 `tool`（调用 id）：界面按它落到那一块上。
 fn find_hit(
     rt: &RecordText,
     (uuid, line): (&str, u64),
-    kind: &str,
+    who: String,
     hit: &str,
     q: &str,
     turn: u64,
@@ -1059,13 +1188,13 @@ fn find_hit(
     FindHit {
         uuid: uuid.to_string(),
         line,
-        kind: kind.to_string(),
+        who,
         before,
         matched,
         after,
         turn,
         ts_ms,
-        ts_text: String::new(),
+        meta: String::new(),
         tool: rt.lands_in.clone(),
     }
 }
@@ -1081,8 +1210,10 @@ pub struct FindHit {
     /// 它的行号（与实时行的 `seq` 同一个空间；界面按它物化那一段）。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub(crate) line: u64,
-    /// `user` · `assistant` · `report`（agent 回报）· `tool`。
-    pub kind: String,
+    /// 谁说的那个词（[`who_of`]：照这条会话是哪一家 · 命中落在哪一侧）：写 `meta` 头上那一格用，不上线（界面只照 `meta` 摆）。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
+    pub who: String,
     /// 片段三段（同全局搜索的 `Hit`）。
     pub(crate) before: String,
     pub(crate) matched: String,
@@ -1090,22 +1221,64 @@ pub struct FindHit {
     /// 第几轮（这条之前含它人说过几句；第一句之前 ＝ 0）。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub(crate) turn: u64,
-    /// 那条记录的时刻（毫秒；读不出 ＝ 0）：后端写 `tsText` 用，不上线。
+    /// 那条记录的时刻（毫秒；读不出 ＝ 0）：后端写 `meta` 里那一格时刻用，不上线。
     #[serde(skip)]
     #[cfg_attr(any(test, feature = "ts"), ts(skip))]
     pub(crate) ts_ms: i64,
-    /// `tsMs` 按看的那一台的时区写好（今天 `HH:MM` · 昨天 · 更早带日期；读不出 ⇒ 空串）：出口那一下添（[`with_hit_text`]）。
-    pub(crate) ts_text: String,
+    /// 命中行头一行（谁 · 第几轮 · 时刻，按问的范围写好）：出口那一下添（[`with_hit_text`]），界面照抄。
+    pub(crate) meta: String,
     /// 它收在哪次工具调用的那一块里（调用 id；工具结果流里不自己成卡）；落在自己那张卡上 ⇒ 缺。
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub(crate) tool: Option<String>,
 }
 
-/// 出口那一下：一条命中添上 `tsText`（`tsMs` 按看的那一台的时区写，[`crate::common::time::hit_text`]；界面照抄）。
-pub fn with_hit_text(hit: &FindHit, tz: &crate::common::time::Tz) -> FindHit {
+/// 命中种类（`user` · `assistant` · `tool` · `report`）⇒ 谁说的那个词：全文搜索的 `who`、会话内查找 `meta` 头上那一格同这一判。
+/// agent 那一侧（`assistant`）写这条会话那一家（`agent`，注册表里的 kind）说话一方的短名，只经 [`crate::agents::speaker_said_among`]
+/// （没有起会话面 · 认不出 ⇒ 那一家对人的叫法或照实那一句，不露 kind）。
+pub fn who_of(agent: &str, kind: &str) -> String {
+    who_of_among(crate::agents::REGISTRY, agent, kind)
+}
+
+/// [`who_of`] 照一份注册表判（判据喂替身家）。
+pub(crate) fn who_of_among(registry: &[crate::agents::Adapter], agent: &str, kind: &str) -> String {
+    use copy_core::copy_text;
+    match kind {
+        "user" => copy_text("machineForm.field.user", &[]),
+        "tool" => copy_text("sessionFind.who.tool", &[]),
+        "report" => copy_text("sessionFind.who.report", &[]),
+        _ => crate::agents::speaker_said_among(registry, agent),
+    }
+}
+
+/// 出口那一下：一条命中添上头一行 `meta`（谁 · 第几轮 · 时刻：时刻照 `ts_ms` 按看的那一台的时区写，[`crate::common::time::hit_text`]；第一句之前的不写轮；`user_only` ＝ 范围「用户」，整张都是用户的 ⇒ 不写谁）。界面照抄。
+pub fn with_hit_text(hit: &FindHit, tz: &crate::common::time::Tz, user_only: bool) -> FindHit {
+    use copy_core::copy_text;
+    let time = crate::common::time::hit_text(hit.ts_ms, tz);
+    let n = hit.turn.to_string();
+    let meta = if user_only {
+        if hit.turn > 0 && !time.is_empty() {
+            copy_text("sessionFind.hit.metaNoWho", &[("n", &n), ("time", &time)])
+        } else {
+            time
+        }
+    } else {
+        let who = hit.who.clone();
+        match (hit.turn > 0, time.is_empty()) {
+            (true, false) => copy_text(
+                "sessionFind.hit.meta",
+                &[("who", &who), ("n", &n), ("time", &time)],
+            ),
+            (true, true) => copy_text("sessionFind.hit.metaNoTime", &[("who", &who), ("n", &n)]),
+            (false, false) => copy_text(
+                "sessionFind.hit.metaNoTurn",
+                &[("who", &who), ("time", &time)],
+            ),
+            (false, true) => who,
+        }
+    };
     FindHit {
-        ts_text: crate::common::time::hit_text(hit.ts_ms, tz),
+        meta,
         ..hit.clone()
     }
 }
@@ -1115,7 +1288,7 @@ pub fn with_hit_text(hit: &FindHit, tz: &crate::common::time::Tz) -> FindHit {
 /// 第几轮：每遇到你说的一句（口径同大纲 `user_inputs::user_input_of`）加一，与常驻索引那一臂同一个数法。
 /// `on_hit` 回错 ⇒ 扫描当场停、错原样上抛（帧面那一臂靠它在整份超上限时停下）。
 pub fn scan_session_find<R: std::io::BufRead>(
-    kind: &str,
+    agent: &str,
     r: R,
     query: &str,
     include_tools: bool,
@@ -1138,21 +1311,21 @@ pub fn scan_session_find<R: std::io::BufRead>(
             counted += 1;
         }
         let text = String::from_utf8_lossy(row.body());
-        let Some(v) = crate::agents::Line::of(kind, &text, 0).into_value() else {
+        let Some(v) = crate::agents::Line::of(Some(agent), &text, 0).into_value() else {
             continue;
         };
         // 是谁说的 · 何时 · 消息 id 都照适配层翻好的那一行（不在这里读原文的格）。
-        let said = crate::agents::session_line_of(kind, &v);
+        let said = crate::agents::session_line_of(agent, &v);
         let Some(role) = said.role else {
             continue;
         };
-        if super::recognize::user_inputs::user_input_of(kind, &v).is_some() {
+        if super::recognize::user_inputs::user_input_of(agent, &v).is_some() {
             turn += 1;
         }
         let Some(uuid) = said.id.as_deref() else {
             continue;
         };
-        let Some(rt) = record_text(kind, &v, role, include_tools) else {
+        let Some(rt) = record_text(agent, &v, role, include_tools) else {
             continue;
         };
         if !scope.is_none_or(|s| in_scope(s, &rt)) {
@@ -1163,7 +1336,15 @@ pub fn scan_session_find<R: std::io::BufRead>(
         };
         if pager.take() {
             let ts_ms = said.at_ms.unwrap_or(0);
-            on_hit(&find_hit(&rt, (uuid, line), kind, hit, &q, turn, ts_ms))?;
+            on_hit(&find_hit(
+                &rt,
+                (uuid, line),
+                who_of(agent, kind),
+                hit,
+                &q,
+                turn,
+                ts_ms,
+            ))?;
         }
     }
     Ok(pager.finish())

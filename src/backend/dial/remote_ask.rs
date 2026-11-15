@@ -39,9 +39,6 @@ pub(crate) const PULL_MAX_BYTES: cap_core::Cap = cap_core::Cap {
     over: cap_core::Over::Reject,
 };
 
-/// 那台不认这条命令 / 子命令：与帧协议里同一个码。
-const UNKNOWN_COMMAND: &str = "unknown_command";
-
 /// 对面：在那台上跑一条一次性命令，交回它的 stdout。生产 = [`DialRemote`]（经 `dial` 的 capture）；判据用替身。
 /// `stdin`= exec 之后写进那个进程 stdin 的字节（缺席 = 不写）；收的一侧用 CLI 面的「只读一行」入口。
 pub trait Remote: Send + Sync {
@@ -187,17 +184,6 @@ where
 {
     let dial = table.dial(machine)?;
     ask_via(&dial, machine, C::NAME, req, tz, remote).await
-}
-
-/// 同 [`ask_json`]，那一台不按名字查可达表、直接给拨号请求（两台之间复制：请求里带着两台的拨号请求）；
-/// 命令由线上入参类型选（名字 · 回包类型都挂在它上面）。
-pub async fn ask_dialed<C: cmd_wire::Call>(
-    dial: &Value,
-    req: &C,
-    tz: &crate::common::time::Tz,
-    remote: &dyn Remote,
-) -> Result<C::Reply, Said> {
-    ask_via(dial, &copy_core::peer_machine(), C::NAME, req, tz, remote).await
 }
 
 /// 那台的回包按回包类型解；解不出 ⇒ 码 `backend_differs`、说那台后端版本不同，解码器那一句进原话。
@@ -454,7 +440,7 @@ async fn exchange(
         .run_coded(dial, line.to_string(), Some(stdin))
         .await
         .map_err(|s| match s.code.as_deref() {
-            Some(UNKNOWN_COMMAND) => s.wrap(|_| copy_core::backend_old(machine)),
+            Some(cmd_wire::UNKNOWN_COMMAND) => s.wrap(|_| copy_core::backend_old(machine)),
             _ => s,
         })?;
     serde_json::from_str(out.trim()).map_err(|e| {
@@ -570,7 +556,7 @@ fn settle_pulled(got: &crate::dial::Captured) -> Result<String, Said> {
     if stdout.contains(OLD_BACKEND_MARKER) {
         // 那台的后端不认这条子命令（掉进了流模式）：码同「不认这条命令」，话按码取；知道那台名字的调用方换成名字（[`ask`]）。
         return Err(Said::new(
-            UNKNOWN_COMMAND,
+            cmd_wire::UNKNOWN_COMMAND,
             copy_core::backend_old(&copy_core::peer_machine()),
         ));
     }

@@ -33,9 +33,9 @@ const LINE_PS: &str = "& 'C:\\Windows\\System32\\OpenSSH\\ssh.exe' -t -p 22 dev@
 #[test]
 fn the_window_line_forgets_the_record_once_the_ssh_returns() {
     let file = Path::new("/home/u/.cc-monitor/opened-windows/0b9c3f2e-1111-4222-8333-944455556666");
-    let posix = window(false, file, "devbox", LINE_POSIX);
+    let posix = window(false, file, "devbox", LINE_POSIX).unwrap();
     assert!(
-        posix.starts_with(&prelude(false, file, "devbox")),
+        posix.starts_with(&prelude(false, file, "devbox").unwrap()),
         "{posix}"
     );
     let after = posix.split_once(LINE_POSIX).expect("那一行原样在里面").1;
@@ -45,9 +45,12 @@ fn the_window_line_forgets_the_record_once_the_ssh_returns() {
         "那一行之后接删记录那一句"
     );
 
-    let ps = window(true, file, "devbox", LINE_PS);
-    assert!(ps.starts_with(&prelude(true, file, "devbox")), "{ps}");
-    let rest = &ps[prelude(true, file, "devbox").len()..];
+    let ps = window(true, file, "devbox", LINE_PS).unwrap();
+    assert!(
+        ps.starts_with(&prelude(true, file, "devbox").unwrap()),
+        "{ps}"
+    );
+    let rest = &ps[prelude(true, file, "devbox").unwrap().len()..];
     assert_eq!(
         rest,
         format!(
@@ -74,7 +77,7 @@ fn the_posix_window_line_really_writes_then_forgets_the_record() {
     );
     let st = std::process::Command::new("sh")
         .arg("-c")
-        .arg(window(false, &file, "devbox", &line))
+        .arg(window(false, &file, "devbox", &line).unwrap())
         .env_clear()
         .env("PATH", "/usr/bin:/bin")
         .status()
@@ -86,4 +89,50 @@ fn the_posix_window_line_really_writes_then_forgets_the_record() {
     let rec = parse(&seen_body.expect("那一行跑的时候记录在")).expect("认得出");
     assert_eq!(rec.machine, "devbox");
     assert!(!left, "那一行跑完记录就没了");
+}
+
+/// 家名不是 UTF-8（那一层目录名里有不成字的字节）：POSIX 那一串照字节加引号，记录写进的就是那一层里那一份、跑完删掉的也是它
+/// （转成字再加引号会拼出另一份不存在的文件）。`$'…'` 是 bash 的形，照 bash 跑。
+#[cfg(target_os = "linux")]
+#[test]
+fn a_non_utf8_home_writes_and_forgets_the_very_record_file() {
+    use std::os::unix::ffi::OsStrExt as _;
+    let base = std::env::temp_dir().join(format!("ccm-opened-window-raw-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    let d = base.join(std::ffi::OsStr::from_bytes(b"h\xffome"));
+    std::fs::create_dir_all(&d).unwrap();
+    let file = d.join("0b9c3f2e-1111-4222-8333-944455556666");
+    let seen = base.join("seen");
+    let line = format!(
+        "cp {} {}",
+        shell_quote_core::posix_quote_bytes(file.as_os_str().as_bytes()),
+        shell_quote_core::posix_quote(&seen.to_string_lossy())
+    );
+    let st = std::process::Command::new("bash")
+        .arg("-c")
+        .arg(window(false, &file, "devbox", &line).unwrap())
+        .env_clear()
+        .env("PATH", "/usr/bin:/bin")
+        .status()
+        .unwrap();
+    let seen_body = std::fs::read_to_string(&seen).ok();
+    let mut part = file.as_os_str().to_os_string();
+    part.push(".part");
+    let left = file.exists() || Path::new(&part).exists();
+    let _ = std::fs::remove_dir_all(&base);
+    assert!(st.success());
+    let rec = parse(&seen_body.expect("那一行跑的时候记录在那一层里")).expect("认得出");
+    assert_eq!(rec.machine, "devbox");
+    assert!(!left, "那一行跑完记录与旁名都不留");
+}
+
+/// 家名不是 UTF-8 时 PowerShell 那一形拼不出那份记录的路径 ⇒ 照实拒，不拼一个不存在的文件。
+#[cfg(unix)]
+#[test]
+fn a_non_utf8_home_is_refused_in_powershell() {
+    use std::os::unix::ffi::OsStrExt as _;
+    let file = Path::new(std::ffi::OsStr::from_bytes(
+        b"/home/h\xffome/.cc-monitor/opened-windows/x",
+    ));
+    assert!(window(true, file, "devbox", LINE_PS).is_err());
 }

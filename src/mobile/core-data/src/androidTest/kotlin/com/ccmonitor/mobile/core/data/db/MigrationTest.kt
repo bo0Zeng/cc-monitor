@@ -25,6 +25,9 @@ class MigrationTest {
             AppDatabase::class.java,
         )
 
+    /** 假的取名（label 去空白、空了用 host）：迁移只认注入的那一份，不碰核心。 */
+    private val namer = MachineNamer { hosts -> hosts.map { h -> h.label.trim().ifEmpty { h.host } } }
+
     private fun tables(db: androidx.sqlite.db.SupportSQLiteDatabase): Set<String> =
         db.query("SELECT name FROM sqlite_master WHERE type = 'table'").use { c ->
             generateSequence { if (c.moveToNext()) c.getString(0) else null }.toSet()
@@ -39,7 +42,7 @@ class MigrationTest {
         }
 
     /**
-     * 23→24：机器表换成拨号核心那一形 —— 跳板从 id 换成那一台的名字（名字是核心算的：`label` 空 ⇒ `host`）；A→B→A 原样留着（拨号时核心拒）；
+     * 23→24：机器表换成拨号核心那一形 —— 跳板从 id 换成那一台的名字（名字照注入的 [MachineNamer]，这里是假的那一份）；A→B→A 原样留着（拨号时核心拒）；
      * 跳板指着已不在的那一台 ⇒ 照抄那个 id（拨号时核心照「找不到」拒，不悄悄变直连）；备用地址原样；「起哪一家」那一格删。
      */
     @Test
@@ -61,7 +64,7 @@ class MigrationTest {
             host("d", "D", null)
             close()
         }
-        val db = helper.runMigrationsAndValidate(dbName, 24, true, MIGRATION_23_24)
+        val db = helper.runMigrationsAndValidate(dbName, 24, true, Migration23To24(namer))
         db.query("SELECT id, jump FROM hosts ORDER BY id").use { c ->
             val got = generateSequence { if (c.moveToNext()) c.getString(0) to c.getString(1) else null }.toList()
             assertEquals(listOf("a" to "b.example", "b" to "A", "c" to "gone", "d" to ""), got)
@@ -172,14 +175,33 @@ class MigrationTest {
         }
     }
 
-    /** 全链路 23→28 schema 校验（validateDroppedTables=true 严格比对导出 schema）；23 版那几组按键一路照留。 */
+    /**
+     * 28→29：待发表加「那台拒时那一句」那一格（`refusedSaid`）；没回执的那一行原样、那一格空；
+     * 已标被拒的那一行（没存那一句）仍是被拒、那一格空（不改回没回执：不把早已标被拒的那一句隔很久再送进会话）。
+     */
     @Test
-    fun migrateAllFrom23To28Validates() {
+    fun migrate28To29AddsTheRefusalSaidAndKeepsOldRefusalsRefused() {
+        helper.createDatabase(dbName, 28).apply {
+            execSQL("INSERT INTO pending (id,hostId,sid,text,mintedAt,outcome,attempts) VALUES ('p1','h','s','你好',3,'pending',1)")
+            execSQL("INSERT INTO pending (id,hostId,sid,text,mintedAt,outcome,attempts) VALUES ('p2','h','s','被拒的',4,'refused',2)")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate(dbName, 29, true, MIGRATION_28_29)
+        assertEquals(listOf("id", "hostId", "sid", "text", "mintedAt", "outcome", "attempts", "refusedSaid"), columns(db, "pending"))
+        db.query("SELECT id,text,mintedAt,outcome,attempts,refusedSaid FROM pending ORDER BY id").use { c ->
+            val rows = generateSequence { if (c.moveToNext()) (0 until c.columnCount).map { c.getString(it) } else null }.toList()
+            assertEquals(listOf(listOf("p1", "你好", "3", "pending", "1", null), listOf("p2", "被拒的", "4", "refused", "2", null)), rows)
+        }
+    }
+
+    /** 全链路 23→29 schema 校验（validateDroppedTables=true 严格比对导出 schema）；23 版那几组按键一路照留。 */
+    @Test
+    fun migrateAllFrom23To29Validates() {
         helper.createDatabase(dbName, OLDEST_STATE_DB).apply {
             execSQL("INSERT INTO key_groups (id,name,sortOrder) VALUES ('g','常用',0)")
             close()
         }
-        val db = helper.runMigrationsAndValidate(dbName, 28, true, *allMigrations())
+        val db = helper.runMigrationsAndValidate(dbName, 29, true, *allMigrations(namer))
         db.query("SELECT name FROM key_groups").use { c ->
             assertEquals(listOf("常用"), generateSequence { if (c.moveToNext()) c.getString(0) else null }.toList())
         }

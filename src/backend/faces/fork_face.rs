@@ -1,5 +1,5 @@
 //! 帧面 `session-fork` 的宿主 —— 与 `read_face` / `footprint` 同形的一层壳：
-//! 找家目录（与帧面其余几条同一个出处 `history::listing::agent_home`）、交给本体；
+//! 找家目录（与帧面其余几条同一个出处 `agents::local_homes`）、交给本体；
 //! 再收齐「分叉之后起」要的源会话事实（记录里的工作目录 · 进程名单 · 终端名单），交推断（`control/fork_launch.rs`）出 `launch` 那一格。
 //!
 //! # 为什么要这一层壳（而不是 `control/fork_write.rs` 自己找家）
@@ -13,7 +13,6 @@
 use crate::control::fork_launch;
 use crate::control::fork_write::{ForkErr, ForkReq, Forked};
 use crate::wire::typed::Command;
-use std::path::Path;
 
 /// `session-fork`：从某条消息处分叉出一个新会话。读整份 jsonl ⇒ 阻塞档。
 pub struct SessionFork;
@@ -31,7 +30,7 @@ impl crate::wire::typed::Handle for SessionFork {
         req: ForkReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> Result<Forked, ForkErr> {
-        let home = crate::history::listing::agent_home();
+        let home = crate::agents::local_homes();
         #[expect(
             clippy::disallowed_methods,
             reason = "分叉写分支记录：这一条在这里领一只只会新建的手（别的命令拿不到它）"
@@ -43,9 +42,15 @@ impl crate::wire::typed::Handle for SessionFork {
     }
 }
 
-/// 源会话的三格事实。名单读不出 ⇒ 那一半落「不知道 / 不在任何终端里」（同推断的规矩），不挡分叉。
-pub(crate) fn launch_of(home: &Path, source: &Path, sid: &str) -> fork_launch::Launch {
-    let cwd = crate::agents::project_dir_of(source);
+/// 源会话（按 sid 找到的那一条）的三格事实。名单读不出 ⇒ 那一半落「不知道 / 不在任何终端里」（同推断的规矩），不挡分叉。
+pub(crate) fn launch_of(
+    home: impl crate::agents::IntoHomes,
+    source: &crate::agents::SessionAt,
+    sid: &str,
+) -> fork_launch::Launch {
+    let home_v = crate::agents::IntoHomes::into_homes(home);
+    let home: &[crate::agents::AgentHome] = &home_v;
+    let cwd = crate::control::fork_write::source_cwd(source);
     let processes: Vec<fork_launch::ProcessRow> =
         crate::accounts::manage::library::session_accounts_here(home)
             .into_iter()
@@ -53,6 +58,7 @@ pub(crate) fn launch_of(home: &Path, source: &Path, sid: &str) -> fork_launch::L
                 Some(fork_launch::ProcessRow {
                     sid: r.sid?,
                     alive: r.alive,
+                    live: r.live,
                     config_dir: r.config_dir,
                     account: r.account,
                     bare: r.bare,

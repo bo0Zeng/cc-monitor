@@ -233,21 +233,6 @@ const NOT_ON_CLI: &[(&str, &str)] = &[
          无 request-id」⇒ 本进程里没有第二条命令可取消，\
          给它开 CLI 口只会回一条永远找不到目标的应答。要停一条 CLI 命令：杀那个进程。",
     ),
-    // 进度走那条连接的出方向帧 —— 一次性进程两样都没有。
-    (
-        "transfer-upload",
-        "它开的是一张**活在这条流连接上**的票（`control/transfer.rs`：每连接一张票表）。\
-         一次性进程回完应答就退出，票当场随进程一起没了 ⇒ 之后没有谁能起跑它。",
-    ),
-    (
-        "transfer-download",
-        "同 `transfer-upload`：票活在流连接上，一次性进程开出来的票回完应答就没了。",
-    ),
-    (
-        "transfer-start",
-        "起跑之后的进度与终局走**同一条连接**的出方向 `transfer` 帧；一次性进程只回一条应答就退出，\
-         进度没人收、终局也没人收（而且它手里压根没有那张票 —— 见 `transfer-upload`）。",
-    ),
     (
         "ccm-probe",
         "派生名 `--ccm-probe` 是 ccm 自己的诊断口（同 `ccm-print`）；CLI 上要这几行就敲 `ccm --ccm-probe`，同一个函数。",
@@ -255,10 +240,6 @@ const NOT_ON_CLI: &[(&str, &str)] = &[
     (
         "ccm-print",
         "派生名 `--ccm-print` 是 ccm 自己的诊断口；二进制叫 `ccm` 时后端按子命令集合分流，占了它就把 `ccm --ccm-print` 抢进后端。",
-    ),
-    (
-        "transfer-stop",
-        "它撤的是**同一条连接上**在册的一趟传输；一次性进程里没有在册的票，只会回一条什么也没撤的 `ok`。",
     ),
 
 ];

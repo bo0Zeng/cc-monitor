@@ -67,6 +67,14 @@ async fn write_text(
     )
     .await
 }
+/// 这一行编辑不了的为什么：本机后端那一份菜单成品里「编辑」那一行（窗口交那一行的原行）。
+fn edit_why(r: &crate::source::Listed) -> Option<String> {
+    crate::find::testing::menu_for(&[r], None)
+        .act(crate::select::Action::Edit)
+        .expect("十四件每件一行")
+        .why
+        .clone()
+}
 
 /// 一行，带着后端那道编辑门（`None` ＝ 问不出门的那一形）。
 fn row(
@@ -94,7 +102,7 @@ fn row(
 #[test]
 fn an_open_gate_is_editable_with_nothing_to_explain() {
     let r = row("a.txt", false, false, Some(cmd_wire::files::Gate::Cap(CAP)));
-    assert_eq!(why_not_editable(&r), None);
+    assert_eq!(edit_why(&r), None);
     assert_eq!(edit_cap(&r), Some(CAP));
 }
 
@@ -107,26 +115,26 @@ fn a_closed_gate_says_the_backends_sentence_and_a_missing_gate_says_unknown() {
         false,
         Some(cmd_wire::files::Gate::No("后端那一句".into())),
     );
-    assert_eq!(why_not_editable(&r).as_deref(), Some("后端那一句"));
+    assert_eq!(edit_why(&r).as_deref(), Some("后端那一句"));
     assert_eq!(edit_cap(&r), None);
     assert_eq!(
-        why_not_editable(&row("x", false, false, None)),
+        edit_why(&row("x", false, false, None)),
         Some(copy_core::copy_text("rsFilewinSource.gates.unlisted", &[]))
     );
 }
 
-/// 目录与有损名各有自己那句话（**不是同一句**），门放行也挡。
+/// 目录有自己那句话，门放行也挡；有损名照真行那样带着原始字节 ⇒ 寻址得到，门放行就改得了。
 #[test]
-fn a_directory_and_a_lossy_name_each_get_their_own_sentence() {
+fn a_directory_gets_its_own_sentence_and_a_lossy_name_with_its_bytes_edits() {
     let open = || Some(cmd_wire::files::Gate::Cap(CAP));
-    let d = why_not_editable(&row("sub", true, false, open())).expect("目录竟然可编辑");
-    let l = why_not_editable(&row("bad", false, true, open())).expect("有损名竟然可编辑");
+    let d = edit_why(&row("sub", true, false, open())).expect("目录竟然可编辑");
     assert!(
         d.contains(copy_core::copy_static!("gridMonitor.fact.dir")),
         "{d}"
     );
-    assert!(l.contains("UTF-8"), "{l}");
-    assert_ne!(d, l, "两种拒绝说的是同一句话 —— 那用户分不清是哪一种");
+    let mut lossy = row("\u{FFFD}.txt", false, true, open());
+    lossy.raw_name = Some(b"\xff.txt".to_vec());
+    assert_eq!(edit_why(&lossy), None, "带着字节的有损名改不了");
 }
 
 /// 池子回 `None` 之后那句话里**没有**「太大」，而且提了那个竞态。

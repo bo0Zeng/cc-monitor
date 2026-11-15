@@ -7,7 +7,7 @@ description = "装 / 升级远端后端的判定与编排：计划（那台要�
 
 # 住后端那棵 workspace（`../Cargo.toml` 的 `[workspace] members`），与拨号核心（`../../comms/ssh-dial`）同一份 lock、同一个 russh。
 # 在后端源码树里（`src/backend/`）⇒ 只读 · 远端写只许 ssh-dial/sftp.rs · 零定时器这几族扫描型判据照旧管到这里。
-# 只依赖两份契约（deploy-contract · relay-route-core）与拨号核心；monitor 不链它（判定类，monitor 生产段只许契约类）。
+# 只依赖两份契约（deploy-contract · relay-route-core）、引号原语 shell-quote-core 与拨号核心；monitor 不链它（判定类，monitor 生产段只许契约类）。
 [lib]
 path = "lib.rs"
 
@@ -17,8 +17,8 @@ deploy-contract = { path = "../../common/deploy-contract" }
 relay-route-core = { path = "../../common/relay-route-core" }
 copy-core = { path = "../../common/copy-core" }
 cmd-wire = { path = "../../common/cmd-wire" }
-# 成品里那台离线那一句由连接层写（`comms_inward::chan::said::offline`），这里照摆。
-comms-inward = { path = "../../comms/inward" }
+# 扫身份戳那条命令里正则过单引号（`stamp_scan_cmd`）。
+shell-quote-core = { path = "../../common/shell-quote-core" }
 serde_json = "1"
 tokio = { version = "1", features = ["rt", "macros", "io-util", "sync"] }
 tracing = "0.1"

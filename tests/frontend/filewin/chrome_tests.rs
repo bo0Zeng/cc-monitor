@@ -45,23 +45,113 @@ fn back_and_forward_walk_the_tabs_own_history() {
     assert_eq!(w.cwd, "/a/b");
 }
 
-/// 地址栏手输：从 `/` 起头的去那儿（连续斜杠折一个、去尾斜杠）；不是 ⇒ 不动、出声。
+/// 地址栏手输：那一串（只去首尾空白）原样去列，不归一、不判绝对（相对路径由那台拒、照它那一句说）；
+/// 列成了 ⇒ 当前目录换成那台写好的那一级（回包面包屑最后一段），不多记一步历史。
 #[test]
-fn the_address_bar_goes_where_it_is_told_and_refuses_relative_paths() {
+fn the_address_bar_sends_what_was_typed_and_lands_where_the_backend_says() {
     let mut w = window("/a", Vec::new());
     w.begin_address_edit();
     assert_eq!(w.address_editing(), Some("/a"));
-    w.addr_edit = Some("/x//y/".into());
+    w.addr_edit = Some(" ~/x//y/ ".into());
     assert!(w.commit_address());
-    assert_eq!(w.cwd, "/x/y");
+    assert_eq!(w.cwd, "~/x//y/", "手输那一串该原样交出去");
     assert_eq!(w.address_editing(), None);
-    w.addr_edit = Some("rel/dir".into());
-    assert!(!w.commit_address());
-    assert_eq!(w.cwd, "/x/y");
-    assert_eq!(
-        w.key_notice(),
-        Some(copy_text("rsFilewinChrome.address.notAbsolute", &[]).as_str())
+    *w.listing.landed_dir.lock().unwrap() = Some("/home/u/x/y".into());
+    w.adopt_landed_dir();
+    assert_eq!(w.cwd, "/home/u/x/y", "列成了没换成那台写好的那一级");
+    assert!(
+        w.listing.landed_dir.lock().unwrap().is_none(),
+        "收过一次就该清掉"
     );
+    assert!(w.go_back());
+    assert_eq!(w.cwd, "/a", "换成那台写好的形不该多记一步历史");
+    w.addr_edit = Some("rel/dir".into());
+    assert!(w.commit_address());
+    assert_eq!(w.cwd, "rel/dir", "相对路径也原样交出去（由那台拒）");
+    w.addr_edit = Some("   ".into());
+    assert!(!w.commit_address(), "空白一串不去列");
+    // 上一个目录列成的那一级没收走就换了目录 ⇒ 作废：不拿它把当前目录拨回去，「家」「根」也不按它亮。
+    *w.listing.landed_dir.lock().unwrap() = Some("/home/u/x/y".into());
+    w.listing
+        .at_home
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    *w.listing.caret.lock().unwrap() = Some(crate::source::Caret {
+        by: crate::source::SortBy::Size,
+        descending: true,
+    });
+    w.navigate_to("/z".into());
+    w.adopt_landed_dir();
+    assert_eq!(w.cwd, "/z", "换了目录还被上一个目录的回包拨回去");
+    assert!(
+        !w.listing.at_home.load(std::sync::atomic::Ordering::SeqCst),
+        "换了目录「家」还按上一个亮着"
+    );
+    assert_eq!(
+        *w.listing.caret.lock().unwrap(),
+        None,
+        "换了目录表头箭头还照上一个目录的回包画"
+    );
+}
+
+/// 同一目录重问、问不成（没运行时 · 有运行时没通道 · 那台拒了）⇒ 错误那一屏不挂上一趟的头：
+/// 表头箭头 · 「家」「根」· 截断那一条一起作废。
+#[test]
+fn a_failed_reask_drops_what_the_last_head_said() {
+    let side = crate::find::testing::SideRt::new();
+    let ways: [(&str, fn(&mut FileWindow, &crate::find::testing::SideRt)); 3] = [
+        ("没运行时", |w, _| w.reload()),
+        ("没通道", |w, side| {
+            w.rt = Some(side.handle());
+            w.reload();
+        }),
+        ("那台拒了", |w, _| {
+            let mine = w.listing.start();
+            assert!(crate::shell::listing::store_listed_if_current(
+                &w.listing,
+                mine,
+                Err("拒了".into()),
+            ));
+        }),
+    ];
+    for (how, ask) in ways {
+        let mut w = window("/m", Vec::new());
+        let mine = w.listing.start();
+        assert!(crate::shell::listing::store_listed_if_current(
+            &w.listing,
+            mine,
+            Ok(crate::find::testing::reply_of_rows(
+                &[],
+                cmd_wire::files::LsHead {
+                    by: crate::source::SortBy::Size,
+                    descending: true,
+                    truncated: true,
+                    at_home: true,
+                    ..crate::find::testing::plain_head(9)
+                },
+            )),
+        ));
+        let l = &w.listing;
+        let at = |c: &std::sync::atomic::AtomicBool| c.load(std::sync::atomic::Ordering::SeqCst);
+        assert!(
+            l.caret.lock().unwrap().is_some()
+                && at(&l.truncated)
+                && at(&l.at_home)
+                && at(&l.at_root)
+        );
+        ask(&mut w, &side);
+        let l = &w.listing;
+        assert!(l.error.lock().unwrap().is_some(), "{how}：没落成错误那一屏");
+        assert_eq!(
+            *l.caret.lock().unwrap(),
+            None,
+            "{how}：错误那一屏还挂着上一趟的箭头"
+        );
+        assert!(!at(&l.truncated), "{how}：错误那一屏还说上一趟被截断");
+        assert!(
+            !at(&l.at_home) && !at(&l.at_root),
+            "{how}：「家」「根」还按上一趟亮"
+        );
+    }
 }
 
 /// 导航键的映射（纯）：Alt+← / Alt+→ / 鼠标侧键 / F5 / Ctrl+L / Ctrl+F；不带 Alt 的 ← → 不接（列表那张键位表刻意不接）。
@@ -220,23 +310,54 @@ fn clicking_a_header_sorts_and_clicking_again_reverses() {
             row("dir", true, 0, 1),
         ],
     );
+    // 点表头会重列一趟：接一台收下就不答的 ⇒ 每一趟都停在「回包未到」。
+    let side = crate::find::testing::SideRt::new();
+    crate::find::testing::hold_silent(&mut w, &side);
     let ctx = egui::Context::default();
     let _ = frame(&ctx, &mut w, Vec::new());
     let mtime = crate::rows::column_label(crate::source::SortBy::Mtime);
+    let size = crate::rows::column_label(crate::source::SortBy::Size);
+    let (down, up) = (
+        egui_phosphor::regular::CARET_DOWN,
+        egui_phosphor::regular::CARET_UP,
+    );
+    // 表头上带箭头的那几段（四列 × 两个朝向里画出来的）。
+    let carets = |painted: &[crate::copy::testing::PaintedText]| {
+        crate::rows::ORDER
+            .into_iter()
+            .map(crate::rows::column_label)
+            .flat_map(|l| [format!("{l} {down}"), format!("{l} {up}")])
+            .filter(|t| !rects_of(painted, t).is_empty())
+            .collect::<Vec<_>>()
+    };
+    // 回包头还没到过 ⇒ 哪一格都不带箭头。
+    assert_eq!(
+        carets(&frame(&ctx, &mut w, Vec::new())),
+        Vec::<String>::new()
+    );
     let _ = click(&ctx, &mut w, &mtime);
     // 先后由后端排：点下去换的是这一档（重列一趟），时间第一下新的在前。
-    let by = |reverse| crate::source::Sort {
+    let by = |by, reverse| crate::source::Sort { by, reverse };
+    assert_eq!(w.sort, by(crate::source::SortBy::Mtime, false));
+    // 箭头画在哪一列、朝哪都照那台答的（回包头的 `by` · `descending`，落进 listing），窗口不自己算：
+    // 那台答了「按修改时间 · 从大到小」⇒ 修改时间那一格朝下。
+    *w.listing.caret.lock().unwrap() = Some(crate::source::Caret {
         by: crate::source::SortBy::Mtime,
-        reverse,
-    };
-    assert_eq!(w.sort, by(false));
-    // 再点：那一格的字带上了箭头，找带箭头的那一段。
+        descending: true,
+    });
+    let shown = format!("{mtime} {down}");
     let painted = frame(&ctx, &mut w, Vec::new());
-    let shown = format!("{mtime} {}", egui_phosphor::regular::CARET_DOWN);
-    let at = rects_of(&painted, &shown);
-    assert_eq!(at.len(), 1, "表头上该写着「{shown}」：{painted:?}");
-    let _ = frame(&ctx, &mut w, crate::rows::testing::click_at(at[0].center()));
-    assert_eq!(w.sort, by(true));
+    assert_eq!(carets(&painted), [shown.clone()], "{painted:?}");
+    // 点「大小」、回包未到 ⇒ 请求换成大小，箭头仍在那台答的修改时间那一格、朝下。
+    let _ = click(&ctx, &mut w, &size);
+    assert_eq!(w.sort, by(crate::source::SortBy::Size, false));
+    let painted = frame(&ctx, &mut w, Vec::new());
+    assert_eq!(carets(&painted), [shown.clone()], "{painted:?}");
+    // 点带箭头的那一段 ⇒ 切回修改时间（第一下）；再点 ⇒ 反过来。
+    let _ = click(&ctx, &mut w, &shown);
+    assert_eq!(w.sort, by(crate::source::SortBy::Mtime, false));
+    let _ = click(&ctx, &mut w, &shown);
+    assert_eq!(w.sort, by(crate::source::SortBy::Mtime, true));
     // 列宽：拖「修改时间|类型」那条线往右 40 ⇒ 修改时间那一列宽 40、类型那一列窄 40。
     let before = w.cols;
     w.cols.drag(1, 40.0);
@@ -259,9 +380,9 @@ fn clicking_a_header_sorts_and_clicking_again_reverses() {
     }
 }
 
-/// 左栏「其他机器」：去掉这一台与本机；没有样子时点了出声、不发。
+/// 左栏「其他机器」：本机打头（本机也开文件窗口）、去掉这一台；看着本机的那扇窗不再列本机；没有样子时点了出声、不发。
 #[test]
-fn other_machines_exclude_this_one_and_the_local_one() {
+fn other_machines_lead_with_the_local_one_and_leave_out_this_one() {
     let mut w = window("/m", Vec::new());
     w.machines = vec![
         "<local>".into(),
@@ -270,7 +391,11 @@ fn other_machines_exclude_this_one_and_the_local_one() {
         "devbox".into(),
     ];
     let mut ws = Workspace::new(w);
-    assert_eq!(ws.other_machines(), ["laptop", "devbox"]);
+    assert_eq!(ws.other_machines(), [cmd_wire::LOCAL, "laptop", "devbox"]);
+    let mut here = window("/m", Vec::new());
+    here.source = crate::source::Source::remote(cmd_wire::LOCAL.to_string());
+    here.machines = vec!["box".into(), "laptop".into()];
+    assert_eq!(Workspace::new(here).other_machines(), ["box", "laptop"]);
     assert!(!ws.open_other("laptop", None), "没通道不该发");
     assert_eq!(ws.notice(), Some(crate::shell::NO_LINE.as_str()));
 }

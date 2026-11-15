@@ -14,6 +14,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ccmonitor.mobile.core.claude.link.Login
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.link.HostBackends
+import com.ccmonitor.mobile.ssh.machineNameOf
 import com.ccmonitor.mobile.ui.login.LoginFlow
 import com.ccmonitor.mobile.ui.login.LoginSheet
 import org.koin.compose.koinInject
@@ -44,7 +45,7 @@ fun NewSessionPane(
     }, modifier = modifier.testTag(NewSessionTags.BAR))
 
     val close = { sheet = null }
-    when (sheet) {
+    when (val open = sheet) {
         NewSessionSheet.Machine ->
             MachineSheet(rememberMachines(), hostId, onPick = { id ->
                 close()
@@ -58,8 +59,9 @@ fun NewSessionPane(
         NewSessionSheet.Account ->
             AccountSheet(ui, machine, picker, onLogin = { name ->
                 close()
-                login = LoginFlow(backends.of(hostId), hostId, machine, Login.account(ui.agent.orEmpty(), name), scope).also { it.start() }
+                login = LoginFlow(backends.of(hostId), hostId, machine, Login.account(name), scope).also { it.start() }
             }, onDismiss = close)
+        NewSessionSheet.Model, NewSessionSheet.Effort -> ModelEffortSheet(open, ui, machine, picker, close)
         NewSessionSheet.Cwd ->
             CwdSheet(ui, machine, onPick = { picker.pickRecent(it) { picked -> if (picked) close() } }, onBrowse = {
                 close()
@@ -89,10 +91,11 @@ fun NewSessionPane(
 private fun rememberMachines(): List<MachineRow> {
     val hosts by koinInject<HostRepository>().observeAll().collectAsState(initial = emptyList())
     val backends = koinInject<HostBackends>()
+    val name = remember(hosts) { machineNameOf(hosts) }
     return hosts.map { h ->
         key(h.id) {
             val st by backends.of(h.id).state.collectAsState()
-            MachineRow(h.id, h.label, st?.machine?.dot, st?.machine?.linked)
+            MachineRow(h.id, name(h.id), st?.machine?.dot, st?.machine?.linked)
         }
     }
 }

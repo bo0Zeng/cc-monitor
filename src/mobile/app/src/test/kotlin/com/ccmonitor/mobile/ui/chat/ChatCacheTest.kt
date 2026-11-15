@@ -88,8 +88,9 @@ class ChatCacheTest {
             id: String,
             outcome: String,
             attempts: Int,
+            refusedSaid: String?,
         ) {
-            pend.replaceAll { if (it.id == id) it.copy(outcome = outcome, attempts = attempts) else it }
+            pend.replaceAll { if (it.id == id) it.copy(outcome = outcome, attempts = attempts, refusedSaid = refusedSaid) else it }
         }
 
         override suspend fun bind(
@@ -347,12 +348,12 @@ class ChatCacheTest {
             val link = FakeCoreLink()
             link.state.value = linkDown("断开")
             val file = FakeCoreLink.File()
-            link.answer = { cmd, args -> if (cmd == "session-queue-cancel") Reply.Ok(mapOf("cancelled" to false, "queue" to mapOf("items" to emptyList<Any>(), "sent" to emptyList<Any>()))) else file.answer(cmd, args) ?: Reply.LinkDown }
+            link.answer = { cmd, args -> if (cmd == "session-queue-cancel") Reply.Ok(mapOf("cancelled" to false, "said" to "已送进会话", "queue" to mapOf("items" to emptyList<Any>(), "sent" to emptyList<Any>()))) else file.answer(cmd, args) ?: Reply.LinkDown }
             link.report("s1", "/w")
             val cache = MemCache().apply { pend += Pending("local-x", "s1", "半路的", PendingOutcome.PENDING, 1) }
             val s = open(link, cache)
             runCurrent()
-            s.cancel("local-x")
+            s.withdraw("local-x")
             runCurrent()
             link.state.value = linkUp()
             runCurrent()

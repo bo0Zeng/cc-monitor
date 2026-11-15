@@ -1,10 +1,18 @@
 package com.ccmonitor.mobile.ui.settings
 
+import com.ccmonitor.mobile.core.claude.link.Login
+import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.AccountRow
+import com.ccmonitor.mobile.core.wire.gen.Failed
 import com.ccmonitor.mobile.core.wire.gen.Tone
 import com.ccmonitor.mobile.link.Problem
+import com.ccmonitor.mobile.ui.Wires
+import com.ccmonitor.mobile.ui.chat.FakeCoreLink
 import com.ccmonitor.mobile.ui.chat.linkDown
 import com.ccmonitor.mobile.ui.chat.linkUp
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -41,4 +49,27 @@ class AccountsStatesTest {
         assertEquals("d-bad", bar.detail)
         assertFalse(bad.loading)
     }
+
+    @Test
+    fun `号名那一行照摆那台写好的「MCP 登录不同步」那一句；缺 ⇒ 不出`() {
+        fun row(note: String?) = Wire.bind<AccountRow>(Wires.accountRow("name" to "f", "label" to "f", "mcpLogins" to note))!!
+        assertEquals(listOf("后端·不同步"), accountLineOneNotes(row("后端·不同步")))
+        assertTrue(accountLineOneNotes(row(null)).isEmpty())
+    }
+
+    @Test
+    fun `退出 · 状态问那台一次：只交号名（家由那台照号表认）；成了照摆那台写好的那一句，没成 ⇒ 那台那一句`() =
+        runTest {
+            val l = FakeCoreLink()
+            l.answer = { cmd, _ ->
+                if (cmd == Login.STATUS) Reply.Ok(mapOf("said" to "后端·x1 未登录")) else Reply.Ok(mapOf("said" to "后端·x1 已退出登录"))
+            }
+            assertEquals("后端·x1 未登录", loginOnce(l, "smokebox", Login.STATUS, "x1"))
+            assertEquals("后端·x1 已退出登录", loginOnce(l, "smokebox", Login.OUT, "x1"))
+            assertEquals(listOf(mapOf("account" to "x1")), l.calls(Login.STATUS))
+            assertEquals(listOf(mapOf("account" to "x1")), l.calls(Login.OUT))
+            l.answer = { _, _ -> Reply.Failed(Failed("failed", "后端·退出登录未完成", "d")) }
+            val said = loginOnce(l, "smokebox", Login.OUT, "x1")
+            assertTrue(said, said.contains("后端·退出登录未完成"))
+        }
 }

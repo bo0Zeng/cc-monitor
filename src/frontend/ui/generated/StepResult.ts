@@ -66,4 +66,8 @@ chars?: number,
 /**
  * 派出子运行那次调用的结果是哪一种（[`ResultKind`]）：派出卡照它画（回执不画「交回结果」）。不是派出子运行的结果 ⇒ 缺。
  */
-kind?: ResultKind, };
+kind?: ResultKind, 
+/**
+ * 派出卡收着时那一句「交回结果 · N 字」（后端 `step_clock::said` 写）：只有交回那一种（`kind` 为 `handback`）有，别的 ⇒ 缺。
+ */
+resultText?: string, };

@@ -108,6 +108,15 @@ describe("〔C4a〕webview 通道客户端", () => {
     expect(decodeFail(golden.ours)).toEqual({ layer: "ours", why: "Misuse" });
   });
 
+  it("★ 本侧在等的满了（`Full`）是传输层一格，不是形状错", () => {
+    expect(decodeFail({ err: { Hop: { idx: 1, tag: "write", reach: "NotSent", why: "Full" } }, body: [] })).toEqual({
+      layer: "hop",
+      at: { idx: 1, tag: "write" },
+      reach: "NotSent",
+      why: "Full",
+    });
+  });
+
   it("★ 期限已过：照样交 monitor、`leftMs` 是 0（后端那一跳一个字节都不发由 monitor 守）；它回的那一句与详情原样上身", async () => {
     const said = copyText("rsChanSaid.hop.expired");
     invokeMock.mockRejectedValue({ err: { Hop: { idx: 0, tag: "write", reach: "NotSent", why: "Overrun" } }, body: [], said, detail: "D" });

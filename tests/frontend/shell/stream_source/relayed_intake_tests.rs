@@ -69,6 +69,29 @@ fn line(seq: u64) -> String {
     .to_string()
 }
 
+/// 本机后端紧跟在那台一行会话帧后面转来的那一格成品（`seats`：那一条此刻的整条；`control/feeds.rs` 那一侧折，壳不折）。
+fn seat_after(machine: &str, line: &str) -> LocalItem {
+    let (sid, live, left) = match cmd_wire::frame::decode::<serde_json::Value>(line).unwrap() {
+        cmd_wire::frame::Frame::SessionAdded(m) => (m.sid.clone(), Some(m), None),
+        cmd_wire::frame::Frame::SessionLeft(l) => (l.sid.clone(), None, Some(l)),
+        other => panic!("夹具只有宣告 · 离开：{other:?}"),
+    };
+    relay(Relayed::Seats {
+        machine: machine.into(),
+        seats: cmd_wire::frame::SessionSeats {
+            seats: vec![cmd_wire::frame::SessionSeat::of(
+                &sid,
+                live.as_ref(),
+                left.as_ref(),
+                None,
+                None,
+            )],
+            listed: false,
+            whole: false,
+        },
+    })
+}
+
 fn relay(r: Relayed) -> LocalItem {
     LocalItem::Frame(Ordered::Relayed(r))
 }
@@ -128,7 +151,12 @@ async fn a_relayed_connection_opens_feeds_and_ends_that_machines_intake() {
     // 本机那一格是进程内全局的：那台接上时名单台经它报（别的用例在那一格上登记的替身会收到）。
     let _g = crate::inbound_client::local_origin_test_lock();
     let (tx, cells, consumer) = harness(BOX);
-    for item in [from_box(hello()), from_box(added()), from_box(line(0))] {
+    for item in [
+        from_box(hello()),
+        from_box(added()),
+        seat_after(BOX, &added()),
+        from_box(line(0)),
+    ] {
         tx.send(item).await.unwrap();
     }
     until("那台的那一行到了", || {
@@ -148,7 +176,8 @@ async fn a_relayed_connection_opens_feeds_and_ends_that_machines_intake() {
         ));
         serde_json::to_string(&f).unwrap()
     };
-    tx.send(from_box(unclear)).await.unwrap();
+    tx.send(from_box(unclear.clone())).await.unwrap();
+    tx.send(seat_after(BOX, &unclear)).await.unwrap();
     tx.send(relay(Relayed::Ended {
         machine: BOX.into(),
     }))
@@ -206,7 +235,11 @@ async fn the_local_stream_ending_ends_every_relayed_machine() {
         ));
         serde_json::to_string(&f).unwrap()
     };
-    for item in [from(BOX2, hello()), from(BOX2, added_other)] {
+    for item in [
+        from(BOX2, hello()),
+        from(BOX2, added_other.clone()),
+        seat_after(BOX2, &added_other),
+    ] {
         tx.send(item).await.unwrap();
     }
     until("那台的会话进了会话账", || live_at(BOX2, OTHER)).await;
@@ -218,6 +251,107 @@ async fn the_local_stream_ending_ends_every_relayed_machine() {
     assert!(
         live_at(BOX2, OTHER),
         "本机那条流断了，壳自己把那台的会话改了（说不清只由本机后端说）"
+    );
+    drop(tx);
+    tokio::time::timeout(guard_core::wall::CEILING, consumer)
+        .await
+        .expect("收的那一头没收摊")
+        .unwrap();
+}
+
+/// ★ 本机那一台也只照本机后端折好的成品进会话账：本机那条流上一帧宣告原样走，紧跟的 `session_seats` 才让它算活。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_local_machine_enters_the_book_only_through_its_seats() {
+    let _g = crate::inbound_client::local_origin_test_lock();
+    const MINE: &str = "rl-local-1";
+    let (tx, _cells, consumer) = harness("<local>");
+    let meta = crate::frame_fixtures::session_added(MINE, serde_json::json!({}));
+    let local = crate::origin::Origin::local();
+    let is_live = || crate::session_book::book().read().is_live(&local, MINE);
+    tx.send(LocalItem::Frame(Ordered::SessionAdded(meta.clone())))
+        .await
+        .unwrap();
+    tx.send(LocalItem::Frame(Ordered::SessionSeats(
+        cmd_wire::frame::SessionSeats {
+            seats: vec![cmd_wire::frame::SessionSeat::of(
+                MINE,
+                Some(&meta),
+                None,
+                None,
+                None,
+            )],
+            listed: false,
+            whole: false,
+        },
+    )))
+    .await
+    .unwrap();
+    until("本机的成品进了会话账", is_live).await;
+    drop(tx);
+    tokio::time::timeout(guard_core::wall::CEILING, consumer)
+        .await
+        .expect("收的那一头没收摊")
+        .unwrap();
+}
+
+/// 订阅收到的那几格活卡的体（`live` 那一格）。
+#[derive(Default)]
+struct LiveBodies(Mutex<Vec<serde_json::Value>>, Mutex<u32>);
+
+impl ItemSink for LiveBodies {
+    fn deliver(&self, _: &str, _: u64, items: Vec<Item>) {
+        for i in items {
+            match i {
+                Item::Frame { body, .. } => {
+                    let v: serde_json::Value = serde_json::from_slice(&body.0).unwrap();
+                    self.0.lock().unwrap().push(v["live"].clone());
+                }
+                Item::Unseen { .. } => *self.1.lock().unwrap() += 1,
+                _ => {}
+            }
+        }
+    }
+}
+
+/// ★ 本机那条流整行丢了（丢的可能是一格 `live_now`）⇒ 订了本机活卡的，那一处下一格交带来的整份、不接尾巴。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_lost_local_line_makes_the_next_live_card_go_out_whole() {
+    let _g = crate::inbound_client::local_origin_test_lock();
+    let local = crate::origin::Origin::local();
+    let replay = Arc::new(EventReplay::new());
+    let got = Arc::new(LiveBodies::default());
+    replay.attach_sink(got.clone());
+    replay.subscribe(
+        "w",
+        1,
+        &local,
+        crate::event_replay::SESSION_LIVE_CARD_KIND,
+        None,
+        64,
+    );
+    let (tx, rx) = tokio::sync::mpsc::channel(64);
+    let consumer = tokio::spawn(consume(rx, replay.clone()));
+    let whole = serde_json::json!({"sid": "rl-live", "cards": []});
+    let tail: cmd_wire::frame::LiveNow = serde_json::from_value(serde_json::json!({
+        "change": {"t": "tail", "tail": {"sid": "rl-live", "card": 0, "keep": 0, "blocks": []}},
+        "whole": whole,
+    }))
+    .unwrap();
+    tx.send(LocalItem::LineLost).await.unwrap();
+    // 排在它后面的那一件（流结束 ⇒ 订阅收 `Unseen`）到了 ⇒ 丢行那一格已经处理过。
+    tx.send(LocalItem::StreamEnded).await.unwrap();
+    // 订上那一刻那台还看不见（一格 `Unseen`），流结束再一格。
+    until("流结束那一格到了", || *got.1.lock().unwrap() > 1).await;
+    replay.on_live_now(&local, tail.clone());
+    replay.on_live_now(&local, tail);
+    let bodies = got.0.lock().unwrap().clone();
+    assert_eq!(
+        bodies
+            .iter()
+            .map(|b| b["t"].as_str().unwrap_or("").to_string())
+            .collect::<Vec<_>>(),
+        ["whole", "tail"],
+        "丢过一行之后那一处先交整份：{bodies:?}"
     );
     drop(tx);
     tokio::time::timeout(guard_core::wall::CEILING, consumer)

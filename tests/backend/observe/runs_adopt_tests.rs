@@ -280,3 +280,78 @@ fn a_forked_grandchild_is_not_its_own_spawner() {
     assert_eq!(g.parent.as_deref(), Some("w1"));
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// ── 判续跑照两边记录自带的时刻 ────────────────────────────────────────────────────
+
+/// 在那一行上补记录自带的时刻（`timestamp`，ISO 8601）。
+fn stamped(line: String, ts: &str) -> String {
+    let mut v: serde_json::Value = serde_json::from_str(&line).unwrap();
+    v.as_object_mut()
+        .unwrap()
+        .insert("timestamp".into(), ts.into());
+    v.to_string()
+}
+
+/// 后台派出那个子运行的收场通知（父记录里那一行）。
+fn notice_done(run: &str, ts: &str) -> String {
+    stamped(
+        format!(
+            r#"{{"type":"queue-operation","operation":"enqueue","content":"<task-notification>\n<task-id>{run}</task-id>\n<status>completed</status>\n<summary>x</summary>\n</task-notification>"}}"#
+        ),
+        ts,
+    )
+}
+
+/// 子运行那一轮交回的应答（不收尾的一次工具调用）。
+fn child_say(run: &str, rid: &str, ts: &str) -> String {
+    stamped(child_tool(run, rid), ts)
+}
+
+/// 后台派出 w1 在跑 → 父侧收到它的完成通知（记录时刻 `T`）→ 子记录这才读到又一次应答（记录时刻 `reply`），
+/// 那份文件的写入时刻拨到收通知那一刻之后（读得晚、文件又被碰过）。回 w1 此刻的状态。
+fn after_notice(reply: &str) -> RunState {
+    let dir = test_home::scratch(&format!("resume-{}", reply.replace(':', "")));
+    let parent = dir.join(format!("{SID}.jsonl"));
+    append(&parent, &[spawn("t1", "L1"), launched("t1", "w1")]);
+    let c = child_of(&parent, "w1");
+    append(&c, &[child_say("w1", "r-a", "2026-10-01T10:00:00.000Z")]);
+    let book = Arc::new(RunBook::default());
+    let mut track = RunTrack::new(faces(), book.clone());
+    adopt(&parent, &mut track);
+    let note = notice_done("w1", "2026-10-01T10:05:00.000Z");
+    append(&parent, std::slice::from_ref(&note));
+    track.main_record(SID, &crate::agents::Line::new(&note, 0));
+    let state = |book: &RunBook| {
+        book.runs(SID)
+            .into_iter()
+            .find(|r| r.run == "w1")
+            .map(|r| r.state)
+    };
+    assert_eq!(state(&book), Some(RunState::Done), "通知到了 ⇒ 完成");
+    append(&c, &[child_say("w1", "r-b", reply)]);
+    let f = std::fs::OpenOptions::new().append(true).open(&c).unwrap();
+    f.set_modified(SystemTime::now() + Duration::from_secs(60))
+        .unwrap();
+    track.on_path(&c);
+    let s = state(&book).expect("w1 在表里");
+    let _ = std::fs::remove_dir_all(&dir);
+    s
+}
+
+#[test]
+fn a_reply_written_before_the_notice_does_not_resume_the_run() {
+    assert_eq!(
+        after_notice("2026-10-01T10:04:59.000Z"),
+        RunState::Done,
+        "交回那一行记录时刻早于完成通知：不是新的一轮，仍是完成（文件写入时刻晚于收通知那一刻不算数）"
+    );
+}
+
+#[test]
+fn a_reply_written_after_the_notice_resumes_the_run() {
+    assert_eq!(
+        after_notice("2026-10-01T10:05:01.000Z"),
+        RunState::Running,
+        "记录时刻晚于完成通知的新应答 ⇒ 被续跑了，回到在跑"
+    );
+}

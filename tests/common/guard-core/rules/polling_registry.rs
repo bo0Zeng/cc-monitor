@@ -1,14 +1,9 @@
 //! **前端 + `shared/` 下所有 shell 的周期唤醒清账**（「现在又轮询吗?
 //! 尽量不要轮询，既然都收编了那就尽量在内部进行事件驱动」）。
 //!
-//! ⚠ **08-10（devbench F07）扩面**：本行原写「前端 + `shared/ccm`」，而扫描面确实只
-//! `push` 了 `shared/ccm` **一个写死的文件名** ⇒ `src/shared/cc-bus/` 那棵树整个在账外，
-//! 其中当年有个长驻 broker、每 0.5s 扫一次队列目录（它自己的注释承认「本实现恒轮询,
-//! 未用 inotify」；后来删了）。★ **这不是「另一个仓不该管」**：同仓的 `shell_lint_registry` 与
-//! `session_name_registry` **都**已把那棵树算进人群，只有本表没跟上 —— 这是「判据的人群
-//! 从已经有名字的那批派生」在本表身上的实例。
-//! ⇒ 人群改成**遍历 `shared/` 下所有 shell**（`.sh` 后缀 **或**首行有 shebang ——
-//! `cc-bus send`/`cc-bus recv` 这些没后缀），加一个脚本自动进人群，不用谁记得回来 push 一行。
+//! 人群是**遍历 `shared/` 下所有 shell**（`.sh` 后缀 **或**首行有 shebang ——
+//! `cc-bus send`/`cc-bus recv` 这些没后缀），加一个脚本自动进人群，不用谁记得回来 push 一行
+//! （同仓的 `shell_lint_registry` 与 `session_name_registry` 也把那棵树算进人群）。
 //!
 //! # 为什么是本模块，而不是把后端那条护栏扩过来
 //!
@@ -17,7 +12,7 @@
 //! （那边有 UI 刷新、重连退避等**正当**周期行为），把本护栏扩过去会立刻变成噪音
 //! ⇒ **要钉那半得单独论证**。」
 //!
-//! **那个论证到今天没人做过** —— 于是前端与 `shared/ccm` 这半**一条机检都没有**，
+//! **那个论证到今天没人做过** —— 于是前端与 `src/shared/` 下的 shell 这半**一条机检都没有**，
 //! 而两个文件的头注里写着「本文件里不得出现 setInterval / setTimeout 轮询」这类**散文纪律**
 //! （`views/cc-bus-section.ts`；之前还有一份 `account-usage.ts`）。散文纪律 = 没有纪律，
 //! 这正是本工作区一直在治的病。
@@ -45,7 +40,7 @@
 //! **两层**，分工不同：
 //!
 //! 1. `REGISTERED` + `is_periodic` —— 查 TS 生产段（注释剥掉）里的 `setInterval`、
-//!    **`poll` 命名的递归 `setTimeout`**、以及 `shared/ccm` 里的 `sleep`，
+//!    **`poll` 命名的递归 `setTimeout`**、以及 `src/shared/` 下 shell 里的 `sleep`，
 //!    要求每一处**说清它是哪一类、谁退役它**。钉的是「认出来的有没有主人」。
 //! 2. 调用点旁的分类标记 —— 查**全部** `setInterval` / `setTimeout` /
 //!    `requestAnimationFrame` / `requestIdleCallback` 调用点，要求每一处上方（或同一行）

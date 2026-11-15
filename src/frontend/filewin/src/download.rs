@@ -1,367 +1,66 @@
-//! **往外拖** —— 把远端那一行拉到本机（`sftp_download`）。
+//! **下载到本机**：那一台的一项（存盘框给落点）或几项（选目录框给目录）—— 都是一组寻址本机的 `transfer-copy`
+//! （这一台 → 本机，[`super::transfer`]），一组一行「进度」。
 //!
-//! # 🔴 一、为什么不是一个原生「保存」对话框
-//!
-//! webview 里的做法是 Tauri 的 `saveDialog`。
-//! 这个窗口是 **egui，不是 webview** ⇒ 那条路不能照搬。
-//!
-//! 底下那个 crate（`rfd 0.16.0`）其实**已经在锁文件里**（`tauri-plugin-dialog` 带进来的），
-//! 所以「加个依赖」不是成本所在。**真正的障碍是量不到**：原生对话框能不能从 egui
-//! 那条线程弹出来，要一个图形会话才验得了，而本机 `XDG_SESSION_TYPE=tty`
-//!⇒ 在这台机器上**永远量不到**。
-//!
-//! ⇒ 走窗口自己那套「问一句」（同「复制为」「改名」那个形状）：全程可判，零新依赖。
-//! ⚠ 这不是说原生对话框是错的答案 —— 它是一个**今天验不了**的答案。
-//! 登记在，等有真桌面那天再量。
-//!
-//! # 🔴窗口不碰 SFTP：下载经通道开单、订阅进度（[`pull_one`]）
-//!
-//! 下面第二、三节说的「池子那一层」今天住 **monitor 里的传输台**（`transfer_relay::transfer_call` 开单、本机常驻后端起跑）；
-//! 窗口这一侧照旧只把那句拒绝原样带给用户。
-//! 本机落点那道 Claude 数据围栏（开单时一道、后端起跑时一道）**两道都删了**（用户「文件管理器全部都可以改.
-//! 不需要任何围栏」）；后端那一侧只剩路径解析（绝对路径 · 有文件名 · 父目录在盘上）。第二节是历史。
-//!
-//! # 二、〔历史〕围栏在池子那一层，不在这儿
-//!
-//! 本机落点那道围栏 2026-09-21 补在了当时池子里 `sftp_download` 的第一行
-//! （`guard_write(&local_path)`）—— 逐条来历住那段注释（三张账首尾相接推诿、
-//! 链子末端一句假话）。⇒ **本模块不自己判一遍**：判定只有一个家。
-//!
-//! ⚠ 本模块**会**把那句拒绝原样带给用户（[`Outcome::Failed`]），
-//! 但它不复制那个判定。
-//!
-//! # 🔴 三、不静默覆盖 —— 而这一格比上传那一侧更要紧
-//!
-//! 传输台先把字节写进本机暂存区的 `.part`，再经 `common::staging::land` 上位 ⇒ 落点原处那个文件
-//! **被原子地盖掉**，没有备份、不可撤销。
-//!
-//! ⇒ 两问，不是一问（[`Ask`] 那个枚举就是这两步）：
-//! ① **落点**（缺省填 `<本机 home>/<原名>`）；
-//! ② 那条路径**已经有东西**了 ⇒ 再问一次「盖掉它？」。
-//!
-//! ⚠ 缺省值填不填，这里与 `writeops::WritePrompt::for_chmod` 的裁断**不同**，
-//! 理由也不同：权限那一格空着开，是因为「列表里没有 mode 可读，预填一个猜出来的值
-//! 而用户直接点确认 = 静默改坏权限」。这里预填的 `<home>/<原名>` **不是猜的**
-//! （它是一条确定的路径），而且它**不可能静默毁东西** —— 存在性那一问在它后面。
-//!
-//! # 四、**没**做的（逐条，别读宽）
-//!
-//! 1. **多选下载没做** —— 生产侧递进来的恒是一件。
-//! 2. **目录递归下载没做** —— `sftp_download` 读的是一个文件；
-//!    `pick_core::Pick::downloadable` 因此把目录挡在外面（而不是让它失败在池子里）。
-//! 3. **断点续传那一半不在这儿** —— 它在 `sftp_download` 里面（尾块逐字节对账），
-//!    本模块看不见也不该看见（同 `transfer.rs` 头注那一条）。
-//! 4. **真的「拖」出去没做** —— 这里是一颗按钮。窗口之间互拖、拖到别的应用里，
-//!    那要平台的拖放协议，与这里不是一件事。
+//! - 落点由系统框问（一项 ⇒ 存盘框，盖不盖它自己问过了 ⇒ 同名照盖；几项 ⇒ 选目录框，同名由本机后端探、冲突框问一次）。
+//! - 名字：存盘框里那一段没改 ⇒ 不交名字，本机后端照源那一段原始字节落、落本机那一段改成这台认的合法名（有损名也是）；
+//!   改了 ⇒ 就用他敲的。
+//! - 目录不收（本机后端那张表管：`files-menu` 成品里「下载」那一件灰着说为什么）。
 
 use copy_core::copy_text;
-use std::sync::{Arc, Mutex};
+
+use super::source::Origin;
+use cmd_wire::files::WirePath;
+use cmd_wire::transfer::CopyFrom;
 
 /// 行上那颗按钮。
 pub static DOWNLOAD_LABEL: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinDownload.label.download", &[]));
 
-/// 远端的名字在本机能不能原样用：`windows` ＝ 本机是 Windows ⇒ 那几个不认的字（`< > : " / \ | ? *` 与控制字符）换成 `_`、
-/// 结尾的点与空格去掉、保留的设备名（`CON` `PRN` `AUX` `NUL` `COM1`…`COM9` `LPT1`…`LPT9`，带不带扩展名都算）前面加 `_`；
-/// 别的平台原样（`/` 不会出现在一段名字里）。
-pub fn local_name(name: &str, windows: bool) -> String {
-    if !windows {
-        return name.to_string();
-    }
-    let mut out: String = name
-        .chars()
-        .map(|c| {
-            if c.is_control()
-                || matches!(c, '<' | '>' | ':' | '\u{22}' | '/' | '\\' | '|' | '?' | '*')
-            {
-                '_'
-            } else {
-                c
-            }
-        })
-        .collect();
-    while out.ends_with(['.', ' ']) {
-        out.pop();
-    }
-    if out.is_empty() {
-        out.push('_');
-    }
-    let stem = out
-        .split('.')
-        .next()
-        .unwrap_or("")
-        .trim_end()
-        .to_ascii_uppercase();
-    let reserved = matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
-        || ((stem.starts_with("COM") || stem.starts_with("LPT"))
-            && stem.len() == 4
-            && stem.as_bytes()[3].is_ascii_digit()
-            && stem.as_bytes()[3] != b'0');
-    if reserved {
-        out.insert(0, '_');
-    }
-    out
-}
-
-// 这里原来有「存到哪儿 / 盖掉它吗」那两问的状态机（落点怎么算 · 三支裁决 · 碰盘判存在）与改名那一句：
-//   改成系统存盘框（落点、同名都由系统框自己问），那一套随样子删了。
-
-// ═══════════════════════════════════════════════════════════════════════
-// 这一趟在窗口上的样子
-// ═══════════════════════════════════════════════════════════════════════
-
-/// 一趟下载的结局。
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Outcome {
-    Done {
-        dest: String,
-        bytes: u64,
-    },
-    /// 带着下层那句话（围栏的拒绝、连接失败、落地失败 …）与它的复制详情。
-    Failed {
-        dest: String,
-        why: super::source::Failed,
-    },
-}
-
-#[derive(Default)]
-struct Board {
-    got: u64,
-    total: u64,
-    /// 上一趟结局旁边要说的那一句（Windows 上有损名改成了什么）。
-    note: Option<String>,
-}
-
-/// 跨线程共享的那一格（UI 线程画，tokio 那条写）：在拉哪一行 · 结局走通用的那一格（[`super::trip::Lane`]），
-/// 这里只加下载独有的读数 · 那一句 · 取消台。
-#[derive(Clone, Default)]
-pub struct DownloadBoard {
-    lane: super::trip::Lane<Outcome>,
-    inner: Arc<Mutex<Board>>,
-    /// 取消登记 —— **与上传/复制那两条路同一个类型**，因为那是池子取消登记表的
-    /// 唯一造键落点（`transfer::CancelDesk::mint` 的头注：两趟同键会互相摘登记）。
-    desk: super::transfer::CancelDesk,
-}
-
-impl DownloadBoard {
-    /// 把窗口交给它，好让它在进度动的时候敲一下。
-    pub fn attach(&self, ctx: Option<egui::Context>) {
-        self.lane.attach(ctx);
-    }
-
-    /// 取消登记那一格（同上传/复制两条路，唯一造键落点在它里面）。
-    pub fn cancels(&self) -> super::transfer::CancelDesk {
-        self.desk.clone()
-    }
-
-    pub fn begin(&self, name: &str) {
-        // 新的一趟 ⇒ 取消台复位（上一趟按过的取消不许拦下这一趟）。
-        self.desk.reset();
-        {
-            let mut b = self.lock();
-            b.got = 0;
-            b.total = 0;
-        }
-        self.lane.begin(name);
-    }
-
-    pub fn progress(&self, got: u64, total: u64) {
-        {
-            let mut b = self.lock();
-            b.got = got;
-            b.total = total;
-        }
-        // ⚠ 锁放掉之后才敲 —— `request_repaint` 会走进 egui 自己的锁，两把锁嵌着拿是死锁的常规做法。
-        self.lane.poke();
-    }
-
-    pub fn finish(&self, o: Outcome) {
-        self.lane.finish(o);
-    }
-
-    /// 这一趟结局旁边要说的那一句（`None` ＝ 不说）。每一趟开头都要设一次（上一趟的不留）。
-    pub fn set_note(&self, note: Option<String>) {
-        self.lock().note = note;
-    }
-
-    pub fn note(&self) -> Option<String> {
-        self.lock().note.clone()
-    }
-
-    pub fn seen(&self) -> (u64, u64) {
-        let b = self.lock();
-        (b.got, b.total)
-    }
-
-    pub fn last(&self) -> Option<Outcome> {
-        self.lane.last()
-    }
-
-    pub fn rounds(&self) -> u64 {
-        self.lane.rounds()
-    }
-
-    /// 毒化容忍（一次 panic 不该让后面每一帧都跟着 panic —— 这个窗口崩掉 = 用户丢掉整个文件管理器）。
-    fn lock(&self) -> std::sync::MutexGuard<'_, Board> {
-        match self.inner.lock() {
-            Ok(g) => g,
-            Err(p) => p.into_inner(),
-        }
-    }
-}
-
-/// 真起一件下载 —— **开单 → 起跑并看**，两步全经通道。
-///
-/// 🔴窗口进程**一行 SFTP 都不碰**了：字节由 monitor 里的传输台从远端读、
-/// 落到用户在上面那一问里选的本机路径（远端只读、不经后端）。本机落点那道围栏、暂存区里的 `.part` ＋ 经 `land` 上位、
-/// 撤留 `.part` 续传，**全在传输台那一侧**（住本机常驻后端的 `control/transfer.rs`，落地经 `common::staging`）。
-/// ⚠ 窗口与 monitor 在同一台机器上 ⇒ 「本机路径」对两边是同一个东西。
-pub async fn pull_one(
-    line: &super::source::Line,
-    origin: &super::source::Origin,
-    remote_path: &str,
+/// 下载一项：`there` 那台的 `src`（`shown` ＝ 它显示的名字）落到存盘框给的 `dest`（同名照盖）。拆不出目录与名字 ⇒ `None`。
+pub fn one_plan(
+    there: &Origin,
+    src: WirePath,
+    shown: &str,
     dest: &str,
-    board: &DownloadBoard,
-) -> Result<(), super::source::Failed> {
-    pull_one_at(line, origin, remote_path, dest.into(), board).await
+) -> Option<batch_core::Plan> {
+    let (dir, name) = split_dest(dest.as_bytes(), crate::platform::BACKSLASH_IS_SEP)?;
+    let name = (name.bytes() != shown.as_bytes()).then_some(name);
+    let req = super::transfer::copy_req(
+        there,
+        &Origin::local(),
+        vec![CopyFrom { path: src, name }],
+        dir,
+        Some(cmd_wire::batch::OnExists::Overwrite),
+    );
+    Some(super::transfer::plan(
+        batch_core::Verb::Download,
+        &req,
+        vec![shown.to_string()],
+        dest.to_string(),
+        there.to_string(),
+    ))
 }
 
-/// 同 [`pull_one`]，本机落点给原始字节（有损名在 Linux 上按原始字节落名）。
-pub async fn pull_one_at(
-    line: &super::source::Line,
-    origin: &super::source::Origin,
-    remote_path: &str,
-    dest: cmd_wire::files::WirePath,
-    board: &DownloadBoard,
-) -> Result<(), super::source::Failed> {
-    // 一组一项：存盘框给的落点拆成目录 ＋ 落名；存盘框已经问过盖不盖 ⇒ 同名照盖。
-    let Some((dir, name)) = split_dest(dest.bytes(), crate::platform::BACKSLASH_IS_SEP) else {
-        return Err(super::source::Failed::from(
-            copy_text("rsFilewinLossyPull.local.badDest", &[]).as_str(),
-        ));
-    };
-    let ask = cmd_wire::transfer::TransferDownloadAsk {
-        items: vec![cmd_wire::transfer::DownloadItem {
-            remote_path: remote_path.to_string(),
-            name: Some(name),
-        }],
-        local_dir: dir,
-        on_exists: Some(cmd_wire::batch::OnExists::Overwrite),
-        decide: None,
-    };
-    let opened = super::source::ask_typed(line, origin, &ask, super::transfer::OPEN_BUDGET).await?;
-    let (id, _) = super::source::opened_one(opened)?;
-    watch_opened(line, origin, &id, board).await
-}
-
-/// 开了单的那一趟：订 `transfer/<id>` 即起跑，看到收场（进度交看板，「停」＝ 停订）。
-pub async fn watch_opened(
-    line: &super::source::Line,
-    origin: &super::source::Origin,
-    id: &str,
-    board: &DownloadBoard,
-) -> Result<(), super::source::Failed> {
-    let stop = board.cancels().stop_token();
-    let sink = board.clone();
-    super::source::watch(
-        line,
-        origin,
-        &format!("{}{id}", filewin_contract::TRANSFER_KIND_PREFIX),
-        &stop,
-        |got, total| sink.progress(got, total),
+/// 下载几项：`there` 那台的 `(路径, 显示名)` 落进本机 `dir`（落名照源那一段；同名问）。
+pub fn many_plan(there: &Origin, rows: Vec<(WirePath, String)>, dir: &str) -> batch_core::Plan {
+    let (items, names): (Vec<CopyFrom>, Vec<String>) = rows
+        .into_iter()
+        .map(|(path, name)| (CopyFrom { path, name: None }, name))
+        .unzip();
+    let req = super::transfer::copy_req(there, &Origin::local(), items, WirePath::from(dir), None);
+    super::transfer::plan(
+        batch_core::Verb::Download,
+        &req,
+        names,
+        dir.to_string(),
+        there.to_string(),
     )
-    .await?;
-    Ok(())
-}
-
-/// **下载一组到本机一个目录**：一条 `transfer-download`（落名照原名），同名由本机落点那一侧探、回 `exists` 就画冲突框
-/// （借 [`super::batch::BatchBoard`] 那一问，答完带 `decide` 再发）；开了单的每一项「进度」里各一行。
-pub async fn pull_many(
-    line: super::source::Line,
-    origin: super::source::Origin,
-    board: super::batch::BatchBoard,
-    progress: super::progress::Progress,
-    srcs: Vec<(String, String)>,
-) {
-    let call = |args: serde_json::Value| {
-        let (line, origin) = (line.clone(), origin.clone());
-        async move {
-            super::source::ask_batch(
-                &line,
-                &origin,
-                super::batch::CMD_DOWNLOAD,
-                &args,
-                super::transfer::OPEN_BUDGET,
-            )
-            .await
-        }
-    };
-    let Some(v) = batch_core::run(&board, call, || async {}).await else {
-        return;
-    };
-    let Ok(opened) = serde_json::from_value::<cmd_wire::transfer::TransferOpened>(v) else {
-        return;
-    };
-    for it in opened.items {
-        let Some(i) = it.key.parse::<usize>().ok() else {
-            continue;
-        };
-        let Some((src, name)) = srcs.get(i).cloned() else {
-            continue;
-        };
-        // 同名照答跳过的那几项不开单、不占一行。
-        if it.state == cmd_wire::transfer::OpenState::Skipped {
-            continue;
-        }
-        let dest = it
-            .path
-            .as_ref()
-            .map(|p| String::from_utf8_lossy(p.bytes()).into_owned())
-            .unwrap_or_default();
-        let row = DownloadBoard::default();
-        row.begin(&name);
-        progress.add(
-            super::progress::Trip::Download {
-                board: row.clone(),
-                name: name.clone(),
-                src,
-                dest: dest.clone(),
-            },
-            None,
-            None,
-        );
-        match (it.state, it.id) {
-            (cmd_wire::transfer::OpenState::Opened, Some(id)) => {
-                let (line, origin) = (line.clone(), origin.clone());
-                tokio::spawn(async move {
-                    let r = watch_opened(&line, &origin, &id, &row).await;
-                    let (got, _) = row.seen();
-                    row.finish(match r {
-                        Ok(()) => Outcome::Done { dest, bytes: got },
-                        Err(why) => Outcome::Failed { dest, why },
-                    });
-                });
-            }
-            (_, _) => row.finish(Outcome::Failed {
-                dest,
-                why: super::source::Failed {
-                    code: super::source::Failed::code_or_fallback(it.code),
-                    said: it.reason.unwrap_or_default(),
-                    detail: it.detail.unwrap_or_default(),
-                    data: None,
-                },
-            }),
-        }
-    }
 }
 
 /// 本机落点（原始字节）拆成 `(目录, 落名)`：按最后一个分隔符切 —— `/` 恒是，`backslash` ＝ 本机路径也认 `\`（Windows，
 /// [`crate::platform::BACKSLASH_IS_SEP`]）。目录是盘根那一级（`/` · `C:\`）⇒ 带着那个分隔符（Windows 上 `C:` 是「那个盘的当前目录」）。
-/// 没有分隔符 · 落名是空的 ⇒ `None`。下载落点只经这一处拆（单个文件 · 有损名那一路都是）。
-pub fn split_dest(
-    b: &[u8],
-    backslash: bool,
-) -> Option<(cmd_wire::files::WirePath, cmd_wire::files::WirePath)> {
+/// 没有分隔符 · 落名是空的 ⇒ `None`。下载落点只经这一处拆。
+pub fn split_dest(b: &[u8], backslash: bool) -> Option<(WirePath, WirePath)> {
     let cut = b
         .iter()
         .rposition(|c| *c == b'/' || (backslash && *c == b'\\'))?;
@@ -375,10 +74,7 @@ pub fn split_dest(
     } else {
         head
     };
-    Some((
-        cmd_wire::files::WirePath(dir.to_vec()),
-        cmd_wire::files::WirePath(name.to_vec()),
-    ))
+    Some((WirePath(dir.to_vec()), WirePath(name.to_vec())))
 }
 
 #[cfg(test)]

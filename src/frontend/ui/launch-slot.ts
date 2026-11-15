@@ -53,9 +53,11 @@ export interface SlotHost {
   viewTerminal(): void;
 }
 
-/** 没报到时那台说的：那一句（第一行标题）· 起在的那个终端还在 ⇒ 它的句柄 · 问不到那台（中途断了，说不清起没起来）。 */
+/** 没报到时那台说的：标题（问不到那台 ⇒ 缺）· 那一句 · 画面末几行 · 起在的那个终端还在 ⇒ 它的句柄 · 问不到那台（中途断了，说不清起没起来）。 */
 interface Missed {
+  title: string | null;
   said: string;
+  words: string | null;
   terminal: string | null;
   unknown: boolean;
 }
@@ -116,7 +118,7 @@ export class LaunchSlots {
     const { id, spec } = sl;
     void this.acts.arrive(spec.origin, spec.arrival, SLOT_MISS_MS).then((end) => {
       if (end.kind === "arrived") this.arrived(id, end.sid);
-      else this.miss(id, end.kind === "missed" ? { ...end, unknown: false } : { said: end.said, terminal: null, unknown: true });
+      else this.miss(id, end.kind === "missed" ? { ...end, unknown: false } : { title: null, said: end.said, words: null, terminal: null, unknown: true });
     });
   }
 
@@ -254,21 +256,20 @@ export class LaunchSlots {
     card.setAttribute("role", "alert");
     const body = document.createElement("div");
     body.className = s.slotBody;
-    // 那台那一句：第一行标题 · 第二行说那个终端怎样 · 其余是画面末几行。
-    const [line, sub, ...words] = m.said.split("\n");
+    // 那台分好的三格：标题 · 那个终端怎样那一句 · 画面末几行（问不到那台 ⇒ 只那一句）。
     const line1 = document.createElement("div");
-    line1.textContent = line;
+    line1.textContent = m.title ?? m.said;
     body.appendChild(line1);
-    if (sub !== undefined) {
+    if (m.title !== null) {
       const line2 = document.createElement("div");
       line2.className = s.slotSub;
-      line2.textContent = sub;
+      line2.textContent = m.said;
       body.appendChild(line2);
     }
-    if (words.length > 0) {
+    if (m.words !== null) {
       const out = document.createElement("pre");
       out.className = s.slotOut;
-      out.textContent = words.join("\n");
+      out.textContent = m.words;
       body.appendChild(out);
     }
 

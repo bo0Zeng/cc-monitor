@@ -58,7 +58,16 @@ offlineSaid: string,
  * 待发那一句交了、没等到回执、这一问已结束时那一行（恒有，拨号这一端写的：「{name} 离线 · 连上后补交」；还不知道那台什么样 ⇒ 状态不明那一句）。
  * 两端输入框上方那一排照摆这一句，不拼。
  */
-heldSaid: string, fixes: Array<MachineFixButton>, 
+heldSaid: string, 
+/**
+ * 待发里那一句撤着、那台此刻断着时那一行（恒有，拨号这一端写的：「撤回中 · {name} 离线 · 连上后接着问」）：它不再交，不借 `held_said` 说补交。
+ * 两端输入框上方那一排照摆这一句，不拼。
+ */
+withdrawHeld: string, 
+/**
+ * 编辑已发的那一句上一版还撤着时退法抽屉里那一句（恒有，拨号这一端写的：「上一版正在撤回 · 等 {name} 答复」）：［回退并发送］灰着时照摆。
+ */
+rewindHeld: string, fixes: Array<MachineFixButton>, 
 /**
  * 指纹不对时那台这一次出示的主机指纹（`host_key_changed` 才有）。
  */

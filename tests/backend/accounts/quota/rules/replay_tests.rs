@@ -361,6 +361,7 @@ fn night() -> Night {
         .expect("号")
         .iter()
         .map(|a| Acct {
+            agent: String::new(),
             id: s(&a["id"]),
             api: false,
             used: [
@@ -545,6 +546,7 @@ impl Strategy for ByList {
 
 fn one(id: &str, used: f64, resets: Option<u64>, per_pct: u64) -> Acct {
     Acct {
+        agent: String::new(),
         id: id.into(),
         api: false,
         used: [used, 0.0],

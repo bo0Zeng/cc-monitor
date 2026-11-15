@@ -30,6 +30,7 @@
 //! 不拨号、不起进程、不写盘 —— 全是既有读函数的换壳。`readonly_guard` 那条写盘禁令照旧管它。
 
 use crate::platform::fs::Ro;
+use cmd_wire::machine::{MachineInterruptsReply, MachineInterruptsReq};
 use copy_core::{copy_text, Discard, Why};
 
 /// `history-read` · `history-tail` 一页（一条应答）交出去的字节数；源字节照这个数一块一块读。
@@ -294,16 +295,23 @@ impl crate::wire::typed::Handle for AccountsListCmd {
             .map_err(AccountsListErr::BadArgs)?
             .id();
         let mut v = crate::faces::launch_account_face::list_of(agent);
+        let now = crate::common::time::now_secs();
         let quota = crate::faces::rotation_face::quota_read_with(
             &crate::faces::rotation_face::Ctx::here(),
-            crate::common::time::now_secs(),
+            now,
             &cx.tz,
         );
-        with_quota(&mut v, &quota, kind);
-        crate::accounts::manage::library::with_sign_in(
+        with_quota(
             &mut v,
-            crate::agents::accounts_face(kind).is_some_and(|f| f.sign_in.is_some()),
+            &quota,
+            kind,
+            &crate::common::time::TextClock::new(now, &cx.tz),
         );
+        // 每一行照它自己那一家的登录形（不拿请求那一家套整张表）。
+        crate::accounts::manage::library::with_sign_in(&mut v, |k| {
+            k.and_then(crate::agents::accounts_face)
+                .and_then(|f| f.sign_in)
+        });
         let size = serde_json::to_string(&v).map_or(0, |t| t.len());
         if size > LINES_CAP_BYTES.as_len() {
             return Err(AccountsListErr::TooLarge(too_large(size).said));
@@ -312,37 +320,46 @@ impl crate::wire::typed::Handle for AccountsListCmd {
     }
 }
 
-/// ★ 每个号带上它的额度格（同一份 `quota-read` 成品里取，按 kind ＋ 号名对；唯一一处，两端照摆）：
-/// 账读不出 ⇒ 一格顶上那一句（`5h 读不到`）；出过数 ⇒ [`slot_cells`]；按量号没出过数 ⇒ 用量那一格；别的 ⇒ 空。
+/// ★ 每个号带上它的额度格与额度几行（同一份 `quota-read` 成品里取，按 kind ＋ 号名对；唯一一处，两端照摆）：
+/// 紧凑那一格：账读不出 ⇒ 顶上那一句（`5h 读不到`）；出过数 ⇒ [`slot_cells`]；按量号没出过数 ⇒ 用量那一格；别的 ⇒ 空。
+/// 几行（设置页）：账读不出 ⇒ 一行顶上那一句；账上有它 ⇒ 那一号那一段照 [`crate::faces::quota_rows::account_line_rows`]；别的 ⇒ 空。
 pub(crate) fn with_quota(
     v: &mut crate::accounts::manage::library::AccountsList,
     q: &crate::faces::quota_read::QuotaRead,
     kind: &str,
+    clock: &crate::common::time::TextClock,
 ) {
+    use crate::faces::quota_rows::account_line_rows;
     for r in &mut v.accounts {
         let name = r.scanned.name.as_str();
-        r.slots = if let Some(head) = crate::faces::quota_rows::head_five_hour(q.state) {
-            vec![cell(
-                cmd_wire::quota::SLOT_5H,
-                head,
-                crate::common::cells::Tone::Plain,
-            )]
-        } else if let Some(a) = q
+        let seen = q
             .accounts
             .iter()
-            .find(|a| a.head.agent.as_str() == kind && a.head.account == name)
-        {
-            slot_cells(&a.head.show)
+            .find(|a| a.head.agent.as_str() == kind && a.head.account == name);
+        let unseen = q
+            .unseen
+            .iter()
+            .find(|u| u.head.agent.as_str() == kind && u.head.account == name);
+        (r.slots, r.quota) = if let Some(head) = crate::faces::quota_rows::head_five_hour(q.state) {
+            let tone = crate::common::cells::Tone::Plain;
+            let line = vec![cmd_wire::quota::Cell {
+                text: head.clone(),
+                tone,
+            }];
+            (vec![cell(cmd_wire::quota::SLOT_5H, head, tone)], vec![line])
+        } else if let Some(a) = seen {
+            (
+                slot_cells(&a.head.show, clock),
+                account_line_rows(&a.rows, a.head.show.login, a.head.show.stale),
+            )
+        } else if let Some(u) = unseen {
+            let slots = (u.head.kind == cmd_wire::quota::Kind::Api)
+                .then(|| cell("", u.head.usage.text.clone(), u.head.usage.tone))
+                .into_iter()
+                .collect();
+            (slots, account_line_rows(&u.rows, u.head.login, false))
         } else {
-            q.unseen
-                .iter()
-                .find(|u| {
-                    u.head.agent.as_str() == kind
-                        && u.head.account == name
-                        && u.head.kind == cmd_wire::quota::Kind::Api
-                })
-                .map(|u| vec![cell("", u.head.usage.text.clone(), u.head.usage.tone)])
-                .unwrap_or_default()
+            (Vec::new(), Vec::new())
         };
     }
 }
@@ -357,33 +374,31 @@ fn cell(
         slot: slot.to_string(),
         pct: None,
         resets_at: None,
-        resets_at_text: None,
-        resets_at_rel_text: None,
-        reset_text: None,
         full: false,
         text,
         tone,
         per_pct_text: None,
-        window: String::new(),
     }
 }
 
-/// ★ 出过数的一个号 ⇒ 账号行的额度格：按量号一格（用量那一格）；订阅号一个语义位一格，字是整格
-/// （位名 · `slot_words` 写的值 · 重置：5h 恒带、别的位只在它是卡人的那一格又被拒时带），语气照 `slot_words`，数旧 ⇒ plain 画 warn。
-fn slot_cells(show: &cmd_wire::quota::QuotaShow) -> Vec<cmd_wire::quota::SlotShow> {
-    use crate::common::cells::{Tone, Words};
+/// ★ 出过数的一个号 ⇒ 紧凑那一格：按量号 ⇒ 用量那一格；订阅号 ⇒ 头一个语义位那一格，字是整格
+/// （位名 · `slot_words` 写的值 · 重置照 `quota_rows::slot_reset`：5h 恒带、别的位只在它是卡人的那一格又被拒时带），语气照 `slot_words`，数旧 ⇒ plain 画 warn。
+fn slot_cells(
+    show: &cmd_wire::quota::QuotaShow,
+    clock: &crate::common::time::TextClock,
+) -> Vec<cmd_wire::quota::SlotShow> {
+    use crate::common::cells::Words;
     use cmd_wire::quota::{Kind, QuotaState, SLOT_5H};
     if show.kind == Kind::Api {
         return vec![cell("", show.usage.text.clone(), show.usage.tone)];
     }
     show.slots
         .iter()
+        .take(1)
         .map(|s| {
             let here = show.usage.slot.as_deref() == Some(s.slot.as_str());
             let label = crate::accounts::quota::name_words::slot_text(&s.slot);
-            let reset = s
-                .reset_text
-                .as_ref()
+            let reset = crate::faces::quota_rows::slot_reset(s.resets_at, clock)
                 .filter(|_| s.slot == SLOT_5H || (here && show.state == QuotaState::Refused));
             let text = match reset {
                 Some(r) => copy_text(
@@ -392,11 +407,7 @@ fn slot_cells(show: &cmd_wire::quota::QuotaShow) -> Vec<cmd_wire::quota::SlotSho
                 ),
                 None => copy_text("acct.usage.wv", &[("w", &label), ("v", &s.text.0)]),
             };
-            let tone = if show.stale && s.tone == Tone::Plain {
-                Tone::Warn
-            } else {
-                s.tone
-            };
+            let tone = crate::faces::quota_rows::stale_tone(s.tone, show.stale);
             cmd_wire::quota::SlotShow {
                 text: Words(text),
                 tone,
@@ -406,48 +417,14 @@ fn slot_cells(show: &cmd_wire::quota::QuotaShow) -> Vec<cmd_wire::quota::SlotSho
         .collect()
 }
 
-/// `machine-interrupts` 的入参。
-#[derive(Debug, Clone, Default, serde::Deserialize, serde::Serialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
-pub struct MachineInterruptsReq {
-    /// 停的是哪台：别的台 ⇒ 这台后端经那台的常驻流问它自己那一份（会话三格）、再数自己账上通往它的转发；缺 · 本机 ⇒ 只答这台。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
-    pub(crate) machine: Option<String>,
-    /// `true` ⇒ 问的是「重启 / 退出 cc-monitor」：这台后端选了随它退出一起停才数会话与账上全部转发，否则全零。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
-    pub(crate) app_exit: Option<bool>,
-    /// 带 `appExit` 时 `true` ⇒ 照这台的机器表一并问各台（`Table::asked` 里的远端；各照它自己的退出行为答，答到的加起来；问不到的不算）。
-    /// 问到那几台时不带它（不往下扇）。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
-    pub(crate) fleet: Option<bool>,
-}
-
-/// `machine-interrupts` 的回包：会话三格 ＋ 转发（[`crate::accounts::manage::library::Interrupts`] 那几格）；
-/// 问的是别的台而那台问不到 ⇒ `relayedSessions` 是 `null`（说不清，不当成 0），另两格 0，转发照这台账上的数。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-#[serde(rename_all = "camelCase")]
-pub struct MachineInterruptsReply {
-    pub(crate) relayed_sessions: Option<u32>,
-    pub(crate) relayed_maybe: u32,
-    pub(crate) live_streams: u32,
-    pub(crate) forwards: u32,
-}
-
-impl From<crate::accounts::manage::library::Interrupts> for MachineInterruptsReply {
-    fn from(i: crate::accounts::manage::library::Interrupts) -> Self {
-        MachineInterruptsReply {
-            relayed_sessions: Some(i.relayed_sessions),
-            relayed_maybe: i.relayed_maybe,
-            live_streams: i.live_streams,
-            forwards: i.forwards,
-        }
+/// 账上那几格 ⇒ 线上那一形。
+fn reply_of(i: crate::accounts::manage::library::Interrupts) -> MachineInterruptsReply {
+    MachineInterruptsReply {
+        relayed_sessions: Some(i.relayed_sessions),
+        relayed_maybe: i.relayed_maybe,
+        live_streams: i.live_streams,
+        forwards: i.forwards,
+        rows: Vec::new(),
     }
 }
 
@@ -458,13 +435,11 @@ crate::wire::typed::codes! {
 
 /// `machine-interrupts`：停 / 重启 / 更新 / 卸载一台的 cc-monitor 之前会打断什么（`accounts/manage/library.rs::machine_product`）：
 /// 那台的活会话经不经本机中转 · 活着的几个 · 这台账上通往那台的转发。界面只问本机后端这一条：别的台那一份由这台经它的常驻流问到
-/// （`control/feeds.rs::call`）、并好再答（[`interrupts_hub`]）。只读；这台自己那一份读 pidfile ⇒ 进阻塞池。
+/// （`control/feeds.rs::call`）、并好再答（[`interrupts_hub`]），再排成确认框里那两行（[`rows_of`]）。只读；这台自己那一份读 pidfile ⇒ 进阻塞池。
 pub struct MachineInterrupts;
 
 impl crate::wire::typed::Command for MachineInterrupts {
-    const NAME: &'static str = "machine-interrupts";
-    type Req = MachineInterruptsReq;
-    type Reply = MachineInterruptsReply;
+    crate::wire::typed::by_call!(MachineInterruptsReq);
     type Err = MachineInterruptsErr;
 }
 
@@ -479,7 +454,7 @@ impl crate::wire::typed::Handle for MachineInterrupts {
         let until = cx.until;
         async move {
             let here = |r: MachineInterruptsReq| async move {
-                let home = crate::history::listing::agent_home();
+                let home = crate::agents::local_homes();
                 tokio::task::spawn_blocking(move || interrupts_at(&home, &r))
                     .await
                     .unwrap_or(MachineInterruptsReply {
@@ -487,6 +462,7 @@ impl crate::wire::typed::Handle for MachineInterrupts {
                         relayed_maybe: 0,
                         live_streams: 0,
                         forwards: 0,
+                        rows: Vec::new(),
                     })
             };
             let there = move |m: String, r: MachineInterruptsReq| async move {
@@ -496,7 +472,9 @@ impl crate::wire::typed::Handle for MachineInterrupts {
                     .ok()
             };
             let fleet = crate::dial::remote_ask::REACH.asked();
-            Ok(interrupts_hub(req, &fleet, here, there).await)
+            let mut got = interrupts_hub(req.clone(), &fleet, here, there).await;
+            got.rows = rows_of(&req, &got);
+            Ok(got)
         }
     }
 }
@@ -549,6 +527,7 @@ where
                 relayed_maybe: a.relayed_maybe + b.relayed_maybe,
                 live_streams: a.live_streams + b.live_streams,
                 forwards: a.forwards + b.forwards,
+                rows: Vec::new(),
             });
     }
     let remote = req
@@ -557,12 +536,7 @@ where
         .filter(|m| cmd_wire::Machine::named(*m).is_remote())
         .map(str::to_string);
     let Some(name) = remote else {
-        return here(MachineInterruptsReq {
-            machine: None,
-            app_exit: None,
-            fleet: None,
-        })
-        .await;
+        return here(MachineInterruptsReq::default()).await;
     };
     let counted = MachineInterruptsReq {
         machine: Some(name.clone()),
@@ -579,34 +553,121 @@ where
             relayed_maybe: 0,
             live_streams: 0,
             forwards: mine.forwards,
+            rows: Vec::new(),
         },
     }
 }
 
+/// 并好的那几格 ⇒ 确认框里「中断 · 保留」两行（[`MachineInterruptsReply::rows`]，字只在这里写）；一项都没有 ⇒ 空。
+/// 退出 / 重启 cc-monitor（`appExit`）那一问另数文件窗口（入参 `files`，缺 ⇒ 说数不出），实时那一项说「各台」；
+/// 停的是一台 ⇒ 实时那一项说那台（本机叫本机）。重启 · 更新 ⇒ 中断几秒，停 · 卸载 ⇒ 中断到再启动。
+pub(crate) fn rows_of(
+    req: &MachineInterruptsReq,
+    r: &MachineInterruptsReply,
+) -> Vec<cmd_wire::machine::InterruptRow> {
+    use cmd_wire::machine::{InterruptAct, InterruptRow};
+    let brief = matches!(req.act, Some(InterruptAct::Restart | InterruptAct::Update));
+    let quitting = req.app_exit == Some(true);
+    let n = |v: u32| v.to_string();
+    let mut items = Vec::new();
+    if quitting {
+        match req.files {
+            None => items.push(copy_text("interrupts.item.filewinUnknown", &[])),
+            Some(f) => {
+                if f.unsaved > 0 {
+                    items.push(copy_text(
+                        "interrupts.item.unsaved",
+                        &[("n", &n(f.unsaved))],
+                    ));
+                }
+                if f.running > 0 {
+                    items.push(copy_text(
+                        "interrupts.item.filewinRunning",
+                        &[("n", &n(f.running))],
+                    ));
+                }
+            }
+        }
+    }
+    match r.relayed_sessions {
+        None => items.push(copy_text("interrupts.item.relayedUnknown", &[])),
+        Some(0) => {}
+        Some(s) => items.push(copy_text("interrupts.item.relayed", &[("n", &n(s))])),
+    }
+    if r.relayed_maybe > 0 {
+        items.push(copy_text(
+            "interrupts.item.relayedMaybe",
+            &[("n", &n(r.relayed_maybe))],
+        ));
+    }
+    if r.live_streams > 0 {
+        let machine = if quitting {
+            copy_text("restartNow.dialog.everywhere", &[])
+        } else {
+            copy_core::machine_word(&cmd_wire::Machine::named(
+                req.machine.as_deref().unwrap_or(cmd_wire::LOCAL),
+            ))
+        };
+        items.push(if brief {
+            copy_text("interrupts.item.liveBrief", &[("machine", &machine)])
+        } else {
+            copy_text("interrupts.item.liveGone", &[("machine", &machine)])
+        });
+    }
+    if r.forwards > 0 {
+        items.push(copy_text(
+            "interrupts.item.forwards",
+            &[("n", &n(r.forwards))],
+        ));
+    }
+    if items.is_empty() {
+        return Vec::new();
+    }
+    let label = if brief {
+        copy_text("interrupts.row.brief", &[])
+    } else {
+        copy_text("interrupts.row.untilStart", &[])
+    };
+    vec![
+        InterruptRow { label, items },
+        InterruptRow {
+            label: copy_text("kit.interrupts.keep", &[]),
+            items: vec![copy_text("interrupts.item.sessionsRun", &[])],
+        },
+    ]
+}
+
 /// 这台自己那一份（[`interrupts_hub`] 的 `here`），家目录是参数（判据拿夹具喂它）。
 pub(crate) fn interrupts_at(
-    home: &std::path::Path,
+    home: impl crate::agents::IntoHomes,
     req: &MachineInterruptsReq,
 ) -> MachineInterruptsReply {
+    let home_v = crate::agents::IntoHomes::into_homes(home);
+    let home: &[crate::agents::AgentHome] = &home_v;
     use crate::accounts::manage::library;
     let lines = library::session_accounts_here(home);
     if req.app_exit == Some(true) {
         let kill = crate::control::exit_policy::read_now().kill_on_exit();
-        return library::app_exit_product(kill, &lines, crate::dial::forwards::running_all())
-            .into();
+        return reply_of(library::app_exit_product(
+            kill,
+            &lines,
+            crate::dial::forwards::running_all(),
+        ));
     }
     let forwards = req
         .machine
         .as_deref()
         .map_or(0, crate::dial::forwards::running_to_machine);
-    library::machine_product(&lines, forwards).into()
+    reply_of(library::machine_product(&lines, forwards))
 }
 
 /// 过围栏 ⇒ 这份记录是哪一家的（注册表按它落在谁的根下认），解释交那一家。
 pub(crate) fn record_face(
-    home: &std::path::Path,
+    home: impl crate::agents::IntoHomes,
     path: &str,
 ) -> Result<(std::path::PathBuf, crate::agents::RecordFace), crate::common::said::Said> {
+    let home_v = crate::agents::IntoHomes::into_homes(home);
+    let home: &[crate::agents::AgentHome] = &home_v;
     let target = crate::observe::query::locate::session_path_at(home, path)
         .map_err(|e| crate::common::said::Said::new("refused", e))?;
     let face = crate::agents::record_face_of(&target).ok_or_else(|| {
@@ -659,22 +720,24 @@ mod interrupts_hub_tests;
 mod drift_merge_tests;
 
 /// 会话的 `needs` 配上常驻进程里挂着的待答请求（`control::asks` 那一份登记表；配法住 `recognize::facts::dress_ask_with`）；
-/// 没有挂着的、而答题口没接上（`off`，[`answer_off_of`]）⇒「只能在终端里答」那一句换成它为什么。
+/// 一条都没挂着 ⇒「只能在终端里答」那一句换成它为什么：登记表记着这一家不给经钩子答这一种（[`crate::control::asks::refused`]，码 `NoAnswer`）
+/// 先说它；否则答题口没接上（`off`，[`answer_off_of`]）说那个原因。
 /// 会话事实 · 过程那一轮 · 需手动清单三处都经这里（同一条会话三处说的是同一句）。
-pub(crate) fn dress_ask(
+pub fn dress_ask(
     needs: Option<crate::observe::recognize::facts::Needs>,
     sid: &str,
     off: Option<&crate::common::cells::Words>,
 ) -> Option<crate::observe::recognize::facts::Needs> {
     let now = crate::common::time::now_ms();
-    let mut needs = crate::observe::recognize::facts::dress_ask_with(
-        needs,
-        crate::control::asks::pending(sid).into_iter().next(),
-        now,
-    );
-    if let (Some(n), Some(off)) = (needs.as_mut(), off) {
-        if n.ask.is_none() {
-            n.manual_text = Some(off.clone());
+    let hung = crate::control::asks::pending(sid).into_iter().next();
+    // 挂着一条（界面答不了的那一种也是挂着的：那一句「在终端里答」由它写好）⇒ 不换原因；只有一条都没挂着才换。
+    let none_hung = hung.is_none();
+    let mut needs = crate::observe::recognize::facts::dress_ask_with(needs, hung, now);
+    if let Some(n) = needs.as_mut().filter(|n| none_hung && n.ask().is_none()) {
+        let refused = crate::control::asks::refused(sid)
+            .map(|o| crate::agents::asks::hook_off_words(o.env_value()));
+        if let Some(why) = refused.or_else(|| off.cloned()) {
+            n.manual(why);
         }
     }
     needs
@@ -687,15 +750,28 @@ pub(crate) fn answer_off_of(
     writers: &[u32],
     agent: Option<&str>,
 ) -> Option<crate::common::cells::Words> {
+    answer_off_among(writers, agent, &crate::host::managed::hop_of_pid)
+}
+
+/// [`answer_off_of`] 的可喂夹具那一半：`hop_of` ＝ 持着会话的进程住的托管终端里记的那一跳（便条照会话找只经
+/// [`crate::control::launch_account::session_note`]）。
+pub(crate) fn answer_off_among(
+    writers: &[u32],
+    agent: Option<&str>,
+    hop_of: &dyn Fn(u32) -> Option<crate::host::managed::Hop>,
+) -> Option<crate::common::cells::Words> {
     use crate::agents::asks::HookOff;
     use crate::platform::proc::EnvRead;
     writers.iter().find_map(|pid| {
         match crate::platform::proc::proc_env_var(*pid, crate::agents::asks::ANSWER_HOOK_OFF_ENV) {
             EnvRead::Value(v) => Some(crate::agents::asks::hook_off_words(&v)),
             EnvRead::Unset => {
-                let off = if plugin_lost(*pid) {
+                let note = crate::platform::paths::data_home().and_then(|data| {
+                    crate::control::launch_account::session_note(&data, *pid, hop_of)
+                });
+                let off = if plugin_lost(*pid, note.as_ref()) {
                     Some(HookOff::EnvLost)
-                } else if started_elsewhere(*pid, agent) {
+                } else if started_elsewhere(*pid, agent, note.is_some()) {
                     Some(HookOff::Elsewhere)
                 } else {
                     None
@@ -707,18 +783,11 @@ pub(crate) fn answer_off_of(
     })
 }
 
-/// ccm 给这个进程留的便条说答题插件经环境交下去了，它的环境里却没有我们那个目录（启动器把环境清掉了）。
 /// 持着会话的这个进程是不是别处起的（判法住 `agents::asks::started_elsewhere`；这里只把那几样从进程身上读出来）。
-fn started_elsewhere(pid: u32, agent: Option<&str>) -> bool {
+/// `noted` ＝ ccm 给它留过起会话便条。
+fn started_elsewhere(pid: u32, agent: Option<&str>, noted: bool) -> bool {
     let has_ask_face = agent.and_then(crate::agents::ask_face).is_some();
-    let noted = crate::platform::paths::data_home().is_some_and(|data| {
-        let started = crate::platform::proc::start_epoch_from_ticks(
-            crate::platform::proc::proc_starttime(pid),
-        );
-        crate::control::launch_account::note_of(&data, pid, started).is_some()
-    });
-    let plugin_here = crate::platform::paths::home_dir().is_some_and(|home| {
-        let ours = crate::agents::asks::plugin_dir_under(&home.to_string_lossy());
+    let plugin_here = ours_plugin_dir().is_some_and(|ours| {
         crate::agents::plugin_envs().into_iter().any(|var| {
             matches!(
                 crate::platform::proc::proc_env_var(pid, var),
@@ -734,19 +803,19 @@ fn started_elsewhere(pid: u32, agent: Option<&str>) -> bool {
     )
 }
 
-fn plugin_lost(pid: u32) -> bool {
-    let (Some(data), Some(home)) = (
-        crate::platform::paths::data_home(),
-        crate::platform::paths::home_dir(),
-    ) else {
+/// 这台我们那个答题插件目录在环境变量里那一项的写法（判只在 `agents::asks::plugin_dir_in_env`）。
+fn ours_plugin_dir() -> Option<String> {
+    crate::platform::paths::home_dir().and_then(|h| crate::agents::asks::plugin_dir_in_env(&h))
+}
+
+/// ccm 给这个进程留的便条（`note`）说答题插件经环境交下去了，它的环境里却没有我们那个目录（启动器把环境清掉了）。
+fn plugin_lost(pid: u32, note: Option<&crate::control::launch_account::Note>) -> bool {
+    let Some(ours) = ours_plugin_dir() else {
         return false;
     };
-    let started =
-        crate::platform::proc::start_epoch_from_ticks(crate::platform::proc::proc_starttime(pid));
-    if !crate::control::launch_account::note_of(&data, pid, started).is_some_and(|n| n.plugin) {
+    if !note.is_some_and(|n| n.plugin) {
         return false;
     }
-    let ours = crate::agents::asks::plugin_dir_under(&home.to_string_lossy());
     crate::agents::plugin_envs().into_iter().all(|var| {
         !matches!(
             crate::platform::proc::proc_env_var(pid, var),

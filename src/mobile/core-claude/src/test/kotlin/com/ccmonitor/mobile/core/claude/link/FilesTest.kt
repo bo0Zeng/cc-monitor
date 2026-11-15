@@ -67,9 +67,9 @@ class FilesTest {
         val from = RemotePath(byteArrayOf('x'.code.toByte(), 0xff.toByte()))
         assertEquals(mapOf("root" to "/w", "from" to mapOf("b16" to "78ff"), "to" to "ok", "single" to true), FilesRename.args(dir, from, "ok"))
         assertEquals(mapOf("path" to "/w/f"), FilesStat.args(RemotePath.of("/w/f")))
-        assertEquals(420, FilesStat.modeOf(mapOf("path" to "/w/f", "kind" to "file", "class" to "text", "type_text" to "文本", "size" to 0.0, "readonly" to false, "mode" to 420.0, "owner" to null, "link_target" to null)))
-        assertEquals(FilesStat.Place(FileKind.DIR, RemotePath.of("/w")), FilesStat.placeOf(mapOf("path" to "/w/d", "up" to "/w", "kind" to "dir", "class" to "folder", "type_text" to "文件夹", "size" to 0.0, "readonly" to false, "owner" to null, "link_target" to null)))
-        assertEquals(FilesStat.Place(FileKind.DIR, null), FilesStat.placeOf(mapOf("path" to "/", "up" to null, "kind" to "dir", "class" to "folder", "type_text" to "文件夹", "size" to 0.0, "readonly" to false, "owner" to null, "link_target" to null)))
+        assertEquals(420, FilesStat.modeOf(mapOf("path" to "/w/f", "kind" to "file", "class" to "text", "type_text" to "文本", "size" to 0.0, "size_text" to "0 B", "readonly" to false, "mode" to 420.0, "owner" to null, "link_target" to null)))
+        assertEquals(FilesStat.Place(FileKind.DIR, RemotePath.of("/w")), FilesStat.placeOf(mapOf("path" to "/w/d", "up" to "/w", "kind" to "dir", "class" to "folder", "type_text" to "文件夹", "size" to 0.0, "size_text" to "0 B", "readonly" to false, "owner" to null, "link_target" to null)))
+        assertEquals(FilesStat.Place(FileKind.DIR, null), FilesStat.placeOf(mapOf("path" to "/", "up" to null, "kind" to "dir", "class" to "folder", "type_text" to "文件夹", "size" to 0.0, "size_text" to "0 B", "readonly" to false, "owner" to null, "link_target" to null)))
     }
 
     @Test

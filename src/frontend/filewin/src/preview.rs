@@ -114,6 +114,8 @@ pub struct Head {
     /// 画哪种图标（后端判的）。
     pub class: cmd_wire::files::FileClass,
     pub size: u64,
+    /// `size` 写好的字（手上那一行 `Listed.size_text`，后端写好）；问不出 ⇒ 空。
+    pub size_text: String,
     /// 修改时间的短写法（列表那一行上后端写好的那一格）。
     pub mtime_text: Option<String>,
     pub edit: bool,
@@ -235,6 +237,14 @@ fn owner_block(ui: &mut egui::Ui, slice: &str, o: &super::plan::Owner) -> bool {
 pub static PICK_ONE: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinPreview.pickOne.message", &[]));
 
+/// 预览头那几颗（编辑 · 查看 · 下载）出不出：预览跟的是那一栏此刻唯一选中的那一份 ⇒ 照它那份成品 `acts`（做得了才出）；
+/// 成品还没回来 ⇒ 都不出（回来那一帧 [`Preview::follow`] 补上）。
+fn can_of(pane: &FileWindow) -> (bool, bool, bool) {
+    use super::select::Action;
+    let ok = |a| matches!(pane.act_why(a), Ok(None));
+    (ok(Action::Edit), ok(Action::View), ok(Action::Download))
+}
+
 /// 每一行的起点（第 0 行从 0 起；`\n` 之后是下一行）。
 pub fn line_starts(text: &str) -> Vec<usize> {
     std::iter::once(0)
@@ -247,6 +257,7 @@ impl Preview {
     pub fn follow(&mut self, pane: &FileWindow, ctx: Option<egui::Context>) {
         if let Some(h) = self.head.as_mut() {
             h.owner = owner_of(pane, &h.name);
+            (h.edit, h.view, h.download) = can_of(pane);
         }
         // ① 收货：是要的那一份才摆出来，不是就丢掉（光标已经挪走了）。
         let arrived = self.slot.lock().unwrap().take();
@@ -361,15 +372,16 @@ impl Preview {
             return;
         };
         if !r.opens_as_dir() {
-            let can = super::select::actions_for(&[&r]);
+            let (edit, view, download) = can_of(pane);
             self.head = Some(Head {
                 name: r.name.clone(),
                 class: r.class,
                 size: r.size,
+                size_text: r.size_text.clone().unwrap_or_default(),
                 mtime_text: r.mtime_text.clone(),
-                edit: can.contains(&super::select::Action::Edit),
-                view: can.contains(&super::select::Action::View),
-                download: can.contains(&super::select::Action::Download),
+                edit,
+                view,
+                download,
                 owner: owner_of(pane, &r.name),
             });
         }
@@ -522,7 +534,7 @@ impl Preview {
                         }
                     });
                 });
-                let mut meta = copy_core::size_text(h.size);
+                let mut meta = h.size_text.clone();
                 if let Some(t) = &h.mtime_text {
                     meta = copy_text("rsFilewinPreview.ui.meta", &[("size", &meta), ("time", t)]);
                 }

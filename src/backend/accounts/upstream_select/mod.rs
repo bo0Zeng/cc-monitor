@@ -77,20 +77,6 @@ use creds_core::store::AuthStyle;
 use std::io::Write;
 use table::{RoutingTable, Row};
 
-/// 凭据文件（`apikey-credentials.json`）里那些行**挂在哪个 agent 名下**。
-///
-/// # 为什么要有这个值（表的键是 `(agent, 账号)` 之后必然冒出来的一格）
-///
-/// 表的键改成 `(agent, 账号)` 之后，装表那一步得知道每一行属于谁 ——
-/// 而 `creds-core` 那份文件格式**今天没有 agent 这一维**（只有账号 id）。
-/// 那份文件的行挂在哪一家名下由适配层那一格声明（`agents::DefaultUpstream::owns_credentials_file`），
-/// 这里只取它的路由名；本层不认识任何一家的名字。
-///
-/// 读它的只有本层自己（那张决策表住本层，[`endpoint`]）。
-/// ⚠ 买不到：「那份文件**将来**会不会装进别家的行」—— 那要文件格式多一维（`creds-core`，
-/// 不在本层），那一天本常量整删、换成逐行读出来的 agent。
-pub const CREDENTIALS_FILE_AGENT: &str = crate::agents::credentials_file_agent();
-
 // 用户「写死, 跟着适配层」⇒ 那一格搬回 `agents::Adapter::upstream`（claude-code 那一行住 `agents/claudecode`），
 // 本层只经 `agents::default_upstreams` 读 —— 形状（每家一行 · 每家一个旋钮 · 未登记即拒）一格不变，只换了住址。
 
@@ -98,6 +84,14 @@ pub const CREDENTIALS_FILE_AGENT: &str = crate::agents::credentials_file_agent()
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Upstreams {
     by_agent: std::collections::BTreeMap<&'static str, UpstreamPick>,
+    /// 凭据文件（`apikey-credentials.json`）里那些行**挂在哪一家名下**（路由名）。
+    ///
+    /// 表的键是 `(agent, 账号)`，而 `creds-core` 那份文件格式**今天没有 agent 这一维**（只有账号 id）⇒
+    /// 装表那一步得知道每一行属于谁：由适配层那一格声明（`agents::DefaultUpstream::owns_credentials_file`），
+    /// 跟每家的默认上游同一趟读进来；本层不认识任何一家的名字。
+    /// ⚠ 买不到：「那份文件**将来**会不会装进别家的行」—— 那要文件格式多一维（`creds-core`，不在本层），
+    /// 那一天这一格整删、换成逐行读出来的 agent。
+    file_agent: &'static str,
 }
 
 /// 一家的默认上游解析之后：一个，或按这一发带没带那个头二选一（`agents::Fallback` 的两形）。
@@ -133,7 +127,7 @@ impl UpstreamPick {
     /// 一家的那一格 ＋ 它的旋钮值（`None` ＝ 没配）⇒ 解析好的。配了旋钮 ⇒ 一律发到那个值。认不出 ⇒ `None`。
     pub(crate) fn parse(fallback: crate::agents::Fallback, knob: Option<&str>) -> Option<Self> {
         use crate::agents::Fallback;
-        let one = |u: &str| Base::parse(u).ok();
+        let one = |u: &str| crate::relay::base_of(u).ok();
         Some(match (knob, fallback) {
             (Some(k), _) => UpstreamPick::One(one(k)?),
             (None, Fallback::One(u)) => UpstreamPick::One(one(u)?),
@@ -162,16 +156,29 @@ impl Upstreams {
     ///   变成「那一家的每一发都被拒」，而进程照常跑着、启动日志里只有一行 —— 那是静默降级。
     pub fn from_env(get: &dyn Fn(&str) -> Option<String>) -> Option<Self> {
         let mut by_agent = std::collections::BTreeMap::new();
+        let mut owners: Vec<&'static str> = Vec::new();
         // 默认上游只查适配层（`agents::Adapter::upstream`）。
         for a in crate::agents::default_upstreams() {
             let raw = get(a.env);
             by_agent.insert(a.route_id, UpstreamPick::parse(a.fallback, raw.as_deref())?);
+            if a.owns_credentials_file {
+                owners.push(a.route_id);
+            }
         }
-        // 凭据文件那一家必须登记过，否则那份文件里的行**没有默认上游可取**。
-        // 这是一条构造期的事实，由 `table_tests` 那条相等断言钉着；这里只是不让它静默成立。
-        by_agent
-            .contains_key(CREDENTIALS_FILE_AGENT)
-            .then_some(Self { by_agent })
+        // 凭据文件归且只归一家（它也就登记过默认上游）：没有一家 · 两家都声明 ⇒ 那份文件里的行说不出挂在谁名下 ⇒ 起不来。
+        // 这是一条构造期的事实，由 `table_tests` 那条断言钉着；这里只是不让它静默成立。
+        match owners[..] {
+            [file_agent] => Some(Self {
+                by_agent,
+                file_agent,
+            }),
+            _ => None,
+        }
+    }
+
+    /// 凭据文件里那些行挂在哪一家名下（路由名，见 [`Self::file_agent`] 那一格）。
+    pub fn file_agent(&self) -> &'static str {
+        self.file_agent
     }
 
     /// 这一家登记了默认上游没有。
@@ -186,7 +193,7 @@ impl Upstreams {
 
     /// 凭据文件那一家的默认上游（那份文件里的行都是 API key 号，不按头分）。构造时已经查过它在 ⇒ 这里拿得到。
     fn of_credentials_file(&self) -> &Base {
-        self.by_agent[CREDENTIALS_FILE_AGENT].for_names(&[])
+        self.by_agent[self.file_agent].for_names(&[])
     }
 }
 
@@ -335,6 +342,8 @@ pub struct Accounts {
     clock: Clock,
     /// 写自家状态的句柄（启动时造的那一份，经中转起监听那一处递进来）：中转经手的那一发要记的几份都经它写。
     own: crate::platform::fs::Own,
+    /// 路由写的号（家, 号）→ 上次认出的那个号与原因：换号那行 warn 只在它们变了的那一下打（[`Accounts::tell`]）。
+    told: std::sync::Mutex<std::collections::BTreeMap<(String, String), (String, rotate::Speaks)>>,
 }
 
 /// 换号与额度账那一侧读的钟。
@@ -352,6 +361,7 @@ impl Accounts {
             lineage: None,
             clock: std::sync::Arc::new(crate::common::time::now_secs),
             own,
+            told: std::sync::Mutex::default(),
         }
     }
 
@@ -397,20 +407,94 @@ impl Accounts {
         }
     }
 
-    /// ★ 起会话的号（路由第 2 段）**只在这一处**定：地址里是 `_`（没说是哪个号，比如终端里直接敲、经「直接敲的也走中转」那条地址来的）
-    /// 而请求体里的账号身份恰好对上账号库里一个号（[`rotate::Hop::recognize`]）⇒ 当作地址里写的就是那个号 ——
-    /// 轮换的起始号、额度账记在谁名下、换号记录都跟着它。认不出 ⇒ 原样（`_`）。只认 `/t/`（`_` 只出现在那一种地址里）。
+    /// ★ 起会话的号（路由第 2 段）**只在这一处**定 —— 轮换的起始号、额度账记在谁名下、换号记录都跟着它。
+    /// `/t/` 每一发都照请求体里的账号身份认号（[`rotate::Hop::recognize`]），不只地址里是 `_` 的那几发：
+    /// 下游原样带上来的令牌是谁的，这一发用的就是谁的额度（一个进程拿 b 的令牌、走 d 的路由时，回包头是 b 的）。
+    /// - 认出一个号、与地址里写的不同 ⇒ 当作地址里写的就是它，另记一行 warn（路由号与实际号，不带令牌；只在认出的号或原因变了的那一下，[`Accounts::tell`]）；
+    /// - 有身份、账号库里谁都对不上 ⇒ 当作 `_`（不记给地址里写的号）；
+    /// - 请求体里没有身份这一格 ⇒ 照地址里写的。⚠ 这是盲区：这一形认不出令牌是谁的，只能信路由。
+    ///
+    /// `/s/` 不认：那一形的鉴权由表里那一行代入，号就是地址里写的那个。
     fn recognized(&self, mode: Mode, key: &RouteKey, ask: &Ask<'_>) -> RouteKey {
-        let seen = (mode == Mode::Passthrough
-            && key.seg2 == relay_route_core::UNDECLARED_ACCOUNT_SEGMENT)
-            .then(|| self.hop.as_ref()?.recognize(&key.seg1, ask.body))
-            .flatten();
+        // 先不知道会话号的那一家：起会话那个号照这一发的来处那份上游描述里记的号（[`session_upstream::bound_account`]）。
+        let bind = crate::agents::bind_among(
+            crate::agents::REGISTRY,
+            crate::agents::kind_of_route(&key.seg1).as_str(),
+        );
+        let key = &match self.own.root() {
+            Some(data) => RouteKey {
+                seg1: key.seg1.clone(),
+                seg2: session_upstream::bound_account(
+                    data.as_path(),
+                    bind,
+                    &key.seg2,
+                    ask.origin.map(|o| o.token.as_str()),
+                ),
+            },
+            None => key.clone(),
+        };
+        let (Mode::Passthrough, Some(h)) = (mode, self.hop.as_ref()) else {
+            return key.clone();
+        };
+        let undeclared = relay_route_core::UNDECLARED_ACCOUNT_SEGMENT;
+        let seen = if key.seg2 == undeclared {
+            h.recognize(&key.seg1, ask.body)
+        } else {
+            let speaks = h.speaks_for(&key.seg1, ask.body, &key.seg2);
+            // 身份就是路由写的号 ⇒ 照路由，上次认出的号也忘掉（之后再对不上照样说一行）。
+            if speaks == rotate::Speaks::Yes {
+                self.tell(key, None, speaks);
+                return key.clone();
+            }
+            // 无从比（没有身份格是盲区）⇒ 照路由。
+            if speaks == rotate::Speaks::Mute {
+                return key.clone();
+            }
+            let seen = match h.recognize(&key.seg1, ask.body) {
+                Some(id) if id != key.seg2 => id,
+                // 路由号自己的身份读不到、也认不出别的号 ⇒ 照路由（认出的变回路由号，上次认出的忘掉）。
+                _ if speaks == rotate::Speaks::Blank => {
+                    self.tell(key, None, speaks);
+                    return key.clone();
+                }
+                _ => undeclared.to_string(),
+            };
+            self.tell(key, Some(&seen), speaks);
+            Some(seen)
+        };
         match seen {
             Some(id) => RouteKey {
                 seg1: key.seg1.clone(),
                 seg2: id,
             },
             None => key.clone(),
+        }
+    }
+
+    /// 路由写的号 `key` 这一发认出的是 `seen`（`None` ＝ 就是路由号）：认出的号或原因跟上次不一样才打一行 warn（不带令牌）；
+    /// 两种原因各一句：路由号盘上的身份读不到（`Blank`）· 身份对不上（`No`）。
+    fn tell(&self, key: &RouteKey, seen: Option<&str>, why: rotate::Speaks) {
+        let mut told = self.told.lock().unwrap_or_else(|e| e.into_inner());
+        let k = (key.seg1.clone(), key.seg2.clone());
+        let Some(seen) = seen else {
+            told.remove(&k);
+            return;
+        };
+        if told.get(&k).is_some_and(|(s, w)| s == seen && *w == why) {
+            return;
+        }
+        told.insert(k, (seen.to_string(), why));
+        drop(told);
+        if why == rotate::Speaks::Blank {
+            tracing::warn!(
+                "[rotate] 路由写的号 {} 盘上的账号身份读不到，请求体里的身份认出是 {seen}：照 {seen} 记",
+                key.seg2
+            );
+        } else {
+            tracing::warn!(
+                "[rotate] 路由写的号 {} 与请求体里的账号身份对不上：照 {seen} 记",
+                key.seg2
+            );
         }
     }
 
@@ -477,7 +561,7 @@ impl Accounts {
         }
         let (table, rejected, notes) = table::build(
             std::mem::take(&mut loaded.accounts),
-            CREDENTIALS_FILE_AGENT,
+            self.upstreams.file_agent(),
             self.upstreams.of_credentials_file(),
         );
         // 重载也要**出声**：静默换掉一张表，与静默丢掉一行是同一族。
@@ -555,7 +639,7 @@ impl Destinations for Accounts {
         let key = &self.recognized(mode, key, ask);
         let row = |a: &str| self.row_of(&key.seg1, a);
         let go = match &self.hop {
-            Some(h) => h.steer(&self.rotate_ask(key, ask, &row), &self.own),
+            Some(h) => h.steer(&self.rotate_ask(key, ask, &row), &self.own).go(),
             None => rotate::Go::Start,
         };
         let table = self.table();
@@ -613,7 +697,15 @@ impl Destinations for Accounts {
             return;
         };
         let table = self.table();
-        rotate::dispatch_go(&table, &self.upstreams, mode, key, &names_of(ask), go, act);
+        rotate::dispatch_go(
+            &table,
+            &self.upstreams,
+            mode,
+            key,
+            &names_of(ask),
+            go.go(),
+            act,
+        );
     }
 
     fn observe(&self, _mode: Mode, key: &RouteKey, ask: &Ask<'_>, seen: &Heard<'_>) {
@@ -629,14 +721,12 @@ impl Destinations for Accounts {
             return;
         };
         let now = (self.clock)();
-        let retry_after = seen
-            .headers
-            .iter()
-            .find(|(k, _)| k.eq_ignore_ascii_case(RETRY_AFTER))
-            .map(|(_, v)| v.trim());
+        let retry_after = crate::agents::header(seen.headers, crate::agents::RETRY_AFTER);
         let reading = read(seen.status, seen.headers, now);
-        // 429 而这一家的读法没读成被拒（限流器没说话的短时限流）⇒ 不换号、不记账，但日志里要看得见它。
-        if seen.status == TOO_MANY_REQUESTS && !reading.as_ref().is_some_and(|r| r.refused) {
+        // 429 而通用层没判成被拒（没有一窗用满、读数也没说被拒：短时限流）⇒ 不换号、不记账，但日志里要看得见它。
+        if seen.status == crate::agents::TOO_MANY_REQUESTS
+            && !reading.as_ref().is_some_and(|r| r.refused)
+        {
             tracing::warn!("{}", throttle_line(seen.tag, seen.status, retry_after));
         }
         if let Some(reading) = reading {
@@ -657,9 +747,6 @@ impl Destinations for Accounts {
 /// `retry` 不换号（换号要把我们的号的令牌发去默认上游，改了用户选的去处）。
 const OWN_UPSTREAM_TAG: &str = "~own";
 
-/// HTTP 通用的「几秒后再试」头（不是哪一家的）。
-const RETRY_AFTER: &str = "retry-after";
-
 /// 中转上游那一跳还回来的连接空闲多久以内还拿去复用（过了就扔、新连）。
 ///
 /// 探活只看得出对端已经发了 FIN / RST 的那几形；看不出的两形都随空闲时长变多：
@@ -673,11 +760,8 @@ const RETRY_AFTER: &str = "retry-after";
 )]
 const UPSTREAM_IDLE_REUSE: std::time::Duration = std::time::Duration::from_secs(30);
 
-/// HTTP 通用的「请求太多」状态码（不是哪一家的）。
-const TOO_MANY_REQUESTS: u16 = 429;
-
 /// 被拒那一发记进后端日志的一行：号名 · 状态码 · 代表窗 · `retry-after`。只用这几格 ⇒ 不带令牌、不带回包体。
-/// 被拒要求限流器说了被拒（读法那一侧定）⇒ 「有没有限额头」恒为有，不印。
+/// 被拒由通用层判（`agents::judged`：要这一家的读法读出了额度）⇒ 「有没有限额头」恒为有，不印。
 pub fn refusal_line(
     account: &str,
     status: u16,
@@ -804,16 +888,16 @@ pub fn decide(
 ///
 /// | 这一行 | 发给上游的字节 | 落到哪个变体 |
 /// |---|---|---|
-/// | 有 key，`style` 要写头 | 丢掉下游那几个 auth 头，写这一行自己的（按 `style`） | `Substitute { auth.write: Some(_) }` |
+/// | 有 key，`style` 要写头 | 丢掉下游那几个 auth 头，写这一行自己的（按 `style`） | `Substitute { auth.write: [..] }` |
 /// | 没 key，`style` 不是 `NoAuth` | 下游那份 auth 头**逐字节原样**上去（订阅登录那一档） | `Passthrough` |
-/// | `style` 是 `NoAuth`（有没有 key 都一样） | **丢掉**下游那几个 auth 头，而且一个头都不写 | `Substitute { auth.write: None }` |
+/// | `style` 是 `NoAuth`（有没有 key 都一样） | **丢掉**下游那几个 auth 头，而且一个头都不写 | `Substitute { auth.write: [] }` |
 ///
 /// 第三行是「本地部署那一格」（本机推理服务不校验凭据 ⇒ 把一把真 key
 /// 发过去就是白送）。它**不是** `Passthrough`：`Passthrough` 逐字是「下游送来的 auth 头
 /// 原样转发」。⇒ 两个变体装不下三种处置，而丢掉一种就是**行为变化**。
 ///
 /// ⇒ 处置是把 `Substitute` 的含义写准：「**这一行的鉴权由表说了算**（先把下游那份剥掉）」，
-/// [`AuthSwap::write`] 给 `None` 表示「剥掉之后什么都不写」。`Passthrough` 仍然逐字是「原样转发」。
+/// [`AuthSwap::write`] 给空表示「剥掉之后什么都不写」。`Passthrough` 仍然逐字是「原样转发」。
 /// 中转那边因此只有一句话：`drop_client_auth == 这是不是 Substitute`
 /// —— `(key.is_some() && …) || style == NoAuth` 这个复合条件（只看前者的话 `NoAuth` 那一行
 /// 会把客户端的真 key 原样送给一个声明了不校验凭据的本地端点）**只在这里判**，中转没有第二处可以判错。
@@ -834,7 +918,7 @@ fn dispatch_auth(row: &Row, tag: &str, body: Option<&[u8]>, act: &mut dyn FnMut(
                 upstream: row.base(),
                 auth: AuthSwap {
                     clear,
-                    write: Some((name, value.as_str())),
+                    write: &[(name, value.as_str())],
                 },
                 body,
                 tag,
@@ -845,7 +929,7 @@ fn dispatch_auth(row: &Row, tag: &str, body: Option<&[u8]>, act: &mut dyn FnMut(
         //    ⚠ 两支合在一条臂上是**有意的**：有没有 key 在这一格不改变字节（都是「丢掉、不写」）。
         (_, None) => act(Destination::Substitute {
             upstream: row.base(),
-            auth: AuthSwap { clear, write: None },
+            auth: AuthSwap { clear, write: &[] },
             body,
             tag,
         }),
@@ -902,6 +986,7 @@ pub(crate) fn auth_header_of(style: AuthStyle) -> Option<(&'static str, &'static
 /// `eq_ignore_ascii_case`。派生出来的名单没有给人读的那张表，不用为「读的人以为它区分大小写」统一成小写。
 fn headers_to_clear() -> &'static [&'static str] {
     static CLEAR: std::sync::OnceLock<Vec<&'static str>> = std::sync::OnceLock::new();
+    // 换号那一发另并上它要写的那几个头名（`rotate::dispatch_go` 那一处）。
     CLEAR.get_or_init(|| {
         AuthStyle::ALL
             .iter()
@@ -931,7 +1016,7 @@ pub(crate) fn load_credentials(
             creds::announce_unresolved(&why, out);
             let (table, _, _) = table::build(
                 Vec::new(),
-                CREDENTIALS_FILE_AGENT,
+                upstreams.file_agent(),
                 upstreams.of_credentials_file(),
             );
             return (table, None);
@@ -948,7 +1033,7 @@ pub(crate) fn load_credentials(
     //     （少一条能复制明文的路就少一个出口）⇒ 只能把所有权交出去。
     let (table, rejected, notes) = table::build(
         std::mem::take(&mut loaded.accounts),
-        CREDENTIALS_FILE_AGENT,
+        upstreams.file_agent(),
         upstreams.of_credentials_file(),
     );
     creds::announce(&loaded, table.len(), &rejected, &notes, out);

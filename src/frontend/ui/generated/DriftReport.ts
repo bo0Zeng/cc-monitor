@@ -4,4 +4,8 @@ import type { DriftFaceReport } from "./DriftFaceReport";
 /**
  * `drift-report` 的应答：注册表里各家的面并在一起（注册序；不记的那一家没有面）。
  */
-export type DriftReport = { faces: Array<DriftFaceReport>, };
+export type DriftReport = { faces: Array<DriftFaceReport>, 
+/**
+ * 机器页那一格（「会话流 ×n · 已记入诊断信息 · 不影响显示」，n ＝ 各面加起来几个键；一个都没有 ⇒「无」），出口照抄。
+ */
+said: string, };

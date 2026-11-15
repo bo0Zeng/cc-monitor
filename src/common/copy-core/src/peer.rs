@@ -1,4 +1,4 @@
-//! 因对方版本说不成的那几句（命令发不成 · 接上时的新旧）· 那台做不到的那一句，和一句话里怎么称呼那台机器。全产品各一份（界面那一侧是 `chan-caller.ts::peerVersionSaid`）。
+//! 因对方版本说不成的那几句（命令发不成 · 接上时的新旧）· 那台做不到的那一句 · 那台离线的那一句，和一句话里怎么称呼那台机器。全产品各一份（界面那一侧是 `chan-caller.ts::peerVersionSaid`）。
 
 use crate::copy_text;
 
@@ -6,6 +6,16 @@ use crate::copy_text;
 /// 界面不取它，照成品的 `name` 叫（`chan-caller.ts::machineName`）。
 pub fn local_machine() -> String {
     copy_text("detail.label.local", &[])
+}
+
+/// 一句话里怎么称呼一台：本机 ⇒ [`local_machine`]；远端 ⇒ 它的键（远端的键就是给人看的名字，机器表 `Host::name` 定的那一个）；
+/// 空白名原样（「没给名字」不是本机）。Rust 一侧称呼一台只经这里（界面照成品的 `name`，`chan-caller.ts::machineName`）。
+pub fn machine_word(m: &cmd_wire::Machine) -> String {
+    if m.is_local() {
+        local_machine()
+    } else {
+        m.to_string()
+    }
 }
 
 /// 说话的这一层不知道那台叫什么时（通信层的兜底句 · 后端自己答「不认这条」）称呼它的那个词。
@@ -31,6 +41,21 @@ pub fn backend_differs(machine: &str) -> String {
 /// 见 [`backend_old`]。
 pub fn reply_unreadable(machine: &str) -> String {
     copy_text("peerVersion.said.unreadable", &[("machine", machine)])
+}
+
+/// 那台离线那一句（`machine` 是给人看的称呼）。全产品只这一处取字：连接层 · 后端成品 · 各出口交出的离线那一句都从这里来。
+pub fn offline(machine: &str) -> String {
+    copy_text("link.machine.offline", &[("machine", machine)])
+}
+
+/// 🔴 **断着 ⇒ 写类为什么做不了（唯一一处）**：那台断着 ⇒ 离线 · 只读；与 cc-monitor 断开 ⇒ 照实说那一段，不说那台离线。
+/// 连着 ⇒ `None`。本机后端的菜单成品（经 pick-core `refused_here`）· 文件窗口的命令栏 · 编辑页的［保存］· 关窗那一问 · 右键断开那一行都问它。
+pub fn write_refused(cut: Option<cmd_wire::files::Cut>) -> Option<String> {
+    use cmd_wire::files::Cut;
+    cut.map(|c| match c {
+        Cut::Machine => copy_text("link.machine.readOnly", &[]),
+        Cut::Monitor => copy_text("rsFilewinChrome.link.severedReadOnly", &[]),
+    })
 }
 
 /// 那台握手时说过「这条接得下、这台做不到」的一个码（`hello.unavailable`）⇒ 置灰时说的那一句；认不出的码只说做不到（码不上屏）。

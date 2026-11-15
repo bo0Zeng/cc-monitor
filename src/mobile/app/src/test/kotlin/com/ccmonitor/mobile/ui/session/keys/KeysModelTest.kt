@@ -2,6 +2,9 @@ package com.ccmonitor.mobile.ui.session.keys
 
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.AppAction
+import com.ccmonitor.mobile.core.data.db.DEFAULT_GROUP_COMMON
+import com.ccmonitor.mobile.core.data.db.DEFAULT_GROUP_SHELL
+import com.ccmonitor.mobile.core.data.db.DEFAULT_GROUP_VIM
 import com.ccmonitor.mobile.core.data.db.KeyBinding
 import com.ccmonitor.mobile.core.data.db.KeyGroup
 import com.ccmonitor.mobile.core.data.db.KeyMod
@@ -131,12 +134,26 @@ class KeysModelTest {
 
     @Test
     fun resetLinesListWhatGoesBack() {
-        val gs = defaultKeyGroups() + KeyGroup("g", "git", 3)
+        val gs = defaultKeyGroups(commonGroupName()) + KeyGroup("g", "git", 3)
         val ks = defaultKeys().map { if (it.id == "dk-common-esc") it.copy(tap = up) else it } + TermKey("x", "g", 0, tap = esc)
-        val lines = resetLines(resetPreview(gs, ks))
-        assertEquals(copyText("mobKeys.reset.back", "names" to defaultKeyGroups().first().name), lines.changed)
+        val lines = resetLines(resetPreview(gs, ks, commonGroupName()))
+        assertEquals(copyText("mobKeys.reset.back", "names" to commonGroupName()), lines.changed)
         assertEquals(copyText("mobKeys.reset.groups", "names" to "「git」") + " · " + copyText("mobKeys.reset.keys", "n" to 1), lines.deleted)
-        assertEquals(ResetLines(null, null), resetLines(resetPreview(defaultKeyGroups(), defaultKeys())))
+        assertEquals(ResetLines(null, null), resetLines(resetPreview(defaultKeyGroups(commonGroupName()), defaultKeys(), commonGroupName())))
+    }
+
+    /** 默认三组照键帽钉住（「常用」的组名与「粘贴」都照文案表）。 */
+    @Test
+    fun defaultKeysReadAsCommonShellVim() {
+        fun capsOf(group: String) = defaultKeys().filter { it.groupId == group }.sortedBy { it.sortOrder }.map { it.cap() }
+        assertEquals("常用", defaultKeyGroups(commonGroupName()).first { it.id == DEFAULT_GROUP_COMMON }.name)
+        // Ctrl-B：托管终端与 tmux 共用的前缀（缺省 Ctrl+b）。
+        assertEquals(listOf("⇌", "Esc", "Ctrl-C", "Ctrl-B", "↑", "↓", "⏎", "Tab", "Shift-Tab", "粘贴"), capsOf(DEFAULT_GROUP_COMMON))
+        assertEquals(
+            listOf("⇌", "Ctrl", "Alt", "Tab", "←", "→", "Home", "End", "PgUp", "PgDn", "⌫", "Del"),
+            capsOf(DEFAULT_GROUP_SHELL),
+        )
+        assertEquals(listOf("⇌", "Esc", "i", ":", "/", "dd", "u", "p", ":w⏎", ":wq⏎", ":q!⏎"), capsOf(DEFAULT_GROUP_VIM))
     }
 
     @Test

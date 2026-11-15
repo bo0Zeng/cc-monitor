@@ -237,3 +237,27 @@ async fn a_backend_that_does_not_ack_deflate_is_read_plain() {
     let (raw, wire) = peer.await.unwrap();
     assert_eq!(raw, wire);
 }
+
+/// 截图台架接本机常驻那一行照壳这一处写（`tests/shots/real/pool.mjs::attachLine` 运行时读这份金样，不手抄）：
+/// 金样记 [`folded_attach_line`] 带着一个时区占位、在看名单为空时拼出的原样，台架只把占位换成它的时区。
+/// 只比不写：不等 ⇒ 现打的落在本树 `.build/golden/` 下、红；对过之后跑 `bash tests/scripts/bless-golden.sh` 拷回。
+#[test]
+fn the_shots_attach_line_golden_is_what_the_shell_writes() {
+    const REL: &str = "tests/__fixtures__/attach-line.golden.json";
+    const TZ_SLOT: &str = "{tz}";
+    let line = folded_attach_line(Some(TZ_SLOT), WatchAsk::default());
+    let out = format!(
+        "{{\n  \"tz\": {},\n  \"line\": {}\n}}\n",
+        serde_json::to_string(TZ_SLOT).unwrap(),
+        serde_json::to_string(&line).unwrap()
+    );
+    let root = guard_core::addr::repo_root();
+    let text = std::fs::read_to_string(root.join(REL)).unwrap_or_default();
+    let fresh_path = guard_core::addr::fresh_golden(&root, REL);
+    if out != text {
+        std::fs::create_dir_all(fresh_path.parent().unwrap()).unwrap();
+        std::fs::write(&fresh_path, &out).unwrap();
+        panic!("{REL} 与现打的不一致：现打的在 .build/golden/{REL}；对过后跑 bash tests/scripts/bless-golden.sh 拷回（截图台架 pool.mjs 读它）");
+    }
+    let _ = std::fs::remove_file(&fresh_path);
+}

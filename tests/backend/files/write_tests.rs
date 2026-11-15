@@ -2697,17 +2697,18 @@ fn tails_of_tree() -> Vec<&'static str> {
 #[test]
 #[cfg(unix)]
 fn a_recursive_copy_lands_the_whole_tree_with_bytes_and_modes() {
-    use std::os::unix::fs::PermissionsExt as _;
     let base = temp_root("cpt");
     let root = base.join("cfg");
     plant_tree(&root);
-    std::fs::set_permissions(
-        root.join("t/a/two.md"),
-        std::fs::Permissions::from_mode(0o751),
-    )
+    // 带可执行位的那一份只经 `write_exe` 写（内容照 `plant_tree` 铺的那一份）；另一份设成哪种常见 umask 都给不出的 0604，
+    // 「可执行的一律 755、别的照缺省」那种抄法也过不去。
+    test_home::write_exe(&root.join("t/a/two.md"), "2");
+    std::fs::set_permissions(root.join("t/one.md"), {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::Permissions::from_mode(0o604)
+    })
     .expect("设权限");
-    std::fs::set_permissions(root.join("t/a/b"), std::fs::Permissions::from_mode(0o555))
-        .expect("设只读目录");
+    test_home::set_dir_mode(&root.join("t/a/b"), 0o555);
     let got = copy_tree(&Face::issue(), &root, "t", "u").expect("干净的复制目录被拒了");
     assert_eq!(
         (got.files, got.dirs, got.bytes),
@@ -2721,8 +2722,8 @@ fn a_recursive_copy_lands_the_whole_tree_with_bytes_and_modes() {
     let src = tree_facts(&root.join("t"), &refs);
     let dst = tree_facts(&root.join("u"), &refs);
     assert_eq!(dst, src, "复制出来的那棵与源不逐条相等（内容 / 权限位）");
-    std::fs::set_permissions(root.join("t/a/b"), std::fs::Permissions::from_mode(0o755)).ok();
-    std::fs::set_permissions(root.join("u/a/b"), std::fs::Permissions::from_mode(0o755)).ok();
+    test_home::set_dir_mode(&root.join("t/a/b"), 0o755);
+    test_home::set_dir_mode(&root.join("u/a/b"), 0o755);
     std::fs::remove_dir_all(&base).ok();
 }
 
@@ -3275,12 +3276,10 @@ fn a_bad_name_is_refused_with_its_own_code_before_anything_lands() {
 #[cfg(unix)]
 #[test]
 fn a_disk_failure_says_a_reason_word_and_hands_the_system_text_to_raw() {
-    use std::os::unix::fs::PermissionsExt as _;
     let root = temp_root("io-said");
     std::fs::create_dir(root.join("ro")).expect("建目录");
     std::fs::write(root.join("ro/a.txt"), b"x").expect("写一份");
-    let mode = |m| std::fs::Permissions::from_mode(m);
-    std::fs::set_permissions(root.join("ro"), mode(0o500)).expect("只读");
+    test_home::set_dir_mode(&root.join("ro"), 0o500);
     let r = root.to_str().expect("utf8");
     let got = answer_wire(
         "files-delete",
@@ -3290,7 +3289,7 @@ fn a_disk_failure_says_a_reason_word_and_hands_the_system_text_to_raw() {
         "files-rename",
         &serde_json::json!({"root": r, "from": "ro/a.txt", "to": "ro/b.txt"}),
     );
-    std::fs::set_permissions(root.join("ro"), mode(0o700)).expect("还原");
+    test_home::set_dir_mode(&root.join("ro"), 0o700);
     let why = copy_core::copy_text("reason.io.denied", &[]);
     for f in [
         got.expect_err("只读目录里删竟然成了"),

@@ -247,31 +247,14 @@ mod tests {
         }
     }
 
-    /// 真过通用层起那个假插件；**只**对 `ETXTBSY` 有上限地重试（50 × 20ms），别的结果原样交回。
-    ///
-    /// 夹具是本进程刚写出来的：写的那一刻并行测试里别的线程恰好 fork，子进程在 exec 之前
-    /// 还攥着那份写 fd ⇒ 此刻 execve 它 = `ETXTBSY`（门禁全量跑时现打逮到过一次）。
-    /// 认 `os error 26`（errno），不认 `Text file busy`（随 locale 变）。
-    /// 不能像 `identity_tag_tests` 那样改经 `/bin/sh` 起：这里要证的正是通用层真的 exec 了它。
-    fn run_past_busy(
+    /// 真过通用层起那个假插件，起一次，结果原样交回（夹具经 [`put_plugin`] 写，本进程没有它的写端）。
+    fn run(
         bin: &Path,
         args: &[&str],
         deadline_secs: u64,
         env: &[(&str, &str)],
     ) -> Result<crate::plugin::invoke::Done, crate::plugin::invoke::NotRun> {
-        let mut r = crate::plugin::invoke::run_fed(bin, args, deadline_secs, env, None, None);
-        for _ in guard_core::wall::rounds() {
-            match &r {
-                Err(crate::plugin::invoke::NotRun::Failed(m))
-                    if m.raw.as_deref().is_some_and(|r| r.contains("os error 26")) =>
-                {
-                    std::thread::sleep(std::time::Duration::from_millis(20));
-                    r = crate::plugin::invoke::run_fed(bin, args, deadline_secs, env, None, None);
-                }
-                _ => break,
-            }
-        }
-        r
+        crate::plugin::invoke::run_fed(bin, args, deadline_secs, env, None, None)
     }
 
     /// 走完一遍之后手上的东西 —— 正题那一格要逐跳核它（`Debug` 承重：反向那几格红时原样端出来）。
@@ -329,18 +312,16 @@ mod tests {
             knowledge: KNOWLEDGE[1],
         })?;
         let (work_argv, work_env) = work();
-        let refused = run_past_busy(&bin, &work_argv, DEADLINE_SECS, &[]).map_err(|e| {
-            Stop::CouldNotStart {
+        let refused =
+            run(&bin, &work_argv, DEADLINE_SECS, &[]).map_err(|e| Stop::CouldNotStart {
                 hop: HOPS[1],
                 why: why_not_run(e),
-            }
-        })?;
-        let sealed = run_past_busy(&bin, &work_argv, DEADLINE_SECS, &work_env).map_err(|e| {
-            Stop::CouldNotStart {
+            })?;
+        let sealed =
+            run(&bin, &work_argv, DEADLINE_SECS, &work_env).map_err(|e| Stop::CouldNotStart {
                 hop: HOPS[1],
                 why: why_not_run(e),
-            }
-        })?;
+            })?;
         // 同一条 argv、只差那一项 env，结果必须不同 —— 少了这一句，一个恒答同一张脸的假插件也能走完。
         if refused.code == sealed.code || diagnosis(&refused).is_empty() {
             return Err(Stop::Inconsistent {
@@ -407,22 +388,22 @@ mod tests {
         std::fs::create_dir_all(&root).expect("建夹具根");
         let name = plugin_name();
         let f = root.join(&name);
-        std::fs::write(&f, script_text()).expect("写假插件");
-        arm(&f);
+        put_plugin(&f);
         root
     }
 
-    /// 给一个文件加执行位（`discover::is_executable` 判的正是它）。
-    fn arm(f: &Path) {
+    /// 把假插件写到 `f`、带执行位。unix 上经 `test_home::write_exe`：本进程从没有它的写端，
+    /// 旁边别的判据线程正 fork 时马上起它也不撞 `ETXTBSY`；别处直写（执行位不由它判）。
+    fn put_plugin(f: &Path) {
         #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(f, std::fs::Permissions::from_mode(0o755)).expect("chmod");
-        }
+        test_home::write_exe(f, &script_text());
         #[cfg(not(unix))]
-        {
-            let _ = f;
-        }
+        std::fs::write(f, script_text()).expect("写假插件");
+    }
+
+    /// 给假插件加回执行位（`discover::is_executable` 判的正是它）：整份经 [`put_plugin`] 重写 —— 设可执行位只经 `write_exe`。
+    fn arm(f: &Path) {
+        put_plugin(f);
     }
 
     /// 读一读本文件自己的源码（`this_fixture_never_ships` 与那条天花板要用）。
@@ -493,6 +474,30 @@ mod tests {
     // ═══════════════════════════════════════════════════════════════════════
     // 四 · 判据
     // ═══════════════════════════════════════════════════════════════════════
+
+    /// 夹具刚建好就经通用调用口起它，旁边别的线程正不停 fork：300 次每次都起得来、答的是「没交作业域」。
+    /// 撞上起不来（夹具的写端漏进别人 fork 的子进程 ⇒ ETXTBSY）当场红，不重试。
+    #[cfg(unix)]
+    #[test]
+    fn a_fixture_built_just_now_runs_at_once_while_others_fork() {
+        let _f = test_home::forking(4);
+        for i in 0..300 {
+            let root = build_fixture("busy");
+            let bin = root.join(plugin_name());
+            let r =
+                crate::plugin::invoke::run_fed(&bin, &[WORK_SUB], DEADLINE_SECS, &[], None, None);
+            let _ = std::fs::remove_dir_all(&root);
+            match r {
+                Ok(d) => assert_eq!(
+                    d.code,
+                    Some(REALM_LOCKED),
+                    "第 {i} 次答错了：{}",
+                    diagnosis(&d)
+                ),
+                Err(e) => panic!("第 {i} 次起不来：{}", why_not_run(e)),
+            }
+        }
+    }
 
     /// 正题：**一个假插件把三跳串成一条路、真起进程**，而通用层一行没改。
     #[test]
@@ -704,7 +709,7 @@ mod tests {
 
         // ── ② 文件在、**没有执行位**：仍然是「找不到」，不是「起不来」 ───────
         let f = root.join(&name);
-        std::fs::write(&f, script_text()).expect("写假插件");
+        put_plugin(&f);
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -747,7 +752,7 @@ mod tests {
         let name = plugin_name();
         let f = root.join(&name);
         // 文件在、正文对、**就是没有执行位**。
-        std::fs::write(&f, script_text()).expect("写假插件");
+        put_plugin(&f);
         let (fixed, _) = discovery_of(&root, &name);
 
         #[cfg(unix)]
@@ -966,7 +971,7 @@ mod tests {
         let name = plugin_name();
         let (fixed, hint) = discovery_of(&root, &name);
         let bin = crate::plugin::discover::find(&name, &fixed, false, hint).expect("该找得到");
-        let napped = run_past_busy(&bin, &[NAP_SUB], NAP_DEADLINE_SECS, &[])
+        let napped = run(&bin, &[NAP_SUB], NAP_DEADLINE_SECS, &[])
             .unwrap_or_else(|e| panic!("卡住那条子命令没跑起来：{}", why_not_run(e)));
         assert_eq!(
             napped.code,
@@ -1057,7 +1062,7 @@ mod tests {
         // ⚠ 把 `NotRun` 那两支的原文带上：「参数太大」（自己能修）与「那个程序坏了」
         //（自己修不了）是两件事，合成一句「起不来」就是归错因（`invoke::NotRun` 的头注逐字）。
         let (argv, env) = work_call();
-        let out = run_past_busy(&bin, &argv, DEADLINE_SECS, &env)
+        let out = run(&bin, &argv, DEADLINE_SECS, &env)
             .unwrap_or_else(|e| panic!("那个假插件没跑起来：{}", why_not_run(e)));
         let child_path = reported(&String::from_utf8_lossy(&out.stdout), "inherited-path");
         let host_path = std::env::var("PATH").unwrap_or_default();
@@ -1214,7 +1219,7 @@ mod tests {
         let name = plugin_name();
         let (fixed, hint) = discovery_of(&root, &name);
         let bin = crate::plugin::discover::find(&name, &fixed, false, hint).expect("该找得到");
-        let out = run_past_busy(
+        let out = run(
             &bin,
             &[ROSTER_SUB],
             DEADLINE_SECS,

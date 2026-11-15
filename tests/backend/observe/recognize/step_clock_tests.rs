@@ -5,7 +5,7 @@
 use super::*;
 use crate::agents::record::{Block, Body, Draw, Record};
 use crate::agents::{Speaker, StepResult, UserText};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// 一条回复，带这几次工具调用，时刻 `at_ms`。
 fn reply(at_ms: Option<i64>, calls: &[&str]) -> Record {
@@ -95,7 +95,7 @@ fn a_result_ninety_seconds_after_its_call_gets_its_duration_written() {
     let mut clock = StepClock::default();
     clock.note(&reply(Some(T), &["c1"]));
     let mut r = results(Some(T + 90_000), &["c1"]);
-    clock.time(&mut r);
+    clock.time(&mut r, &BTreeSet::new());
     assert_eq!(cell(&r, "c1"), copy_core::short_duration(90_000));
     assert_eq!(clock.len(), 0, "配上了就从表里摘掉");
 }
@@ -109,17 +109,17 @@ fn a_result_earlier_than_its_call_or_unmatched_is_left_unwritten() {
     let mut clock = StepClock::default();
     clock.note(&reply(Some(T), &["c1"]));
     let mut r = results(Some(T - 1), &["c1"]);
-    clock.time(&mut r);
+    clock.time(&mut r, &BTreeSet::new());
     assert_eq!(cell(&r, "c1"), untouched, "结果早于调用：不猜");
 
     let mut r = results(Some(T + 5_000), &["c9"]);
-    clock.time(&mut r);
+    clock.time(&mut r, &BTreeSet::new());
     assert_eq!(cell(&r, "c9"), untouched, "没记下的调用：不写");
 
     let mut clock = StepClock::default();
     clock.note(&reply(Some(T), &["c2"]));
     let mut r = results(None, &["c2"]);
-    clock.time(&mut r);
+    clock.time(&mut r, &BTreeSet::new());
     assert_eq!(cell(&r, "c2"), untouched, "结果没有时刻：不写");
 }
 
@@ -134,7 +134,7 @@ fn a_full_table_drops_its_oldest_call() {
     assert_eq!(clock.len(), PENDING_KEEP);
 
     let mut r = results(Some(T + 60_000), &["c0", "c1"]);
-    clock.time(&mut r);
+    clock.time(&mut r, &BTreeSet::new());
     assert_eq!(cell(&r, "c0"), String::new(), "最早那一条已丢");
     assert_eq!(cell(&r, "c1"), copy_core::short_duration(59_999));
 }
@@ -149,7 +149,7 @@ fn a_call_without_a_time_is_not_noted_and_a_repeat_takes_the_later_time() {
     clock.note(&reply(Some(T + 30_000), &["c2"]));
     assert_eq!(clock.len(), 1);
     let mut r = results(Some(T + 90_000), &["c2"]);
-    clock.time(&mut r);
+    clock.time(&mut r, &BTreeSet::new());
     assert_eq!(cell(&r, "c2"), copy_core::short_duration(60_000));
 }
 
@@ -165,7 +165,7 @@ fn a_codex_call_output_ninety_seconds_later_gets_its_duration_written() {
     let mut clock = StepClock::default();
     clock.note(&record_of(&call, 0).unwrap());
     let mut r = record_of(&out, 100).unwrap();
-    clock.time(&mut r);
+    clock.time(&mut r, &BTreeSet::new());
     let Body::Said { results, .. } = &r.body else {
         panic!("不是带结果的那一条")
     };
@@ -185,7 +185,7 @@ fn a_failed_step_says_failed_with_or_without_its_duration() {
     let mut clock = StepClock::default();
     clock.note(&reply(Some(T), &["c1"]));
     let mut r = with(Some(T + 90_000), &["c1", "c2"], failed);
-    clock.time(&mut r);
+    clock.time(&mut r, &BTreeSet::new());
     let dur = copy_core::short_duration(90_000);
     assert_eq!(
         cell(&r, "c1"),
@@ -205,12 +205,31 @@ fn a_failed_step_says_failed_with_or_without_its_duration() {
     );
 }
 
+/// ★ 读了几行只给适配层交来的读文件那一类（`reads`，不上线）：同一条里两格行数一样，只有在 `reads` 里的那一格说「读了几行」。
+#[test]
+fn only_results_in_reads_say_how_many_lines_were_read() {
+    let lines = StepResult {
+        ok: true,
+        lines: Some(3),
+        ..Default::default()
+    };
+    let mut r = with(Some(T), &["c1", "c2"], lines);
+    let reads: BTreeSet<String> = ["c1".to_string()].into();
+    StepClock::default().time(&mut r, &reads);
+    assert_eq!(
+        cell(&r, "c1"),
+        copy_core::copy_text("stream.step.lines", &[("n", "3")])
+    );
+    assert_eq!(cell(&r, "c2"), "", "不在 reads 里：行数不说");
+}
+
 /// ★★ 过程那一行右侧那一句只在这里写（`said`）：改动 `+a −r`（为零的那一半不写）· 读了几行只给读文件那一类 · 几个文件 ·
 /// 未批准 · 答了什么；都说不上 ⇒ 空串，配上了用时 ⇒ 只写用时；别的那几形配上了也不带用时。
 #[test]
 fn the_right_hand_sentence_is_written_here_once() {
     use crate::agents::Answer;
-    let t = |r: StepResult, ms: Option<u64>| said(r, ms).text.0;
+    let t = |r: StepResult, ms: Option<u64>| said(r, ms, false).text.0;
+    let t_read = |r: StepResult, ms: Option<u64>| said(r, ms, true).text.0;
     let ok = StepResult {
         ok: true,
         ..Default::default()
@@ -219,16 +238,15 @@ fn the_right_hand_sentence_is_written_here_once() {
     // 读文件：读了几行；命令输出几行 · 搜索命中几行不说。
     let read = StepResult {
         lines: Some(12),
-        read: true,
         ..ok.clone()
     };
     assert_eq!(
-        t(read.clone(), None),
+        t_read(read.clone(), None),
         copy_core::copy_text("stream.step.lines", &[("n", "12")])
     );
     assert_eq!(
-        t(read.clone(), Some(90_000)),
-        t(read, None),
+        t_read(read.clone(), Some(90_000)),
+        t_read(read, None),
         "读了几行：不带用时"
     );
     let out = StepResult {
@@ -237,6 +255,26 @@ fn the_right_hand_sentence_is_written_here_once() {
     };
     assert_eq!(t(out.clone(), None), "", "不是读文件那一类：行数不说");
     assert_eq!(t(out, Some(90_000)), dur, "都说不上：只剩用时");
+    // 派出卡那一句「交回结果 · N 字」也在这里写：只有交回那一种有。
+    let back = StepResult {
+        chars: Some(42),
+        kind: Some(cmd_wire::record::ResultKind::Handback),
+        ..ok.clone()
+    };
+    assert_eq!(
+        said(back, None, false).result_text.map(|w| w.0),
+        Some(copy_core::copy_text("runCard.result.done", &[("n", "42")]))
+    );
+    let launched = StepResult {
+        chars: Some(42),
+        kind: Some(cmd_wire::record::ResultKind::Launched),
+        ..ok.clone()
+    };
+    assert!(
+        said(launched, None, false).result_text.is_none(),
+        "回执不是交回"
+    );
+    assert!(said(ok.clone(), None, false).result_text.is_none());
     // 改动。
     let diff = StepResult {
         added: Some(2),
@@ -276,6 +314,7 @@ fn the_right_hand_sentence_is_written_here_once() {
             ..Default::default()
         },
         Some(90_000),
+        false,
     );
     assert_eq!(
         rejected.text.0,
@@ -290,6 +329,7 @@ fn the_right_hand_sentence_is_written_here_once() {
             ..Default::default()
         },
         None,
+        false,
     );
     assert_eq!(
         exit.error.map(|w| w.0),

@@ -82,7 +82,7 @@ fn inserting_an_item_goes_by_label_order_not_by_parsing_lines() {
     );
 }
 
-/// 通道这一跳断了那一份：时刻 · 机器（没发出去标「未连上」）· 本机（可缺）· 命令 · 断在（可缺）· 码 —— 壳与文件窗口同一份。
+/// 通道这一跳断了那一份：时刻 · 机器（没够着那台标「未连接」）· 本机（可缺）· 命令 · 断在（可缺）· 码 —— 壳与文件窗口同一份。
 #[test]
 fn a_channel_detail_is_one_shape() {
     let nc = copy_text("detail.value.notConnected", &[]);

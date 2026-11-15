@@ -18,7 +18,7 @@ needs: string | null,
  */
 face: SessionFace, 
 /**
- * 写好的那一个名字：子 agent ⇒「{主会话} 的 agent」；认不出 ⇒ 认不出那一句（id 截成前后几位）；
- * 会话本身 ⇒ `null`（两端写那条会话的名字）。
+ * 后端写好的那一个名字，两端照显：会话本身 ⇒ 那条会话的标题（与标签页 · 会话列表同一条规则）；
+ * 子 agent ⇒「{主会话} 的 agent」；认不出 ⇒ 认不出那一句（id 截成前后几位）。
  */
-label: string | null, };
+label: string, };

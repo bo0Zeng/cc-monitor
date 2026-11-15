@@ -409,11 +409,7 @@ fn every_fact_lands_on_its_state_word_sentence_and_fixes() {
         let p = of(facts, enabled);
         assert_eq!(row(&p), want(w), "「{name}」");
         // 离线那一句哪一态都带着，是连接层写的那一句（出口照摆）。
-        assert_eq!(
-            p.offline_said,
-            comms_inward::chan::said::offline(M),
-            "「{name}」"
-        );
+        assert_eq!(p.offline_said, copy_core::offline(M), "「{name}」");
     }
 }
 
@@ -698,7 +694,7 @@ fn a_session_refused_after_login_is_its_own_state_not_offline() {
             copy_text("machineState.down.sessionDenied", &[("machine", M)])
         );
         assert!(p.said.contains(M), "那一句要说是哪台：{}", p.said);
-        assert_ne!(p.said, comms_inward::chan::said::offline(M));
+        assert_ne!(p.said, copy_core::offline(M));
         assert_eq!(
             p.fixes.iter().map(|f| f.fix).collect::<Vec<_>>(),
             vec![MachineFix::Retry]
@@ -1106,12 +1102,38 @@ fn every_state_carries_the_held_line_and_unknown_says_so() {
     assert_ne!(held, unknown, "两句得不一样");
 }
 
+/// 撤着那两句（待发里撤着、那台断着那一行 · 编辑那一句上一版还撤着时退法抽屉那一句）：哪一态都带、带那台的名字，两端照摆不拼。
+#[test]
+fn every_state_carries_the_two_withdraw_lines_with_the_machine_name() {
+    let withdraw = copy_text("beQueue.said.withdrawHeld", &[("machine", M)]);
+    let rewind = copy_text("beQueue.said.rewindHeld", &[("machine", M)]);
+    let cases: Vec<(&str, Vec<Fact>, bool)> = vec![
+        ("连着", vec![up(Relation::Same, &[])], true),
+        ("正在连", vec![round(Round::Connecting)], true),
+        ("拨号超时", vec![down_(Some(Why::Timeout))], true),
+        ("没有后端", vec![blocked(Blocker::NoBackend)], true),
+        ("停用", vec![down_(Some(Why::Auth))], false),
+        ("没轮过", vec![], true),
+    ];
+    for (name, facts, enabled) in cases {
+        let m = of(facts, enabled);
+        assert_eq!(m.withdraw_held, withdraw, "{name}");
+        assert_eq!(m.rewind_held, rewind, "{name}");
+    }
+    assert_ne!(withdraw, rewind, "两句得不一样");
+    let held = copy_text("beQueue.said.held", &[("machine", M)]);
+    assert_ne!(withdraw, held, "撤着不说补交");
+    let wire = serde_json::to_value(of(vec![], true)).unwrap();
+    assert_eq!(wire["withdrawHeld"], withdraw.as_str(), "线上名照驼峰");
+    assert_eq!(wire["rewindHeld"], rewind.as_str());
+}
+
 /// 这一条连接是用密码登上的（宿主那一端的事实）：那台连着 ⇒ 条上那一行（语气 plain · 那一句 · ［换成密钥］）；
 /// 别的态（没连上 · 正在连 · 旧了 · 比这一版新）照旧，不叠这一行；不是密码 ⇒ 照旧。
 #[test]
 fn a_password_sign_in_on_a_linked_machine_offers_switching_to_a_key() {
     let mut up_ = phone(vec![up(Relation::Same, &[])]);
-    signed_in(&mut up_, true);
+    mark_signed_in(&mut up_, true);
     assert_eq!(
         up_.said,
         copy_text("beMachine.said.password", &[("machine", M)])
@@ -1132,7 +1154,7 @@ fn a_password_sign_in_on_a_linked_machine_offers_switching_to_a_key() {
     );
     // 连着、不是密码 ⇒ 不进条。
     let mut keyed = phone(vec![up(Relation::Same, &[])]);
-    signed_in(&mut keyed, false);
+    mark_signed_in(&mut keyed, false);
     assert_eq!(keyed, phone(vec![up(Relation::Same, &[])]));
     // 别的态照旧：没连上 · 正在连 · 旧了 · 比这一版新。
     for facts in [
@@ -1142,7 +1164,7 @@ fn a_password_sign_in_on_a_linked_machine_offers_switching_to_a_key() {
         vec![up(Relation::Newer, &[])],
     ] {
         let mut m = phone(facts.clone());
-        signed_in(&mut m, true);
+        mark_signed_in(&mut m, true);
         assert_eq!(m, phone(facts), "只在连着无事时出这一行");
     }
 }

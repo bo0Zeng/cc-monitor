@@ -103,6 +103,8 @@ pub(crate) struct PromptCache {
 /// ctx 里的一个号（只有事实）。
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct CtxAcct {
+    /// 这个号是哪一家的号（同 [`Acct::agent`]；ctx 里只有会话那一家的号）。
+    pub(crate) agent: String,
     pub(crate) id: String,
     pub(crate) pos: usize,
     pub(crate) api: bool,
@@ -125,6 +127,8 @@ pub(crate) struct CtxAcct {
 /// 会话状态 Σ（后端存 ＋ 本会话量出来的）。
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Sigma {
+    /// 会话是哪一家的（路由名）：只在这一家的号里判（号按（家, 号名）认，[`Acct::agent`]）。
+    pub agent: String,
     /// 开会话用的号。
     pub start: String,
     pub current: String,
@@ -175,8 +179,56 @@ pub struct Decision {
 /// 策略声明了结论随时间变、又没约时刻 ⇒ 每隔这么久来问一次。
 pub(crate) const FALLBACK_STEP: u64 = 15 * 60;
 
-fn fact<'a>(f: &'a [Acct], a: &str) -> Option<&'a Acct> {
-    f.iter().find(|x| x.id == a)
+/// ★ `agent` 那一家号名 `a` 的那一行在事实里第几个（号按（家, 号名）认的唯一一处：两家可以有同名的号）。
+/// 判 · 推演 · 中转那一侧 · 出口找号都照它（[`fact`] · [`fact_mut`]）。
+pub fn fact_at(f: &[Acct], agent: &str, a: &str) -> Option<usize> {
+    f.iter().position(|x| x.agent == agent && x.id == a)
+}
+
+/// `agent` 那一家的号 `a`（[`fact_at`]）。
+pub fn fact<'a>(f: &'a [Acct], agent: &str, a: &str) -> Option<&'a Acct> {
+    fact_at(f, agent, a).map(|i| &f[i])
+}
+
+/// [`fact`] 那一行，改得动。
+pub fn fact_mut<'a>(f: &'a mut [Acct], agent: &str, a: &str) -> Option<&'a mut Acct> {
+    fact_at(f, agent, a).map(move |i| &mut f[i])
+}
+
+/// 号表那一侧：号表里一个号是哪一家（路由名，同会话那一条与事实的 `agent`）：清单那一格（缺 ⇒ 缺省那一家，
+/// [`crate::agents::account_kind_among`]）那一家起会话那一面的路由名；说不出 ⇒ `None`。注册表照参数交（判据交替身家）。
+pub fn family_among(
+    reg: &[crate::agents::Adapter],
+    m: &acct_core::ManifestAccount,
+) -> Option<&'static str> {
+    let kind = crate::agents::account_kind_among(reg, m.agent.as_deref())?;
+    crate::agents::launch_face_among(reg, kind).map(|f| f.adapter_id)
+}
+
+/// ★ 号表那一侧的（家, 号名）找号（唯一一处；探测 · 换号那一侧都照它）：`agent` 那一家号名 `id` 的那一条。
+/// 账号 0（不设号目录 ＝ 每一家各自本来那一份登录）哪一家都算（同账号清单那一条）。
+pub fn in_family_among<'a>(
+    reg: &[crate::agents::Adapter],
+    lib: &'a acct_core::AccountBook,
+    agent: &str,
+    id: &str,
+) -> Option<&'a acct_core::ManifestAccount> {
+    lib.accounts.iter().find(|m| {
+        (m.config_dir.is_none() || family_among(reg, m) == Some(agent))
+            && m.route_id().as_deref() == Some(id)
+    })
+}
+
+/// `agent` 那一家的号（照事实的先后）：一个会话只在这几个里判。
+pub fn mine<'a>(f: &'a [Acct], agent: &'a str) -> impl Iterator<Item = &'a Acct> + Clone + 'a {
+    f.iter().filter(move |x| x.agent == agent)
+}
+
+/// 策略交的先后里头一个只属别家的号（本家没有这个号名、别家有）。
+fn foreign<'a>(order: &'a [String], f: &[Acct], agent: &str) -> Option<&'a String> {
+    order
+        .iter()
+        .find(|a| fact(f, agent, a).is_none() && f.iter().any(|x| x.id == **a))
 }
 
 /// 开窗那一判为什么这样（码；那一句由出口照码写）。
@@ -190,6 +242,8 @@ pub enum WarmWhy {
     Login,
     /// 缺 key。
     Key,
+    /// 那一家不归我方续的账号 0、令牌快过期 / 过期了（等那一家自己续）。
+    BaseUntouched,
     /// 在超额上兜着。
     Overage,
     /// 用满了：0 ＝ 5 小时 · 1 ＝ 7 天。
@@ -224,6 +278,7 @@ pub fn warm_verdict(x: &Acct, t: u64) -> WarmVerdict {
             match barred {
                 Some(FactWhy::Login) => WarmWhy::Login,
                 Some(FactWhy::Key) => WarmWhy::Key,
+                Some(FactWhy::BaseUntouched) => WarmWhy::BaseUntouched,
                 Some(FactWhy::Overage) => WarmWhy::Overage,
                 Some(FactWhy::Refused) => WarmWhy::Refused,
                 Some(FactWhy::Used) | None => {
@@ -256,12 +311,12 @@ pub(crate) fn warmable(x: &Acct, t: u64) -> bool {
     matches!(warm_verdict(x, t), WarmVerdict::Send(_))
 }
 
-/// ★ 这个会话此刻用得了 `a`（唯一一处：判的候选与会话顺序都照它）：会话没把它先去掉 · 号列表里有它 · 事实上发得出去。
-pub(crate) fn usable(off: &[String], facts: &[Acct], a: &str, t: u64) -> bool {
-    !off.iter().any(|x| x == a) && fact(facts, a).is_some_and(|x| standing::sendable(x, t))
+/// ★ `agent` 那一家的会话此刻用得了 `a`（唯一一处：判的候选与会话顺序都照它）：会话没把它先去掉 · 本家的号里有它 · 事实上发得出去。
+pub(crate) fn usable(agent: &str, off: &[String], facts: &[Acct], a: &str, t: u64) -> bool {
+    !off.iter().any(|x| x == a) && fact(facts, agent, a).is_some_and(|x| standing::sendable(x, t))
 }
 
-/// 会话的顺序：第一格 ＝ 在用的号，往下照拖出来的 · 策略交的先后，此刻用不了的与先不用的沉底（各照号的先后）。
+/// 会话的顺序：第一格 ＝ 在用的号，往下照拖出来的 · 策略交的先后，此刻用不了的与先不用的沉底（各照号的先后）；只排会话那一家的号。
 pub fn lineup_of(
     current: &str,
     off: &[String],
@@ -269,16 +324,30 @@ pub fn lineup_of(
     facts: &[Acct],
     t: u64,
 ) -> Vec<String> {
-    lineup_by(current, off, d.sigma.temp.iter().chain(&d.order), facts, t)
+    lineup_by(
+        &d.sigma.agent,
+        current,
+        off,
+        d.sigma.temp.iter().chain(&d.order),
+        facts,
+        t,
+    )
 }
 
-/// 不轮换的会话的顺序：第一格 ＝ 在用的号，往下照号的先后，此刻用不了的与先不用的沉底（没有策略交的先后）。
-pub fn plain_lineup(current: &str, off: &[String], facts: &[Acct], t: u64) -> Vec<String> {
-    lineup_by(current, off, std::iter::empty(), facts, t)
+/// 不轮换的会话的顺序：第一格 ＝ 在用的号，往下照号的先后，此刻用不了的与先不用的沉底（没有策略交的先后）；只排 `agent` 那一家的号。
+pub fn plain_lineup(
+    agent: &str,
+    current: &str,
+    off: &[String],
+    facts: &[Acct],
+    t: u64,
+) -> Vec<String> {
+    lineup_by(agent, current, off, std::iter::empty(), facts, t)
 }
 
-/// 第一格在用的号，往下 `prefer` 里用得了的，再照号的先后：用得了的在前，余下的沉底。
+/// 第一格在用的号，往下 `prefer` 里用得了的，再照本家号的先后：用得了的在前，余下的沉底。
 fn lineup_by<'a>(
+    agent: &'a str,
     current: &str,
     off: &[String],
     prefer: impl Iterator<Item = &'a String>,
@@ -286,10 +355,10 @@ fn lineup_by<'a>(
     t: u64,
 ) -> Vec<String> {
     let mut out = vec![current.to_string()];
-    let ids: Vec<&String> = facts.iter().map(|x| &x.id).collect();
+    let ids: Vec<&String> = mine(facts, agent).map(|x| &x.id).collect();
     let ok = prefer
         .chain(ids.iter().copied())
-        .filter(|a| usable(off, facts, a, t));
+        .filter(|a| usable(agent, off, facts, a, t));
     for a in ok.chain(ids.iter().copied()) {
         if !out.contains(a) {
             out.push(a.clone());
@@ -298,14 +367,14 @@ fn lineup_by<'a>(
     out
 }
 
-/// 策略交的 `warm` 照事实分两份：收下的 · 丢掉的（不在号列表里的也丢）。同一个号只算一次。
-fn warm_of(want: &[String], facts: &[Acct], t: u64) -> (Vec<String>, Vec<String>) {
+/// 策略交的 `warm` 照事实分两份：收下的 · 丢掉的（不在本家号里的也丢）。同一个号只算一次。
+fn warm_of(want: &[String], facts: &[Acct], agent: &str, t: u64) -> (Vec<String>, Vec<String>) {
     let (mut keep, mut drop) = (Vec::new(), Vec::new());
     for a in want {
         if keep.contains(a) || drop.contains(a) {
             continue;
         }
-        if fact(facts, a).is_some_and(|x| warmable(x, t)) {
+        if fact(facts, agent, a).is_some_and(|x| warmable(x, t)) {
             keep.push(a.clone());
         } else {
             drop.push(a.clone());
@@ -320,7 +389,7 @@ fn pinned(sigma: &Sigma) -> bool {
     sigma.temp.first() == Some(&sigma.current)
 }
 
-/// 拼交给策略的 ctx（号照事实的先后）。
+/// 拼交给策略的 ctx（只交会话那一家的号，照事实的先后；`pos` 是在本家号里的第几个）。
 pub(crate) fn ctx_of<'a>(
     sigma: &'a Sigma,
     facts: &[Acct],
@@ -338,10 +407,10 @@ pub(crate) fn ctx_of<'a>(
         me: &sigma.me,
         pinned: pinned(sigma),
         temp: &sigma.temp,
-        accounts: facts
-            .iter()
+        accounts: mine(facts, &sigma.agent)
             .enumerate()
             .map(|(pos, x)| CtxAcct {
+                agent: x.agent.clone(),
                 id: x.id.clone(),
                 pos,
                 api: x.api,
@@ -368,6 +437,24 @@ struct Chosen {
     from_temp: bool,
 }
 
+/// `agent` 那一家（去掉 `off` 的）里最早又发得出去的号与时刻（停发 · 派活拒都照它）；说不出 ⇒ 空。
+fn earliest<'a>(
+    facts: &'a [Acct],
+    agent: &'a str,
+    off: &[String],
+    t: u64,
+) -> Option<(u64, &'a str)> {
+    let mut best: Option<(u64, &str)> = None;
+    for x in mine(facts, agent).filter(|x| !off.contains(&x.id)) {
+        if let Some(at) = standing::sendable_again(x, t) {
+            if best.is_none_or(|(b, _)| at < b) {
+                best = Some((at, &x.id));
+            }
+        }
+    }
+    best
+}
+
 fn choose(
     sigma: &Sigma,
     v: &Verdict,
@@ -379,6 +466,7 @@ fn choose(
     let cands: Vec<&String> = v.order.iter().filter(|a| send(a)).collect();
     let c = sigma.current.as_str();
     let mut next = Sigma {
+        agent: sigma.agent.clone(),
         start: sigma.start.clone(),
         current: sigma.current.clone(),
         temp: sigma.temp.clone(),
@@ -406,14 +494,7 @@ fn choose(
         Some(a) => Pick::Use(a),
         None => {
             // 5：候选空 ⇒ 停发。
-            let mut best: Option<(u64, &str)> = None;
-            for x in facts.iter().filter(|x| !sigma.off.contains(&x.id)) {
-                if let Some(at) = standing::sendable_again(x, t) {
-                    if best.is_none_or(|(b, _)| at < b) {
-                        best = Some((at, &x.id));
-                    }
-                }
-            }
+            let best = earliest(facts, &sigma.agent, &sigma.off, t);
             Pick::Hold {
                 until: v.hold_until.or(best.map(|b| b.0)),
                 account: best.map(|b| b.1.to_string()),
@@ -444,43 +525,60 @@ pub fn turn(
     t: u64,
     tried: &[String],
 ) -> Decision {
+    let agent = sigma.agent.as_str();
     let ctx = ctx_of(sigma, facts, settings, clock, t);
-    let send = |a: &str| !tried.iter().any(|x| x == a) && usable(&sigma.off, facts, a, t);
-    // 1：叫策略；出错 ⇒ 兜底：此刻的号发得出去就照用，否则照事实的先后取第一个发得出去的。
-    let (v, strategy_error) = match p.decide(&ctx) {
-        Ok(v) => (v, None),
-        Err(e) => {
-            let mut order: Vec<String> = vec![sigma.current.clone()];
-            order.extend(
-                facts
-                    .iter()
-                    .map(|x| x.id.clone())
-                    .filter(|a| *a != sigma.current),
-            );
-            (
-                Verdict {
-                    order,
-                    memo: sigma.memo.clone(),
-                    ..Verdict::default()
-                },
-                Some(e),
-            )
+    let send = |a: &str| !tried.iter().any(|x| x == a) && usable(agent, &sigma.off, facts, a, t);
+    // 策略交的先后里有别家的号 ⇒ 当策略出错（一个会话只用本家的号）；错带着「是不是交了别家的号」。
+    let ask = |c: &Ctx<'_>| -> Result<Verdict, (super::super::strategy::Fail, bool)> {
+        let v = p.decide(c).map_err(|e| (e, false))?;
+        match foreign(&v.order, facts, agent) {
+            Some(a) => Err((super::super::strategy::Fail::foreign(a), true)),
+            None => Ok(v),
         }
+    };
+    // 兜底那一份：此刻的号发得出去就照用，否则照本家号的先后取第一个发得出去的。
+    let fallback = || {
+        let mut order: Vec<String> = vec![sigma.current.clone()];
+        order.extend(
+            mine(facts, agent)
+                .map(|x| x.id.clone())
+                .filter(|a| *a != sigma.current),
+        );
+        Verdict {
+            order,
+            memo: sigma.memo.clone(),
+            ..Verdict::default()
+        }
+    };
+    // 1：叫策略；出错 ⇒ 兜底。
+    let (v, mut strategy_error) = match ask(&ctx) {
+        Ok(v) => (v, None),
+        Err((e, _)) => (fallback(), Some(e)),
     };
     let mut r = choose(sigma, &v, facts, t, &send);
     let (mut order, mut why, mut wake_at, mut warm) = (v.order, v.why, v.wake_at, v.warm);
     // 换了号 ⇒ 在用的号变了，这是一件事实：照新的在用号再问策略一次（它约的叫醒跟着新在用号走，不然要等到别的节点才知道几点再判）。
     // 它此刻就又要换（例：策略的先后跟着在用的是谁变，对着新换上的号要另一个）⇒ 同一刻接着换（第 4 步照新的在用号再走一遍），
-    // 直到它留下；同一刻里一个号只换到一次（策略来回要 ⇒ 停在这一个），至多号数那么多次。
+    // 直到它留下；同一刻里一个号只换到一次（策略来回要 ⇒ 停在这一个），至多本家号数那么多次。
+    // 再问的那一下交了别家的号 ⇒ 同第一问：当策略出错、照兜底；别的出错 ⇒ 停在已换到的这一个。
     if strategy_error.is_none() {
         let mut seen = vec![sigma.current.clone()];
+        let n = mine(facts, agent).count();
         while let Pick::Use(a) = &r.pick {
-            if seen.contains(a) || seen.len() > facts.len() {
+            if seen.contains(a) || seen.len() > n {
                 break;
             }
             seen.push(a.clone());
-            let Ok(v2) = p.decide(&ctx_of(&r.sigma, facts, settings, clock, t)) else {
-                break;
+            let v2 = match ask(&ctx_of(&r.sigma, facts, settings, clock, t)) {
+                Ok(v2) => v2,
+                Err((e, true)) => {
+                    let v = fallback();
+                    r = choose(sigma, &v, facts, t, &send);
+                    (order, why, wake_at, warm) = (v.order, v.why, v.wake_at, v.warm);
+                    strategy_error = Some(e);
+                    break;
+                }
+                Err((_, false)) => break,
             };
             let r2 = choose(&r.sigma, &v2, facts, t, &send);
             wake_at = v2.wake_at;
@@ -506,7 +604,7 @@ pub fn turn(
     } = r;
     // 6：下一个已知节点。
     let mut tn: Vec<u64> = Vec::new();
-    for x in facts {
+    for x in mine(facts, agent) {
         tn.extend(x.resets.iter().flatten().copied());
         tn.extend(x.refused_until);
         tn.extend(x.barred.and_then(|b| b.until));
@@ -519,7 +617,7 @@ pub fn turn(
     if let Pick::Hold { until: Some(u), .. } = &pick {
         tn.push(*u);
     }
-    let (warm, warm_dropped) = warm_of(&warm, facts, t);
+    let (warm, warm_dropped) = warm_of(&warm, facts, agent, t);
     Decision {
         warm,
         warm_dropped,
@@ -538,7 +636,7 @@ pub fn turn(
 /// 「现在用 a」（用户的手动操作）：事实上发得出去 ⇒ 放到拖出来的顺序最前、换过去；发不出去 · 这个会话先不用它 ⇒ 不改，回几点恢复。
 /// 策略的上限不拦它。
 pub fn use_now(sigma: &Sigma, facts: &[Acct], t: u64, a: &str) -> Result<Sigma, Option<u64>> {
-    let x = fact(facts, a).ok_or(None)?;
+    let x = fact(facts, &sigma.agent, a).ok_or(None)?;
     if sigma.off.iter().any(|b| b == a) {
         return Err(None);
     }
@@ -550,6 +648,60 @@ pub fn use_now(sigma: &Sigma, facts: &[Acct], t: u64, a: &str) -> Result<Sigma, 
     s.temp.insert(0, a.to_string());
     s.current = a.to_string();
     Ok(s)
+}
+
+/// 派一件活落到哪一家的哪个号。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TaskPick {
+    pub agent: String,
+    pub account: String,
+}
+
+/// 派不了：那一家不能派活 · 那一家此刻没有用得上的号（`until` ＝ 最早几点恢复，说不出 ⇒ 空）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TaskRefuse {
+    NoTask { agent: String },
+    NoAccount { agent: String, until: Option<u64> },
+}
+
+/// ★ 派一件活选家选号（唯一一处；纯判）。家缺省是派活那条会话 `sigma` 那一家，`to` 指名别的家才跨家；
+/// 活着的会话不换家，跨家只对这一件活。`can_task` ＝ 那一家能不能派活（有没有一次性跑一件活那一形），调用方当事实交进来；
+/// 不能 ⇒ 照实拒，不改派。号照那一家的顺序挑第一个用得上的：本家照会话的顺序（在用的号 · 拖出来的 · 号的先后；
+/// 会话先去掉的不算；策略交的先后在这一判之外，不看），别家照那一家号的先后（本会话的勾与拖出来的都管不到别家）；
+/// 一个都用不了 ⇒ 拒，带那一家最早几点又发得出去。
+pub fn task_pick<'a>(
+    sigma: &'a Sigma,
+    to: Option<&'a str>,
+    can_task: &dyn Fn(&str) -> bool,
+    facts: &'a [Acct],
+    t: u64,
+) -> Result<TaskPick, TaskRefuse> {
+    let agent = to.unwrap_or(&sigma.agent);
+    if !can_task(agent) {
+        return Err(TaskRefuse::NoTask {
+            agent: agent.to_string(),
+        });
+    }
+    let off: &[String] = if agent == sigma.agent {
+        &sigma.off
+    } else {
+        &[]
+    };
+    let order: Vec<String> = if agent == sigma.agent {
+        lineup_by(agent, &sigma.current, off, sigma.temp.iter(), facts, t)
+    } else {
+        mine(facts, agent).map(|x| x.id.clone()).collect()
+    };
+    match order.into_iter().find(|a| usable(agent, off, facts, a, t)) {
+        Some(account) => Ok(TaskPick {
+            agent: agent.to_string(),
+            account,
+        }),
+        None => Err(TaskRefuse::NoAccount {
+            agent: agent.to_string(),
+            until: earliest(facts, agent, off, t).map(|b| b.0),
+        }),
+    }
 }
 
 #[cfg(test)]

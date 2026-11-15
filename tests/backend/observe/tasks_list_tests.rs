@@ -4,8 +4,11 @@ use super::*;
 use copy_core::copy_text;
 
 fn t(id: &str, status: &str) -> Task {
-    task_entry(&serde_json::json!({"id": id, "subject": format!("s{id}"), "status": status}))
-        .unwrap()
+    task_entry(
+        crate::agents::default_kind(),
+        &serde_json::json!({"id": id, "subject": format!("s{id}"), "status": status}),
+    )
+    .unwrap()
 }
 
 #[test]

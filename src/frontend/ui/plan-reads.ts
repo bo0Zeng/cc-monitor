@@ -9,7 +9,6 @@ import { ControlError } from "./control-said";
 import type { Machine } from "./ipc/origin";
 import type { Doc } from "./generated/Doc";
 import type { PlanAckReply } from "./generated/PlanAckReply";
-import type { PlanArchived } from "./generated/PlanArchived";
 import type { PlanAsk } from "./generated/PlanAsk";
 import type { PlanReturnReply } from "./generated/PlanReturnReply";
 import type { PlanAudit } from "./generated/PlanAudit";
@@ -26,7 +25,6 @@ import type { PlanListSlice } from "./generated/PlanListSlice";
 import type { PlanListWorkspace } from "./generated/PlanListWorkspace";
 import type { PlanNeed } from "./generated/PlanNeed";
 import type { PlanPb } from "./generated/PlanPb";
-import type { PlanPhase } from "./generated/PlanPhase";
 import type { PlanProgress } from "./generated/PlanProgress";
 import type { PlanRead } from "./generated/PlanRead";
 import type { PlanRed } from "./generated/PlanRed";
@@ -42,9 +40,7 @@ import type { PlanReadError } from "./generated/PlanReadError";
 import type { PlanMsgRefs } from "./generated/PlanMsgRefs";
 import type { PlanSlice } from "./generated/PlanSlice";
 import type { PlanStale } from "./generated/PlanStale";
-import type { PlanUndecidable } from "./generated/PlanUndecidable";
 import type { PlanWho } from "./generated/PlanWho";
-import type { PlanWhyCode } from "./generated/PlanWhyCode";
 
 /** 起一次 pb（研究盘 252 格 1.1 秒；后端给 pb 的期限 20 秒）＋ 回程；远端再加一段。 */
 const READ_BUDGET_MS = 25_000;
@@ -54,7 +50,6 @@ export type {
   PlanAckReply,
   PlanAsk,
   PlanReturnReply,
-  PlanArchived,
   PlanAudit,
   PlanBlock,
   PlanCell,
@@ -70,7 +65,6 @@ export type {
   PlanNeed,
   PlanNewForm,
   PlanPb,
-  PlanPhase,
   PlanProgress,
   PlanRead,
   PlanRed,
@@ -84,19 +78,16 @@ export type {
   PlanReadError,
   PlanSlice,
   PlanStale,
-  PlanUndecidable,
   PlanWho,
-  PlanWhyCode,
 };
 
 /** 四种边的名字（`PlanEdges` 的键，界面按这个次序排）。 */
 export type PlanEdgeKind = keyof PlanEdges;
 export const PLAN_EDGE_KINDS: readonly PlanEdgeKind[] = ["to", "with", "after", "replaces"];
 
-/** 这台的工作区与仓库（`fresh` ＝ 认过的目录也重问 pb）。 */
-export async function fetchPlanList(origin: Machine, fresh: boolean, dirs: readonly string[] = []): Promise<PlanList> {
-  const req = dirs.length > 0 ? { fresh, dirs: [...dirs] } : { fresh };
-  return callTyped(origin, "plan-list", req, budgetWithin(READ_BUDGET_MS));
+/** 那台的工作区与仓库（`fresh` ＝ 认过的目录也重问 pb）。问哪些目录是那台定的（活会话的工作目录 ∪ 那台偏好里手加的）。 */
+export async function fetchPlanList(origin: Machine, fresh: boolean): Promise<PlanList> {
+  return callTyped(origin, "plan-list", { fresh }, budgetWithin(READ_BUDGET_MS));
 }
 
 /** 一个工作区的成品。 */

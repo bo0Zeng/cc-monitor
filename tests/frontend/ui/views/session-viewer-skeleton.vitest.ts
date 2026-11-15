@@ -63,6 +63,7 @@ async function mount(scrollToUuid?: string): Promise<SessionViewer> {
   document.body.appendChild(v.element);
   await v.load({
     jsonlPath: "/p/s1.jsonl",
+    sessionId: "s1",
     displayTitle: "T",
     origin: LOCAL,
     suppressBranch: true,
@@ -134,7 +135,7 @@ describe("查看器：骨架 ＋ 按视口取（不整份读）", () => {
     viewerRig.chunk = payloads();
     const v = new SessionViewer();
     document.body.appendChild(v.element);
-    await v.load({ jsonlPath: "/p/s1.jsonl", displayTitle: "T", origin: LOCAL, suppressBranch: true });
+    await v.load({ jsonlPath: "/p/s1.jsonl", sessionId: "s1", displayTitle: "T", origin: LOCAL, suppressBranch: true });
     expect(gaps(v.element)).toEqual([]);
     expect(v.element.querySelector("[data-id]")).toBeNull();
     expect(ranges()).toEqual([]);

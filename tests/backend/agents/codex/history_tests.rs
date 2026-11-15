@@ -132,3 +132,145 @@ fn a_session_is_found_by_sid_under_the_dated_tree() {
     }
     let _ = std::fs::remove_dir_all(&home);
 }
+
+/// 第一句：前面垫两条注入的上下文 ⇒ 取第三条；人话落在第 201 行 ⇒ 空串（只看前 200 行）。
+#[test]
+fn the_first_line_skips_two_frames_and_stops_after_two_hundred_lines() {
+    let d = test_home::scratch("excerpt-201");
+    let p = d.join("r.jsonl");
+    std::fs::write(
+        &p,
+        [
+            user(r#"[{"type":"input_text","text":"<environment_context><cwd>/w</cwd></environment_context>"}]"#),
+            user(r##"[{"type":"input_text","text":"# AGENTS.md instructions for /w"}]"##),
+            user(r#"[{"type":"input_text","text":"第三条"}]"#),
+        ]
+        .join("\n"),
+    )
+    .unwrap();
+    assert_eq!(first_user_excerpt(&p), "第三条");
+    let q = d.join("q.jsonl");
+    let mut lines: Vec<String> = (0..200).map(|_| meta("/w")).collect();
+    lines.push(user(r#"[{"type":"input_text","text":"太晚了"}]"#));
+    std::fs::write(&q, lines.join("\n")).unwrap();
+    assert_eq!(first_user_excerpt(&q), "");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// 两个号各一个家、各一份会话 ⇒ 注册表那一格交两条、各在自己的家底下；账号 0 的家照样列；没有会话目录的家 ⇒ 不出。
+#[test]
+fn each_account_home_lists_its_own_sessions() {
+    use crate::agents::AccountHome;
+    let base = test_home::scratch("homes");
+    let (a, b, zero) = (
+        base.join("acct-a"),
+        base.join("acct-b"),
+        base.join("dot-codex"),
+    );
+    for (home, sid) in [(&a, SID_A), (&b, SID_B)] {
+        let day = home.join("sessions/2026/11/04");
+        std::fs::create_dir_all(&day).unwrap();
+        std::fs::write(
+            day.join(format!("rollout-2026-11-04T00-00-00-{sid}.jsonl")),
+            format!("{}\n", meta("/w")),
+        )
+        .unwrap();
+    }
+    let homes = [
+        AccountHome {
+            account: Some("a".into()),
+            home: a.clone(),
+        },
+        AccountHome {
+            account: Some("b".into()),
+            home: b.clone(),
+        },
+        AccountHome {
+            account: None,
+            home: zero.clone(),
+        },
+    ];
+    let mut got: Vec<(std::path::PathBuf, String)> = (super::super::HISTORY.sessions)(&homes)
+        .into_iter()
+        .map(|s| (s.path, s.sid))
+        .collect();
+    got.sort();
+    assert_eq!(got.len(), 2, "{got:?}");
+    assert!(got[0].0.starts_with(&a) && got[0].1 == SID_A, "{got:?}");
+    assert!(got[1].0.starts_with(&b) && got[1].1 == SID_B, "{got:?}");
+    // 账号 0 的家里也有一份 ⇒ 照样列。
+    let day = zero.join("sessions/2026/11/05");
+    std::fs::create_dir_all(&day).unwrap();
+    std::fs::write(
+        day.join(format!("rollout-2026-11-05T00-00-00-{SID_A}.jsonl")),
+        format!("{}\n", meta("/w")),
+    )
+    .unwrap();
+    let zero_rows: Vec<_> = (super::super::HISTORY.sessions)(&homes[2..])
+        .into_iter()
+        .map(|s| s.path)
+        .collect();
+    assert_eq!(zero_rows.len(), 1);
+    assert!(zero_rows[0].starts_with(&zero), "{zero_rows:?}");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// 归档了的会话（Codex 挪进平铺的 `<codex home>/archived_sessions/`）照样在清单里、按 sid 照样找得到：
+/// 不然界面给了「归档」，归档以后那一条就看不见、点不到「取消归档」。
+#[test]
+fn archived_sessions_are_listed_and_found_too() {
+    let home = test_home::scratch("archived");
+    let day = home.join("sessions/2026/10/02");
+    let shelf = home.join("archived_sessions");
+    std::fs::create_dir_all(&day).unwrap();
+    std::fs::create_dir_all(&shelf).unwrap();
+    let live = day.join(format!("rollout-2026-10-02T10-00-00-{SID_A}.jsonl"));
+    let parked = shelf.join(format!("rollout-2026-10-01T10-00-00-{SID_B}.jsonl"));
+    std::fs::write(&live, format!("{}\n", meta("/w"))).unwrap();
+    std::fs::write(&parked, format!("{}\n", meta("/v"))).unwrap();
+
+    let mut got: Vec<(String, std::path::PathBuf, String)> = sessions_under(&home)
+        .into_iter()
+        .map(|s| (s.sid, s.path, s.cwd))
+        .collect();
+    got.sort();
+    assert_eq!(
+        got,
+        [
+            (SID_A.to_string(), live.clone(), "/w".to_string()),
+            (SID_B.to_string(), parked.clone(), "/v".to_string()),
+        ]
+    );
+    // 按 sid 找照根找：归档了的那一份在归档根下，日期树那个根下不再兜着找。
+    let root = parse::sessions_root(&home);
+    assert_eq!(find_session(&shelf, SID_B), Ok(parked));
+    assert!(find_session(&root, SID_B).is_err());
+    assert_eq!(find_session(&root, SID_A), Ok(live));
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 根表那一格：每个家两个根（日期树 · 归档根），家照交来的次序。
+#[test]
+fn every_home_has_the_dated_root_and_the_archive_root() {
+    let homes = [
+        crate::agents::AccountHome {
+            account: None,
+            home: "/h/.codex".into(),
+        },
+        crate::agents::AccountHome {
+            account: Some("a".into()),
+            home: "/h/.cc-monitor/accounts/a".into(),
+        },
+    ];
+    let p = std::path::PathBuf::from;
+    assert_eq!(
+        records_roots(&homes),
+        [
+            p("/h/.codex/sessions"),
+            p("/h/.codex/archived_sessions"),
+            p("/h/.cc-monitor/accounts/a/sessions"),
+            p("/h/.cc-monitor/accounts/a/archived_sessions"),
+        ]
+    );
+    assert!(records_roots(&[]).is_empty());
+}

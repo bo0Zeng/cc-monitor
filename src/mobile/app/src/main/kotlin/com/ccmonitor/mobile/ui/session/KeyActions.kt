@@ -5,7 +5,6 @@ import com.ccmonitor.mobile.core.data.db.KeyBinding
 import com.ccmonitor.mobile.core.data.db.KeyGroup
 import com.ccmonitor.mobile.core.data.db.KeyMod
 import com.ccmonitor.mobile.core.data.db.KeyPress
-import com.ccmonitor.mobile.core.data.db.keyBytes
 import com.ccmonitor.mobile.core.terminal.KeyModifiers
 import com.ccmonitor.mobile.core.terminal.Mod
 

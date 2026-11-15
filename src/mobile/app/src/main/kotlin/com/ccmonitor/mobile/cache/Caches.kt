@@ -29,13 +29,14 @@ data class CachedRecords(
     val anchor: Anchor?,
 )
 
-/** 一句待发（`pending` 那一行）：[outcome] 是 `PendingOutcome` 那四种之一。 */
+/** 一句待发（`pending` 那一行）：[outcome] 是 `PendingOutcome` 那五种之一（还没回执 · 回执到了 · 送没送到说不准 · 拒了 · 撤着）；[refusedSaid] 是那台拒时那一句（拒了才有）。 */
 data class Pending(
     val id: String,
     val sid: String?,
     val text: String,
     val outcome: String,
     val attempts: Int,
+    val refusedSaid: String? = null,
 )
 
 /** 一台机器的聊天缓存：记录页 · 续点 · 待发 · 草稿。 */
@@ -73,10 +74,12 @@ interface ChatCache {
         p: Pending,
     )
 
+    /** 记回一句交的结局；那台拒了 ⇒ [refusedSaid] 是它那一句（同一下落库，重开照它画），别的结局 ⇒ `null`。 */
     suspend fun settle(
         id: String,
         outcome: String,
         attempts: Int,
+        refusedSaid: String?,
     )
 
     /** 新建会话起成了：那几句归到 [sid]。 */
@@ -130,6 +133,7 @@ interface ChatCache {
             id: String,
             outcome: String,
             attempts: Int,
+            refusedSaid: String?,
         ) = Unit
 
         override suspend fun bind(

@@ -1,7 +1,8 @@
 //! **`pub` 项要有产品读者** —— 判据。
 //!
-//! - **人群**：后端（`src/backend`）· 壳（`src/frontend/shell/src`）· 共享 crate（`src/common/*/src`，`guard-core` 除外：
-//!   它在每一份引它的 `Cargo.toml` 里都只在 `[dev-dependencies]`，整个 crate 是测试基础设施）的生产段里每一个 `pub` 项
+//! - **人群**：后端（`src/backend`）· 壳（`src/frontend/shell/src`）· 共享 crate（`src/common/*/src`，[`TEST_INFRA`] 那几个除外：
+//!   它们在每一份引它的 `Cargo.toml` 里都只在 `[dev-dependencies]`，或是只由 `test-support` 特性打开的 optional 依赖，
+//!   或是被同样只为测试被引的包（[`TEST_ONLY`]）当普通依赖，整个 crate 是测试基础设施；这一句由 [`the_excluded_crates_are_pulled_in_only_for_tests`] 从各 `Cargo.toml` 现读核）的生产段里每一个 `pub` 项
 //!   （`fn` · `const` · `static` · `struct` · `enum` · `type` · `trait`；`pub(crate)` 不在内 —— 那一档有编译器的 `dead_code`）。
 //!   生产段 ＝ `guard_core::production_code` 剥过的那一份；整份被 `#[cfg(test)] mod x;` 收进测试构建的文件不算；
 //!   带 `cfg(test)` / `cfg(any(test, …))` 属性的项不算。
@@ -20,14 +21,54 @@ use std::collections::{BTreeMap, BTreeSet};
 /// 零读者而留着的那几项：`(文件, 项名, 理由)`。
 const EXEMPT: &[(&str, &str, &str)] = &[
     (
+        "src/backend/agents/codex/sign_in.rs",
+        "DEVICE_ARGS",
+        "Codex 显示码登录那一形：读者是核心登录面多一形「显示码」那一下",
+    ),
+    (
+        "src/backend/agents/codex/sign_in.rs",
+        "device_prompt",
+        "Codex 显示码登录认链接与码：读者同上",
+    ),
+    (
+        "src/common/cmd-wire/src/phone.rs",
+        "ConfigHost",
+        "导入的 ssh 配置里的一台：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/config_text.rs`，后端那棵 workspace，不在扫描面里）与从它生成的 Kotlin 类",
+    ),
+    (
         "src/backend/deploy/machine.rs",
-        "signed_in",
+        "mark_signed_in",
         "用密码登着的那一行：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/resident.rs`，不在扫描面里）",
     ),
     (
-        "src/common/cmd-wire/src/attach.rs",
-        "AttachWant",
-        "附件那一排的进口形：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/attach.rs`，后端那棵 workspace，不在扫描面里）",
+        "src/backend/control/ccm/mod.rs",
+        "task_plan",
+        "派活那一口的入口（选家选号那一路），接线前没有生产读者；跟派活那一面（TaskFace）一起接线，那一版仍不接就删",
+    ),
+    (
+        "src/backend/accounts/quota/rules/decide.rs",
+        "task_pick",
+        "派活选家选号的纯判，接线前没有生产读者（那一家能不能派活由调用方交进来）；跟派活那一面（TaskFace）一起接线，那一版仍不接就删",
+    ),
+    (
+        "src/backend/control/launch.rs",
+        "run_task",
+        "派活那一口的入口（选家选号那一路），接线前没有生产读者；跟派活那一面（TaskFace）一起接线，那一版仍不接就删",
+    ),
+    (
+        "src/common/cmd-wire/src/phone.rs",
+        "AttachDo",
+        "手机核心与 Kotlin 之间附件那一口的进口形：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/attach.rs`，后端那棵 workspace，不在扫描面里）与从它生成的 Kotlin 类",
+    ),
+    (
+        "src/common/cmd-wire/src/phone.rs",
+        "AttachDone",
+        "手机核心与 Kotlin 之间附件那一口的回值：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/attach.rs`，不在扫描面里）与从它生成的 Kotlin 类",
+    ),
+    (
+        "src/common/cmd-wire/src/phone.rs",
+        "AttachShown",
+        "手机核心与 Kotlin 之间的`attach` 那一件：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/attach.rs`，不在扫描面里）与从它生成的 Kotlin 类",
     ),
     (
         "src/common/cmd-wire/src/transfer.rs",
@@ -45,19 +86,9 @@ const EXEMPT: &[(&str, &str, &str)] = &[
         "送进终端的字节认回几下（旧按钮迁移）：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/keys.rs`，后端那棵 workspace，不在扫描面里）",
     ),
     (
-        "src/common/face-core/src/record.rs",
-        "mend_records",
-        "回包里记录那一格一条一条判认不认得：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/resident.rs`，后端那棵 workspace，不在扫描面里）",
-    ),
-    (
         "src/common/cmd-wire/src/phone.rs",
         "LinkLine",
         "手机核心与 Kotlin 之间那一层的`state` 那一件：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust`，不在扫描面里）与从它生成的 Kotlin 类",
-    ),
-    (
-        "src/common/cmd-wire/src/phone.rs",
-        "CallEnd",
-        "手机核心与 Kotlin 之间那一层的`reply` 那一件：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust`，不在扫描面里）与从它生成的 Kotlin 类",
     ),
     (
         "src/common/cmd-wire/src/phone.rs",
@@ -126,8 +157,33 @@ const EXEMPT: &[(&str, &str, &str)] = &[
     ),
     (
         "src/common/batch-core/src/lib.rs",
-        "copy_plan",
-        "手机「复制到…」那一组的入参（桌面经同一个 `copy_req` 算公共根）：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/batch.rs`，不在扫描面里）与本 crate 的判据",
+        "local_clashes",
+        "手机下到本机那一组的同名清单：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/batch.rs`，不在扫描面里）与本 crate 的判据",
+    ),
+    (
+        "src/common/batch-core/src/lib.rs",
+        "keep_both_name",
+        "手机下到本机答「保留两份」那一份的起名：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/batch.rs`，不在扫描面里）与本 crate 的判据",
+    ),
+    (
+        "src/common/cmd-wire/src/phone.rs",
+        "ChmodAsk",
+        "手机改权限那一框的回值：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/batch.rs`，不在扫描面里），另有从它生成的 Kotlin 类",
+    ),
+    (
+        "src/common/cmd-wire/src/phone.rs",
+        "PhoneMenu",
+        "手机文件页选中这几项那一份菜单：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/menu.rs`，不在扫描面里），另有从它生成的 Kotlin 类",
+    ),
+    (
+        "src/common/cmd-wire/src/record.rs",
+        "BODY_TAGS",
+        "`t` 的闭集（解不开的那一条分「没见过」与「形状变了」）：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/record.rs`，不在扫描面里）与本 crate 的判据",
+    ),
+    (
+        "src/common/cmd-wire/src/record.rs",
+        "records_cell",
+        "哪几条回包带记录、在哪一列：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/record.rs`，不在扫描面里）与本 crate 的回包金样判据",
     ),
     (
         "src/backend/lib.rs",
@@ -251,6 +307,187 @@ fn rs_files(rel: &str) -> Vec<(String, String)> {
         .collect()
 }
 
+/// 不进人群的共享 crate（目录名 ＝ 包名）：只给测试链的基础设施。
+const TEST_INFRA: &[&str] = &["guard-core", "test-home"];
+
+/// 只为测试被引的包：[`TEST_INFRA`] 加上同样只在测试里链的量具（`test-meters`，它把 `guard-core` 当普通依赖）。
+/// 这几个包互相当普通依赖引不算漏出去；每一个都由 [`the_excluded_crates_are_pulled_in_only_for_tests`] 核。
+const TEST_ONLY: &[&str] = &["guard-core", "test-home", "test-meters"];
+
+/// 一份 `Cargo.toml` 里把 `krate` 引成了非测试依赖的那几行（`行号: 原文`）。认的三种形：`[*dev-dependencies]` 段里；
+/// `[*dependencies]` 段里带 `optional = true`、且 `[features]` 里打开它的（`dep:<krate>` · `<krate>` · `<krate>/…` ·
+/// `<krate>?/…`）只有 `test-support`、`default` 也不带 `test-support`；这份 `Cargo.toml` 自己的包也在 `test_only` 里。
+/// 引法认 `<krate> = …` · `"<krate>" = …` · `<krate>.x = …` · 改名的 `package = "<krate>"` · 表头 `[….dependencies.<krate>]`；
+/// `[workspace.dependencies]` 只是声明，不算引。
+/// 买不到：别的包在普通依赖里打开这一份的 `test-support`（那一句住在别的 `Cargo.toml`，这里看不见）。
+fn non_test_uses(toml: &str, krate: &str, test_only: &[&str]) -> Vec<String> {
+    let names = |s: &str| {
+        let k = s.trim().trim_matches('"');
+        k == krate || k.starts_with(&format!("{krate}."))
+    };
+    let opens = |l: &str| {
+        [
+            format!("\"dep:{krate}\""),
+            format!("\"{krate}\""),
+            format!("\"{krate}/"),
+            format!("\"{krate}?/"),
+        ]
+        .iter()
+        .any(|p| l.contains(p.as_str()))
+    };
+    let mut section = String::new();
+    let mut table_of: Option<usize> = None; // 表头 `[….dependencies.<krate>]` 那一行在 hits 里的下标
+    let mut feature = String::new(); // `[features]` 里此刻那一个（多行数组续行归它）
+    let mut hits: Vec<(usize, String, String, bool)> = Vec::new();
+    let mut openers = Vec::new();
+    let mut default_has_test_support = false;
+    let mut own = String::new();
+    for (i, raw) in toml.lines().enumerate() {
+        let l = raw.split('#').next().unwrap_or("").trim();
+        if l.starts_with('[') && !l.starts_with("[\"") && feature.is_empty() {
+            section = l.trim_matches(|c| c == '[' || c == ']').trim().to_string();
+            table_of = None;
+            if let Some((sec, k)) = section.rsplit_once('.') {
+                if sec.ends_with("dependencies") && names(k) {
+                    hits.push((i + 1, raw.to_string(), sec.to_string(), false));
+                    table_of = Some(hits.len() - 1);
+                }
+            }
+            continue;
+        }
+        let (key, val) = l.split_once('=').unwrap_or(("", l));
+        let squeezed: String = l.chars().filter(|c| !c.is_whitespace()).collect();
+        if section == "package" && key.trim() == "name" && own.is_empty() {
+            own = val.split('"').nth(1).unwrap_or("").to_string();
+        }
+        if section == "features" {
+            if feature.is_empty() && !key.is_empty() {
+                feature = key.trim().to_string();
+            }
+            if opens(l) {
+                openers.push(feature.clone());
+            }
+            if feature == "default" && l.contains("\"test-support\"") {
+                default_has_test_support = true;
+            }
+            if l.contains(']') {
+                feature.clear();
+            }
+            continue;
+        }
+        if let Some(t) = table_of {
+            if squeezed == "optional=true" {
+                hits[t].3 = true;
+            }
+            continue;
+        }
+        let renamed = squeezed.contains(&format!("package=\"{krate}\""));
+        if section.ends_with("dependencies")
+            && section != "workspace.dependencies"
+            && !key.is_empty()
+            && (names(key) || renamed)
+        {
+            hits.push((
+                i + 1,
+                raw.to_string(),
+                section.clone(),
+                squeezed.contains("optional=true"),
+            ));
+        }
+    }
+    if test_only.contains(&own.as_str()) {
+        return Vec::new();
+    }
+    let only_test_support =
+        openers.iter().all(|k| k == "test-support") && !default_has_test_support;
+    hits.into_iter()
+        .filter(|(_, _, sec, optional)| {
+            !(sec.ends_with("dev-dependencies") || (*optional && only_test_support))
+        })
+        .map(|(n, raw, _, _)| format!("{n}: {raw}"))
+        .collect()
+}
+
+/// [`TEST_INFRA`] 那几个不进人群，凭的是「只为测试被引」：[`TEST_ONLY`] 每一个在各 `Cargo.toml`（`git ls-files` 列的）里
+/// 现读，不成立就红。
+#[test]
+fn the_excluded_crates_are_pulled_in_only_for_tests() {
+    let root = repo_root();
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(&root)
+        .args(["ls-files", "*Cargo.toml"])
+        .output()
+        .expect("git ls-files");
+    let tomls: Vec<String> = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(str::to_string)
+        .collect();
+    assert!(
+        tomls.len() > 30,
+        "只列出 {} 份 Cargo.toml —— 列法坏了",
+        tomls.len()
+    );
+    let mut bad = Vec::new();
+    for krate in TEST_ONLY {
+        let mut users = 0;
+        for t in &tomls {
+            let text = std::fs::read_to_string(root.join(t)).expect("读得动");
+            if text
+                .lines()
+                .any(|l| l.trim().starts_with(&format!("{krate} =")))
+            {
+                users += 1;
+            }
+            bad.extend(
+                non_test_uses(&text, krate, TEST_ONLY)
+                    .into_iter()
+                    .map(|l| format!("{t} · {krate} · {l}")),
+            );
+        }
+        assert!(
+            users > 3,
+            "{krate} 只在 {users} 份 Cargo.toml 里被引 —— 认法坏了"
+        );
+    }
+    assert!(
+        bad.is_empty(),
+        "这几处把不进人群的测试基础设施引成了非测试依赖（要么改回 dev 依赖 / test-support 特性，要么把它放回人群）：\n  {}",
+        bad.join("\n  ")
+    );
+    // 正控：普通依赖 · 别的特性也打开它的 optional · 非 optional 都报；dev 段 · 只由 test-support 打开的 optional ·
+    // 引它的包自己只为测试被引，都不报。
+    let sample = "[features]\ntest-support = [\"dep:x\"]\n[dependencies]\nx = { path = \"a\", optional = true }\n[dev-dependencies]\nx = { path = \"a\" }\n[target.'cfg(unix)'.dev-dependencies]\nx.workspace = true\n";
+    assert!(non_test_uses(sample, "x", &[]).is_empty());
+    let loud =
+        "[features]\nother = [\"dep:x\"]\n[dependencies]\nx = { path = \"a\", optional = true }\n";
+    assert_eq!(non_test_uses(loud, "x", &[]).len(), 1);
+    let plain = "[package]\nname = \"m\"\n[dependencies]\nx = \"1\"\n";
+    assert_eq!(non_test_uses(plain, "x", &[]).len(), 1);
+    assert!(non_test_uses(plain, "x", &["m"]).is_empty());
+    // 别的写法也认：表头那一形 · 带引号的键 · 改名 · 段头后带注释 · 隐式特性与 `x/…` 打开它 · 多行特性数组 · default 带 test-support。
+    for loud in [
+        "[dependencies.x]\npath = \"a\"\n",
+        "[target.'cfg(unix)'.dependencies.x]\npath = \"a\"\n",
+        "[dependencies]\n\"x\" = \"1\"\n",
+        "[dependencies]\nalias = { package = \"x\", path = \"a\" }\n",
+        "[dependencies] # 注释\nx = \"1\"\n",
+        "[features]\ntest-support = [\"dep:x\"]\nmore = [\"x/y\"]\n[dependencies]\nx = { optional = true }\n",
+        "[features]\nmore = [\n  \"a\",\n  \"x?/y\",\n]\n[dependencies]\nx = { optional=true }\n",
+        "[features]\ndefault = [\"test-support\"]\ntest-support = [\"dep:x\"]\n[dependencies]\nx = { optional = true }\n",
+        "[dependencies.x]\noptional = true\n[features]\nother = [\"x\"]\n",
+    ] {
+        assert_eq!(non_test_uses(loud, "x", &[]).len(), 1, "该报却没报：\n{loud}");
+    }
+    for quiet in [
+        "[workspace.dependencies]\nx = { path = \"a\" }\n",
+        "[dev-dependencies.x]\npath = \"a\"\n",
+        "[features]\ntest-support = [\n  \"dep:x\",\n]\n[dependencies.x]\npath = \"a\"\noptional = true\n",
+    ] {
+        assert!(non_test_uses(quiet, "x", &[]).is_empty(), "不该报却报了：\n{quiet}");
+    }
+}
+
 fn population_roots() -> Vec<String> {
     let mut v = vec![
         "src/backend".to_string(),
@@ -260,7 +497,7 @@ fn population_roots() -> Vec<String> {
         let mut parts = path.split('/');
         let (_, _, krate) = (parts.next(), parts.next(), parts.next().unwrap_or(""));
         let root = format!("src/common/{krate}/src");
-        if krate != "guard-core" && !v.contains(&root) {
+        if !TEST_INFRA.contains(&krate) && !v.contains(&root) {
             v.push(root);
         }
     }

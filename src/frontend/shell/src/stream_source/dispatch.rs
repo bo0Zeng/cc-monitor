@@ -1,5 +1,5 @@
 //! **一帧落到哪**：本机那条流与本机后端转来的各台那几条同一处分派，分两层（两层是线程决定的，不是两份实现）：
-//! - [`route`]：读的那一头就地交、从不阻塞的那几种（应答 · 传输 · 测试连接 · 一组进度 · 活卡 · 终端画面；测试连接 · 活卡 · 终端画面直接交会话流句柄）；
+//! - [`route`]：读的那一头就地交、从不阻塞的那几种（应答 · 测试连接 · 一组进度 · 本机的活卡成品 · 终端画面；测试连接 · 活卡 · 终端画面直接交会话流句柄）；
 //!   有序的那几种回 [`Ordered`]。
 //! - [`apply`]：有序的那几种交会话账（`session_book`）与内容收口（[`LineIntake`]），同一条流上的先后原样保留。
 //!
@@ -28,10 +28,12 @@ pub(crate) enum Ordered {
     SessionFileReread(wire::SessionFileReread),
     SessionRuns(wire::SessionRuns),
     SessionBranch(wire::SessionBranch),
+    /// 本机那一本里变了的那几条（本机后端折好的，`session_seats`）。
+    SessionSeats(wire::SessionSeats),
 }
 
 /// 第一层：就地交的那几种交掉（回 `None`），有序的那几种回 `Some`。`client` ＝ 这条连接的客户端（应答按 `id` 交回请求方）。
-/// 只开在本机那条流上的那几种（传输 · 测试连接 · 转来的别台）从别台来 ⇒ 照实说、丢；hello 只在接上那一刻来，流中间再来 ⇒ 照实说、丢。
+/// 只开在本机那条流上的那几种（测试连接 · 转来的别台）从别台来 ⇒ 照实说、丢；hello 只在接上那一刻来，流中间再来 ⇒ 照实说、丢。
 pub(crate) fn route(
     origin: &crate::origin::Origin,
     client: Option<&crate::inbound_client::InboundClient>,
@@ -54,20 +56,32 @@ pub(crate) fn route(
             }
             None => tracing::warn!("[{at}] 还没握手就来了应答，丢掉"),
         },
-        // 传输台住本机后端：进度 / 终局交中继（从不阻塞）。
-        Frame::Transfer(t) if local => crate::transfer_relay::deliver(t),
         // 测试连接在本机常驻后端里跑：那一格原样交会话流句柄（`probe-progress/<票>`，界面严格收）。
         Frame::Probe(p) if local => to_replay(|r| r.on_probe(&p.ticket, p.cell.to_string())),
-        Frame::Transfer(_) | Frame::Probe(_) => {
-            tracing::warn!("[{at}] 远端后端发来了只开在本机后端上的帧（传输 / 测试连接），丢掉")
+        Frame::Probe(_) => {
+            tracing::warn!("[{at}] 远端后端发来了只开在本机后端上的帧（测试连接），丢掉")
         }
         // 一组复制 · 删除 · 改权限的进度：按票交给订了它的那扇文件窗口（没人订就丢）。
         Frame::FilesBatch(b) => {
             let ticket = b.ticket.clone();
             crate::files_batch_relay::deliver(&ticket, body_without(&b, "ticket"))
         }
-        // 活卡（后端拼好的成品）原样交会话流句柄（`session-live-card`；不进内容通道）。
-        Frame::LiveCard(l) => to_replay(|r| r.on_live_card(origin, l)),
+        // 本机的活卡成品（本机后端在这条连接的发件箱之后折好的那一处，`live_now`）原样交会话流句柄（`session-live-card`；不进内容通道）。
+        // 别台的由本机后端折好、经 `relayed` 的 `live` 转来（收的那一头交）。原样的 op 两边都不再来。
+        Frame::LiveNow(l) if local => to_replay(|r| r.on_live_now(origin, l)),
+        Frame::LiveNow(_) => {
+            tracing::warn!("[{at}] 别台流上来了一格本机才发的活卡成品，丢掉")
+        }
+        Frame::LiveCard(_) => {
+            tracing::warn!("[{at}] 活卡原样来了（该是本机后端折好的成品），丢掉")
+        }
+        // 本机那一本里变了的那几条（本机后端折好、紧跟折进它的那一帧）：与会话帧同一条流上的先后。
+        Frame::SessionSeats(s) if local => return Some(Ordered::SessionSeats(s)),
+        Frame::SessionSeats(_) => {
+            tracing::warn!("[{at}] 别台流上来了一格本机才发的会话成品，丢掉")
+        }
+        // 这条连接上的未读：本机后端折进那一条整条、紧跟着交（本机那一台 `session_seats` · 别台 `relayed` 的 `seats`），账照整条换；原样这一帧不另交。
+        Frame::SessionUnread(_) => {}
         // 终端实时预览：一屏 / 收尾 ⇒ 交会话流句柄，订了这台 `terminal-screen/<票>` 的那条订阅收。
         Frame::TerminalScreen(s) => {
             to_replay(|r| r.on_terminal_screen(origin, &s.ticket, body_without(&s, "ticket")))
@@ -149,10 +163,9 @@ pub(crate) async fn apply(
         Ordered::SessionPrimed(p) => intake.announced(&p.sid, p.path, p.lines),
         Ordered::SessionStatus(s) => {
             tracing::info!(
-                "session-status: [{at}] sid={} life={:?} waiting_for={:?} → 成品交出口",
+                "session-status: [{at}] sid={} life={:?} → 成品交出口",
                 s.sid,
-                s.face.life,
-                s.waiting_for
+                s.face.life
             );
             told(at, Frame::SessionStatus(s));
         }
@@ -201,10 +214,13 @@ pub(crate) async fn apply(
             runs: b.runs,
             sum: b.sum,
         }),
+        Ordered::SessionSeats(seats) => {
+            crate::session_book::feed(BookIn::Seats { origin: at, seats })
+        }
     }
 }
 
-/// 会话帧原样交会话账（那台那一本照端核心的折法折）。
+/// 会话帧原样交会话账（交界面那一路；整条由那台后端折好的成品换，这一侧不折）。
 fn told(origin: String, frame: Frame) {
     crate::session_book::feed(BookIn::Told { origin, frame });
 }

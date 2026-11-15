@@ -10,7 +10,7 @@ import type { ListMeta } from "./generated/ListMeta";
 import type { SeenAt } from "./generated/SeenAt";
 import type { AuthKind } from "./generated/judgment-rules";
 
-// ---- 账号的形状：后端 `accounts-list` 的成品（生成类型，`accounts/manage/library.rs::list_product` 出）----
+// ---- 账号的形状：后端 `accounts-list` 的成品（生成类型，`accounts/manage/library.rs::list_product_with` 出）----
 // 号色 · 号牌字 · 那几句写好的字线上恒有，本地造的夹具可以不写（不写 ⇒ 号色画中性、号牌画「—」）。
 
 type FixtureOptional = "label" | "configDirShown" | "keyMasked" | "endpointHost" | "color" | "plate" | "kindLine" | "slots" | "unselectable" | "login" | "newSession";

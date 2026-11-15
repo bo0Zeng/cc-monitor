@@ -24,6 +24,8 @@ mod bind_guard;
 mod cc_bus_one_home;
 #[path = "creds_store_exits.rs"]
 mod creds_store_exits;
+#[path = "exe_bits_one_home.rs"]
+mod exe_bits_one_home;
 #[path = "failed_one_home.rs"]
 mod failed_one_home;
 #[path = "filewin_panic_points.rs"]

@@ -154,6 +154,8 @@ fn the_first_layer_hands_back_exactly_the_content_and_lifecycle_frames() {
             // 运行表 · 主线外清单（会话成品，交会话账）。
             "session_runs",
             "session_branch",
+            // 本机那一本里变了的那几条（本机后端折好的成品，交会话账、与会话帧同序）。
+            "session_seats",
             // 拥塞丢帧那一句（本机那条流也说）。
             "overflow",
             // 本机后端转来的别台那条流上的事（收的那一头按那台分走）。
@@ -355,6 +357,10 @@ fn the_second_watcher_leaves_no_trace_in_monitor_production() {
 #[ignore = "要真后端二进制：由 tests/evidence/local-lines.py 带 CF1_BACKEND 来跑"]
 fn a_real_backend_feeds_local_lines_through_the_production_read_loop() {
     use std::io::Write;
+    // 起真后端必经 shim：拿不到就停（排在一切 spawn 之前）。后端裸调的 tmux 经它强插 `-L`，只连得到私有那台。
+    let shim = crate::local_backend_host::tests::demand_tmux_shim(
+        "本条起真后端，它裸调的 tmux 要落在私有那台",
+    );
     let _local = crate::inbound_client::local_origin_test_lock();
     let bin = std::env::var("CF1_BACKEND").expect("没有 CF1_BACKEND —— 这条只该由读数脚本来跑");
     let mut rx = tap().expect("本机内容通道已经被装过了 —— 这条要单独跑");
@@ -366,7 +372,7 @@ fn a_real_backend_feeds_local_lines_through_the_production_read_loop() {
     std::fs::create_dir_all(claude.join("sessions")).unwrap();
     // 冒充会话的活进程。
     // ⚠ C7i：它不许带着「我在哪个 tmux 窗格里」—— 后端宣告时会去给那个窗格打 `@ccm_sid`。
-    //   后端自己的 `TMUX` 也摘了、`TMUX_TMPDIR` 指进临时家目录（与 SR1a 那条同一套隔离）。
+    //   后端自己的 `TMUX` / `TMUX_PANE` 也摘了，隔离靠 `PATH` 串首那份 shim。
     let mut sleeper = std::process::Command::new("sleep")
         .arg("600")
         .env_remove("TMUX")
@@ -408,8 +414,12 @@ fn a_real_backend_feeds_local_lines_through_the_production_read_loop() {
         .args(crate::local_backend::LOCAL_STREAM_ARGS)
         .env("HOME", &home)
         .env("CLAUDE_CONFIG_DIR", &claude)
-        .env("TMUX_TMPDIR", &home)
+        .env(
+            "PATH",
+            format!("{shim}:{}", std::env::var("PATH").unwrap_or_default()),
+        )
         .env_remove("TMUX")
+        .env_remove("TMUX_PANE")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .spawn()

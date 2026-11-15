@@ -55,43 +55,20 @@
                   "text": "+3d",
                   "tone": "plain"
                 }
-              ],
-              [
-                {
-                  "text": "超额",
-                  "tone": "plain"
-                },
-                {
-                  "text": "—",
-                  "tone": "plain"
-                }
-              ],
-              [
-                {
-                  "text": "采样",
-                  "tone": "plain"
-                },
-                {
-                  "text": "16:38",
-                  "tone": "plain"
-                }
               ]
             ],
+            "sampled": "采样于 16:38",
             "slots": [
               {
                 "pct": 63,
-                "resetText": "↻18:30",
                 "resetsAt": 1791196200,
-                "resetsAtRelText": "+1h50m",
                 "slot": "5h",
                 "text": "63%",
                 "tone": "plain"
               },
               {
                 "pct": 41,
-                "resetText": "↻10-09 09:00",
                 "resetsAt": 1791507600,
-                "resetsAtRelText": "+3d",
                 "slot": "7d",
                 "text": "41%",
                 "tone": "plain"
@@ -111,7 +88,27 @@
               "at": 1791196260,
               "atText": "18:31",
               "text": "5h 63% ↻18:30"
-            }
+            },
+            "windows": [
+              {
+                "from": "headers",
+                "key": "5h",
+                "name": "five_hour",
+                "pct": 63,
+                "resetsAt": 1791196200,
+                "row": 1,
+                "tone": "plain"
+              },
+              {
+                "from": "headers",
+                "key": "7d",
+                "name": "seven_day",
+                "pct": 41,
+                "resetsAt": 1791507600,
+                "row": 2,
+                "tone": "plain"
+              }
+            ]
           }
         ],
         "candidates": [
@@ -143,7 +140,7 @@
       "tz": "Asia/Shanghai"
     },
     {
-      "name": "订阅 · 更细的窗口（7d opus）在 7d 与超额之间各一行；量过的那一格带 1% ≈ 多少",
+      "name": "订阅 · 更细的窗口（7d opus）紧跟 7d 一行；量过的那一格带 1% ≈ 多少",
       "reply": {
         "accounts": [
           {
@@ -215,44 +212,21 @@
                   "text": "+3d",
                   "tone": "plain"
                 }
-              ],
-              [
-                {
-                  "text": "超额",
-                  "tone": "plain"
-                },
-                {
-                  "text": "—",
-                  "tone": "plain"
-                }
-              ],
-              [
-                {
-                  "text": "采样",
-                  "tone": "plain"
-                },
-                {
-                  "text": "16:38",
-                  "tone": "plain"
-                }
               ]
             ],
+            "sampled": "采样于 16:38",
             "slots": [
               {
                 "pct": 63,
                 "perPctText": "1% ≈ 2.1M",
-                "resetText": "↻18:30",
                 "resetsAt": 1791196200,
-                "resetsAtRelText": "+1h50m",
                 "slot": "5h",
                 "text": "63%",
                 "tone": "plain"
               },
               {
                 "pct": 41,
-                "resetText": "↻10-09 09:00",
                 "resetsAt": 1791507600,
-                "resetsAtRelText": "+3d",
                 "slot": "7d",
                 "text": "41%",
                 "tone": "plain"
@@ -281,7 +255,7 @@
                 "pct": 63,
                 "perPctText": "1% ≈ 2.1M",
                 "resetsAt": 1791196200,
-                "resetsAtRelText": "+1h50m",
+                "row": 1,
                 "tokensPerPct": 2100000,
                 "tone": "plain"
               },
@@ -291,7 +265,7 @@
                 "name": "seven_day",
                 "pct": 41,
                 "resetsAt": 1791507600,
-                "resetsAtRelText": "+3d",
+                "row": 2,
                 "tone": "plain"
               },
               {
@@ -301,7 +275,7 @@
                 "pct": 22,
                 "perPctText": "1% ≈ 25K",
                 "resetsAt": 1791507600,
-                "resetsAtRelText": "+3d",
+                "row": 3,
                 "tokensPerPct": 25000,
                 "tone": "plain"
               }
@@ -391,43 +365,20 @@
                   "text": "+3d",
                   "tone": "plain"
                 }
-              ],
-              [
-                {
-                  "text": "超额",
-                  "tone": "plain"
-                },
-                {
-                  "text": "—",
-                  "tone": "plain"
-                }
-              ],
-              [
-                {
-                  "text": "采样",
-                  "tone": "plain"
-                },
-                {
-                  "text": "16:38",
-                  "tone": "plain"
-                }
               ]
             ],
+            "sampled": "采样于 16:38",
             "slots": [
               {
                 "pct": 86,
-                "resetText": "↻18:30",
                 "resetsAt": 1791196200,
-                "resetsAtRelText": "+1h50m",
                 "slot": "5h",
                 "text": "86%",
                 "tone": "warn"
               },
               {
                 "pct": 41,
-                "resetText": "↻10-09 09:00",
                 "resetsAt": 1791507600,
-                "resetsAtRelText": "+3d",
                 "slot": "7d",
                 "text": "41%",
                 "tone": "plain"
@@ -447,7 +398,27 @@
               "at": 1791196260,
               "atText": "18:31",
               "text": "5h 86% ↻18:30"
-            }
+            },
+            "windows": [
+              {
+                "from": "headers",
+                "key": "5h",
+                "name": "five_hour",
+                "pct": 86,
+                "resetsAt": 1791196200,
+                "row": 1,
+                "tone": "warn"
+              },
+              {
+                "from": "headers",
+                "key": "7d",
+                "name": "seven_day",
+                "pct": 41,
+                "resetsAt": 1791507600,
+                "row": 2,
+                "tone": "plain"
+              }
+            ]
           }
         ],
         "candidates": [
@@ -479,7 +450,7 @@
       "tz": "Asia/Shanghai"
     },
     {
-      "name": "订阅 · 用满被拒：卡着的窗口用满（full）写 ✕ ＋ 几点重置",
+      "name": "订阅 · 用满被拒：抬头写被拒至几点，那一窗照用量 ＋ 几点重置",
       "reply": {
         "accounts": [
           {
@@ -496,6 +467,10 @@
                 {
                   "text": "订阅",
                   "tone": "plain"
+                },
+                {
+                  "text": "被拒至 19:00",
+                  "tone": "fail"
                 }
               ],
               [
@@ -504,7 +479,7 @@
                   "tone": "plain"
                 },
                 {
-                  "text": "✕",
+                  "text": "100%",
                   "tone": "fail"
                 },
                 {
@@ -533,44 +508,21 @@
                   "text": "+1d",
                   "tone": "plain"
                 }
-              ],
-              [
-                {
-                  "text": "超额",
-                  "tone": "plain"
-                },
-                {
-                  "text": "—",
-                  "tone": "plain"
-                }
-              ],
-              [
-                {
-                  "text": "采样",
-                  "tone": "plain"
-                },
-                {
-                  "text": "16:38",
-                  "tone": "plain"
-                }
               ]
             ],
+            "sampled": "采样于 16:38",
             "slots": [
               {
                 "full": true,
                 "pct": 100,
-                "resetText": "↻19:00",
                 "resetsAt": 1791198000,
-                "resetsAtRelText": "+2h20m",
                 "slot": "5h",
                 "text": "✕",
                 "tone": "fail"
               },
               {
                 "pct": 78,
-                "resetText": "↻10-07 09:00",
                 "resetsAt": 1791334800,
-                "resetsAtRelText": "+1d",
                 "slot": "7d",
                 "text": "78%",
                 "tone": "plain"
@@ -591,7 +543,27 @@
               "at": 1791198060,
               "atText": "19:01",
               "text": "被拒（5h）↻19:00"
-            }
+            },
+            "windows": [
+              {
+                "from": "headers",
+                "key": "5h",
+                "name": "five_hour",
+                "pct": 100,
+                "resetsAt": 1791198000,
+                "row": 1,
+                "tone": "fail"
+              },
+              {
+                "from": "headers",
+                "key": "7d",
+                "name": "seven_day",
+                "pct": 78,
+                "resetsAt": 1791334800,
+                "row": 2,
+                "tone": "plain"
+              }
+            ]
           }
         ],
         "candidates": [
@@ -623,7 +595,7 @@
       "tz": "Asia/Shanghai"
     },
     {
-      "name": "订阅 · 被拒而没用满（短时限流）：卡着的窗口写 {pct}% · 被拒 ＋ 几点重置",
+      "name": "订阅 · 被拒而没用满（短时限流）：抬头写被拒至几点，那一窗照用量 ＋ 几点重置",
       "reply": {
         "accounts": [
           {
@@ -640,6 +612,10 @@
                 {
                   "text": "订阅",
                   "tone": "plain"
+                },
+                {
+                  "text": "被拒至 16:41",
+                  "tone": "fail"
                 }
               ],
               [
@@ -648,8 +624,8 @@
                   "tone": "plain"
                 },
                 {
-                  "text": "58% · 被拒",
-                  "tone": "fail"
+                  "text": "58%",
+                  "tone": "plain"
                 },
                 {
                   "text": "↻19:00",
@@ -677,43 +653,20 @@
                   "text": "+1d",
                   "tone": "plain"
                 }
-              ],
-              [
-                {
-                  "text": "超额",
-                  "tone": "plain"
-                },
-                {
-                  "text": "—",
-                  "tone": "plain"
-                }
-              ],
-              [
-                {
-                  "text": "采样",
-                  "tone": "plain"
-                },
-                {
-                  "text": "16:38",
-                  "tone": "plain"
-                }
               ]
             ],
+            "sampled": "采样于 16:38",
             "slots": [
               {
                 "pct": 58,
-                "resetText": "↻19:00",
                 "resetsAt": 1791198000,
-                "resetsAtRelText": "+2h20m",
                 "slot": "5h",
                 "text": "58% · 被拒",
                 "tone": "fail"
               },
               {
                 "pct": 78,
-                "resetText": "↻10-07 09:00",
                 "resetsAt": 1791334800,
-                "resetsAtRelText": "+1d",
                 "slot": "7d",
                 "text": "78%",
                 "tone": "plain"
@@ -734,7 +687,27 @@
               "at": 1791189720,
               "atText": "16:42",
               "text": "被拒（5h）↻16:41"
-            }
+            },
+            "windows": [
+              {
+                "from": "headers",
+                "key": "5h",
+                "name": "five_hour",
+                "pct": 58,
+                "resetsAt": 1791198000,
+                "row": 1,
+                "tone": "plain"
+              },
+              {
+                "from": "headers",
+                "key": "7d",
+                "name": "seven_day",
+                "pct": 78,
+                "resetsAt": 1791334800,
+                "row": 2,
+                "tone": "plain"
+              }
+            ]
           }
         ],
         "candidates": [
@@ -766,7 +739,7 @@
       "tz": "Asia/Shanghai"
     },
     {
-      "name": "订阅 · 超额在兜：卡着的窗口写 超额，超额一行 使用中 另计费",
+      "name": "订阅 · 超额在兜：超额一行 使用中",
       "reply": {
         "accounts": [
           {
@@ -791,8 +764,8 @@
                   "tone": "plain"
                 },
                 {
-                  "text": "超额",
-                  "tone": "warn"
+                  "text": "104%",
+                  "tone": "fail"
                 },
                 {
                   "text": "↻19:00",
@@ -829,38 +802,21 @@
                 {
                   "text": "使用中",
                   "tone": "warn"
-                },
-                {
-                  "text": "另计费",
-                  "tone": "plain"
-                }
-              ],
-              [
-                {
-                  "text": "采样",
-                  "tone": "plain"
-                },
-                {
-                  "text": "16:38",
-                  "tone": "plain"
                 }
               ]
             ],
+            "sampled": "采样于 16:38",
             "slots": [
               {
                 "pct": 104,
-                "resetText": "↻19:00",
                 "resetsAt": 1791198000,
-                "resetsAtRelText": "+2h20m",
                 "slot": "5h",
                 "text": "超额",
                 "tone": "warn"
               },
               {
                 "pct": 78,
-                "resetText": "↻10-07 09:00",
                 "resetsAt": 1791334800,
-                "resetsAtRelText": "+1d",
                 "slot": "7d",
                 "text": "78%",
                 "tone": "plain"
@@ -879,8 +835,28 @@
               "act": "wait",
               "at": 1791198060,
               "atText": "19:01",
-              "text": "5h 104% ↻19:00"
-            }
+              "text": "超额"
+            },
+            "windows": [
+              {
+                "from": "headers",
+                "key": "5h",
+                "name": "five_hour",
+                "pct": 104,
+                "resetsAt": 1791198000,
+                "row": 1,
+                "tone": "fail"
+              },
+              {
+                "from": "headers",
+                "key": "7d",
+                "name": "seven_day",
+                "pct": 78,
+                "resetsAt": 1791334800,
+                "row": 2,
+                "tone": "plain"
+              }
+            ]
           }
         ],
         "candidates": [
@@ -912,7 +888,7 @@
       "tz": "Asia/Shanghai"
     },
     {
-      "name": "订阅 · 上一窗已过 ＋ 数旧：卡着的窗口写 —、↻.. 已过；采样写 几点 · 旧",
+      "name": "订阅 · 上一窗已过 ＋ 数旧：那一窗写 读取中（不写旧数与那一刻）；几点采的进号名的悬停提示",
       "reply": {
         "accounts": [
           {
@@ -937,11 +913,7 @@
                   "tone": "plain"
                 },
                 {
-                  "text": "—",
-                  "tone": "plain"
-                },
-                {
-                  "text": "↻13:10 已过",
+                  "text": "读取中",
                   "tone": "plain"
                 }
               ],
@@ -962,42 +934,19 @@
                   "text": "+5d",
                   "tone": "plain"
                 }
-              ],
-              [
-                {
-                  "text": "超额",
-                  "tone": "plain"
-                },
-                {
-                  "text": "—",
-                  "tone": "plain"
-                }
-              ],
-              [
-                {
-                  "text": "采样",
-                  "tone": "plain"
-                },
-                {
-                  "text": "09:02 · 旧",
-                  "tone": "warn"
-                }
               ]
             ],
+            "sampled": "采样于 09:02",
             "slots": [
               {
-                "pct": 97,
-                "resetText": "↻13:10 已过",
                 "resetsAt": 1791177000,
                 "slot": "5h",
-                "text": "—",
+                "text": "读取中",
                 "tone": "plain"
               },
               {
                 "pct": 12,
-                "resetText": "↻10-11 08:00",
                 "resetsAt": 1791676800,
-                "resetsAtRelText": "+5d",
                 "slot": "7d",
                 "text": "12%",
                 "tone": "plain"
@@ -1007,15 +956,34 @@
             "state": "resetSinceSeen",
             "usage": {
               "slot": "5h",
-              "text": "5h —",
+              "text": "5h 读取中",
               "tone": "plain",
-              "value": "—",
+              "value": "读取中",
               "window": "5h"
             },
             "warm": {
               "act": "send",
-              "text": "5h 窗口已过期"
-            }
+              "text": "5h 读取中"
+            },
+            "windows": [
+              {
+                "from": "headers",
+                "key": "5h",
+                "name": "five_hour",
+                "resetsAt": 1791177000,
+                "row": 1,
+                "tone": "plain"
+              },
+              {
+                "from": "headers",
+                "key": "7d",
+                "name": "seven_day",
+                "pct": 12,
+                "resetsAt": 1791676800,
+                "row": 2,
+                "tone": "plain"
+              }
+            ]
           }
         ],
         "candidates": [
@@ -1047,7 +1015,7 @@
       "tz": "Asia/Shanghai"
     },
     {
-      "name": "订阅 · 被拒却没有分窗口的数（回包只给了几点能再用）⇒ 状态 一行",
+      "name": "订阅 · 被拒却没有分窗口的数（回包只给了几点能再用）⇒ 只抬头写被拒至几点",
       "reply": {
         "accounts": [
           {
@@ -1064,67 +1032,14 @@
                 {
                   "text": "订阅",
                   "tone": "plain"
-                }
-              ],
-              [
-                {
-                  "text": "5h",
-                  "tone": "plain"
                 },
                 {
-                  "text": "—",
-                  "tone": "plain"
-                }
-              ],
-              [
-                {
-                  "text": "7d",
-                  "tone": "plain"
-                },
-                {
-                  "text": "—",
-                  "tone": "plain"
-                }
-              ],
-              [
-                {
-                  "text": "状态",
-                  "tone": "plain"
-                },
-                {
-                  "text": "被拒",
+                  "text": "被拒至 17:25",
                   "tone": "fail"
-                },
-                {
-                  "text": "↻17:25",
-                  "tone": "plain"
-                },
-                {
-                  "text": "+45m",
-                  "tone": "plain"
-                }
-              ],
-              [
-                {
-                  "text": "超额",
-                  "tone": "plain"
-                },
-                {
-                  "text": "—",
-                  "tone": "plain"
-                }
-              ],
-              [
-                {
-                  "text": "采样",
-                  "tone": "plain"
-                },
-                {
-                  "text": "16:38",
-                  "tone": "plain"
                 }
               ]
             ],
+            "sampled": "采样于 16:38",
             "slots": [],
             "stale": false,
             "state": "refused",
@@ -1173,7 +1088,7 @@
       "tz": "Asia/Shanghai"
     },
     {
-      "name": "订阅 · 需登录 · 用满（full，用量超过 100%）照 ✕ 画（非卡着的窗口）· 7d 没给时刻",
+      "name": "订阅 · 需登录 · 用满（用量超过 100%）照用量写 · 7d 没给时刻",
       "reply": {
         "accounts": [
           {
@@ -1220,37 +1135,16 @@
                   "tone": "plain"
                 },
                 {
-                  "text": "✕",
+                  "text": "103%",
                   "tone": "fail"
-                }
-              ],
-              [
-                {
-                  "text": "超额",
-                  "tone": "plain"
-                },
-                {
-                  "text": "—",
-                  "tone": "plain"
-                }
-              ],
-              [
-                {
-                  "text": "采样",
-                  "tone": "plain"
-                },
-                {
-                  "text": "16:38",
-                  "tone": "plain"
                 }
               ]
             ],
+            "sampled": "采样于 16:38",
             "slots": [
               {
                 "pct": 30,
-                "resetText": "↻20:00",
                 "resetsAt": 1791201600,
-                "resetsAtRelText": "+3h20m",
                 "slot": "5h",
                 "text": "30%",
                 "tone": "plain"
@@ -1277,7 +1171,26 @@
               "at": 1791193200,
               "atText": "17:40",
               "text": "需登录"
-            }
+            },
+            "windows": [
+              {
+                "from": "headers",
+                "key": "5h",
+                "name": "five_hour",
+                "pct": 30,
+                "resetsAt": 1791201600,
+                "row": 1,
+                "tone": "plain"
+              },
+              {
+                "from": "headers",
+                "key": "7d",
+                "name": "seven_day",
+                "pct": 103,
+                "row": 2,
+                "tone": "fail"
+              }
+            ]
           }
         ],
         "candidates": [
@@ -1363,43 +1276,20 @@
                   "text": "+45m",
                   "tone": "plain"
                 }
-              ],
-              [
-                {
-                  "text": "超额",
-                  "tone": "plain"
-                },
-                {
-                  "text": "—",
-                  "tone": "plain"
-                }
-              ],
-              [
-                {
-                  "text": "采样",
-                  "tone": "plain"
-                },
-                {
-                  "text": "16:31",
-                  "tone": "plain"
-                }
               ]
             ],
+            "sampled": "采样于 16:31",
             "slots": [
               {
                 "pct": 31,
-                "resetText": "↻18:40",
                 "resetsAt": 1791196800,
-                "resetsAtRelText": "+2h",
                 "slot": "5h",
                 "text": "31%",
                 "tone": "plain"
               },
               {
                 "pct": 9,
-                "resetText": "↻17:25",
                 "resetsAt": 1791192300,
-                "resetsAtRelText": "+45m",
                 "slot": "7d",
                 "text": "9%",
                 "tone": "plain"
@@ -1419,7 +1309,27 @@
               "at": 1791196860,
               "atText": "18:41",
               "text": "5h 31% ↻18:40"
-            }
+            },
+            "windows": [
+              {
+                "from": "headers",
+                "key": "5h",
+                "name": "five_hour",
+                "pct": 31,
+                "resetsAt": 1791196800,
+                "row": 1,
+                "tone": "plain"
+              },
+              {
+                "from": "headers",
+                "key": "7d",
+                "name": "seven_day",
+                "pct": 9,
+                "resetsAt": 1791192300,
+                "row": 2,
+                "tone": "plain"
+              }
+            ]
           }
         ],
         "candidates": [],
@@ -1445,7 +1355,7 @@
       "tz": "Asia/Shanghai"
     },
     {
-      "name": "按量 · 正常（5h/7d — 无限额）/ 被拒带时刻（写 被拒）/ 需 key",
+      "name": "按量 · 正常 / 被拒带时刻（抬头写被拒至几点）/ 需 key：只抬头一行",
       "reply": {
         "accounts": [
           {
@@ -1463,32 +1373,9 @@
                   "text": "按量",
                   "tone": "plain"
                 }
-              ],
-              [
-                {
-                  "text": "5h/7d",
-                  "tone": "plain"
-                },
-                {
-                  "text": "—",
-                  "tone": "plain"
-                },
-                {
-                  "text": "无限额",
-                  "tone": "plain"
-                }
-              ],
-              [
-                {
-                  "text": "采样",
-                  "tone": "plain"
-                },
-                {
-                  "text": "16:30",
-                  "tone": "plain"
-                }
               ]
             ],
+            "sampled": "采样于 16:30",
             "slots": [],
             "stale": false,
             "state": "ok",
@@ -1518,37 +1405,14 @@
                 {
                   "text": "按量",
                   "tone": "plain"
-                }
-              ],
-              [
-                {
-                  "text": "状态",
-                  "tone": "plain"
                 },
                 {
-                  "text": "被拒",
+                  "text": "被拒至 16:52",
                   "tone": "fail"
-                },
-                {
-                  "text": "↻16:52",
-                  "tone": "plain"
-                },
-                {
-                  "text": "+12m",
-                  "tone": "plain"
-                }
-              ],
-              [
-                {
-                  "text": "采样",
-                  "tone": "plain"
-                },
-                {
-                  "text": "16:30",
-                  "tone": "plain"
                 }
               ]
             ],
+            "sampled": "采样于 16:30",
             "slots": [],
             "stale": false,
             "state": "refused",
@@ -1584,32 +1448,9 @@
                   "text": "需 key",
                   "tone": "warn"
                 }
-              ],
-              [
-                {
-                  "text": "5h/7d",
-                  "tone": "plain"
-                },
-                {
-                  "text": "—",
-                  "tone": "plain"
-                },
-                {
-                  "text": "无限额",
-                  "tone": "plain"
-                }
-              ],
-              [
-                {
-                  "text": "采样",
-                  "tone": "plain"
-                },
-                {
-                  "text": "16:30",
-                  "tone": "plain"
-                }
               ]
             ],
+            "sampled": "采样于 16:30",
             "slots": [],
             "stale": false,
             "state": "ok",
@@ -1665,7 +1506,7 @@
       "tz": "Asia/Shanghai"
     },
     {
-      "name": "没出过数：订阅（需登录）与按量各一（— 无采样，不出采样一行）",
+      "name": "没出过数：订阅（需登录）与按量各一（抬头写无采样，不出窗口行）",
       "reply": {
         "accounts": [
           {
@@ -1719,43 +1560,20 @@
                   "text": "+4d",
                   "tone": "plain"
                 }
-              ],
-              [
-                {
-                  "text": "超额",
-                  "tone": "plain"
-                },
-                {
-                  "text": "—",
-                  "tone": "plain"
-                }
-              ],
-              [
-                {
-                  "text": "采样",
-                  "tone": "plain"
-                },
-                {
-                  "text": "16:38",
-                  "tone": "plain"
-                }
               ]
             ],
+            "sampled": "采样于 16:38",
             "slots": [
               {
                 "pct": 4,
-                "resetText": "↻18:10",
                 "resetsAt": 1791195000,
-                "resetsAtRelText": "+1h30m",
                 "slot": "5h",
                 "text": "4%",
                 "tone": "plain"
               },
               {
                 "pct": 12,
-                "resetText": "↻10-10 09:00",
                 "resetsAt": 1791594000,
-                "resetsAtRelText": "+4d",
                 "slot": "7d",
                 "text": "12%",
                 "tone": "plain"
@@ -1775,7 +1593,27 @@
               "at": 1791195060,
               "atText": "18:11",
               "text": "5h 4% ↻18:10"
-            }
+            },
+            "windows": [
+              {
+                "from": "headers",
+                "key": "5h",
+                "name": "five_hour",
+                "pct": 4,
+                "resetsAt": 1791195000,
+                "row": 1,
+                "tone": "plain"
+              },
+              {
+                "from": "headers",
+                "key": "7d",
+                "name": "seven_day",
+                "pct": 12,
+                "resetsAt": 1791594000,
+                "row": 2,
+                "tone": "plain"
+              }
+            ]
           }
         ],
         "candidates": [
@@ -1827,30 +1665,6 @@
                   "text": "需登录",
                   "tone": "warn"
                 }
-              ],
-              [
-                {
-                  "text": "5h",
-                  "tone": "plain"
-                },
-                {
-                  "text": "—",
-                  "tone": "plain"
-                },
-                {
-                  "text": "无采样",
-                  "tone": "plain"
-                }
-              ],
-              [
-                {
-                  "text": "7d",
-                  "tone": "plain"
-                },
-                {
-                  "text": "—",
-                  "tone": "plain"
-                }
               ]
             ],
             "usage": {
@@ -1880,16 +1694,6 @@
                 },
                 {
                   "text": "按量",
-                  "tone": "plain"
-                }
-              ],
-              [
-                {
-                  "text": "5h/7d",
-                  "tone": "plain"
-                },
-                {
-                  "text": "—",
                   "tone": "plain"
                 },
                 {
@@ -1945,11 +1749,7 @@
                   "tone": "plain"
                 },
                 {
-                  "text": "—",
-                  "tone": "plain"
-                },
-                {
-                  "text": "↻13:10 已过",
+                  "text": "读取中",
                   "tone": "plain"
                 }
               ],
@@ -1970,42 +1770,19 @@
                   "text": "+2d",
                   "tone": "plain"
                 }
-              ],
-              [
-                {
-                  "text": "超额",
-                  "tone": "plain"
-                },
-                {
-                  "text": "—",
-                  "tone": "plain"
-                }
-              ],
-              [
-                {
-                  "text": "采样",
-                  "tone": "plain"
-                },
-                {
-                  "text": "09:02",
-                  "tone": "plain"
-                }
               ]
             ],
+            "sampled": "采样于 09:02",
             "slots": [
               {
-                "pct": 97,
-                "resetText": "↻13:10 已过",
                 "resetsAt": 1798693800,
                 "slot": "5h",
-                "text": "—",
+                "text": "读取中",
                 "tone": "plain"
               },
               {
                 "pct": 12,
-                "resetText": "↻2027-01-03 09:00",
                 "resetsAt": 1798938000,
-                "resetsAtRelText": "+2d",
                 "slot": "7d",
                 "text": "12%",
                 "tone": "plain"
@@ -2015,15 +1792,34 @@
             "state": "resetSinceSeen",
             "usage": {
               "slot": "5h",
-              "text": "5h —",
+              "text": "5h 读取中",
               "tone": "plain",
-              "value": "—",
+              "value": "读取中",
               "window": "5h"
             },
             "warm": {
               "act": "send",
-              "text": "5h 窗口已过期"
-            }
+              "text": "5h 读取中"
+            },
+            "windows": [
+              {
+                "from": "headers",
+                "key": "5h",
+                "name": "five_hour",
+                "resetsAt": 1798693800,
+                "row": 1,
+                "tone": "plain"
+              },
+              {
+                "from": "headers",
+                "key": "7d",
+                "name": "seven_day",
+                "pct": 12,
+                "resetsAt": 1798938000,
+                "row": 2,
+                "tone": "plain"
+              }
+            ]
           },
           {
             "account": "cold",
@@ -2047,11 +1843,7 @@
                   "tone": "plain"
                 },
                 {
-                  "text": "—",
-                  "tone": "plain"
-                },
-                {
-                  "text": "↻01-01 03:00 已过",
+                  "text": "读取中",
                   "tone": "plain"
                 }
               ],
@@ -2061,50 +1853,23 @@
                   "tone": "plain"
                 },
                 {
-                  "text": "5%",
+                  "text": "读取中",
                   "tone": "plain"
-                },
-                {
-                  "text": "↻01-06 09:00 已过",
-                  "tone": "plain"
-                }
-              ],
-              [
-                {
-                  "text": "超额",
-                  "tone": "plain"
-                },
-                {
-                  "text": "—",
-                  "tone": "plain"
-                }
-              ],
-              [
-                {
-                  "text": "采样",
-                  "tone": "plain"
-                },
-                {
-                  "text": "2025-12-31 23:50 · 旧",
-                  "tone": "warn"
                 }
               ]
             ],
+            "sampled": "采样于 2025-12-31 23:50",
             "slots": [
               {
-                "pct": 2,
-                "resetText": "↻01-01 03:00 已过",
                 "resetsAt": 1767207600,
                 "slot": "5h",
-                "text": "—",
+                "text": "读取中",
                 "tone": "plain"
               },
               {
-                "pct": 5,
-                "resetText": "↻01-06 09:00 已过",
                 "resetsAt": 1767661200,
                 "slot": "7d",
-                "text": "5%",
+                "text": "读取中",
                 "tone": "plain"
               }
             ],
@@ -2112,15 +1877,33 @@
             "state": "resetSinceSeen",
             "usage": {
               "slot": "5h",
-              "text": "5h —",
+              "text": "5h 读取中",
               "tone": "plain",
-              "value": "—",
+              "value": "读取中",
               "window": "5h"
             },
             "warm": {
               "act": "send",
-              "text": "5h 窗口已过期"
-            }
+              "text": "5h 读取中"
+            },
+            "windows": [
+              {
+                "from": "headers",
+                "key": "5h",
+                "name": "five_hour",
+                "resetsAt": 1767207600,
+                "row": 1,
+                "tone": "plain"
+              },
+              {
+                "from": "headers",
+                "key": "7d",
+                "name": "seven_day",
+                "resetsAt": 1767661200,
+                "row": 2,
+                "tone": "plain"
+              }
+            ]
           }
         ],
         "candidates": [
@@ -2201,5 +1984,5 @@
       "tz": "Asia/Shanghai"
     }
   ],
-  "说明": "quota-read 的线上形状（后端真出口走完那一份，由 quota_rows_tests::the_wire_golden_is_what_the_exit_writes 写）：每号 rows 是 [[{text, tone}]]、warm、names。三个语言的读者都照它比，不各自手抄。"
+  "说明": "quota-read 的线上形状（后端真出口走完那一份，由 quota_rows_tests::the_wire_golden_is_what_the_exit_writes 写）：每号 rows 是 [[{text, tone}]]、sampled、warm、names。三个语言的读者都照它比，不各自手抄。"
 }

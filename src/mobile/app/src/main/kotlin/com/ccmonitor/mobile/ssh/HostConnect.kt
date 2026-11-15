@@ -3,8 +3,6 @@ package com.ccmonitor.mobile.ssh
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.Host
 import com.ccmonitor.mobile.core.data.db.isKeystoreBacked
-import com.ccmonitor.mobile.core.data.db.machineNames
-import com.ccmonitor.mobile.core.data.db.machineTable
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
 import com.ccmonitor.mobile.core.rs.Core
@@ -13,6 +11,66 @@ import com.ccmonitor.mobile.core.ssh.ConnectionConfig
 import com.ccmonitor.mobile.core.ssh.ReconnectPolicy
 import com.ccmonitor.mobile.core.wire.Wire
 import com.ccmonitor.mobile.core.wire.gen.DialPlan
+import com.ccmonitor.mobile.core.wire.gen.MachineCheck
+import com.ccmonitor.mobile.core.wire.gen.MachineRow
+import com.ccmonitor.mobile.core.wire.gen.arr
+import com.ccmonitor.mobile.ui.chats.HostName
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import com.ccmonitor.mobile.core.wire.gen.Host as WireHost
+
+/** 交拨号核心的那一形（`ssh_dial::machine::Host`）：`keyPath` 写这一台的 id —— 核心组好的请求里每一跳带着它，认证照它解。 */
+fun Host.wire(): WireHost =
+    WireHost(
+        label = label,
+        host = host,
+        port = port.toLong(),
+        user = username,
+        keyPath = id,
+        addresses = addresses,
+        jump = jump,
+        connect = true,
+    )
+
+/** 这一端的机器表交核心的那一份（JSON 数组，一台一个 [wire]）。 */
+fun List<Host>.machineTable(): String = arr(WireHost.ADAPTER).toJson(map { it.wire() })
+
+/** 每台的名字（拨号核心算的，同桌面那张表；跳板指的就是它），与 [hosts] 一一对应。要那份 .so；23→24 迁移经 AppModule 绑的 `MachineNamer` 拿它。 */
+fun machineNames(hosts: List<Host>): List<String> =
+    (Wire.read(arr(MachineRow.ADAPTER), Core.machines(hosts.machineTable())) ?: error("wire contract mismatch: machine rows"))
+        .map { it.name }
+
+/**
+ * 照 [hosts] 那张表、按 id 取名字（[machineNames] 那一份，整张表只交核心算一次）；表里没有这一台（删了）⇒ 照 id。
+ * 核心不在（缺那份 .so · 线上形状对不上）⇒ 照 [machineNames] 抛，不拿 label 顶：那时拨号同样拨不成。
+ */
+fun machineNameOf(hosts: List<Host>): (id: String) -> String {
+    val names = hosts.map { it.id }.zip(machineNames(hosts)).toMap()
+    return { id -> names[id] ?: id }
+}
+
+/** 表里 [id] 那一台的名字。 */
+fun machineName(
+    hosts: List<Host>,
+    id: String,
+): String = machineNameOf(hosts)(id)
+
+/** 库里 [id] 那一台的名字。 */
+suspend fun HostRepository.machineName(id: String): String = machineName(observeAll().first(), id)
+
+/** 库里每台的 id 与名字（照库里的先后），跟着库变。 */
+fun HostRepository.observeMachineNames(): Flow<List<HostName>> =
+    observeAll().map { hs ->
+        val name = machineNameOf(hs)
+        hs.map { HostName(it.id, name(it.id)) }
+    }
+
+/** 表里第 [at] 台交核心判：毛病（判法 · 说法与桌面 `machines-try` 同一处）＋ 那一台展开的拨号地址。要那份 .so。 */
+fun machineCheck(
+    table: List<Host>,
+    at: Int,
+): MachineCheck = Wire.read<MachineCheck>(Core.machineCheck(table.machineTable(), at)) ?: error("wire contract mismatch: machine check")
 
 /**
  * 跳板设置坏了（成环 · 跳板机不在了 · 跳板机无密钥或密码 · 那一台不成立），拒连。[fixHostId] 是改哪一台能修好：界面据它给［编辑］。
@@ -33,8 +91,7 @@ fun interface DialPlanner {
 /** 生产那一份：名字与组法都问手机嵌的核心（`Core.machines` · `Core.dialPlan`）。 */
 val CoreDialPlanner =
     DialPlanner { hosts, target ->
-        val name = machineNames(hosts)[hosts.indexOfFirst { it.id == target.id }]
-        Wire.read<DialPlan>(Core.dialPlan(hosts.machineTable(), name)) ?: error("wire contract mismatch: dial plan")
+        Wire.read<DialPlan>(Core.dialPlan(hosts.machineTable(), machineName(hosts, target.id))) ?: error("wire contract mismatch: dial plan")
     }
 
 /**

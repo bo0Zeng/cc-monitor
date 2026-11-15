@@ -3,11 +3,6 @@ package com.ccmonitor.mobile.core.data.db
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import androidx.room.TypeConverter
-import com.ccmonitor.mobile.core.rs.Core
-import com.ccmonitor.mobile.core.wire.Wire
-import com.ccmonitor.mobile.core.wire.gen.MachineRow
-import com.ccmonitor.mobile.core.wire.gen.arr
-import com.ccmonitor.mobile.core.wire.gen.Host as WireHost
 
 /** 机器表与身份表的表名：两张表里的密文按「表名 · 行 id」绑在那一行（见 rowBinding）。 */
 const val HOSTS_TABLE = "hosts"
@@ -36,27 +31,6 @@ data class Host(
     // 密码认证：CryptoBox 加密后 Base64（TEXT，非明文）；非空 → 用密码认证（优先于 authRef）；null = 不用密码。
     val passwordEnc: String? = null,
 )
-
-/** 交拨号核心的那一形（`ssh_dial::machine::Host`）：`keyPath` 写这一台的 id —— 核心组好的请求里每一跳带着它，认证照它解。 */
-fun Host.wire(): WireHost =
-    WireHost(
-        label = label,
-        host = host,
-        port = port.toLong(),
-        user = username,
-        keyPath = id,
-        addresses = addresses,
-        jump = jump,
-        connect = true,
-    )
-
-/** 这一端的机器表交核心的那一份（JSON 数组，一台一个 [wire]）。 */
-fun List<Host>.machineTable(): String = arr(WireHost.ADAPTER).toJson(map { it.wire() })
-
-/** 每台的名字（拨号核心算的，同桌面那张表；跳板指的就是它），与 [hosts] 一一对应。要那份 .so。 */
-fun machineNames(hosts: List<Host>): List<String> =
-    (Wire.read(arr(MachineRow.ADAPTER), Core.machines(hosts.machineTable())) ?: error("wire contract mismatch: machine rows"))
-        .map { it.name }
 
 /** 备用地址那一格在库里一行一条（原样存，不解析）。 */
 class HostConverters {
@@ -132,6 +106,8 @@ data class PendingSend(
     val mintedAt: Long,
     val outcome: String,
     val attempts: Int,
+    /** 那台拒时写好的那一句（原样存、重开照它画）：只在 [outcome] 是 [PendingOutcome.REFUSED] 时有（28 版迁上来的被拒行为 `null`），别的结局 ⇒ `null`。 */
+    val refusedSaid: String? = null,
 )
 
 /** [PendingSend.outcome] 那几种（落盘的字，不上屏）。 */
@@ -147,6 +123,9 @@ object PendingOutcome {
 
     /** 会话那台拒了（队满 · 太长 · 附件已不在）：不再交，字留着可改了再送。 */
     const val REFUSED = "refused"
+
+    /** 点了撤、那台还没答（撤那一问交出去之前就落下）：不再交；开屏照同一个编号接着问那台撤没撤成，照答复走。 */
+    const val WITHDRAWING = "withdrawing"
 }
 
 /** 在做的一组：核心交的那一串原样（票 · 发出去的那一份入参 · 断开时的完成数）；开始时写、收场删，进程没了再开照它带票再问。 */

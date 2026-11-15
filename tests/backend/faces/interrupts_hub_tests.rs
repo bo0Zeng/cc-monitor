@@ -10,6 +10,7 @@ fn r(relayed: Option<u32>, maybe: u32, live: u32, forwards: u32) -> R {
         relayed_maybe: maybe,
         live_streams: live,
         forwards,
+        rows: Vec::new(),
     }
 }
 
@@ -20,14 +21,20 @@ fn there(
     answers: &[(&str, R)],
     asked: &Asked,
 ) -> impl Fn(String, Q) -> std::pin::Pin<Box<dyn std::future::Future<Output = Option<R>> + Send>> {
-    let answers: Vec<(String, R)> = answers.iter().map(|(n, a)| (n.to_string(), *a)).collect();
+    let answers: Vec<(String, R)> = answers
+        .iter()
+        .map(|(n, a)| (n.to_string(), a.clone()))
+        .collect();
     let asked = asked.clone();
     move |m, q| {
         asked.lock().unwrap().push((
             m.clone(),
             serde_json::json!({"machine": q.machine, "appExit": q.app_exit, "fleet": q.fleet}),
         ));
-        let got = answers.iter().find(|(n, _)| *n == m).map(|(_, a)| *a);
+        let got = answers
+            .iter()
+            .find(|(n, _)| *n == m)
+            .map(|(_, a)| a.clone());
         Box::pin(async move { got })
     }
 }
@@ -140,5 +147,161 @@ async fn app_exit_adds_this_machine_and_each_listed_one_without_fanning_further(
             ),
         ],
         "各台只问一次、只带 appExit（不带名单 ⇒ 不往下扇）；本机不经常驻流问"
+    );
+}
+
+/// 「中断 · 保留」两行由后端排好（[`super::rows_of`]）：壳 · 界面只画。
+mod rows {
+    use super::super::rows_of;
+    use super::{r, req};
+    use cmd_wire::machine::InterruptRow;
+    use copy_core::copy_text;
+
+    fn t(key: &str) -> String {
+        copy_text(key, &[])
+    }
+
+    fn n(key: &str, v: u32) -> String {
+        copy_text(key, &[("n", &v.to_string())])
+    }
+
+    fn two(label: &str, items: Vec<String>) -> Vec<InterruptRow> {
+        vec![
+            InterruptRow {
+                label: t(label),
+                items,
+            },
+            InterruptRow {
+                label: t("kit.interrupts.keep"),
+                items: vec![t("interrupts.item.sessionsRun")],
+            },
+        ]
+    }
+
+    #[test]
+    fn quitting_lists_file_windows_first_then_sessions_live_and_forwards_everywhere() {
+        let q = req(
+            serde_json::json!({"appExit": true, "fleet": true, "files": {"unsaved": 2, "running": 1}}),
+        );
+        let everywhere = t("restartNow.dialog.everywhere");
+        assert_eq!(
+            rows_of(&q, &r(Some(3), 1, 4, 5)),
+            two(
+                "interrupts.row.untilStart",
+                vec![
+                    n("interrupts.item.unsaved", 2),
+                    n("interrupts.item.filewinRunning", 1),
+                    n("interrupts.item.relayed", 3),
+                    n("interrupts.item.relayedMaybe", 1),
+                    copy_text("interrupts.item.liveGone", &[("machine", &everywhere)]),
+                    n("interrupts.item.forwards", 5),
+                ]
+            ),
+            "缺 act ⇒ 停到再启动；次序：文件窗口 · 会话 · 实时 · 转发"
+        );
+    }
+
+    #[test]
+    fn nothing_to_cut_is_no_rows_and_unknowns_are_said_not_zeroed() {
+        let quit = req(serde_json::json!({"appExit": true, "files": {"unsaved": 0, "running": 0}}));
+        assert_eq!(
+            rows_of(&quit, &r(Some(0), 0, 0, 0)),
+            Vec::new(),
+            "什么都不会断 ⇒ 空"
+        );
+        let blind = req(serde_json::json!({"appExit": true}));
+        assert_eq!(
+            rows_of(&blind, &r(Some(0), 0, 0, 0)),
+            two(
+                "interrupts.row.untilStart",
+                vec![t("interrupts.item.filewinUnknown")]
+            ),
+            "退出那一问没带文件窗口 ⇒ 说数不出"
+        );
+        let far = req(serde_json::json!({"machine": "devbox"}));
+        assert_eq!(
+            rows_of(&far, &r(None, 0, 0, 0)),
+            two(
+                "interrupts.row.untilStart",
+                vec![t("interrupts.item.relayedUnknown")]
+            ),
+            "那台问不到 ⇒ 会话说不清；停一台不数文件窗口"
+        );
+    }
+
+    #[test]
+    fn restart_and_update_are_brief_and_name_the_machine() {
+        for act in ["restart", "update"] {
+            let q = req(serde_json::json!({"machine": "devbox", "act": act}));
+            assert_eq!(
+                rows_of(&q, &r(Some(0), 0, 2, 0)),
+                two(
+                    "interrupts.row.brief",
+                    vec![copy_text(
+                        "interrupts.item.liveBrief",
+                        &[("machine", "devbox")]
+                    )]
+                ),
+                "{act} ⇒ 中断几秒"
+            );
+        }
+        let here = req(serde_json::json!({"act": "uninstall"}));
+        let local = t("detail.label.local");
+        assert_eq!(
+            rows_of(&here, &r(Some(0), 0, 1, 0)),
+            two(
+                "interrupts.row.untilStart",
+                vec![copy_text(
+                    "interrupts.item.liveGone",
+                    &[("machine", &local)]
+                )]
+            ),
+            "本机那一台叫本机"
+        );
+    }
+}
+
+/// 这台那一份（[`super::interrupts_at`]）数「活着的会话」照活会话表那一判（会话脸上说它活着也照这一判），
+/// 不照账号归属那一格更严的「启动时刻核上」：Windows 上 pidfile 的启动时刻记法与这台读的恒不等，核不上，
+/// 那几条照样活着、照样会被打断。核不上 ⇒ 不读进程环境 ⇒ 走不走中转说不清，落 `relayedMaybe`；
+/// 后台任务（`kind: bg`）不是脸上那一条会话，不数；同一条会话几个进程只数一个。
+#[cfg(target_os = "linux")]
+#[test]
+fn live_sessions_are_counted_by_the_live_table_not_by_the_stricter_identity_check() {
+    use std::os::unix::process::CommandExt;
+    let home = test_home::scratch("interrupts-live");
+    let sessions = crate::agents::IntoHomes::into_homes(&home)[0]
+        .pidfile_dir()
+        .unwrap();
+    std::fs::create_dir_all(&sessions).unwrap();
+    let mut kids = Vec::new();
+    // 启动时刻写成另一种记法（核不上）、进程像那一家 ⇒ 活会话表说活着。
+    for (sid, kind) in [
+        ("s-a", None),
+        ("s-a", None),
+        ("s-b", None),
+        ("s-bg", Some("bg")),
+    ] {
+        let kid = crate::platform::proc::test_support::spawn_settled_sleep(|c| {
+            c.arg0("claude");
+        });
+        let kind = kind.map_or(String::new(), |k| format!(r#","kind":"{k}""#));
+        std::fs::write(
+            sessions.join(format!("{}.json", kid.id())),
+            format!(r#"{{"sessionId":"{sid}","cwd":"/w","procStart":"638000000000000000"{kind}}}"#),
+        )
+        .unwrap();
+        kids.push(kid);
+    }
+    let got = super::interrupts_at(&home, &Q::default());
+    for mut k in kids {
+        let _ = k.kill();
+        let _ = k.wait();
+    }
+    let _ = std::fs::remove_dir_all(&home);
+    assert_eq!(
+        (got.live_streams, got.relayed_maybe, got.relayed_sessions),
+        (2, 2, Some(0)),
+        "脸上活着两条会话（s-a 两个进程算一条 · 后台那一条不算），都说不清走不走中转：{got:?}"
     );
 }

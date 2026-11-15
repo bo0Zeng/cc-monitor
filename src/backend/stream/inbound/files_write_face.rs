@@ -19,7 +19,7 @@ fn ask<A: crate::files::write::Act, E: Codes>(
     crate::files::write::answer(req, face).map_err(|f| {
         typed::of_fail(
             {
-                let code = f.code_or_fallback().to_string();
+                let code = cmd_wire::failed::Failed::code_or_fallback(f.code.clone());
                 crate::wire::spec::fail(&code, f)
             },
             fallback,
@@ -30,8 +30,12 @@ fn ask<A: crate::files::write::Act, E: Codes>(
 /// 资产域那扇门（`doors::LocalFiles`）问写的那几样：同一个本体，写句柄经分派那一层（`spec::with_face`）领一份、只活这一问；
 /// 失败只交码与那一句（不过这一条的码表：门不是帧面）。
 pub(crate) fn in_process<A: crate::files::write::Act>(req: A) -> Result<A::Reply, Said> {
-    crate::wire::spec::with_face(|face| crate::files::write::answer(req, face))
-        .map_err(|f| crate::common::door::said_of(f.code_or_fallback(), &f.said))
+    crate::wire::spec::with_face(|face| crate::files::write::answer(req, face)).map_err(|f| {
+        crate::common::door::said_of(
+            &cmd_wire::failed::Failed::code_or_fallback(f.code.clone()),
+            &f.said,
+        )
+    })
 }
 
 codes! {
@@ -258,7 +262,7 @@ impl crate::wire::typed::Handle for FilesCopy {
                 CopyRefused::Clash(said, data) => FilesCopyErr::Exists(said, data),
                 CopyRefused::Fail(f) => typed::of_fail(
                     {
-                        let code = f.code_or_fallback().to_string();
+                        let code = cmd_wire::failed::Failed::code_or_fallback(f.code.clone());
                         crate::wire::spec::fail(&code, f)
                     },
                     FilesCopyErr::BadArgs,
@@ -488,7 +492,7 @@ impl crate::wire::typed::Handle for FilesCommitUpload {
                 CommitRefused::Clash(said, data) => FilesCommitUploadErr::Exists(said, data),
                 CommitRefused::Fail(f) => typed::of_fail(
                     {
-                        let code = f.code_or_fallback().to_string();
+                        let code = cmd_wire::failed::Failed::code_or_fallback(f.code.clone());
                         crate::wire::spec::fail(&code, f)
                     },
                     FilesCommitUploadErr::BadArgs,
@@ -504,14 +508,14 @@ impl crate::wire::typed::Handle for FilesCommitUpload {
 
 /// 这条会话的工作目录（这台记录树里那份会话记录开头写的项目目录）；读不出 ⇒ `None`。
 fn session_cwd(sid: &str) -> Option<std::path::PathBuf> {
-    let home = crate::agents::home_at(None, true);
-    let at = crate::agents::find_session(&home, sid).ok()?;
-    crate::agents::project_dir_of(&at.file).map(std::path::PathBuf::from)
+    let at = crate::agents::find_session_in(&crate::agents::local_homes(), sid).ok()?;
+    crate::agents::project_dir_among(crate::agents::REGISTRY, &at.file)
+        .map(std::path::PathBuf::from)
 }
 
 /// 附件那一支的失败 ⇒ 这一条的码表。
 fn attach_fail<E: Codes>(f: Said, fallback: fn(String) -> E) -> E {
-    let code = f.code_or_fallback().to_string();
+    let code = cmd_wire::failed::Failed::code_or_fallback(f.code.clone());
     typed::of_fail(crate::wire::spec::fail(&code, f), fallback)
 }
 

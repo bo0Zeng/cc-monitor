@@ -3,7 +3,7 @@
 //! 每条命令一份结构夹具（`sample`：每格都填、并集取第一形，`node tests/scripts/gen-kotlin-wire.mjs --samples` 现出，不放真正文），
 //! 这里按 `calls!` 那张表里的类型解、照类型写成一行（`rust`）。手机那一侧（`RepliesGoldenTest`）拿生成的 Kotlin 类解 `rust`
 //! 再写回，要与它逐字节同 —— 生成的类与 Rust 那一份类型对不上（少一格 · 型不对 · 顺序不同 · null 与缺席分不清）就红在那边。
-//! 带记录的那几条（[`records_cell`]）客户端按完整记录解，那一形住 `face-core`：它们的 `rust` 由 `face-core` 的 `record` 判据现打对拍，
+//! 带记录的那几条（[`records_cell`]）客户端按完整记录解，那一形住手机核心：它们的 `rust` 由手机核心 `record` 的判据现打对拍，
 //! 这里原样留着金样里那一格。
 //! 判据只比不写：现打的与仓里那份不一样 ⇒ 现打的落在本树 `.build/golden/` 下、红；对过之后跑 `tests/scripts/bless-golden.sh` 拷回。
 
@@ -57,7 +57,7 @@ fn every_phone_reply_has_a_golden_line_written_by_its_type() {
         "cases": fresh,
     });
     let out = serde_json::to_string_pretty(&want).unwrap() + "\n";
-    let fresh_path = root().join(".build/golden").join(REL);
+    let fresh_path = guard_core::addr::fresh_golden(&root(), REL);
     if out != text {
         std::fs::create_dir_all(fresh_path.parent().unwrap()).unwrap();
         std::fs::write(&fresh_path, &out).unwrap();

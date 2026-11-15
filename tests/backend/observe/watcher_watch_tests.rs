@@ -206,15 +206,8 @@ fn a_list_on_the_attach_line_holds_from_the_first_frame() {
     process_jsonl(&pb, &mut state, &mut sink);
     for sid in [A, B] {
         crate::observe::runs::testing::seed_running(&state.book, sid, "r1", None);
-        // 宣告那一帧的形状这里不看：join 原样转发留着的那一帧。
-        state.added.insert(
-            sid.to_string(),
-            Frame::SessionFileGone(crate::wire::SessionFileGone {
-                session_id: sid.into(),
-                path: String::new(),
-                said: Default::default(),
-            }),
-        );
+        // 宣告那一帧的形状这里不看：join 转发留着的那一帧（只认 sid）。
+        state.added.insert(sid.to_string(), added_row(sid));
     }
     let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let ask = crate::wire::WatchAsk {
@@ -245,9 +238,7 @@ fn a_list_on_the_attach_line_holds_from_the_first_frame() {
             }) => {
                 format!("line {session_id} {seq}")
             }
-            Frame::SessionFileGone(crate::wire::SessionFileGone { session_id, .. }) => {
-                format!("added {session_id}")
-            }
+            Frame::SessionAdded(crate::wire::SessionAdded { sid, .. }) => format!("added {sid}"),
             _ => continue,
         });
     }
@@ -337,7 +328,6 @@ fn added_frame(sid: &str) -> Frame {
         sid: sid.into(),
         agent_kind: "claude".to_string(),
         background: false,
-        attachable: None,
         cwd: None,
         project_dir: None,
         name: None,
@@ -351,6 +341,75 @@ fn added_frame(sid: &str) -> Frame {
         container: None,
         pid: 0,
     })
+}
+
+/// watcher 记着的那一份宣告（`attachable` 没说）。
+fn added_row(sid: &str) -> Added {
+    let Frame::SessionAdded(wire) = added_frame(sid) else {
+        unreachable!()
+    };
+    Added {
+        wire,
+        attachable: None,
+        kind: "claude",
+    }
+}
+
+/// 宣告时 pidfile 说接进去没有意义（这一格不上线，宣告那一下经 `FrameSink::announce` 另交会话账本）⇒ 程序退了、
+/// tmux 会话还在那一张脸照旧不给「看它的终端」；没说的那一条照给。
+#[test]
+fn an_announced_unattachable_session_stays_unattachable_once_reconnectable() {
+    let mut state = ReaderState::new(std::env::temp_dir());
+    let mut sink = ledgered(true);
+    let mut rx = conn(&mut sink, &mut state, 1, None);
+    let both = [("s-ua", Some(false), "$1"), ("s-ub", None, "$2")];
+    for (sid, attachable, _) in both {
+        let Frame::SessionAdded(wire) = added_frame(sid) else {
+            unreachable!()
+        };
+        sink.announce(Added {
+            wire,
+            attachable,
+            kind: "claude",
+        });
+    }
+    let rows: String = both
+        .iter()
+        .map(|(sid, _, id)| format!("t{sid}\t/w\tzsh\t0\t1\t{sid}\t{id}\t{sid} \n"))
+        .collect();
+    sink.tmux(TmuxObservation::Sessions(rows.clone()));
+    for (sid, _, _) in both {
+        sink.send(Frame::session_left(
+            sid.into(),
+            crate::wire::Life::Ended,
+            None,
+            None,
+        ));
+    }
+    sink.observing();
+    sink.tmux(TmuxObservation::Sessions(rows));
+    let mut view = std::collections::BTreeMap::new();
+    while let Ok(f) = rx.try_recv() {
+        if let Frame::SessionLeft(s) = f {
+            if s.face.life == crate::wire::WireLife::Reconnectable {
+                view.insert(s.sid.clone(), s.face.can.view.clone());
+            }
+        }
+    }
+    assert_eq!(
+        view.get("s-ua"),
+        Some(&crate::wire::CanView::No {
+            why: crate::common::cells::Words(copy_core::copy_text(
+                "sessionState.unattachable.why",
+                &[]
+            ))
+        }),
+        "{view:?}"
+    );
+    assert!(
+        matches!(view.get("s-ub"), Some(crate::wire::CanView::Yes { .. })),
+        "{view:?}"
+    );
 }
 
 /// ① 带上来一个那台从没说过的 ⇒ 清单已报完时当场答已结束，只给这条连接。
@@ -421,7 +480,7 @@ fn narrow(tag: &str) -> (PathBuf, ReaderState, FrameSink, FrameRx) {
     let pa = file(&dir, A);
     append(&pa, 1);
     process_jsonl(&pa, &mut state, &mut sink);
-    state.added.insert(A.to_string(), added_frame(A));
+    state.added.insert(A.to_string(), added_row(A));
     let (tx, mut rx) = frame_channel(8 * wire_bytes(&filler()));
     let ask = crate::wire::WatchAsk {
         sids: vec![A.into()],
@@ -696,5 +755,984 @@ fn a_relayed_line_lost_on_a_full_channel_is_owed_as_that_machines_gap() {
             }),
             line(7)
         ]
+    );
+}
+
+/// 打标托管那一臂的替身：照那个托管终端盘上此刻的事实判 —— 那一跳（`hop_pid`）就是这个进程 ⇒ 打上（写进 sid、回真写了）；
+/// 那一跳还没落盘 ⇒ 说不清、不打（同读不到终端的平台上 `host::managed::seat_in` 那一判）。事实在哪由本线程的判据交进来。
+fn hop_judged(pid: u32, sid: &str) -> Option<crate::host::managed::Tagged> {
+    use crate::host::managed::{home, Tagged};
+    let dir = HOP_FACTS.with(|d| d.borrow().clone())?;
+    let mut f = home::read_facts(&dir)?;
+    if f.hop_pid != Some(pid) {
+        return Some(Tagged::seated(None, false));
+    }
+    let wrote = f.sid != sid;
+    f.sid = sid.to_string();
+    put_facts(&dir, &f);
+    let container = crate::wire::SessionContainer::Managed {
+        terminal: Some(f.id.clone()),
+    };
+    Some(Tagged::seated(Some(container), wrote))
+}
+
+thread_local! {
+    static HOP_FACTS: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
+    static SEEN: std::cell::RefCell<Vec<(u32, String)>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// 照托管进程的写法落事实：写旁名、换名上位。
+fn put_facts(dir: &Path, f: &crate::host::managed::home::Facts) {
+    let tmp = dir.join(".facts.json.tmp");
+    std::fs::write(&tmp, serde_json::to_vec(f).unwrap()).unwrap();
+    std::fs::rename(&tmp, dir.join(crate::host::managed::home::FACTS)).unwrap();
+}
+
+/// ★ 托管终端里那一跳与会话 pidfile 谁先落盘没有保证：pidfile 先到（打标那一判此刻说不清、不打），那一跳后到 ⇒
+/// 那个托管终端的事实一改，耳朵当场听见、在跟的会话重对一次打标，打上了 —— 不等下一次 pidfile 改写 · `resync`。
+/// 托管终端的家在耳朵挂上之后才建（它的事实可能在挂上子目录之前就写了）也算一改。真 notify 耳朵。
+#[cfg(target_os = "linux")]
+#[test]
+fn the_hop_landing_after_the_pidfile_tags_the_session_at_once() {
+    use crate::host::managed::home::Facts;
+    let data = std::env::temp_dir().join(format!("ccm-hosts-ear-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&data);
+    // 那一层已在（这台起过托管终端）：新来的托管终端的家是它里面的一项。
+    std::fs::create_dir_all(data.join("hosts")).unwrap();
+    let own = crate::platform::fs::Own::issue_data_at(&data);
+    let (etx, erx) = std::sync::mpsc::channel::<WatchEvent>();
+    let (mut fs_watch, pending) = fs_ears(etx).expect("文件耳朵起不来");
+    let mut ear = HostsEar::new(&own).expect("托管终端那一层说得出在哪");
+    ear.arm(&mut fs_watch);
+    let (_d, mut state, mut sink, _rx) = rig("hosts-ear");
+    state.hosted = hop_judged;
+    const PID: u32 = 4242;
+    state.sessions.insert(
+        data.join("4242.json"),
+        SessionEntry {
+            pid: PID,
+            sid: A.into(),
+            status: None,
+            activity: None,
+            since: None,
+            facts: Default::default(),
+            path: None,
+            beat: std::time::SystemTime::now(),
+            frozen: false,
+            attachable: None,
+            held: Held::Writer,
+        },
+    );
+    // 同一个托管终端里另一个会话（不是那一跳，`claude -p` 那一形）：事实一改照样问打标，便条不随之再认。
+    const OTHER: u32 = 5353;
+    state.sessions.insert(
+        data.join("5353.json"),
+        SessionEntry {
+            pid: OTHER,
+            sid: B.into(),
+            status: None,
+            activity: None,
+            since: None,
+            facts: Default::default(),
+            path: None,
+            beat: std::time::SystemTime::now(),
+            frozen: false,
+            attachable: None,
+            held: Held::Writer,
+        },
+    );
+    // 便条那一手（`sid → 号 / 标签页` 认的是那一跳的 pid）：事实一改也跟着认一次，记下问过的 (pid, sid)。
+    fn seen(_: &crate::platform::fs::Own, pid: u32, sid: &str) {
+        SEEN.with(|s| s.borrow_mut().push((pid, sid.to_string())));
+    }
+    state.launch = Some((
+        Reactions {
+            tmux_server_up: || {},
+            session_seen: seen,
+            tag: untagged,
+            account_of: |_, _| None,
+            quota_said: |_, _, _, _| {},
+        },
+        own.clone(),
+    ));
+    let home = data.join("hosts").join("t-1");
+    let facts_file = home.join(crate::host::managed::home::FACTS);
+    // 做一件事，等到耳朵交来含 `must` 那一格的那一批（之前排着的批照样交给耳朵）：回那一批重对时真打上了几条。
+    let mut heard = |act: &dyn Fn(), must: &Path| -> Option<usize> {
+        act();
+        let deadline = std::time::Instant::now() + guard_core::wall::CEILING;
+        while std::time::Instant::now() < deadline {
+            if let Ok(WatchEvent::Notify) = erx.recv_timeout(std::time::Duration::from_millis(300))
+            {
+                let evs = pending.take();
+                let n = hosts_moved(&mut ear, &mut fs_watch, &evs, &mut state, &mut sink);
+                if evs.iter().any(|p| p == must) {
+                    return n;
+                }
+            }
+        }
+        None
+    };
+    HOP_FACTS.with(|d| *d.borrow_mut() = Some(home.clone()));
+    let started = Facts {
+        id: "t-1".into(),
+        child_pid: Some(1),
+        ..Default::default()
+    };
+    // 托管终端起来：家（耳朵挂上它之前事实就可能写了）⇒ 对了一次，还没有那一跳 ⇒ 说不清、不打。
+    assert_eq!(
+        heard(
+            &|| {
+                std::fs::create_dir_all(&home).unwrap();
+                put_facts(&home, &started);
+            },
+            &home
+        ),
+        Some(0),
+        "新来的托管终端的家没听见（或还没那一跳就打上了）"
+    );
+    // pidfile 早到过、标没打上；那一跳此刻落盘 ⇒ 听见的就是这个托管终端的事实那一格，当场打上、便条也认一次。
+    let hopped = Facts {
+        hop_pid: Some(PID),
+        ..started.clone()
+    };
+    SEEN.with(|s| s.borrow_mut().clear());
+    assert_eq!(
+        heard(&|| put_facts(&home, &hopped), &facts_file),
+        Some(1),
+        "那一跳落了盘，打标没当场重对"
+    );
+    assert_eq!(
+        crate::host::managed::home::read_facts(&home).map(|f| f.sid),
+        Some(A.to_string())
+    );
+    assert!(
+        SEEN.with(|s| s.borrow().contains(&(PID, A.to_string()))),
+        "那一跳落了盘，起会话便条没跟着认"
+    );
+    assert!(
+        !SEEN.with(|s| s.borrow().iter().any(|(p, _)| *p == OTHER)),
+        "不是前台的那一个也跟着事实一改再认便条"
+    );
+    // 打标自己写了事实 ⇒ 又是一改：再对一次，已是这个 sid、不写 —— 到此为止，不连环。
+    assert_eq!(
+        heard(&|| {}, &facts_file),
+        Some(0),
+        "打标写的那一改又打了一次（会连环）"
+    );
+    std::fs::remove_dir_all(&data).ok();
+}
+
+/// 托管终端那一层里别的动静（套接字 · 旁名 · 层外的文件）不算事实改了；那一层里的 `facts.json` 才算。
+#[test]
+fn only_a_hosted_terminals_facts_count_as_moved() {
+    let data = std::env::temp_dir().join(format!("ccm-hosts-paths-{}", std::process::id()));
+    let own = crate::platform::fs::Own::issue_data_at(&data);
+    let mut ear = HostsEar::new(&own).expect("托管终端那一层说得出在哪");
+    let hosts = data.join("hosts");
+    let mut w = notify::NullWatcher;
+    let mut hit = |p: PathBuf| ear.touched(&mut w, std::iter::once(p.as_path()));
+    assert!(hit(hosts.join("t-1").join("facts.json")));
+    assert!(!hit(hosts.join("t-1").join("sock")));
+    assert!(!hit(hosts.join("t-1").join(".facts.json.tmp")));
+    assert!(!hit(data.join("facts.json")));
+    assert!(!hit(hosts.join("t-1").join("x").join("facts.json")));
+}
+
+thread_local! {
+    /// [`housed_by_hand`] 这一回交的打标结局。
+    static HOUSED: std::cell::Cell<Option<(bool, bool)>> = const { std::cell::Cell::new(None) };
+}
+
+/// 打标托管那一臂的替身：交判据手里那一回的结局（`(容器说得出, 真写了)`）。
+/// 宣告的是 pid 7 那一份；同一个 sid 另一份 pidfile（别的 pid，resume 时原进程还活着那一形）恒说不清。
+fn housed_by_hand(pid: u32, _: &str) -> Option<crate::host::managed::Tagged> {
+    if pid != 7 {
+        return Some(crate::host::managed::Tagged::seated(None, false));
+    }
+    let (housed, wrote) = HOUSED.with(std::cell::Cell::get)?;
+    let container = housed.then(|| crate::wire::SessionContainer::Managed {
+        terminal: Some("t-1".into()),
+    });
+    Some(crate::host::managed::Tagged::seated(container, wrote))
+}
+
+/// 这一批里给 `sid` 的那几帧脸（`session_status`）。
+fn faces_of(rx: &mut FrameRx, sid: &str) -> Vec<crate::wire::SessionFace> {
+    let mut got = Vec::new();
+    while let Ok(f) = rx.try_recv() {
+        if let Frame::SessionStatus(s) = f {
+            if s.sid == sid {
+                got.push(s.face);
+            }
+        }
+    }
+    got
+}
+
+/// ★ 已宣告的会话，标晚补上（托管终端的事实一改那一路）⇒ 记着的那份宣告改成那个容器、推一帧脸照它（标签页那张脸不等 resync 就亮）；
+/// 之后再对一次说不清 ⇒ 照实落说不清（不留上一次的容器）、再推一帧；结局没变 ⇒ 一帧不推。
+/// 容器只照宣告的那一份 pidfile 的进程改：同一个 sid 另一份 pidfile 的结局不来回翻它。
+#[test]
+fn a_tag_landing_late_moves_the_announced_face_and_unsure_says_unsure() {
+    let (_d, mut state, mut sink, mut rx) = rig("rehouse");
+    state.hosted = housed_by_hand;
+    for pid in [7, 8] {
+        state.sessions.insert(
+            PathBuf::from(format!("/x/{pid}.json")),
+            SessionEntry {
+                pid,
+                sid: A.into(),
+                status: None,
+                activity: None,
+                since: None,
+                facts: Default::default(),
+                path: None,
+                beat: std::time::SystemTime::now(),
+                frozen: false,
+                attachable: None,
+                held: Held::Writer,
+            },
+        );
+    }
+    state.active_sids.insert(A.into());
+    let mut announced = added_row(A);
+    announced.wire.pid = 7;
+    state.added.insert(A.into(), announced);
+    let unhoused = state.live_face(A);
+    let managed = crate::wire::SessionContainer::Managed {
+        terminal: Some("t-1".into()),
+    };
+    // 标补上了：容器说得出。
+    HOUSED.with(|h| h.set(Some((true, true))));
+    assert_eq!(retag_hosted(&mut state, &mut sink), 1);
+    assert_eq!(state.added[A].wire.container, Some(managed));
+    let faces = faces_of(&mut rx, A);
+    assert_eq!(faces, vec![state.live_face(A)], "补上的标没推那张脸");
+    assert_ne!(faces[0], unhoused, "推的那张脸没照新容器");
+    // 同一个结局再来一次：一帧不推。
+    HOUSED.with(|h| h.set(Some((true, false))));
+    retag_hosted(&mut state, &mut sink);
+    assert!(faces_of(&mut rx, A).is_empty(), "容器没变也推了一帧");
+    // 说不清：照实落说不清，不留上一次的容器。
+    HOUSED.with(|h| h.set(Some((false, false))));
+    retag_hosted(&mut state, &mut sink);
+    assert_eq!(
+        state.added[A].wire.container, None,
+        "说不清还挂着上一次的容器"
+    );
+    assert_eq!(faces_of(&mut rx, A), vec![unhoused.clone()]);
+    // 宣告的那个进程先退了、sid 还挂在另一份 pidfile 上 ⇒ 宣告改认活着的那一个、当场照它认一次身份（它说不清 ⇒ 落说不清）。
+    HOUSED.with(|h| h.set(Some((true, false))));
+    retag_hosted(&mut state, &mut sink);
+    let _ = faces_of(&mut rx, A);
+    state.sessions.remove(&PathBuf::from("/x/7.json"));
+    retire_sid_if_unreferenced(A, None, &mut state, &mut sink);
+    assert_eq!(state.added[A].wire.pid, 8, "宣告还认着退了的那个进程");
+    assert_eq!(
+        state.added[A].wire.container, None,
+        "退了的那个进程的容器还挂着"
+    );
+    assert_eq!(faces_of(&mut rx, A), vec![unhoused]);
+}
+
+/// ★ 「先打标、再认便条」只此一处：生产段里认便条只有它那一处调用（[`identify`]），各条重对的路都经它，次序不会两处各写一份。
+#[test]
+fn the_launch_note_is_adopted_in_one_place_only() {
+    let src = include_str!("../../../src/backend/observe/watcher.rs");
+    // 生产段 = 测试模块之前（同 `every_watch_site_answers_the_inode_swap_question` 的切法）。
+    let cut = src
+        .find("\n#[cfg(test)]")
+        .map(|i| src[i..].find("\nmod ").map(|j| i + j).unwrap_or(i));
+    let prod = &src[..cut.unwrap_or(src.len())];
+    assert_eq!(
+        prod.matches("adopt_launch_note(").count(),
+        2,
+        "认便条该只有定义那一处与 `identify` 里那一处调用"
+    );
+}
+
+/// 真判法那一臂的数据目录（判据起的那个托管终端的；跨线程读，同一个测试进程只装这一回）。
+static REAL_OWN: std::sync::OnceLock<crate::platform::fs::Own> = std::sync::OnceLock::new();
+
+/// 打标托管那一臂：真判法（[`crate::host::managed::tag_pid_at`]），数据目录是判据起的那一份。
+fn real_hosted(pid: u32, sid: &str) -> Option<crate::host::managed::Tagged> {
+    crate::host::managed::tag_pid_at(REAL_OWN.get()?, pid, sid)
+}
+
+/// ★ 打个没完挡在真判法里：真起一个托管终端（假子进程 `sh`），会话就是它的子进程。重对打上标（托管进程写事实）⇒
+/// 那一改又叫一次重对 ⇒ 事实里已是这个 sid、不写（`host::managed` 打标那一判），到此为止。不用替身。
+#[cfg(target_os = "linux")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn retagging_after_its_own_write_writes_nothing_on_the_real_judge() {
+    use crate::host::managed::run::test_support::{
+        hello, read_until_out, sandbox_own, spec_ready, start,
+    };
+    use crate::host::managed::wire::{write_frame, Frame as HostFrame, Want};
+    let whole = tokio::time::timeout(guard_core::wall::CEILING, async {
+        let (own, data) = sandbox_own("retag-real");
+        let (sock, task) = start(&own, spec_ready("t-real")).await;
+        let mut w = hello(&sock, Want::View).await;
+        read_until_out(&mut w, "ready").await;
+        drop(w);
+        let home = data.join("hosts").join("t-real");
+        let pid = crate::host::managed::home::read_facts(&home)
+            .and_then(|f| f.child_pid)
+            .expect("子进程 pid");
+        assert!(
+            REAL_OWN.set(own.clone()).is_ok(),
+            "真判法的数据目录只装这一回"
+        );
+        let facts_file = home.join(crate::host::managed::home::FACTS);
+        let watch_own = own.clone();
+        let (first, again) = tokio::task::spawn_blocking(move || {
+            let (etx, erx) = std::sync::mpsc::channel::<WatchEvent>();
+            let (mut fs_watch, pending) = fs_ears(etx).expect("文件耳朵起不来");
+            let mut ear = HostsEar::new(&watch_own).expect("托管终端那一层说得出在哪");
+            ear.arm(&mut fs_watch);
+            let (_d, mut state, mut sink, _rx) = rig("retag-real");
+            state.hosted = real_hosted;
+            state.sessions.insert(
+                PathBuf::from(format!("/x/{pid}.json")),
+                SessionEntry {
+                    pid,
+                    sid: "0b9c2f4e-1111-4222-8333-944455556677".into(),
+                    status: None,
+                    activity: None,
+                    since: None,
+                    facts: Default::default(),
+                    path: None,
+                    beat: std::time::SystemTime::now(),
+                    frozen: false,
+                    attachable: None,
+                    held: Held::Writer,
+                },
+            );
+            let first = retag_hosted(&mut state, &mut sink);
+            // 打标那一下写了事实 ⇒ 耳朵听见那一格，再对一次。
+            let deadline = std::time::Instant::now() + guard_core::wall::CEILING;
+            let mut again = None;
+            while again.is_none() && std::time::Instant::now() < deadline {
+                if let Ok(WatchEvent::Notify) =
+                    erx.recv_timeout(std::time::Duration::from_millis(300))
+                {
+                    let evs = pending.take();
+                    let n = hosts_moved(&mut ear, &mut fs_watch, &evs, &mut state, &mut sink);
+                    if evs.iter().any(|p| *p == facts_file) {
+                        again = n;
+                    }
+                }
+            }
+            (first, again)
+        })
+        .await
+        .expect("没崩");
+        assert_eq!(first, 1, "头一回重对该打上标");
+        assert_eq!(again, Some(0), "打标自己写的那一改又写了一次（会打个没完）");
+        let mut s = hello(&sock, Want::Input).await;
+        write_frame(&mut s, &HostFrame::In(b"\r".to_vec()))
+            .await
+            .expect("送字");
+        task.await.expect("任务没崩").expect("跑完");
+    });
+    whole.await.expect("兜底上限之内跑完");
+}
+
+thread_local! {
+    /// [`housed_when_told`] 此刻交不交容器。
+    static TOLD_HOUSED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// 打标托管那一臂的替身：判据说交 ⇒ 容器是托管终端 `t-9`；否则说不清。
+fn housed_when_told(_: u32, _: &str) -> Option<crate::host::managed::Tagged> {
+    let container =
+        TOLD_HOUSED
+            .with(std::cell::Cell::get)
+            .then(|| crate::wire::SessionContainer::Managed {
+                terminal: Some("t-9".into()),
+            });
+    Some(crate::host::managed::Tagged::seated(container, false))
+}
+
+/// 两份 pidfile 那几条判据的会话 id。
+const ONE: &str = "one-frame-1";
+
+/// 同一个 sid 挂两份 pidfile 的夹具：宣告认定的是先来的那一份 `kid`；后来那一份 `other` 是 resume 时原进程还活着那一形。
+/// 两份起先各说 `first` · `second`（`other` 那一份落下时推的帧留着，[`TwoOfOne::told`] 读）；托管那一臂此刻交不交容器照
+/// `TOLD_HOUSED`（起先不交）。收尾掐掉两个进程、删掉目录。
+struct TwoOfOne {
+    dir: PathBuf,
+    sessions: PathBuf,
+    kid: std::process::Child,
+    other: std::process::Child,
+    state: ReaderState,
+    sink: FrameSink,
+    rx: FrameRx,
+}
+
+impl TwoOfOne {
+    fn new(tag: &str, first: &str, second: &str) -> Self {
+        use super::test_support::write_pidfile;
+        let dir = std::env::temp_dir().join(format!("ccm-two-of-one-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let sessions = dir.join("sessions");
+        let kid = crate::platform::proc::test_support::spawn_settled_sleep(|_| {});
+        let other = crate::platform::proc::test_support::spawn_settled_sleep(|_| {});
+        let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
+        let mut t = Self {
+            state: ReaderState::new(dir.join("projects")),
+            sink: FrameSink::new(tx),
+            rx,
+            sessions,
+            dir,
+            kid,
+            other,
+        };
+        t.state.hosted = housed_when_told;
+        TOLD_HOUSED.with(|h| h.set(false));
+        let p = write_pidfile(&t.sessions, t.kid.id(), ONE, first);
+        process_session_added(&p, &mut t.state, &mut t.sink);
+        while t.rx.try_recv().is_ok() {}
+        let q = write_pidfile(&t.sessions, t.other.id(), ONE, second);
+        process_session_added(&q, &mut t.state, &mut t.sink);
+        t
+    }
+
+    fn pid(&self, announced: bool) -> u32 {
+        if announced {
+            self.kid.id()
+        } else {
+            self.other.id()
+        }
+    }
+
+    /// 那一份 pidfile 在 watcher 账上的键。
+    fn key(&self, announced: bool) -> PathBuf {
+        path_key(&self.sessions.join(format!("{}.json", self.pid(announced))))
+    }
+
+    /// 把那一份 pidfile 改写成 `status`、交 watcher 读一回。
+    fn rewrite(&mut self, announced: bool, status: &str) {
+        let at =
+            super::test_support::write_pidfile(&self.sessions, self.pid(announced), ONE, status);
+        process_session_added(&at, &mut self.state, &mut self.sink);
+    }
+
+    /// 上次读过之后推出的 `session_status`（按先后）。
+    fn told(&mut self) -> Vec<crate::wire::SessionStatus> {
+        std::iter::from_fn(|| self.rx.try_recv().ok())
+            .filter_map(|f| match f {
+                Frame::SessionStatus(s) if s.sid == ONE => Some(s),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// 活会话表照 watcher 发布的那一造法现扫（[`table_of`]），说这条在干什么。
+    fn table(&self) -> Option<crate::agents::SessionActivity> {
+        table_of(&self.state)
+            .doing_one(ONE)
+            .expect("活会话表里该有这一条")
+    }
+}
+
+/// ★ 冻住按进程，两边同一个喂口：另一个进程挂着两份 pidfile、都说在跑，只一份过了时限没再听见 ⇒
+/// 那个进程冻住，watcher 与活会话表都不再照它说在跑（认定那份闲 ⇒ 都说闲）。
+#[test]
+fn a_frozen_process_with_two_pidfiles_feeds_both_sides_alike() {
+    let mut t = TwoOfOne::new("freeze-proc", "idle", "busy");
+    let second = t.dir.join("sessions2");
+    let q = super::test_support::write_pidfile(&second, t.other.id(), ONE, "busy");
+    process_session_added(&q, &mut t.state, &mut t.sink);
+    let later = std::time::SystemTime::now() + crate::observe::runs::STALE_AFTER * 2;
+    t.state
+        .sessions
+        .get_mut(&path_key(&q))
+        .expect("第二份在账上")
+        .beat = later;
+    judge_beats(&mut t.state, &mut t.sink, later);
+    assert!(t.state.sessions[&t.key(false)].frozen, "夹具没把那一份冻住");
+    assert_eq!(
+        t.state.heard(ONE),
+        t.table(),
+        "watcher 与活会话表喂的冻住不一样"
+    );
+    assert_eq!(t.table(), Some(crate::agents::SessionActivity::Idle));
+}
+
+/// ★ 只算活着的，两边同一个喂口：另一个进程已经退了、看守还没来得及摘它 ⇒ watcher 也不再照它说在跑（同活会话表）。
+#[test]
+fn a_dead_process_not_yet_let_go_feeds_neither_side() {
+    let mut t = TwoOfOne::new("dead-other", "idle", "busy");
+    let _ = t.other.kill();
+    let _ = t.other.wait();
+    assert_eq!(t.table(), Some(crate::agents::SessionActivity::Idle));
+    assert_eq!(
+        t.state.heard(ONE),
+        t.table(),
+        "watcher 算上了已经死了的那一份"
+    );
+}
+
+impl Drop for TwoOfOne {
+    fn drop(&mut self) {
+        for k in [&mut self.kid, &mut self.other] {
+            let _ = k.kill();
+            let _ = k.wait();
+        }
+        std::fs::remove_dir_all(&self.dir).ok();
+    }
+}
+
+/// 这张脸说的那一态。
+fn life_of(s: &crate::wire::SessionStatus) -> Option<crate::agents::SessionActivity> {
+    match s.face.life {
+        crate::wire::WireLife::Live { activity } => activity,
+        ref other => panic!("脸不是活着的：{other:?}"),
+    }
+}
+
+/// 这张脸接进终端时接的是哪个托管终端（不给接 ⇒ `None`）。
+fn terminal_of(s: &crate::wire::SessionStatus) -> Option<String> {
+    match &s.face.can.view {
+        crate::wire::CanView::Yes {
+            open: crate::wire::TermOpen::Attach { terminal },
+            ..
+        } => terminal.clone(),
+        _ => None,
+    }
+}
+
+/// ★ 一次认定一帧 · 状态照活会话表：两份都在跑，认定的那一份改写成闲、托管那一臂此刻交容器 `t-9` ⇒ 只推一帧；
+/// 那一态照两份里最要紧的那一个（另一份还在跑 ⇒ 在跑），与活会话表说的一样；容器跟认定的进程换成 `t-9`；记录路径没变不上线。
+#[test]
+fn the_announced_going_idle_while_the_other_runs_says_running_like_the_table_in_one_frame() {
+    let mut t = TwoOfOne::new("idle-announced", "busy", "busy");
+    let _ = t.told();
+    TOLD_HOUSED.with(|h| h.set(true));
+    t.rewrite(true, "idle");
+    let said = t.told();
+    assert_eq!(said.len(), 1, "一次认定推了 {} 帧：{said:?}", said.len());
+    assert_eq!(
+        life_of(&said[0]),
+        Some(crate::agents::SessionActivity::Working),
+        "另一份还在跑，标签页却不说在跑"
+    );
+    assert_eq!(life_of(&said[0]), t.table(), "标签页与活会话表说的不一样");
+    assert_eq!(
+        terminal_of(&said[0]).as_deref(),
+        Some("t-9"),
+        "脸没照新容器"
+    );
+    assert_eq!(said[0].path, None, "记录路径没变也上了线");
+}
+
+/// ★ 另一份改写照常推帧：认定的那一份在跑，另一份改写成闲 ⇒ 推一帧，那一态照两份里最要紧的（在跑，同活会话表）；
+/// 身份那一类只跟认定的进程：托管那一臂此刻交 `t-9`，可改写的不是认定那一份 ⇒ 容器不动。
+#[test]
+fn a_rewrite_of_the_other_pidfile_is_told_with_the_state_of_both_and_the_identity_of_the_announced()
+{
+    let mut t = TwoOfOne::new("idle-other", "busy", "busy");
+    let _ = t.told();
+    TOLD_HOUSED.with(|h| h.set(true));
+    t.rewrite(false, "idle");
+    let said = t.told();
+    assert_eq!(said.len(), 1, "另一份改写推了 {} 帧：{said:?}", said.len());
+    assert_eq!(
+        life_of(&said[0]),
+        Some(crate::agents::SessionActivity::Working)
+    );
+    assert_eq!(life_of(&said[0]), t.table(), "标签页与活会话表说的不一样");
+    assert_eq!(
+        terminal_of(&said[0]),
+        None,
+        "容器跟着没被认定的那个进程换了"
+    );
+}
+
+/// ★ 认定那份闲、另一份后来落下说在跑 ⇒ 当场推一帧说在跑（同活会话表）。
+#[test]
+fn a_second_pidfile_that_runs_while_the_announced_idles_is_told_at_once() {
+    let mut t = TwoOfOne::new("second-busy", "idle", "busy");
+    let said = t.told();
+    assert_eq!(said.len(), 1, "另一份落下推了 {} 帧：{said:?}", said.len());
+    assert_eq!(
+        life_of(&said[0]),
+        Some(crate::agents::SessionActivity::Working)
+    );
+    assert_eq!(life_of(&said[0]), t.table(), "标签页与活会话表说的不一样");
+}
+
+/// ★ 另一份解冻 ⇒ 脸当场跟上：认定那份闲、另一份在跑；过了时限没再听见另一份 ⇒ 冻住，脸改说闲（同活会话表）；
+/// 另一份改写（状态字没变、只是又听见了）⇒ 当场推一帧回到在跑。
+#[test]
+fn the_other_pidfile_thawing_brings_the_face_back_at_once() {
+    let mut t = TwoOfOne::new("thaw-other", "idle", "busy");
+    let _ = t.told();
+    let later = std::time::SystemTime::now() + crate::observe::runs::STALE_AFTER * 2;
+    judge_beats(&mut t.state, &mut t.sink, later);
+    let froze = t.told();
+    assert_eq!(
+        froze.len(),
+        1,
+        "另一份冻住推了 {} 帧：{froze:?}",
+        froze.len()
+    );
+    assert_eq!(
+        life_of(&froze[0]),
+        Some(crate::agents::SessionActivity::Idle)
+    );
+    assert_eq!(life_of(&froze[0]), t.table(), "标签页与活会话表说的不一样");
+    let key = t.key(false);
+    t.state.sessions.get_mut(&key).expect("另一份在账上").beat = std::time::UNIX_EPOCH;
+    t.rewrite(false, "busy");
+    let thawed = t.told();
+    assert_eq!(
+        thawed.len(),
+        1,
+        "另一份解冻推了 {} 帧：{thawed:?}",
+        thawed.len()
+    );
+    assert_eq!(
+        life_of(&thawed[0]),
+        Some(crate::agents::SessionActivity::Working)
+    );
+    assert_eq!(life_of(&thawed[0]), t.table(), "标签页与活会话表说的不一样");
+}
+
+/// ★ 冻住 · 回来不推空帧：两份都在跑，只有另一份冻住 ⇒ 认定那份还在跑、脸不变，一帧不推；它又听见了（记录读到新字节）⇒ 也不推。
+#[test]
+fn the_other_pidfile_freezing_or_thawing_without_moving_the_face_says_nothing() {
+    let mut t = TwoOfOne::new("freeze-other", "busy", "busy");
+    let _ = t.told();
+    let later = std::time::SystemTime::now() + crate::observe::runs::STALE_AFTER * 2;
+    let key = t.key(true);
+    t.state.sessions.get_mut(&key).expect("认定那份在账上").beat = later;
+    judge_beats(&mut t.state, &mut t.sink, later);
+    assert!(t.state.sessions[&t.key(false)].frozen, "夹具没把另一份冻住");
+    assert!(t.told().is_empty(), "脸没变也推了帧");
+    heard_from(&mut t.state, &mut t.sink, ONE, later);
+    assert!(t.told().is_empty(), "回来了、脸没变也推了帧");
+}
+
+/// ★ 另一份退了、认定那份还在 ⇒ 那一态照剩下的重判，推一帧（另一份在跑、认定那份闲 ⇒ 改说闲）。
+#[test]
+fn the_other_process_leaving_retells_the_state_of_what_is_left() {
+    let mut t = TwoOfOne::new("other-leaves", "idle", "busy");
+    let _ = t.told();
+    let key = t.key(false);
+    let gone = t.state.sessions.remove(&key).expect("另一份在账上");
+    let_go(&gone, None, &mut t.state, &mut t.sink);
+    let said = t.told();
+    assert_eq!(said.len(), 1, "另一份退了推了 {} 帧：{said:?}", said.len());
+    assert_eq!(
+        life_of(&said[0]),
+        Some(crate::agents::SessionActivity::Idle)
+    );
+}
+
+/// ★ 认定的那个进程退了、改认之后身份那几格都没变 ⇒ 不靠改认推帧；那一态照剩下的那一份重判变了 ⇒ 推一帧（认定那份在跑、另一份闲 ⇒ 改说闲）。
+#[test]
+fn the_announced_process_leaving_retells_the_state_even_when_the_identity_stays() {
+    let mut t = TwoOfOne::new("announced-leaves", "busy", "idle");
+    let _ = t.told();
+    let key = t.key(true);
+    let gone = t.state.sessions.remove(&key).expect("认定那份在账上");
+    let_go(&gone, None, &mut t.state, &mut t.sink);
+    assert_eq!(
+        t.state.added[ONE].wire.pid,
+        t.other.id(),
+        "没改认活着的那一份"
+    );
+    let said = t.told();
+    assert_eq!(
+        said.len(),
+        1,
+        "认定那份退了推了 {} 帧：{said:?}",
+        said.len()
+    );
+    assert_eq!(
+        life_of(&said[0]),
+        Some(crate::agents::SessionActivity::Idle)
+    );
+}
+
+/// ★ pidfile 改写、状态字没变、只是那一态的时刻挪到钩子事件之后 ⇒ 那一态改照 pidfile（同活会话表），脸当场推一帧。
+/// 钩子事件是整个进程共用的一张表：用自己的 sid，不碰别的判据。
+#[test]
+fn a_rewrite_that_only_moves_the_state_time_past_the_heard_event_is_told() {
+    let sid = "since-moves-1";
+    let dir = std::env::temp_dir().join(format!("ccm-since-moves-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let sessions = dir.join("sessions");
+    let mut kid = crate::platform::proc::test_support::spawn_settled_sleep(|_| {});
+    let write = |since: u64| {
+        let p = super::test_support::write_pidfile(&sessions, kid.id(), sid, "busy");
+        let body = std::fs::read_to_string(&p).unwrap();
+        let body = format!(
+            "{},\"statusUpdatedAt\":{since}}}",
+            body.trim_end().trim_end_matches('}')
+        );
+        std::fs::write(&p, body).unwrap();
+        p
+    };
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
+    let mut sink = FrameSink::new(tx);
+    let mut state = ReaderState::new(dir.join("projects"));
+    let p = write(1);
+    process_session_added(&p, &mut state, &mut sink);
+    crate::history::live_table::hear(sid, crate::agents::AgentEvent::TurnEnded);
+    assert_eq!(
+        state.heard(sid),
+        Some(crate::agents::SessionActivity::Idle),
+        "夹具：钩子事件比 pidfile 新，该照事件"
+    );
+    while rx.try_recv().is_ok() {}
+    let p = write(crate::common::time::now_ms() + 60_000);
+    process_session_added(&p, &mut state, &mut sink);
+    let said: Vec<crate::wire::SessionStatus> = std::iter::from_fn(|| rx.try_recv().ok())
+        .filter_map(|f| match f {
+            Frame::SessionStatus(s) if s.sid == sid => Some(s),
+            _ => None,
+        })
+        .collect();
+    let _ = kid.kill();
+    let _ = kid.wait();
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(
+        said.len(),
+        1,
+        "那一态的时刻挪了推了 {} 帧：{said:?}",
+        said.len()
+    );
+    assert_eq!(
+        life_of(&said[0]),
+        Some(crate::agents::SessionActivity::Working)
+    );
+}
+
+/// 手搭的两份：认定的进程 7 闲着，另一份 8 在跑（`facts` · `path` 照给的）。
+fn idle_seven_busy_eight(
+    state: &mut ReaderState,
+    eight: crate::history::search_rules::LabelFacts,
+    eight_path: Option<String>,
+) {
+    use crate::agents::SessionActivity as S;
+    for (pid, activity, facts, path) in [
+        (7, S::Idle, Default::default(), None),
+        (8, S::Working, eight, eight_path),
+    ] {
+        state.sessions.insert(
+            PathBuf::from(format!("/x/{pid}.json")),
+            SessionEntry {
+                pid,
+                sid: A.into(),
+                status: None,
+                activity: Some(activity),
+                since: None,
+                facts,
+                path,
+                beat: std::time::SystemTime::now(),
+                frozen: false,
+                attachable: None,
+                held: Held::Writer,
+            },
+        );
+    }
+    let mut announced = added_row(A);
+    announced.wire.pid = 7;
+    state.added.insert(A.into(), announced);
+}
+
+/// ★ 改名那一帧的那一态照两份里最要紧的（不照改到的那一份）：只有认定那一份（闲）的名字还要改，另一份在跑 ⇒ 推一帧、说在跑。
+#[test]
+fn a_rename_tells_the_state_of_both_not_of_the_pidfile_it_touched() {
+    let (_d, mut state, mut sink, mut rx) = rig("rename-two");
+    let named = crate::history::search_rules::LabelFacts {
+        custom: Some("x".into()),
+        ..Default::default()
+    };
+    idle_seven_busy_eight(&mut state, named, None);
+    state.renamed(
+        A,
+        |f| {
+            let moved = f.custom.is_none();
+            f.custom = Some("x".into());
+            moved
+        },
+        &mut sink,
+    );
+    let faces = faces_of(&mut rx, A);
+    assert_eq!(faces.len(), 1, "改名推了 {} 帧", faces.len());
+    assert_eq!(
+        faces[0].life,
+        crate::wire::WireLife::Live {
+            activity: Some(crate::agents::SessionActivity::Working)
+        },
+        "改名那一帧照改到的那一份说那一态"
+    );
+}
+
+/// ★ 记录路径换了那一帧的那一态照两份里最要紧的：另一份（在跑）已记着这条路径、只有认定那一份（闲）跟上 ⇒ 推一帧带路径、说在跑。
+#[test]
+fn a_new_record_path_tells_the_state_of_both_not_of_the_pidfile_it_touched() {
+    let (_d, mut state, mut sink, mut rx) = rig("path-two");
+    let p = "/x/r.jsonl".to_string();
+    idle_seven_busy_eight(&mut state, Default::default(), Some(p.clone()));
+    note_path(A, &p, &mut state, &mut sink);
+    let said: Vec<crate::wire::SessionStatus> = std::iter::from_fn(|| rx.try_recv().ok())
+        .filter_map(|f| match f {
+            Frame::SessionStatus(s) if s.sid == A => Some(s),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(said.len(), 1, "换路径推了 {} 帧", said.len());
+    assert_eq!(said[0].path.as_deref(), Some(p.as_str()));
+    assert_eq!(
+        life_of(&said[0]),
+        Some(crate::agents::SessionActivity::Working),
+        "换路径那一帧照改到的那一份说那一态"
+    );
+}
+
+/// ★ `session_status` 那一帧只拼一处（[`tell`]）：生产段里 `Frame::SessionStatus(` 除了认帧的模式（`|` 起头 · 在 `=>` 左边），只构造一次。
+#[test]
+fn the_session_status_frame_is_built_in_one_place_only() {
+    let src = include_str!("../../../src/backend/observe/watcher.rs");
+    let cut = src
+        .find("\n#[cfg(test)]")
+        .map(|i| src[i..].find("\nmod ").map(|j| i + j).unwrap_or(i));
+    let prod = &src[..cut.unwrap_or(src.len())];
+    let built = prod
+        .lines()
+        .filter(|l| l.contains("Frame::SessionStatus("))
+        .map(str::trim_start)
+        .filter(|l| {
+            let pattern = l
+                .find("=>")
+                .is_some_and(|a| l.find("Frame::SessionStatus(").is_some_and(|f| f < a));
+            !l.starts_with("//") && !l.starts_with('|') && !pattern
+        })
+        .count();
+    assert_eq!(built, 1, "拼 `session_status` 那一帧的不止一处");
+}
+
+/// 号照进程判（替身）：换号重启那一形 —— 旧进程 7 用旧号，新进程 8 用新号。
+fn account_by_pid(pid: u32, _: &'static str) -> Option<String> {
+    Some(if pid == 8 { "new" } else { "old" }.to_string())
+}
+
+/// ★ 换号重启、旧进程后退：宣告认的是旧进程（旧号 · 接得进去），它一退、改认新进程 ⇒ 脸上跟进程走的那几格一起照新进程换
+/// （号、接进去有没有意义、容器），一次只推一帧。
+#[test]
+fn when_the_announced_process_leaves_every_cell_that_follows_it_moves_together() {
+    let (_d, mut state, mut sink, mut rx) = rig("heir-cells");
+    state.hosted = housed_by_hand;
+    state.account_of = account_by_pid;
+    for (pid, attachable) in [(7, None), (8, Some(false))] {
+        state.sessions.insert(
+            PathBuf::from(format!("/x/{pid}.json")),
+            SessionEntry {
+                pid,
+                sid: A.into(),
+                status: None,
+                activity: None,
+                since: None,
+                facts: Default::default(),
+                path: None,
+                beat: std::time::SystemTime::now(),
+                frozen: false,
+                attachable,
+                held: Held::Writer,
+            },
+        );
+    }
+    state.active_sids.insert(A.into());
+    let mut announced = added_row(A);
+    announced.wire.pid = 7;
+    announced.wire.face.account = Some("old".into());
+    state.added.insert(A.into(), announced);
+    HOUSED.with(|h| h.set(Some((true, false))));
+    retag_hosted(&mut state, &mut sink);
+    let _ = faces_of(&mut rx, A);
+    state.sessions.remove(&PathBuf::from("/x/7.json"));
+    retire_sid_if_unreferenced(A, None, &mut state, &mut sink);
+    let a = &state.added[A];
+    assert_eq!(a.wire.pid, 8);
+    assert_eq!(
+        a.wire.face.account.as_deref(),
+        Some("new"),
+        "号还是退掉那个进程的"
+    );
+    assert_eq!(
+        a.attachable,
+        Some(false),
+        "接进去有没有意义还是退掉那个进程的"
+    );
+    assert_eq!(a.wire.container, None, "容器还是退掉那个进程的");
+    assert_eq!(faces_of(&mut rx, A).len(), 1, "换认那一下该只推一帧");
+}
+
+/// 打标托管那一臂的替身：新进程 8 住在托管终端 `t-8` 里（一退终端不留），旧进程 7 说不清。
+fn heir_housed(pid: u32, _: &str) -> Option<crate::host::managed::Tagged> {
+    let container = (pid == 8).then(|| crate::wire::SessionContainer::Managed {
+        terminal: Some("t-8".into()),
+    });
+    Some(crate::host::managed::Tagged::seated(container, false))
+}
+
+/// ★ 改认之后会话账本跟上：换号重启、旧进程 7 先退 ⇒ 改认新进程 8（新号、托管终端里）；它也退了 ⇒ 离开那一帧当场就来
+/// （托管终端跟着收，不等 tmux 观测），带的是新进程的号。
+#[test]
+fn after_the_heir_takes_over_the_ledger_says_its_cells_when_it_leaves() {
+    let (_d, mut state, _, _) = rig("heir-ledger");
+    let mut sink = ledgered(true);
+    let mut rx = conn(&mut sink, &mut state, 1, None);
+    state.hosted = heir_housed;
+    state.account_of = account_by_pid;
+    for pid in [7, 8] {
+        state.sessions.insert(
+            PathBuf::from(format!("/x/{pid}.json")),
+            SessionEntry {
+                pid,
+                sid: A.into(),
+                status: None,
+                activity: None,
+                since: None,
+                facts: Default::default(),
+                path: None,
+                beat: std::time::SystemTime::now(),
+                frozen: false,
+                attachable: None,
+                held: Held::Writer,
+            },
+        );
+    }
+    state.active_sids.insert(A.into());
+    let mut announced = added_row(A);
+    announced.wire.pid = 7;
+    announced.wire.face.account = Some("old".into());
+    state.added.insert(A.into(), announced.clone());
+    sink.announce(announced);
+    state.sessions.remove(&PathBuf::from("/x/7.json"));
+    retire_sid_if_unreferenced(A, None, &mut state, &mut sink);
+    while rx.try_recv().is_ok() {}
+    state.sessions.remove(&PathBuf::from("/x/8.json"));
+    retire_sid_if_unreferenced(A, None, &mut state, &mut sink);
+    let left: Vec<crate::wire::SessionLeft> = std::iter::from_fn(|| rx.try_recv().ok())
+        .filter_map(|f| match f {
+            Frame::SessionLeft(s) if s.sid == A => Some(s),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        left.len(),
+        1,
+        "新进程住在托管终端里，退了该当场说已结束：{left:?}"
+    );
+    assert_eq!(
+        left[0].face.account.as_deref(),
+        Some("new"),
+        "离开那一帧带的还是退掉那个进程的号"
     );
 }

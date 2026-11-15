@@ -39,6 +39,33 @@ fn env() -> Env {
     }
 }
 
+/// 一家起之前清掉的那几个：它的嵌套标记（照注册表那一格取）∪ 各家「我是哪个会话」的变量（`nested_of`）。
+/// 别家的名字只经注册表到这里，期望值里不抄（名字本身由 `agent-profile-golden.tsv` 钉）。
+fn cleared_of(kind: &str) -> Vec<String> {
+    let face = crate::agents::launch_face_among(crate::agents::REGISTRY, kind)
+        .expect("注册表里有这一家的起会话事实");
+    nested_of(face.nested_env)
+}
+
+/// Claude 那一家起之前清掉的：它自己那四个照字面写（顺序决定字节），后面跟着别家的会话号变量。
+fn claude_cleared() -> Vec<String> {
+    nested_of(&[
+        "CLAUDECODE",
+        "CLAUDE_CODE_ENTRYPOINT",
+        "CLAUDE_CODE_SESSION_ID",
+        "CLAUDE_CODE_CHILD_SESSION",
+    ])
+}
+
+/// `env -u A -u B `（摘掉这几个、只给这一条命令）；空 ⇒ 空串。
+fn env_u(vars: &[&str]) -> String {
+    if vars.is_empty() {
+        return String::new();
+    }
+    let us: Vec<String> = vars.iter().map(|k| format!("-u {k}")).collect();
+    format!("env {} ", us.join(" "))
+}
+
 fn plan_of(args: &[&str], env: &Env, t: &dyn Fn() -> AccountsList) -> Plan {
     plan_of_with(args, env, t, None)
 }
@@ -86,8 +113,7 @@ fn printed(args: &[&str]) -> String {
 /// `--resume` / `--model` 不再是 ccm 的：原样接在启动器后面（resume 不由 ccm 拼、`--model` 不变成 export `ANTHROPIC_MODEL`）。
 #[test]
 fn the_shape_of_one_launch_command_line() {
-    let nested =
-        "unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION";
+    let nested = format!("unset {}", claude_cleared().join(" "));
     assert_eq!(
         printed(&["--cwd", "/p"]),
         format!("{nested}; cd '/p' && exec claude")
@@ -104,10 +130,13 @@ fn the_shape_of_one_launch_command_line() {
         printed(&["--cwd", "/p", "--model", "opus"]),
         format!("{nested}; cd '/p' && exec claude --model opus")
     );
-    // codex：换启动器 + **不清** claude 的嵌套标记（只清各家的会话号变量，同起子进程原语）
+    // codex：换启动器 + **不清** claude 的嵌套标记（清它自己的嵌套标记 ∪ 各家的会话号变量，同起子进程原语）
     assert_eq!(
         printed(&["--cwd", "/p", "--ccm-agent", "codex"]),
-        "unset CLAUDE_CODE_SESSION_ID; cd '/p' && exec codex --no-daemon"
+        format!(
+            "unset {}; cd '/p' && exec codex --no-daemon",
+            cleared_of("codex").join(" ")
+        )
     );
     // 透传参数含特殊字符 ⇒ 正确 quote
     assert_eq!(
@@ -193,6 +222,31 @@ fn picking_an_account_never_falls_back_to_a_different_one() {
     // 无账号库 ⇒ 一个字都不说，退化为基座（没有 CLAUDE_CONFIG_DIR 注入）
     let empty = no_library;
     assert!(!render(&plan_of(&["--cwd", "/p"], &env(), &empty)).contains("CLAUDE_CONFIG_DIR="));
+}
+
+/// 家目录说不出 ⇒ 点名的号照实拒：中止那一句就是 `platform::paths::under_home` 拒的那一句（判法只在那里），
+/// 不报成「不在 /.cc-monitor/… 里」，也不拿空的清单路径去问盘。
+#[test]
+fn a_named_account_is_refused_plainly_when_the_home_is_unsaid() {
+    let why = crate::platform::paths::under_home(
+        Some(std::path::Path::new("")),
+        relay_route_core::ACCOUNTS_DIR_REL,
+    )
+    .expect_err("空家 ⇒ 拒");
+    // 清单成品不带那一句：中止句由计划自己问 `under_home` 得来，不靠成品里的字。
+    let refused = no_library;
+    let mut e = env();
+    e.home = std::path::PathBuf::new();
+    e.accts_manifest = accts_manifest_under(&e.home);
+    let a: Vec<String> = ["--cwd", "/p", "--account", "work"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    let Parsed::Opts(o) = parse(&a).expect("解析得动") else {
+        panic!("该是起会话那一形")
+    };
+    let Die(msg) = build(&o, &e, &refused, None).expect_err("家说不出还照起了");
+    assert_eq!(msg, why);
 }
 
 /// 〔搬自 `ccm-cli`「deriveTmuxName 对拍」那 5 条（跨语言双写点的**本侧**）〕
@@ -356,25 +410,16 @@ fn a_different_snapshot_moves_the_name() {
     assert_eq!(name(&snapshot_of(&["proj-cc", "proj-cc-2"])), "proj-cc-3");
 }
 
-/// ★★ **名字是 `<项目名>-cc`，sid 一个片段都不许进去；而 `@ccm_sid` 必须还在。**
+/// ★★ **名字是 `<项目名>-cc`，sid 一个片段都不许进去；而 sid 必须还在载荷里。**
 ///
-/// 死值验（把 `@ccm_sid` 也一起去掉 ⇒ 必须红）就在下半段：
-/// sid **必须还在**，只是**不在名字里** —— 它的载体是 tmux 的 `@ccm_sid` 选项。
+/// 下半段：sid **必须还在**，只是**不在名字里** —— 它随 `--resume` 进窗格；`@ccm_sid` 由后端认过会话文件才打。
 #[test]
-fn the_session_name_reads_like_a_project_and_the_sid_rides_the_tmux_option() {
+fn the_session_name_reads_like_a_project_and_the_sid_rides_the_payload() {
     let e = env();
     let t = no_library;
     const SID: &str = "cb3230f3-dead-beef-0000-111122223333";
     let plan = plan_of_with(
-        &[
-            "--resume",
-            SID,
-            "--ccm-sid",
-            SID,
-            "--ccm-tmux",
-            "--cwd",
-            "/home/pi/my-proj",
-        ],
+        &["--resume", SID, "--ccm-tmux", "--cwd", "/home/pi/my-proj"],
         &e,
         &t,
         Some(&snapshot_of(&[])),
@@ -398,10 +443,11 @@ fn the_session_name_reads_like_a_project_and_the_sid_rides_the_tmux_option() {
         checked > 30,
         "只扫了 {checked} 个片段 —— 扫描器坏了，本条在空转"
     );
-    // ④ 而 sid 本身**必须还在**：它骑在 `@ccm_sid` 上（`P3` 逐字：名字不是 sid 的载体）。
-    assert_eq!(
-        c.ccm_sid, SID,
-        "sid 从计划里消失了 —— 「不进名字」不等于「不要了」。\n             `@ccm_sid` 是它真正的载体，杀会话的菜单与身份判定都认那个。"
+    // ④ 而 sid 本身**必须还在**：它随 `--resume` 进窗格（`P3` 逐字：名字不是 sid 的载体）。
+    assert!(
+        c.payload.contains(&format!("'--resume' '{SID}'")),
+        "sid 从载荷里消失了 —— 「不进名字」不等于「不要了」：{}",
+        c.payload
     );
 }
 
@@ -429,7 +475,7 @@ fn a_session_name_that_would_confuse_tmux_is_refused() {
     assert!(long.0.contains("128"), "{}", long.0);
 }
 
-/// 容器路：外层 tmux 编排必须带上会话名 / cwd / 意图标 / 内层载荷，
+/// 容器路：外层 tmux 编排必须带上会话名 / cwd / 内层载荷、不写身份，
 /// 而**内层载荷必须显式带上账号**（不能靠继承穿 tmux 边界 —— 否则就是静默换号）。
 #[test]
 fn the_container_path_carries_every_intent_inward() {
@@ -447,8 +493,6 @@ fn the_container_path_carries_every_intent_inward() {
             "--ccm-tmux=cc-p1",
             "--cwd",
             "/tmp",
-            "--ccm-sid",
-            "p1",
             "--base",
         ],
         &e,
@@ -458,14 +502,17 @@ fn the_container_path_carries_every_intent_inward() {
     let Plan::Container(c) = &p else {
         panic!("该是容器路：{p:?}")
     };
-    assert!(out.contains("-s 'cc-p1'"), "会话名没进 new-session：{out}");
+    assert!(out.contains("-s cc-p1"), "会话名没进 new-session：{out}");
     // 建会话必须 detached：不带 `-d` 就在当前终端 attach，「先建 → send-keys 打字 → 最后 attach」的顺序整个落空。
     assert!(
-        out.contains("new-session -d -s 'cc-p1'"),
+        out.contains("new-session -d -s cc-p1"),
         "new-session 没带 -d：{out}"
     );
-    assert!(out.contains("-c '/tmp'"), "cwd 没进 -c：{out}");
-    assert!(out.contains("@ccm_sid_expect 'p1'"), "意图标没打：{out}");
+    assert!(out.contains("-c /tmp"), "cwd 没进 -c：{out}");
+    assert!(
+        !out.contains("@ccm_sid_expect"),
+        "意图键没有读者，建会话那一串不写它：{out}"
+    );
     assert!(
         !out.contains("@ccm_sid ") && !out.contains("@ccm_sid'"),
         "不许写**事实**标记 @ccm_sid（那是通道 B 的，破坏性动作只认它）：{out}"
@@ -483,7 +530,7 @@ fn the_container_path_carries_every_intent_inward() {
         "--base 没进内层（账号维度恒显式表态）：{}",
         c.payload
     );
-    assert!(c.payload.contains("'--ccm-sid' 'p1'"), "{}", c.payload);
+    assert!(!c.payload.contains("--ccm-sid"), "{}", c.payload);
     // 〔搬自 `ccm-print-parity` 场景 newTmuxCustomLauncher / resumeTmuxWithModel〕
     let p4 = plan_of(
         &[
@@ -605,11 +652,7 @@ fn every_value_that_reaches_a_shell_is_quoted() {
         &no_library,
     ));
     assert!(out.contains("-c '/home/pi/my proj'"), "{out}");
-    assert!(out.contains("-s 'my-proj-cc'"), "{out}");
-    assert_eq!(qarg("a b"), "'a b'");
-    assert_eq!(qarg("ok-1.2/x"), "ok-1.2/x");
-    assert_eq!(qarg(""), "''");
-    assert_eq!(qarg("it's"), "'it'\\''s'");
+    assert!(out.contains("-s my-proj-cc "), "{out}");
 }
 
 /// 〔搬自 `ccm-print-parity`「attach 到 cc-p1」〕—— `=名:` 是 tmux 的**精确匹配**形。
@@ -632,15 +675,11 @@ fn naming_a_session_from_inside_tmux_switches_the_client() {
     let dir = test_home::scratch("w5-join");
     let log = dir.join("said");
     let fake = dir.join("tmux");
-    std::fs::write(
+    // 马上被起 ⇒ 经 `write_exe` 写（本进程写的写端会漏进别的判据线程 fork 出来的子进程 ⇒ ETXTBSY）。
+    test_home::write_exe(
         &fake,
-        format!("#!/bin/sh\necho \"$1 $2\" >> '{}'\n", log.display()),
-    )
-    .unwrap();
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
-    }
+        &format!("#!/bin/sh\necho \"$1 $2\" >> '{}'\n", log.display()),
+    );
     let tail_of = |args: &[&str]| -> String {
         let Plan::Container(c) = plan_of(args, &env(), &no_library) else {
             panic!("该是容器路：{args:?}")
@@ -710,8 +749,8 @@ fn the_default_cwd_is_the_identity_in_every_layout() {
     let mut e = env();
     let d = tempdir();
     // 布局1：站在 $HOME —— 就是 $HOME，不跳 `$CCM_WORKSPACE`。
-    e.pwd = e.home.clone();
-    assert_eq!(cwd_of(&[], &e), e.home, "在 $HOME 裸敲不许再跳工作区");
+    e.pwd = e.home.to_string_lossy().into_owned();
+    assert_eq!(cwd_of(&[], &e), e.pwd, "在 $HOME 裸敲不许再跳工作区");
     // 布局2/3：git 仓根 / 仓的子目录 —— 就是站着的那个目录，不跳**仓的父目录**。
     std::fs::create_dir_all(format!("{d}/repo/sub")).expect("造夹具");
     std::fs::write(format!("{d}/repo/.git"), "gitdir: /elsewhere").expect("造夹具");
@@ -734,7 +773,7 @@ fn the_default_cwd_is_the_identity_in_every_layout() {
 fn cwd_of(args: &[&str], e: &Env) -> String {
     let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
     match parse(&a).expect("解析得动") {
-        Parsed::Opts(o) => resolve_cwd(&o, e),
+        Parsed::Opts(o) => resolve_cwd(&o, e).expect("家写得成字"),
         other => panic!("{other:?}"),
     }
 }
@@ -784,6 +823,7 @@ fn tempdir() -> String {
 pub(crate) fn product_row(name: &str, dir: Option<&str>, default: bool) -> AccountRow {
     crate::accounts::manage::library::test_support::row_with(name, |a| {
         let there = dir.is_some_and(|d| std::path::Path::new(d).is_dir());
+        a.agent = Some(crate::agents::default_kind().into());
         a.config_dir = dir.map(str::to_string);
         a.is_default = default;
         a.mode = if dir.is_none() { "bare" } else { "isolated" }.to_string();
@@ -829,7 +869,7 @@ fn library_on_disk(body: &str, logged_in: bool) -> (String, String, String) {
     std::fs::create_dir_all(&dir).expect("造夹具");
     if logged_in {
         std::fs::write(
-            format!("{dir}/{}", acct_core::CREDENTIALS_NAME),
+            format!("{dir}/{}", crate::agents::claudecode::LOGIN.creds_file),
             "{\"fake\":1}",
         )
         .expect("造夹具");
@@ -842,7 +882,7 @@ fn library_on_disk(body: &str, logged_in: bool) -> (String, String, String) {
 /// `ccm … --account <名>` 走真 argv 解析、照盘上那份清单现扫的成品判号（与生产同一个扫描）。
 fn named_on(accts: &str, manifest: &str, name: &str) -> Result<(String, String), Die> {
     let mut e = env();
-    e.accts_manifest = manifest.to_string();
+    e.accts_manifest = manifest.into();
     let a: Vec<String> = ["--cwd", "/p", "--account", name]
         .iter()
         .map(|s| s.to_string())
@@ -871,7 +911,7 @@ fn the_account_is_judged_from_the_listing_product() {
         panic!("该是起会话那一形")
     };
     let mut e = env();
-    e.accts_manifest = m.clone();
+    e.accts_manifest = m.clone().into();
     assert_eq!(
         account_for(&o, &e, &product_at(&accts)).expect("默认号"),
         (dir.clone(), "work".to_string())
@@ -908,7 +948,7 @@ fn a_manifest_with_a_utf8_bom_is_read_not_silently_eaten() {
         named_on(&accts, &m, "work").expect("带 BOM 的账号库被吃掉了"),
         (dir, "work".to_string())
     );
-    let said = names(&product_at(&accts)(), &m);
+    let said = names(&product_at(&accts)(), m.as_ref());
     assert!(
         !said.contains(copy_core::copy_static!("bePlan.names.unreadable")),
         "一份合法的（只是带 BOM 的）账号库被报成了坏文件：{said}"
@@ -941,7 +981,7 @@ fn a_manifest_we_cannot_read_says_so_and_the_named_account_is_refused() {
     }
     let (accts, m, _) = library_on_disk(ONE, true);
     std::fs::remove_file(&m).expect("删清单");
-    let said = names(&product_at(&accts)(), &m);
+    let said = names(&product_at(&accts)(), m.as_ref());
     assert!(
         said.contains(none) && !said.contains(unreadable),
         "实得 {said}"
@@ -956,7 +996,7 @@ fn a_named_account_that_is_not_logged_in_is_refused_like_the_ui_refuses_it() {
     let (accts, m, dir) = library_on_disk(ONE, false);
     assert!(
         !std::path::Path::new(&dir)
-            .join(acct_core::CREDENTIALS_NAME)
+            .join(crate::agents::claudecode::LOGIN.creds_file)
             .exists(),
         "夹具：号目录里不该有凭据文件"
     );
@@ -997,7 +1037,8 @@ fn the_self_check_is_the_payload_itself_plus_print() {
         );
         assert!(
             c.self_check.starts_with(&format!(
-                "export ANTHROPIC_BASE_URL='https://relay.example/v1'; env -u CLAUDE_CODE_SESSION_ID {SELF_CHECK_IN_PANE}'/opt/cc-monitor-backend' "
+                "export ANTHROPIC_BASE_URL='https://relay.example/v1'; {}{SELF_CHECK_IN_PANE}'/opt/cc-monitor-backend' ",
+                env_u(&crate::agents::self_sid_envs())
             )),
             "自检没带同一段 export 前缀 / 同一个入口：{}",
             c.self_check
@@ -1009,21 +1050,6 @@ fn the_self_check_is_the_payload_itself_plus_print() {
             "自检不过没有 exit 4（起不来）：{tail}"
         );
     }
-}
-
-/// `--print` 不看宿主环境（`INVARIANTS §33a` 铁律 2）：直路上带不带 `--ccm-sid`，吐的那一行**逐字节相等**
-/// （它只写 tmux 会话上的意图标，直路上没有可写的地方）。
-#[test]
-fn the_direct_print_does_not_change_with_ccm_sid() {
-    let direct = |args: &[&str]| match plan_of(args, &env(), &no_library) {
-        Plan::Direct(d) => d,
-        other => panic!("直路测试却算出 {other:?}"),
-    };
-    assert_eq!(
-        render(&Plan::Direct(direct(&["--ccm-sid", "s-1"]))),
-        render(&Plan::Direct(direct(&[]))),
-        "直路 `--print` 随 `--ccm-sid` 变了"
-    );
 }
 
 // ── Windows 本机那一格：家目录 · 路径分隔符 ──────────────
@@ -1043,31 +1069,39 @@ fn the_home_is_home_then_userprofile_and_paths_under_it_are_joined_per_segment()
             ("HOME", "/home/pi"),
             ("USERPROFILE", "C:\\Users\\user")
         ])),
-        "/home/pi"
+        std::path::PathBuf::from("/home/pi")
     );
     assert_eq!(
         home_of(env_of(&[("USERPROFILE", "C:\\Users\\user")])),
-        "C:\\Users\\user",
+        std::path::PathBuf::from("C:\\Users\\user"),
         "Windows 默认没有 HOME"
     );
     assert_eq!(
         home_of(env_of(&[("HOME", ""), ("USERPROFILE", "C:\\Users\\user")])),
-        "C:\\Users\\user",
+        std::path::PathBuf::from("C:\\Users\\user"),
         "空 HOME 当缺席"
     );
-    assert_eq!(home_of(env_of(&[])), "", "两个都没有 ⇒ 空串（照旧）");
+    assert_eq!(
+        home_of(env_of(&[])),
+        std::path::PathBuf::new(),
+        "两个都没有 ⇒ 空"
+    );
 
     // 本机（Linux）上逐段 join 与 `format!("{home}/{rel}")` 逐字相等 —— 这一格不许变。
     for rel in [
         ".cc-monitor/accounts/accounts.json",
         ".cc-monitor/backend.json",
     ] {
-        assert_eq!(under_home("/home/pi", rel), format!("/home/pi/{rel}"));
+        assert_eq!(
+            crate::platform::paths::under_home(Some(std::path::Path::new("/home/pi")), rel),
+            Ok(std::path::PathBuf::from(format!("/home/pi/{rel}")))
+        );
     }
+    // 家目录说不出 ⇒ 清单路径是空的（不拿根目录兜底成 `/.cc-monitor/…`）；拒的那一句由账号清单成品带（同问 `under_home`）。
     assert_eq!(
-        under_home("", ".cc-monitor/accounts/accounts.json"),
-        "/.cc-monitor/accounts/accounts.json",
-        "空家目录照旧"
+        accts_manifest_under(""),
+        std::path::PathBuf::new(),
+        "空家目录落到了根上"
     );
 
     // 生产那一处真的走这两个函数，不再手拼 `{home}/…`。
@@ -1090,7 +1124,7 @@ fn the_home_is_home_then_userprofile_and_paths_under_it_are_joined_per_segment()
     );
     assert_eq!(
         accts_manifest_under("/home/pi"),
-        "/home/pi/.cc-monitor/accounts/accounts.json"
+        std::path::PathBuf::from("/home/pi/.cc-monitor/accounts/accounts.json")
     );
     assert_eq!(
         from_process.matches("format!(\"{home}/").count(),
@@ -1101,6 +1135,19 @@ fn the_home_is_home_then_userprofile_and_paths_under_it_are_joined_per_segment()
         from_process.matches("std::env::var(\"HOME\")").count(),
         0,
         "又只认 `HOME` 了 —— Windows 上默认没有它"
+    );
+}
+
+/// 家名里有非 UTF-8 的字节（替身家）⇒ 账号库清单的路径原样留着那几个字节（不经字符串转一道、指到另一个文件）。
+#[cfg(unix)]
+#[test]
+fn the_manifest_path_keeps_a_non_utf8_home_as_it_is() {
+    use std::os::unix::ffi::OsStrExt;
+    let home = std::path::Path::new(std::ffi::OsStr::from_bytes(b"/h\xffome"));
+    let m = accts_manifest_under(home);
+    assert!(
+        std::path::Path::new(&m).starts_with(home),
+        "非 UTF-8 的家读偏了：{m:?}"
     );
 }
 
@@ -1267,7 +1314,7 @@ fn the_relay_route_follows_the_target_account_not_the_outer_shell() {
 /// 〔`INVARIANTS §47` ②〕自由文本那几格拼进 shell 之前的放行判定 —— **正反各一格**（§47「拒过头也算违反」）。
 ///
 /// 要求：`INVARIANTS §47` ②「走唯一的 quote ＋ 这一种值的形式判定 ＋ 拒绝集」：自由文本路径的拒绝集只收控制字符
-/// （NUL / CR / LF）、形式判定按各自语境（cwd / 目录要绝对路径等）、然后唯一一处 quote —— 不拒 shell 元字符。模型名与 `--ccm-sid` 不在本条（交 DUP1）。
+/// （NUL / CR / LF）、形式判定按各自语境（cwd / 目录要绝对路径等）、然后唯一一处 quote —— 不拒 shell 元字符。模型名不在本条（交 DUP1）。
 /// 交给 agent 的参数与登记备注可以跨行（`shell_quote_core::arg_text_ok`，「位置参数原样交给 claude」）：
 /// 多行初始任务那一格正着放、原样进载荷；CR / NUL 照拒。
 #[test]
@@ -1309,7 +1356,7 @@ fn free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold() {
         let Parsed::Opts(o) = parse(&a).expect("解析得动") else {
             panic!()
         };
-        assert_eq!(resolve_cwd(&o, &e0), want, "{rel:?}");
+        assert_eq!(resolve_cwd(&o, &e0).expect("家写得成字"), want, "{rel:?}");
         build_of(&["--cwd", rel], &e0)
             .unwrap_or_else(|e| panic!("相对 {rel:?} 补全后被拒：{}", e.0));
     }
@@ -1323,6 +1370,15 @@ fn free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold() {
         };
         assert_eq!(d.argv, want, "{l:?}");
     }
+    // Windows 写法的家（替身家）⇒ 打头 `~/` 展开时分隔符跟着家的写法走，不拼成 `C:\Users\pi/bin/claude`。
+    let mut ew = env();
+    ew.home = r"C:\Users\pi".into();
+    let Plan::Direct(d) =
+        build_of(&["--launcher", "~/bin/claude --x", "-p"], &ew).expect("该起得来")
+    else {
+        panic!("该是直路")
+    };
+    assert_eq!(d.argv, vec![r"C:\Users\pi\bin\claude", "--x", "-p"]);
     // 反：`..` 段 · 换行 / CR / NUL，分别落在工作目录 · 启动器 · 透传参数 · 备注（后两格可以跨行，只拒 CR / NUL）。
     for (args, what) in [
         (vec!["--cwd", "/home/u/../etc"], "--cwd"),
@@ -1515,7 +1571,9 @@ fn fix_a_resume_of_a_session_already_running_in_tmux_rejoins_it() {
 #[cfg(target_os = "linux")]
 fn config_dir_with_writers(sid: &str, kids: &[u32]) -> String {
     let d = tempdir();
-    let sessions = crate::agents::pidfile_dir(std::path::Path::new(&d));
+    let sessions = crate::agents::IntoHomes::into_homes(std::path::Path::new(&d))[0]
+        .pidfile_dir()
+        .expect("那一家有 pidfile 目录");
     std::fs::create_dir_all(&sessions).expect("建 pidfile 目录");
     for pid in std::iter::once(std::process::id()).chain(kids.iter().copied()) {
         let ticks = crate::platform::proc::proc_starttime(pid).expect("读得到启动时刻");
@@ -1872,7 +1930,7 @@ fn cwd_if_goes_where_the_first_exact_match_says() {
     std::fs::create_dir_all(format!("{d}/home/docs/sub")).expect("造夹具");
     std::os::unix::fs::symlink(format!("{d}/home/docs"), format!("{d}/link")).expect("造链接");
     let mut e = env();
-    e.home = format!("{d}/home");
+    e.home = format!("{d}/home").into();
     let at = |right: &[&str], pwd: &str| -> String {
         let mut e = e.clone();
         e.pwd = pwd.to_string();
@@ -1881,7 +1939,7 @@ fn cwd_if_goes_where_the_first_exact_match_says() {
         match crate::ccm_line::argv::test_support::parse(&a)
             .unwrap_or_else(|x| panic!("{right:?}：{}", x.0))
         {
-            Parsed::Opts(o) => resolve_cwd(&o, &e),
+            Parsed::Opts(o) => resolve_cwd(&o, &e).expect("家写得成字"),
             other => panic!("{other:?}"),
         }
     };
@@ -1936,7 +1994,7 @@ fn cwd_expands_a_leading_tilde_like_cwd_if() {
         match crate::ccm_line::argv::test_support::parse(&a)
             .unwrap_or_else(|x| panic!("{right:?}：{}", x.0))
         {
-            Parsed::Opts(o) => resolve_cwd(&o, &e),
+            Parsed::Opts(o) => resolve_cwd(&o, &e).expect("家写得成字"),
             other => panic!("{other:?}"),
         }
     };
@@ -1957,8 +2015,8 @@ fn codex_runs_without_the_shared_daemon_and_without_an_account() {
         ..env()
     };
     let line = |a: &[&str]| render(&plan_of(a, &e, &t));
-    // 会话号变量照样清（同起子进程原语，`nested_of`）：codex 没有嵌套标记，这一句只有它们。
-    let sid = crate::platform::shell::posix::unset(&crate::agents::self_sid_envs());
+    // 清的是它自己的嵌套标记 ∪ 各家的会话号变量（同起子进程原语，`nested_of`）。
+    let sid = crate::platform::shell::posix::unset(&cleared_of("codex"));
     assert_eq!(
         line(&["resume", "s1", "--ccm-agent", "codex", "--cwd", "/p"]),
         format!("{sid}cd '/p' && exec codex --no-daemon resume s1")
@@ -1973,13 +2031,55 @@ fn codex_runs_without_the_shared_daemon_and_without_an_account() {
     );
 }
 
+/// Codex 的钩子档经可重复的 `-c` 挂：垫在 `--no-daemon` 后、透传前；用户自己带 `-c model=…` 也照垫（不当设置文件读）；
+/// 装的那一版低于版本门 · 认不出 ⇒ 不垫、标「版本」。
+#[test]
+fn codex_hooks_ride_a_repeatable_config_flag_behind_a_version_gate() {
+    use crate::agents::asks::HookOff;
+    let mut e = Env {
+        account_env: String::new(),
+        answer_hook_entry: Some("/h/ccm".into()),
+        hook_version: Some(|_| Some([0, 167, 0])),
+        ..env()
+    };
+    let args = ["--ccm-agent", "codex", "-c", "model=\"o3\""];
+    let Plan::Direct(d) = plan_of(&args, &e, &no_library) else {
+        panic!("该是 Direct")
+    };
+    let mut want = vec!["codex".to_string(), "--no-daemon".to_string()];
+    want.extend(crate::agents::codex::asks::launch_args("/h/ccm"));
+    want.extend(["-c".to_string(), "model=\"o3\"".to_string()]);
+    assert_eq!(d.argv, want);
+    assert_eq!(d.answer_hook_off, None);
+
+    for probe in [
+        Some((|_| Some([0, 166, 9])) as fn(&crate::agents::HookGate) -> Option<[u64; 3]>),
+        Some(|_| None),
+        None,
+    ] {
+        e.hook_version = probe;
+        let Plan::Direct(d) = plan_of(&args, &e, &no_library) else {
+            panic!("该是 Direct")
+        };
+        assert_eq!(d.argv, vec!["codex", "--no-daemon", "-c", "model=\"o3\""]);
+        assert_eq!(d.answer_hook_off, Some(HookOff::Version));
+    }
+}
+
 /// Windows 本机的终端是 PowerShell ⇒ `--ccm-print` / 别名预览那一行照 PowerShell 写（同一条计划、逐项对应 POSIX 那一行）：
 /// 清环境 `Remove-Item Env:…` · 设环境 `$env:X = '…'` · 中转地址现读钥匙文件 · `Set-Location` · `& 'claude' …`。
 #[test]
 fn on_windows_the_printed_line_speaks_powershell() {
     use crate::platform::shell::dialect::Shell;
     let ps = |args: &[&str]| render_for(&plan_of(args, &env(), &no_library), Shell::PowerShell);
-    let nested = "Remove-Item Env:CLAUDECODE, Env:CLAUDE_CODE_ENTRYPOINT, Env:CLAUDE_CODE_SESSION_ID, Env:CLAUDE_CODE_CHILD_SESSION -ErrorAction Ignore";
+    let nested = format!(
+        "Remove-Item {} -ErrorAction Ignore",
+        claude_cleared()
+            .iter()
+            .map(|k| format!("Env:{k}"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
     assert_eq!(
         ps(&["--cwd", "/w/z's work", "--", "-p", "hi there"]),
         format!("{nested}; Set-Location -LiteralPath '/w/z''s work'; & 'claude' '-p' 'hi there'")
@@ -2042,6 +2142,7 @@ fn the_relay_is_injected_the_way_that_family_declares() {
     }
     let row = |kind: &'static str, how: Inject| Adapter {
         kind,
+        display_name: None,
         home,
         account_env: None,
         assets: None,
@@ -2186,10 +2287,15 @@ fn the_relay_address_carries_where_the_session_came_from() {
 }
 
 /// 〔会话血缘〕容器路：外层认出的父恒以「只给这一条命令」的形状交给窗格里那一趟（窗格的环境来自 tmux server 的全局环境，
-/// 可能是别的会话起 server 时留下的旧值）；外层没有父 ⇒ 显式摘掉，内层读不到旧值。自检那一趟同一个前缀。
+/// 可能是别的会话起 server 时留下的旧值）：有父 ⇒ 摘掉注册表里其余各家的会话号变量、只设父那一个（内层照注册序认父，
+/// 不摘就先认出旧的那一个；父是哪一家都一样）；外层没有父 ⇒ 各家全摘，内层读不到旧值。自检那一趟同一个前缀。
 #[test]
 fn the_container_path_hands_its_parent_inward_and_never_a_stale_one() {
-    let var = crate::agents::self_sid_envs()[0];
+    let sids = crate::agents::self_sid_envs();
+    assert!(
+        sids.len() >= 2,
+        "登记的会话号变量不到两个 —— 「摘其余」那半空转：{sids:?}"
+    );
     let payload_of = |e: &Env| {
         let Plan::Container(c) = plan_of(&["--ccm-tmux=n1", "--cwd", "/p"], e, &no_library) else {
             panic!("该是容器路")
@@ -2197,29 +2303,35 @@ fn the_container_path_hands_its_parent_inward_and_never_a_stale_one() {
         (c.payload, c.self_check)
     };
     let (none, none_check) = payload_of(&env());
-    let unset = format!("env -u {var} '/usr/local/bin/ccm'");
+    let all = env_u(&sids);
+    let unset = format!("{all}'/usr/local/bin/ccm'");
     assert!(none.starts_with(&unset), "没有父却没摘掉：{none}");
     assert!(
-        none_check.starts_with(&format!(
-            "env -u {var} {SELF_CHECK_IN_PANE}'/usr/local/bin/ccm'"
-        )),
+        none_check.starts_with(&format!("{all}{SELF_CHECK_IN_PANE}'/usr/local/bin/ccm'")),
         "自检那一趟没摘：{none_check}"
     );
-    let mut e = env();
-    e.inherited_parent = Some((var.to_string(), "s-p".into()));
-    let (with, with_check) = payload_of(&e);
-    let set = format!("{var}='s-p' '/usr/local/bin/ccm'");
-    assert!(with.starts_with(&set), "父没交进去：{with}");
-    assert!(
-        with_check.starts_with(&format!(
-            "{var}='s-p' {SELF_CHECK_IN_PANE}'/usr/local/bin/ccm'"
-        )),
-        "自检那一趟没交父：{with_check}"
-    );
-    assert!(
-        !with.contains("export "),
-        "父被 export 进窗格的 shell 了（之后在那个窗格里敲的都会被算成它的孩子）：{with}"
-    );
+    for var in [sids[0], sids[1]] {
+        let others: Vec<&str> = sids.iter().copied().filter(|k| *k != var).collect();
+        let rest = env_u(&others);
+        let mut e = env();
+        e.inherited_parent = Some((var.to_string(), "s-p".into()));
+        let (with, with_check) = payload_of(&e);
+        let set = format!("{rest}{var}='s-p' '/usr/local/bin/ccm'");
+        assert!(
+            with.starts_with(&set),
+            "父 {var}：没摘其余各家或没交父：{with}"
+        );
+        assert!(
+            with_check.starts_with(&format!(
+                "{rest}{var}='s-p' {SELF_CHECK_IN_PANE}'/usr/local/bin/ccm'"
+            )),
+            "父 {var}：自检那一趟前缀不同：{with_check}"
+        );
+        assert!(
+            !with.contains("export "),
+            "父被 export 进窗格的 shell 了（之后在那个窗格里敲的都会被算成它的孩子）：{with}"
+        );
+    }
 }
 
 /// 直路要清掉的环境 ＝ 那一家的嵌套标记 ∪ 各家「我是哪个会话」的变量：没有嵌套标记的那一家（codex）照样清会话号变量，
@@ -2280,6 +2392,7 @@ fn a_bare_launch_lands_on_the_same_default_as_the_listing() {
                     .unwrap()
                     .then(|| format!("{root}/{name}"));
                 crate::accounts::manage::library::test_support::row_with(&name, |r| {
+                    r.agent = Some(crate::agents::default_kind().into());
                     r.config_dir = dir.clone();
                     r.is_default = a["isDefault"].as_bool().unwrap();
                     r.mode = a["mode"].as_str().unwrap().to_string();
@@ -2429,7 +2542,7 @@ fn every_tmux_subcommand_rendered_for_a_client_is_a_utf8_client() {
         "源码那一面只扫到 {files} 份 —— 目录挪了，本条会空转着绿"
     );
     assert!(
-        source_tmux >= 8,
+        source_tmux >= 5,
         "源码那一面只量到 {source_tmux} 处 tmux —— 剥法或量具坏了，本条会空转着绿"
     );
     assert!(
@@ -2468,9 +2581,27 @@ fn the_answer_hook_rides_only_on_the_session_ccm_starts() {
 fn sideload_ok(_: &crate::agents::PluginFace) -> Sideload {
     Sideload {
         inherited: None,
-        version: Some([2, 1, 296]),
         policy_blocked: false,
         env_readable: true,
+    }
+}
+/// 装着的那一版（[`Env::hook_version`]，两种挂法问的是同一只手）：够得着 · 低一格 · 认不出。
+fn version_current(_: &crate::agents::HookGate) -> Option<[u64; 3]> {
+    Some([2, 1, 296])
+}
+fn version_old(_: &crate::agents::HookGate) -> Option<[u64; 3]> {
+    Some([2, 1, 279])
+}
+fn version_unknown(_: &crate::agents::HookGate) -> Option<[u64; 3]> {
+    None
+}
+/// 换了启动器、这台事实都够得着的那一份（插件能交下去）。
+fn sideload_env() -> Env {
+    Env {
+        answer_hook_entry: Some("/home/pi/.cc-monitor/bin/ccm".into()),
+        sideload: Some(sideload_ok),
+        hook_version: Some(version_current),
+        ..env()
     }
 }
 fn sideload_mine(f: &crate::agents::PluginFace) -> Sideload {
@@ -2491,18 +2622,6 @@ fn sideload_policy(f: &crate::agents::PluginFace) -> Sideload {
         ..sideload_ok(f)
     }
 }
-fn sideload_old(f: &crate::agents::PluginFace) -> Sideload {
-    Sideload {
-        version: Some([2, 1, 279]),
-        ..sideload_ok(f)
-    }
-}
-fn sideload_unknown_version(f: &crate::agents::PluginFace) -> Sideload {
-    Sideload {
-        version: None,
-        ..sideload_ok(f)
-    }
-}
 fn sideload_blind(f: &crate::agents::PluginFace) -> Sideload {
     Sideload {
         env_readable: false,
@@ -2517,9 +2636,7 @@ const OUR_PLUGIN: &str = "/home/pi/.cc-monitor/answer-plugin";
 /// 不标挂不上。启动器写的就是这一家的默认那一个（`claude`）⇒ 照垫 `--settings`、不设那个变量。
 #[test]
 fn a_changed_launcher_gets_the_answer_plugin_through_the_environment() {
-    let mut e = env();
-    e.answer_hook_entry = Some("/home/pi/.cc-monitor/bin/ccm".into());
-    e.sideload = Some(sideload_ok);
+    let e = sideload_env();
     // `env WRAPVAR=x <agent>` 那一形：首词给 `--launcher`，其余的词在透传最前面。
     for (launcher, lead) in [
         ("/opt/bin/fake-agent", &[][..]),
@@ -2568,8 +2685,7 @@ fn a_changed_launcher_gets_the_answer_plugin_through_the_environment() {
 /// 用户自己已经设了那个变量 ⇒ 我们的目录接在后面、不覆盖；已经有我们的目录 ⇒ 不重复加。
 #[test]
 fn a_users_own_plugin_dirs_are_appended_to_not_replaced() {
-    let mut e = env();
-    e.answer_hook_entry = Some("/home/pi/.cc-monitor/bin/ccm".into());
+    let mut e = sideload_env();
     for (probe, want) in [
         (
             sideload_mine as fn(&crate::agents::PluginFace) -> Sideload,
@@ -2594,18 +2710,28 @@ fn a_users_own_plugin_dirs_are_appended_to_not_replaced() {
 #[test]
 fn a_changed_launcher_that_cannot_take_the_plugin_says_why() {
     use crate::agents::asks::HookOff;
-    let mut e = env();
-    e.answer_hook_entry = Some("/home/pi/.cc-monitor/bin/ccm".into());
+    let mut e = sideload_env();
     type Sideloader = fn(&crate::agents::PluginFace) -> Sideload;
-    let cases: [(Option<Sideloader>, HookOff); 5] = [
-        (Some(sideload_policy), HookOff::Policy),
-        (Some(sideload_old), HookOff::Version),
-        (Some(sideload_unknown_version), HookOff::Version),
-        (Some(sideload_blind), HookOff::Launcher),
-        (None, HookOff::Launcher),
+    type Prober = fn(&crate::agents::HookGate) -> Option<[u64; 3]>;
+    let cases: [(Option<Sideloader>, Option<Prober>, HookOff); 6] = [
+        (
+            Some(sideload_policy),
+            Some(version_current),
+            HookOff::Policy,
+        ),
+        (Some(sideload_ok), Some(version_old), HookOff::Version),
+        (Some(sideload_ok), Some(version_unknown), HookOff::Version),
+        (Some(sideload_ok), None, HookOff::Version),
+        (
+            Some(sideload_blind),
+            Some(version_current),
+            HookOff::Launcher,
+        ),
+        (None, Some(version_current), HookOff::Launcher),
     ];
-    for (probe, why) in cases {
+    for (probe, version, why) in cases {
         e.sideload = probe;
+        e.hook_version = version;
         let Plan::Direct(d) = plan_of(
             &["WRAPVAR=x", "claude", "do-it", "--launcher", "env"],
             &e,
@@ -2624,9 +2750,33 @@ fn a_changed_launcher_that_cannot_take_the_plugin_says_why() {
         )));
         assert!(!line.contains(crate::agents::claudecode::asks::PLUGIN_ENV));
     }
+    // 家说不出（空家）· 家名不是 UTF-8（替身家，环境变量那一串装不下）⇒ 插件目录交不下去：
+    // 不设那个变量（不塞相对路径、不塞换了字节的路径），同写不成插件那一支照「自定义启动器」标。
+    #[allow(unused_mut)]
+    let mut homes = vec![std::path::PathBuf::new()];
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        homes.push(std::ffi::OsStr::from_bytes(b"/h\xffome").into());
+    }
+    for home in homes {
+        let mut e = sideload_env();
+        e.sideload = Some(sideload_ok);
+        e.hook_version = Some(version_current);
+        e.home = home.clone();
+        let Plan::Direct(d) = plan_of(
+            &["WRAPVAR=x", "claude", "do-it", "--launcher", "env"],
+            &e,
+            &no_library,
+        ) else {
+            panic!("该是 Direct")
+        };
+        assert_eq!(d.plugin_dirs, None, "{home:?} ⇒ 不设那个变量");
+        assert_eq!(d.answer_hook_off, Some(HookOff::Launcher), "{home:?}");
+    }
 }
 
-/// 用户自己给了会话级设置 ⇒ 不另垫，把答题 hook 并进他那一份（别的原样，只往 PermissionRequest 末尾加一组），换成并好的 JSON 串交出去；
+/// 用户自己给了会话级设置 ⇒ 不另垫，把 ccm 那几组 hook 并进他那一份（别的原样，只往每一种末尾加一组），换成并好的 JSON 串交出去；
 /// 文件按工作目录补全去读，原文件一个字不动。读不出 / 形状不认 ⇒ 原样交出去、标挂不上（进程环境里带那个变量，打印那一行也看得见）。
 #[test]
 fn a_users_own_settings_get_the_answer_hook_merged_in_or_say_it_could_not() {
@@ -2658,7 +2808,11 @@ fn a_users_own_settings_get_the_answer_hook_merged_in_or_say_it_could_not() {
         let json = raw.strip_prefix("--settings=").unwrap_or(raw);
         let v: serde_json::Value = serde_json::from_str(json).expect("交出去的是并好的 JSON 串");
         assert_eq!(v["model"], "x", "别的原样");
-        assert_eq!(v["hooks"]["Stop"], serde_json::json!([]));
+        assert_eq!(
+            v["hooks"]["Stop"].as_array().unwrap().len(),
+            1,
+            "他那一份空的 Stop 接上我们那一组"
+        );
         let pr = v["hooks"]["PermissionRequest"].as_array().unwrap();
         assert_eq!(pr.len(), 2, "用户那一组还在，我们的在末尾");
         assert_eq!(pr[0]["hooks"][0]["command"], "/mine");
@@ -2703,6 +2857,46 @@ fn a_users_own_settings_get_the_answer_hook_merged_in_or_say_it_could_not() {
         );
         assert!(render(&Plan::Direct(d)).contains(crate::agents::asks::ANSWER_HOOK_OFF_ENV));
     }
+}
+
+/// 透传里同一个旗标写了几次 ⇒ 认最后一个（那一家自己也是后写的盖前写的）；「那一家自己的 `--` 之后不看」钉在 `argv_tests`。
+/// 会话级设置与先定会话ID两处都照这一条（找旗标位置只有 `ccm_line::argv::flag_at` 一份）。
+#[test]
+fn a_repeated_passthru_flag_counts_the_last_one() {
+    fn read(p: &std::path::Path) -> Option<String> {
+        match p.to_str()? {
+            "/p/a.json" => Some(r#"{"from":"a"}"#.into()),
+            "/p/b.json" => Some(r#"{"from":"b"}"#.into()),
+            _ => None,
+        }
+    }
+    let mut e = env();
+    e.answer_hook_entry = Some("/h/ccm".into());
+    e.read_text = Some(read);
+    let Plan::Direct(d) = plan_of(
+        &["--settings", "a.json", "--settings", "b.json"],
+        &e,
+        &no_library,
+    ) else {
+        panic!("该是 Direct")
+    };
+    assert_eq!(d.answer_hook_off, None);
+    let merged: Vec<&String> = d
+        .argv
+        .iter()
+        .filter(|w| w.trim_start().starts_with('{'))
+        .collect();
+    assert_eq!(merged.len(), 1, "只并一份：{:?}", d.argv);
+    assert!(
+        merged[0].contains(r#""from":"b""#),
+        "该并后写的那一份：{:?}",
+        d.argv
+    );
+    assert!(
+        d.argv.contains(&"a.json".to_string()),
+        "前写的那一份原样留着：{:?}",
+        d.argv
+    );
 }
 
 /// 非得经 shell 那一趟，钥匙段按地址的路由写：`/t/` ⇒ 照字面插只许直通那一把（不读钥匙文件）；`/s/` ⇒ 读钥匙文件的命令替换
@@ -3015,4 +3209,454 @@ fn a_hosted_container_tells_the_host_which_account_was_named() {
         !plain.iter().any(|a| a.starts_with("account=")),
         "{plain:?}"
     );
+}
+
+/// 〔会话血缘 · Codex〕Codex 给自己起的子 shell 导出它的线程号（叫什么、出处住 `agents/codex/resume.rs`，名字由 `agent-profile-golden.tsv` 钉）：
+/// 登记成这一家的会话号变量 ⇒ 在 Codex 会话里调 ccm 认得出父（`Env::inherited_parent` 按 `agents::self_sid_envs` 读）；
+/// 它也是嵌套标记 ⇒ 起 Codex 之前清掉（整行清哪几个由 `codex_runs_without_the_shared_daemon_and_without_an_account` 钉）。
+#[test]
+fn a_codex_shell_names_its_session_as_parent_and_codex_starts_without_its_markers() {
+    let face = crate::agents::launch_face_among(crate::agents::REGISTRY, "codex")
+        .expect("注册表里有这一家的起会话事实");
+    let own = face
+        .self_sid_env
+        .expect("Codex 导给子 shell 的会话号变量没登记：在 Codex 会话里调 ccm 认不出父");
+    assert!(
+        face.nested_env.contains(&own),
+        "Codex 的会话号变量不在嵌套标记里：{:?}",
+        face.nested_env
+    );
+}
+
+// ── 跑一件活（`task_among`）────────────────────────────────────────────────
+
+/// 跑一件活的合成注册表：`fake-task` ＝ 替身家（声明一次性那一形，中转经环境变量）；`fake-notask` ＝ 同一家去掉那一形。
+fn task_registry() -> [crate::agents::Adapter; 2] {
+    use crate::agents::{Adapter, DefaultUpstream, Inject, LaunchFace};
+    let row = |kind: &'static str, launch: LaunchFace| Adapter {
+        kind,
+        upstream: Some(DefaultUpstream {
+            inject: Inject::Env("FAKE_URL_VAR"),
+            ..crate::agents::claudecode::UPSTREAM
+        }),
+        launch: Some(launch),
+        ..crate::agents::fake::full_row(crate::agents::fake::home)
+    };
+    [
+        row("fake-task", crate::agents::fake::LAUNCH),
+        row(
+            "fake-notask",
+            LaunchFace {
+                task: None,
+                ..crate::agents::fake::LAUNCH
+            },
+        ),
+    ]
+}
+
+/// 中转那张表的替身：地址尾上写着问的是哪个号目录（照选好的号问的才对得上）。
+fn relay_by_account(
+    _: &str,
+    account: &crate::accounts::upstream_select::endpoint::LaunchAccount,
+    _: bool,
+) -> Result<Option<String>, String> {
+    use crate::accounts::upstream_select::endpoint::LaunchAccount;
+    match account {
+        LaunchAccount::Named { config_dir } => Ok(Some(format!(
+            "http://127.0.0.1:8788/t/x/{}",
+            config_dir.rsplit('/').next().unwrap_or_default()
+        ))),
+        _ => Ok(None),
+    }
+}
+
+fn task_env() -> Env {
+    Env {
+        account_env: "FAKE_ACCOUNT_DIR".into(),
+        // 调用方在 tmux 里、继承着别的号：一件活照样不进 tmux、不认继承来的号。
+        tmux: Some("/tmp/tmux-1/default,1,0".into()),
+        inherited_config_dir: Some("/acct/other".into()),
+        relay: Some(relay_by_account),
+        ..env()
+    }
+}
+
+/// 一件活打印出来的那一行（`--ccm-print`）：它起的那个直路渲出来的那一行。
+fn task_line(t: &Task) -> String {
+    render(&Plan::Direct(t.direct.clone()))
+}
+
+fn task_ask(agent: &str) -> TaskAsk {
+    TaskAsk {
+        agent: agent.into(),
+        account_dir: "/acct/a1".into(),
+        account_name: "a1".into(),
+        cwd: "/w".into(),
+        say: "fix the bug".into(),
+        out: "/w/.out/result.txt".into(),
+    }
+}
+
+/// ★ 替身家声明了一次性那一形 ⇒ argv 恰是启动器 ＋ 它给的那几个；号载体设的是交进来的那个号、中转地址照那个号问；
+/// 不进 tmux（调用方在 tmux 里也一样，计划就是直路那一形）；结果从哪读 · 结果文件随计划走。
+#[test]
+fn a_task_plan_runs_exactly_what_the_family_declares_on_the_given_account() {
+    let t = task_among(&task_registry(), &task_ask("fake-task"), &task_env()).expect("算得出");
+    let d = &t.direct;
+    assert_eq!(
+        d.argv,
+        vec![
+            "fakeagent",
+            "chore",
+            "--into",
+            "/w/.out/result.txt",
+            "--",
+            "fix the bug"
+        ]
+    );
+    assert_eq!(d.cwd, "/w");
+    assert_eq!(d.config_dir, "/acct/a1", "号载体没照交进来的号");
+    assert!(!task_line(&t).contains("unset FAKE_ACCOUNT_DIR"));
+    assert_eq!(d.relay.as_deref(), Some("http://127.0.0.1:8788/t/x/a1"));
+    assert_eq!(d.relay_via, RelayVia::Env("FAKE_URL_VAR".into()));
+    assert!(d.answer_hook_off.is_none() && d.plugin_dirs.is_none());
+    assert_eq!(t.out, "/w/.out/result.txt");
+    assert!(matches!(t.text, crate::agents::TaskText::File));
+}
+
+/// ★ `--ccm-print` 那一行就是真跑的那一份：渲的是计划里同一个直路，argv 原样在 `exec` 后面、号载体照它 export。
+#[test]
+fn the_printed_task_line_is_the_one_that_runs() {
+    let t = task_among(&task_registry(), &task_ask("fake-task"), &task_env()).expect("算得出");
+    let line = task_line(&t);
+    let argv: Vec<String> = t
+        .direct
+        .argv
+        .iter()
+        .map(|a| crate::platform::shell::dialect::posix_word(a))
+        .collect();
+    assert!(
+        line.ends_with(&format!("exec {}", argv.join(" "))),
+        "{line}"
+    );
+    assert!(
+        line.contains("export FAKE_ACCOUNT_DIR='/acct/a1'"),
+        "{line}"
+    );
+    assert!(
+        line.contains("export FAKE_URL_VAR=") && line.contains("/t/x/a1"),
+        "{line}"
+    );
+    assert!(!line.contains("tmux"), "{line}");
+}
+
+/// ★ 没声明一次性那一形的家 · 认不出的家 ⇒ 拒，不拿交互那一形顶。
+#[test]
+fn a_family_without_the_task_form_is_refused() {
+    for kind in ["fake-notask", "nobody"] {
+        assert!(
+            task_among(&task_registry(), &task_ask(kind), &task_env()).is_err(),
+            "{kind} 该拒"
+        );
+    }
+}
+
+/// 没声明一次性那一形的家 ⇒ 那一句说的是它的叫法（问注册表），不露 kind。
+#[test]
+fn the_task_refusal_says_the_familys_name() {
+    let mut reg = task_registry();
+    reg[1].display_name = Some(crate::agents::fake::said_of("fake-notask"));
+    let Die(msg) = task_among(&reg, &task_ask("fake-notask"), &task_env())
+        .expect_err("没声明一次性那一形该拒");
+    assert_eq!(
+        msg,
+        copy_core::copy_text(
+            "bePlan.task.notTaken",
+            &[("agent", crate::agents::fake::said_of("fake-notask"))],
+        )
+    );
+}
+
+/// `--say` 交给起的时候不收第一句的那一家 ⇒ 那一句说的是它的叫法（问注册表），不露 kind。
+#[test]
+fn the_say_refusal_says_the_familys_name() {
+    let reg = [crate::agents::Adapter {
+        kind: "fake-mute",
+        display_name: Some(crate::agents::fake::said_of("fake-mute")),
+        launch: Some(crate::agents::LaunchFace {
+            first_prompt_arg: false,
+            ..crate::agents::fake::LAUNCH
+        }),
+        ..crate::agents::fake::full_row(crate::agents::fake::home)
+    }];
+    let a: Vec<String> = ["--hosted", "--cwd", "/x/proj"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    let mut o = match parse(&a).expect("解析得动") {
+        Parsed::Opts(o) => o,
+        other => panic!("{other:?}"),
+    };
+    o.agent = "fake-mute".into();
+    o.say = "hi".into();
+    let Die(msg) =
+        build_among(&reg, &o, &env(), &no_library, None).expect_err("不收第一句的家该拒 --say");
+    assert_eq!(
+        msg,
+        copy_core::copy_text(
+            "bePlan.build.sayNotTaken",
+            &[("agent", crate::agents::fake::said_of("fake-mute"))],
+        )
+    );
+}
+
+/// 没交号 ⇒ 不带调用方继承来的号，照那一家自己的缺省目录起（清掉号载体），中转照「缺省号」问。
+#[test]
+fn a_task_without_an_account_runs_on_the_family_default_not_the_inherited_one() {
+    let ask = TaskAsk {
+        account_dir: String::new(),
+        account_name: String::new(),
+        ..task_ask("fake-task")
+    };
+    let t = task_among(&task_registry(), &ask, &task_env()).expect("算得出");
+    assert_eq!(t.direct.config_dir, "");
+    assert!(
+        task_line(&t).contains("unset FAKE_ACCOUNT_DIR"),
+        "继承来的号没清掉"
+    );
+    assert_eq!(t.direct.relay, None, "替身中转表只给有名的号地址");
+}
+
+/// 看家：`--account` 点名的号是别家的 ⇒ 中止，那一句说出是哪一家的号、起的是哪一家（判只在 `launch_account::pick`），
+/// 两家都说叫法（问注册表），不露 kind。
+#[test]
+fn an_account_of_another_agent_is_refused_saying_whose_it_is() {
+    let reg = crate::agents::fake::two_families();
+    let dz = tempdir();
+    let mut other = product_row("b", Some(dz.as_str()), false);
+    other.scanned.agent = Some(cmd_wire::AgentKind::new("fake2"));
+    let t = library_of(vec![other]);
+    let a: Vec<String> = ["--cwd", "/p", "--account", "b"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    let mut o = match parse(&a).expect("解析得动") {
+        Parsed::Opts(o) => o,
+        other => panic!("{other:?}"),
+    };
+    o.agent = "fake".into();
+    let Die(msg) = build_among(reg, &o, &env(), &t, None).expect_err("别家的号必须中止");
+    assert_eq!(
+        msg,
+        copy_core::copy_text(
+            "bePlan.resolveAccount.otherAgent",
+            &[
+                ("account", "b"),
+                ("owner", crate::agents::fake::said_of("fake2")),
+                ("agent", crate::agents::fake::said_of("fake")),
+            ],
+        )
+    );
+}
+
+// ── 钩子版本门 · 用户盖掉钩子表（替身家：默认启动器那一支与插件那一路带同一个 `HookGate`）──────────────────
+
+/// 替身家那一行：答题口带插件那一路（[`crate::agents::fake::ASK_PLUGIN`]），两种挂法共用一个门。
+fn hook_registry() -> [crate::agents::Adapter; 1] {
+    [crate::agents::Adapter {
+        kind: crate::agents::fake::AGENT_KIND,
+        asks: Some(crate::agents::AskFace {
+            plugin: Some(crate::agents::fake::ASK_PLUGIN),
+            ..crate::agents::fake::ASK
+        }),
+        ..crate::agents::fake::full_row(crate::agents::fake::home)
+    }]
+}
+
+/// 替身家起一发：`args` 是透传 ＋ ccm 自己的旗标。
+fn hook_plan(args: &[&str], e: &Env) -> Direct {
+    let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+    let Parsed::Opts(mut o) = parse(&a).expect("解析得动") else {
+        panic!()
+    };
+    o.agent = crate::agents::fake::AGENT_KIND.to_string();
+    let Plan::Direct(d) = build_among(&hook_registry(), &o, e, &no_library, None).unwrap() else {
+        panic!("该是直路")
+    };
+    d
+}
+
+/// 只认替身家那个门（包名对得上才答）：问的是不是那一家声明的门，也一起钉住。
+fn fake_at_floor(g: &crate::agents::HookGate) -> Option<[u64; 3]> {
+    (g.package == crate::agents::fake::GATE.package)
+        .then_some(crate::agents::fake::GATE.min_version)
+}
+fn fake_below(g: &crate::agents::HookGate) -> Option<[u64; 3]> {
+    (g.package == crate::agents::fake::GATE.package).then_some([1, 1, 9])
+}
+
+/// 版本门只判一处：默认启动器那一支（会话级旗标）与换了启动器那一支（插件）照同一个 `HookGate`、问同一只手，判出的一样 ——
+/// 门内 ⇒ 两支都挂；低于门 · 认不出 · 没问 ⇒ 两支都不挂、原因都是「版本」。
+#[test]
+fn both_ways_of_hooking_judge_the_version_gate_the_same() {
+    use crate::agents::asks::HookOff;
+    type Prober = fn(&crate::agents::HookGate) -> Option<[u64; 3]>;
+    let entry = "/home/pi/.cc-monitor/bin/ccm";
+    for (probe, off) in [
+        (Some(fake_at_floor as Prober), None),
+        (Some(fake_below as Prober), Some(HookOff::Version)),
+        (Some(version_unknown as Prober), Some(HookOff::Version)),
+        (None, Some(HookOff::Version)),
+    ] {
+        let e = Env {
+            answer_hook_entry: Some(entry.into()),
+            sideload: Some(sideload_ok),
+            hook_version: probe,
+            ..env()
+        };
+        let own = hook_plan(&["go"], &e);
+        let other = hook_plan(&["go", "--launcher", "/opt/wrap"], &e);
+        assert_eq!(own.answer_hook_off, off, "默认启动器那一支");
+        assert_eq!(other.answer_hook_off, off, "插件那一支与默认那一支判的一样");
+        let hooked = off.is_none();
+        assert_eq!(
+            own.argv
+                .iter()
+                .any(|w| w == crate::agents::fake::ASK.launch_flag),
+            hooked,
+            "默认启动器那一支：门内才垫钩子 {:?}",
+            own.argv
+        );
+        assert_eq!(
+            other.plugin_dirs.is_some(),
+            hooked,
+            "插件那一支：门内才交插件目录"
+        );
+    }
+}
+
+/// 透传里写了那一家整格盖掉钩子表的写法（替身家的 `--ask-table`）⇒ 照旧起、用户的参数一个不动、我们的不垫；
+/// 这一趟当没挂钩子，原因是「被用户的设置盖掉」，打印那一行带着它；不写 ⇒ 照常挂。
+#[test]
+fn a_passthru_that_overrides_the_hook_table_starts_unhooked_and_says_so() {
+    use crate::agents::asks::HookOff;
+    let entry = "/home/pi/.cc-monitor/bin/ccm";
+    let e = Env {
+        answer_hook_entry: Some(entry.into()),
+        hook_version: Some(fake_at_floor),
+        ..env()
+    };
+    let t = crate::agents::fake::TABLE_FLAG;
+    let joined = format!("{t}=mine.toml");
+    for args in [&[t, "mine.toml"][..], &[joined.as_str()][..]] {
+        let d = hook_plan(args, &e);
+        let mut want = vec![crate::agents::fake::DEFAULT_COMMAND.to_string()];
+        want.extend(args.iter().map(|s| s.to_string()));
+        assert_eq!(d.argv, want, "用户的参数原样、我们的不垫");
+        assert_eq!(d.answer_hook_off, Some(HookOff::Overridden));
+        assert!(render(&Plan::Direct(d)).contains(&format!(
+            "export {}={};",
+            crate::agents::asks::ANSWER_HOOK_OFF_ENV,
+            HookOff::Overridden.env_value()
+        )));
+    }
+    let d = hook_plan(&["--ask-tablet", "x"], &e);
+    assert_eq!(d.answer_hook_off, None, "名字只像不算");
+    assert!(
+        d.argv
+            .iter()
+            .any(|w| w == crate::agents::fake::ASK.launch_flag),
+        "照常垫钩子：{:?}",
+        d.argv
+    );
+}
+
+/// ccm 的家照环境原样（`PathBuf`），不经字符串转一道：家目录名里有非 UTF-8 的字节 ⇒ 字节原样留着（转一道会换成替换字符、读到另一个目录）。
+/// Windows 那一形见下一条（那边的「不是 UTF-8」是落单的代理项，造法不同）。
+#[cfg(unix)]
+#[test]
+fn a_home_with_non_utf8_bytes_is_kept_byte_for_byte() {
+    use std::os::unix::ffi::OsStringExt as _;
+    let raw = b"/home/p\xffi".to_vec();
+    let home = home_of(|k: &str| (k == "HOME").then(|| std::ffi::OsString::from_vec(raw.clone())));
+    assert_eq!(
+        home,
+        std::path::PathBuf::from(std::ffi::OsString::from_vec(raw))
+    );
+}
+
+/// 同上的 Windows 那一形：家名里有落单的代理项（`0xD800`，转不成 UTF-8）⇒ 那几个 UTF-16 单元原样留着。
+/// 本机门禁只交叉编译、不在 Windows 上跑，这一条在那边真跑才判得到。
+#[cfg(windows)]
+#[test]
+fn a_home_with_a_lone_surrogate_is_kept_unit_for_unit() {
+    use std::os::windows::ffi::{OsStrExt as _, OsStringExt as _};
+    let raw: Vec<u16> = "C:\\Users\\p"
+        .encode_utf16()
+        .chain([0xD800, u16::from(b'i')])
+        .collect();
+    let home = home_of(|k: &str| {
+        (k == "USERPROFILE" || k == "HOME").then(|| std::ffi::OsString::from_wide(&raw))
+    });
+    assert_eq!(home.as_os_str().encode_wide().collect::<Vec<u16>>(), raw);
+}
+
+/// 家名里有非 UTF-8 的字节（替身家）：argv 与工作目录都是要写成字的那一步 ⇒ 打头 `~/` 的启动器 · `~` 开头的 `--cwd`
+/// 照实拒（那一句同 `platform::paths::expand_tilde_text` 一处说），不有损拼成另一个目录；`--cwd-if` 那一比照家原样比、不拒；
+/// 不碰家的那几形照常起。
+#[cfg(unix)]
+#[test]
+fn a_non_utf8_home_is_refused_where_argv_needs_text_and_never_spelled_lossily() {
+    use std::os::unix::ffi::OsStrExt as _;
+    let mut e = env();
+    e.home = std::path::PathBuf::from(std::ffi::OsStr::from_bytes(b"/home/p\xffi"));
+    let build_of = |args: &[&str]| {
+        let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+        match parse(&a).expect("该解析得动") {
+            Parsed::Opts(o) => build(&o, &e, &no_library, None),
+            other => panic!("{other:?}"),
+        }
+    };
+    for (args, raw) in [
+        (
+            vec!["--cwd", "/p", "--launcher", "~/bin/claude", "-p"],
+            "~/bin/claude",
+        ),
+        (vec!["--cwd", "~/w", "-p"], "~/w"),
+    ] {
+        let got = build_of(&args)
+            .err()
+            .unwrap_or_else(|| panic!("有损拼进去了：{args:?}"));
+        assert_eq!(
+            got.0,
+            crate::platform::paths::expand_tilde_text(raw, Some(&e.home)).unwrap_err(),
+            "{args:?}"
+        );
+    }
+    let Plan::Direct(d) = build_of(&["--cwd", "/p", "--launcher", "ccr code", "-p"])
+        .unwrap_or_else(|e| panic!("不碰家的那几形被拒了：{}", e.0))
+    else {
+        panic!("该是直路")
+    };
+    assert_eq!(d.argv, vec!["ccr", "code", "-p"]);
+    // `--cwd-if` 的「在哪」只拿来比：没对上 ⇒ 落回当前目录，不拒。
+    let a: Vec<String> = ["--", "--cwd-if", "~/x", "/q"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    let Parsed::Opts(o) = crate::ccm_line::argv::test_support::parse(&a).expect("该解析得动")
+    else {
+        panic!()
+    };
+    assert_eq!(resolve_cwd(&o, &e).map_err(|d| d.0), Ok(e.pwd.clone()));
+}
+
+/// 预览那一形的当前目录就是家：家名不是 UTF-8（替身家）⇒ 写不成字、留空，不有损拼成另一个目录。
+#[cfg(unix)]
+#[test]
+fn the_preview_does_not_spell_a_non_utf8_home_into_its_pwd() {
+    use std::os::unix::ffi::OsStrExt as _;
+    let home = std::path::PathBuf::from(std::ffi::OsStr::from_bytes(b"/home/p\xffi"));
+    assert_eq!(Env::for_preview_in(home).pwd, "");
+    assert_eq!(Env::for_preview_in("/home/pi".into()).pwd, "/home/pi");
 }

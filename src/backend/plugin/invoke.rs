@@ -119,17 +119,19 @@ fn not_run(bin: &Path, e: ChildFail) -> NotRun {
             return NotRun::ArgListTooLong;
         }
     }
-    let why = match &e {
-        ChildFail::NotFound(io) | ChildFail::Io(io) => copy_core::spawn_reason(io.kind()),
-        ChildFail::TimedOut { .. } => copy_core::io_reason(std::io::ErrorKind::TimedOut),
-    };
-    NotRun::Failed(copy_core::said::Said::with_raw(
+    let said = |why: &str| {
         copy_text(
             "beInvoke.notRun.failed",
-            &[("bin", &(bin.display()).to_string()), ("why", &why)],
+            &[("bin", &(bin.display()).to_string()), ("why", why)],
+        )
+    };
+    NotRun::Failed(match &e {
+        ChildFail::NotFound(io) | ChildFail::Io(io) => crate::platform::child::spawn_said(io, said),
+        ChildFail::TimedOut { .. } => copy_core::said::Said::with_raw(
+            said(&copy_core::io_reason(std::io::ErrorKind::TimedOut)),
+            &e,
         ),
-        &e,
-    ))
+    })
 }
 
 /// 起它、**同步**等它退出（阻塞档的调用方用：它们本来就跑在 `spawn_blocking` 的线程上）。

@@ -128,8 +128,6 @@ describe("〔A17-45-3-2〕冷开只建一屏", () => {
       onLine(p: JsonlLinePayload) {
         if (tsv.admit(tab as never, p)) tsv.ingest(tab as never, p);
       },
-      refreshTabBar() {},
-      scheduleTabBarRefresh() {},
       userActive() {},
       forkFrom() {},
       runLabelOf: () => undefined,
@@ -158,7 +156,7 @@ describe("〔A17-45-3-2〕冷开只建一屏", () => {
       retries: new Map(),
       toolUseNames: new Map(),
       runCards: new Map(),
-      unread: 0,
+      unreadSaid: null,
       fullRecord: async () => null,
       facts: { reset() {}, markStale() {}, refresh: async () => {}, needsFetch: false },
     };

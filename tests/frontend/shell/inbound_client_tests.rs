@@ -805,6 +805,57 @@ impl Warns {
             .map(str::to_string)
             .collect()
     }
+    /// 说「在等的登记表满了」的那几行。
+    fn table_full(&self) -> Vec<String> {
+        String::from_utf8(self.0.lock().unwrap().clone())
+            .unwrap()
+            .lines()
+            .filter(|l| l.contains("在等的登记表满了"))
+            .map(str::to_string)
+            .collect()
+    }
+}
+
+/// 在等的登记表满了、要拒的那一刻说一行：各命令各几条（多的在前）· 最老那一条等了多久；一段满着只说一次，
+/// 又登记上一条之后再满再说。
+#[tokio::test]
+async fn a_full_pending_table_is_said_once_with_who_is_waiting() {
+    let warns = Warns::default();
+    let _g = warns.install();
+    let (client, _peer) = client_on_duplex(&["ping", "sessions"]);
+    let mut held = Vec::new();
+    for i in 0..MAX_PENDING {
+        let cmd = if i < 200 { "sessions" } else { "ping" };
+        held.push(client.register(&format!("x{i}"), cmd).expect("登记"));
+    }
+    assert!(
+        warns.table_full().is_empty(),
+        "还没满就说了：{:?}",
+        warns.table_full()
+    );
+    let refused = client
+        .call("ping", Value::Null, guard_core::wall::CEILING)
+        .await;
+    assert_eq!(refused, Err(CallError::TooManyPending));
+    let said = warns.table_full();
+    assert_eq!(said.len(), 1, "满的那一刻该恰说一行：{said:?}");
+    let line = &said[0];
+    let (many, few) = (
+        line.find("sessions=200").expect("带 sessions 的条数"),
+        line.find("ping=56").expect("带 ping 的条数"),
+    );
+    assert!(many < few, "多的在前：{line}");
+    assert!(line.contains("最老的等了"), "带最老那一条等了多久：{line}");
+    assert!(line.contains("拒了 `ping`"), "点名拒的是哪条：{line}");
+    // 同一段满着：再拒不再说。
+    assert!(client.register("again", "ping").is_none());
+    assert_eq!(warns.table_full().len(), 1, "一段满着说了不止一次");
+    // 放掉一条 ⇒ 登记得上（这一段满完了）；再满再拒 ⇒ 又说一行。
+    drop(held.pop());
+    held.push(client.register("refill", "ping").expect("回收后登记得上"));
+    assert!(client.register("over", "ping").is_none());
+    assert_eq!(warns.table_full().len(), 2, "新的一段满了没说");
+    drop(held);
 }
 
 /// 「对面认不认撤是一条能力……不认 ⇒ 本地照撤，**并且在结果里说明对端不认**」。
@@ -914,12 +965,12 @@ async fn the_pending_table_is_capped_by_live_waiters() {
     for i in 0..MAX_PENDING {
         held.push(
             client
-                .register(&format!("x{i}"), None)
+                .register(&format!("x{i}"), "ping")
                 .unwrap_or_else(|| panic!("第 {i} 条就满了")),
         );
     }
     assert!(
-        client.register("overflow", None).is_none(),
+        client.register("overflow", "ping").is_none(),
         "登记表没有上限 —— 死后端下会无界增长"
     );
     drop(held);
@@ -936,11 +987,11 @@ async fn a_full_table_reclaims_registrations_whose_caller_has_left() {
     let (client, _peer) = client_on_duplex(&["ping"]);
     // 全部丢掉接收端 = 全是「调用方已走」的僵尸登记。
     for i in 0..MAX_PENDING {
-        assert!(client.register(&format!("zombie{i}"), None).is_some());
+        assert!(client.register(&format!("zombie{i}"), "ping").is_some());
     }
     assert_eq!(client.pending_len(), MAX_PENDING);
     assert!(
-        client.register("fresh", None).is_some(),
+        client.register("fresh", "ping").is_some(),
         "表被僵尸登记撑满后再也登记不上 —— 那正是审计说的「不自愈」"
     );
     assert_eq!(
@@ -952,10 +1003,10 @@ async fn a_full_table_reclaims_registrations_whose_caller_has_left() {
     let (client2, _peer2) = client_on_duplex(&["ping"]);
     let mut held = Vec::new();
     for i in 0..MAX_PENDING {
-        held.push(client2.register(&format!("live{i}"), None).expect("登记"));
+        held.push(client2.register(&format!("live{i}"), "ping").expect("登记"));
     }
     assert!(
-        client2.register("fresh", None).is_none(),
+        client2.register("fresh", "ping").is_none(),
         "把还在等的调用方当成僵尸回收了 —— 那会让它们永远收不到应答"
     );
     drop(held);

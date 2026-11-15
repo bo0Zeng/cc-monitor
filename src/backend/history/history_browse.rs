@@ -161,6 +161,11 @@ pub(crate) struct MachineHead {
     /// 那台筛好的几行（算上只为挂住分叉才带上的父会话）。
     pub(crate) total: u32,
     pub(crate) read: Read,
+    /// 远端那台：这一问读到的那份副本的代号（每换一次就变大，`remote_listing` 那一格）。几问的回包先后不定，
+    /// 界面同一台只认代号不比已画的小的那一包。这台 · 那台从没读过 ⇒ 不上线。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
+    pub(crate) seen: Option<i64>,
 }
 
 /// 按时间看的一个段头：落在第 `at` 项之前（字是那台写好的）。
@@ -187,19 +192,24 @@ pub(crate) struct Section {
 pub struct HistoryBrowseHead {
     /// 问到的每台（先后同入参：这台在前）。
     pub(crate) machines: Vec<MachineHead>,
-    /// 几个项目 · 组里一共几个会话（按项目看时列表头那一句）。
-    pub(crate) projects: u32,
+    /// 组里一共几个会话（几个项目只进列表头那一句 `said`）。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub(crate) grouped: u64,
     /// 按时间看的段头（按项目看 ⇒ 空）。
     pub(crate) sections: Vec<Section>,
+    /// 列表头那一句（按时间 ⇒ 几个会话；按项目 ⇒ 几个项目 · 几个会话），界面照抄。
+    pub(crate) said: String,
 }
 
 /// 这一列的一项。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-#[serde(tag = "kind", rename_all = "lowercase")]
+#[serde(
+    tag = "kind",
+    rename_all = "lowercase",
+    rename_all_fields = "camelCase"
+)]
 pub enum HistoryLine {
     // 组头与那一行都装箱：两种项一样大小，一列里混排不按大的那一种占位（线上形不变）。
     /// 按项目看的组头。
@@ -213,9 +223,10 @@ pub enum HistoryLine {
         row: Box<HistoryRow>,
         child: bool,
         forks: u32,
-        #[serde(rename = "forksOpen")]
         forks_open: bool,
         orphan: bool,
+        /// 「分叉 N」那颗的字（没有分叉 ⇒ 缺），界面照抄。
+        forks_text: Option<String>,
     },
 }
 
@@ -304,13 +315,15 @@ pub(crate) async fn answer(
             let (m, tz) = (m.clone(), tz.clone());
             tokio::spawn(async move {
                 let name = m.to_string();
-                // 同步那几台先同步（没成的那一句副本表记下了）；之后一律照副本表读：成了 ⇒ 新的那份，没成 ⇒ 旧副本标旧 · 或只有那一句。
+                // 同步那几台先同步（成了换进副本表，没成的那一句副本表记下了）；之后一律照副本表读、连那一份的代号：
+                // 成了 ⇒ 新的那份，没成 ⇒ 旧副本标旧 · 或只有那一句。
                 if sync {
-                    if let Ok(l) = super::remote_listing::listing(&name, true, &tz, until).await {
-                        return (m, Got::Listing(l));
+                    if let Err(e) = super::remote_listing::listing(&name, true, &tz, until).await {
+                        tracing::debug!("history-browse: sync of {name} did not land: {}", e.said);
                     }
                 }
-                let got = match super::remote_listing::kept(&name) {
+                let (kept, seen) = super::remote_listing::kept_seen(&name);
+                let got = match kept {
                     Kept::Got(l) => Got::Listing(l),
                     Kept::Stale {
                         listing,
@@ -324,7 +337,7 @@ pub(crate) async fn answer(
                     Kept::Failed(why) => Got::Failed(why),
                     Kept::Unread => Got::Unread,
                 };
-                (m, got)
+                (m, got, seen)
             })
         })
         .collect();
@@ -337,8 +350,9 @@ pub(crate) async fn answer(
         None
     };
     let mut got: Vec<(Machine, Got)> = here.map(|g| (Machine::local(), g)).into_iter().collect();
+    let mut seens: Vec<(Machine, i64)> = Vec::new();
     for s in syncs {
-        let (m, g) = s.await.map_err(|e| {
+        let (m, g, seen) = s.await.map_err(|e| {
             Said::new(
                 "failed",
                 crate::common::said::IntoNote::into_note(Said::with_raw(
@@ -347,6 +361,9 @@ pub(crate) async fn answer(
                 )),
             )
         })?;
+        if let Some(n) = seen {
+            seens.push((m.clone(), n));
+        }
         got.push((m, g));
     }
     let shape = Shape {
@@ -358,7 +375,10 @@ pub(crate) async fn answer(
     let range = req.range;
     blocking(move || {
         let now = crate::common::time::now_ms() as i64;
-        let (machines, answered) = per_machine(got, &ask, now, &tz);
+        let (mut machines, answered) = per_machine(got, &ask, now, &tz);
+        for h in &mut machines {
+            h.seen = seens.iter().find(|(m, _)| *m == h.origin).map(|(_, n)| *n);
+        }
         let filters = serde_json::json!([ask.query, ask.by_created, ask.within_ms, ask.hidden]);
         Ok(patch_from(
             &VIEWS,
@@ -397,6 +417,7 @@ pub(crate) fn per_machine(
                     read: Read::Ok {
                         notice: head.notice.clone(),
                     },
+                    seen: None,
                 });
                 answered.push(Answered { head, rows });
             }
@@ -413,6 +434,7 @@ pub(crate) fn per_machine(
                         why,
                         at: crate::common::time::history_at_text(at_ms, now_ms, tz),
                     },
+                    seen: None,
                 });
                 answered.push(Answered { head, rows });
             }
@@ -420,11 +442,13 @@ pub(crate) fn per_machine(
                 origin: machine,
                 total: 0,
                 read: Read::Failed { why },
+                seen: None,
             }),
             Got::Unread => heads.push(MachineHead {
                 origin: machine,
                 total: 0,
                 read: Read::Unread,
+                seen: None,
             }),
         }
     }
@@ -515,6 +539,8 @@ pub(crate) fn lay(answered: &[Answered], shape: &Shape) -> Laid {
         forks: n.forks,
         forks_open: n.forks_open,
         orphan: n.orphan,
+        forks_text: (n.forks > 0)
+            .then(|| copy_core::copy_text("history.row.forks", &[("n", &n.forks.to_string())])),
     };
     let mut laid = Laid {
         lines: Vec::new(),
@@ -613,8 +639,23 @@ pub(crate) fn patch_from(
     let src = Source {
         key,
         head: HistoryBrowseHead {
+            said: match shape.by {
+                By::Time => copy_core::copy_text(
+                    "history.group.count",
+                    &[(
+                        "n",
+                        &machines.iter().map(|m| m.total).sum::<u32>().to_string(),
+                    )],
+                ),
+                By::Project => copy_core::copy_text(
+                    "history.list.countProjects",
+                    &[
+                        ("p", &laid.projects.to_string()),
+                        ("n", &laid.grouped.to_string()),
+                    ],
+                ),
+            },
             machines,
-            projects: laid.projects,
             grouped: laid.grouped,
             sections: laid.sections,
         },

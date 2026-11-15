@@ -51,6 +51,6 @@ class ChatOpenByIdTest {
             val s = ChatSession(link, link, ChatTarget.Existing("s1"), "box", backgroundScope).also { it.open() }
             runCurrent()
             assertTrue(link.calls("history-list").isEmpty())
-            assertEquals("未找到此会话的记录", s.state.value.failedWhy)
+            assertEquals(SessionFailure(null, "未找到此会话的记录", ""), s.state.value.failure)
         }
 }

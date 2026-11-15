@@ -24,6 +24,7 @@
 
 use super::testing::{self, Declared, FakeBackend};
 use super::*;
+use serde_json::Value;
 
 // 线上名只住线上类型（生产段发的也是这一份）。
 const CMD_FIND: &str = <cmd_wire::files::FindReq as cmd_wire::Call>::NAME;

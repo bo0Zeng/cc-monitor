@@ -28,7 +28,7 @@
 //! 都拿**同一个**时刻去等（`InboundClient::call_until`）—— 越往后剩得越少，没有一页会重新拿一整份。
 //! 期限的**值**暂住下面那几个常量：「期限的值归谁」待定，定了再搬。
 
-use crate::backend_route::{no_channel, route_call_error, Routed};
+use crate::backend_route::{no_channel, route_call_error};
 use crate::chan::said::machine as who;
 use crate::detail::Shell as _;
 use crate::inbound_client;
@@ -108,7 +108,7 @@ pub(crate) async fn call(
     // （那台认不认这条 · 做不做得到由本机后端连那台的客户端判、照码回）。本机后端不在 ⇒ 说的是本机没有通道。
     let Some(client) = inbound_client::local_client() else {
         // 说「谁」用同一个 [`who`]：不许把 `<local>` 这个键原样说给人看。
-        return Err(Said::from(said(no_channel(&here))).named(cmd));
+        return Err(Said::from(no_channel(&here)).named(cmd));
     };
     let at = origin.host_name();
     // 能力协商放在发之前：「本机后端太旧」是问得出答案的，不许与超时同形。
@@ -127,11 +127,11 @@ pub(crate) async fn call(
         if deadline.passed() {
             return deadline.overdue(&who).named(cmd);
         }
-        let sentence = said(route_call_error(&e, &who, |code, message| {
+        let sentence = route_call_error(&e, &who, |code, message| {
             // 码只进日志（详情里也有）。
             tracing::warn!("frame query {cmd} refused ({code}): {message}");
             crate::chan::said::refused(message, origin)
-        }));
+        });
         crate::detail::of_call(sentence, cmd, &e)
     })?;
     data.ok_or_else(|| Said::from(copy_core::reply_unreadable(&who)).named(cmd))
@@ -148,13 +148,6 @@ pub(crate) async fn ask<C: cmd_wire::Call>(
     let args = serde_json::to_value(req).map_err(|_| unreadable())?;
     let data = call(origin, C::NAME, args, view, deadline).await?;
     serde_json::from_value(data).map_err(|_| unreadable())
-}
-
-/// 三态里给人看的那句话。`Done` 在本族走不到（查询不产「已完成」这一档）。
-fn said(r: Routed) -> String {
-    match r {
-        Routed::NoChannel(s) | Routed::Refused(s) => s,
-    }
 }
 
 /// `history-tail` 的一问（[`tail`]）：那张图 · 怎么接 · `rows` 第一行的行号 · 第一页 · 读到头之后要存的那一份。

@@ -18,7 +18,7 @@
  *   那是 **第二刀 步 7** 的活，住 `src/frontend/shell/`（不归这里）。
  *   它们登记在下面的 `BACKEND_SIDE_DEBT` 里 —— **登记不等于判了**，写出来是为了
  *   「没提」不被读成「治好了」。
- * - **盖不到运行期才灌进来的后端字符串**：`data_paths.rs` 那条带 `sid` / `HWND` 的说明
+ * - **盖不到运行期才灌进来的后端字符串**：数据位置那几行的说明（本机后端 `footprint/data.rs` 写）
  *   （差项 4）是后端给的数据，本条扫的是**前端源码里写死的那些句子**
  *   ＋ **真渲染出来的 DOM**（而 DOM 里那部分今天是 mock 出来的）。
  * - **盖不到「文案写得好不好」**：它只认那五种**形状**。
@@ -170,8 +170,8 @@ const BACKEND_SIDE_DEBT: Readonly<Record<string, string>> = {
   // `backend_policy.rs::death_copy` / `::ledger_line` 两条**还清了**：
   //   death_copy 不再产 markdown / 论证；界面上「最后一次」接的是 `last_brief`（判定 ＋ 退出状态），
   //   账行只落日志。判据在 Rust 那侧：`backend_policy_tests.rs::what_reaches_the_settings_panel_carries_no_markdown_no_argument_no_log_format`。
-  // `data_paths.rs` 那条（条目说明里的 `sid` / `HWND`）**还清了**，
-  //   判据在 Rust 那侧：`data_paths_tests.rs::no_entry_description_speaks_our_internal_words`。
+  // 数据位置那几行的说明（`sid` / `HWND`）**还清了**，
+  //   判据在 Rust 那侧：`tests/backend/footprint/data_tests.rs::界面自己那几份的说明不说内部词`。
 };
 
 const tick = () => new Promise((r) => setTimeout(r, 0));

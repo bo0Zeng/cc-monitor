@@ -12,7 +12,7 @@ pub fn of(cmd: Option<&str>, code: &str, raw: Option<&str>) -> String {
     failure(&now(), Host::Machine(&machine()), cmd, Some(code), raw)
 }
 
-/// 一趟跑起来之后才停下的事（传输收场帧的 `failed` 那一格：没有命令级的码）：时刻 · 机器 · 命令 · 原话。
+/// 一趟跑起来之后才停下的事（拨号那一层没有命令级码的失败：测试连接 · 拨号环境交来的那几形）：时刻 · 机器 · 命令 · 原话。
 pub fn of_run(cmd: &str, raw: Option<&str>) -> String {
     failure(&now(), Host::Machine(&machine()), Some(cmd), None, raw)
 }
@@ -109,7 +109,22 @@ pub fn emit_err(cmd: &str, code: &str, said: impl Into<copy_core::said::Said>) -
     )
 }
 
-/// [`emit_err`] 交出去的那一份：那一句进 `said`，下层原话进复制详情（[`failed`] 的 `raw`）。
-pub fn failed_of(cmd: &str, code: &str, s: copy_core::said::Said) -> Failed {
-    failed(Some(cmd), code, s.said, s.raw.as_deref(), None)
+/// [`emit_err`] 交出去的那一份：那一句进 `said`，下层原话进复制详情（[`failed`] 的 `raw`）；不带 `data`。
+pub fn failed_of(cmd: &str, code: &str, mut s: copy_core::said::Said) -> Failed {
+    s.data = None;
+    failed_said(Some(cmd), code, s)
+}
+
+/// **一份 [`copy_core::said::Said`] 投成一次失败，只此一处**（帧面应答 · CLI 信封都经它）：带着别台已写好的详情（[`copy_core::said::Said::written`]，
+/// 转回那一跳带回的）⇒ 照抄，它的时刻 · 它的机器 · 命令 · 码；没有 ⇒ 按这台写一份（[`failed`]）。
+pub fn failed_said(cmd: Option<&str>, code: &str, s: copy_core::said::Said) -> Failed {
+    match s.written {
+        Some(detail) => Failed {
+            code: code.to_string(),
+            said: s.said,
+            detail,
+            data: s.data,
+        },
+        None => failed(cmd, code, s.said, s.raw.as_deref(), s.data),
+    }
 }

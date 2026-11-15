@@ -79,17 +79,14 @@ impl Rig {
 impl Facing for Rig {
     fn exec(&self, command: String) -> Fut<'_, Result<Captured, String>> {
         self.asked.lock().unwrap().push(command.clone());
-        let out = if command == deploy_contract::UNAME_CMD {
+        let out = if command == crate::UNAME_CMD {
             Captured {
                 stdout: self.uname.clone(),
                 stderr: String::new(),
                 ended: CaptureEnd::Exited { code: 0 },
             }
         } else if command
-            == deploy_contract::stamp_scan_cmd(
-                relay_route_core::BACKEND_LANDING_SHELL,
-                crate::MARKS,
-            )
+            == crate::stamp_scan_cmd(relay_route_core::BACKEND_LANDING_SHELL, crate::MARKS)
         {
             match self
                 .landing()
@@ -458,5 +455,35 @@ async fn uninstall_removes_the_landing_through_a_staged_copy() {
         copy_core::copy_matches("rsSftp.uninstall.absent", &again.said),
         "{}",
         again.said
+    );
+}
+
+/// 装完那一句只在这里算一次（桌面 `deploy-install` 应答与手机结局行同用）：那台不比这一版旧 ⇒ 计划那一句接出路；
+/// 已是这一版 · 装上了 ⇒ 各自那一句、不接出路。
+#[test]
+fn the_done_line_carries_the_way_out_only_when_kept() {
+    let plan = |action| crate::Plan {
+        key: deploy_contract::key_of("Linux", "x86_64").unwrap(),
+        expected: "p9b-mine".into(),
+        action,
+        leftovers: vec![],
+    };
+    let kept = plan(DeployAction::Keep {
+        theirs: "p9c".into(),
+        why: "w".into(),
+    });
+    assert_eq!(
+        kept.said(),
+        copy_core::copy_text("rsSftp.deploy.keptNotOlder", &[("why", "w")])
+    );
+    let skip = plan(DeployAction::Skip).said();
+    assert!(
+        copy_core::copy_matches("rsSftp.deploy.upToDate", &skip),
+        "{skip}"
+    );
+    let done = plan(DeployAction::Deploy("r".into())).said();
+    assert!(
+        copy_core::copy_matches("rsSftp.deploy.done", &done),
+        "{done}"
     );
 }

@@ -67,7 +67,7 @@ impl Review {
         self.returns.get(ws)?.get(slice)?.get(cell)
     }
 
-    /// 给一份成品（[`super::book::Book`] 出的）标上：每条要你看认可没有（`acked`）· 每片与整份的要你看数（`needCount`）·
+    /// 给一份成品（[`super::book::Book`] 出的）标上：认可过的那几条摘掉 · 每片与整份的需手动数（`needCount`）·
     /// 退回过的格此刻的状态（`returned`：[`needs::landing`]；没退回过 ⇒ `null`；顶块那一次记在片上）。
     pub fn annotate(&self, doc: &mut PlanRead) {
         let ws = doc.workspace.clone();
@@ -120,6 +120,11 @@ pub fn current(path: Option<&Path>) -> Review {
         Some(crate::common::own_state::Read::Present(r)) => r,
         _ => Review::default(),
     }
+}
+
+/// [`current`]，读 `own` 那个家里的那一份：认可写口写哪份，写完答数就读哪份。
+pub fn current_at(own: &Own) -> Review {
+    current(own.at_home(DOC.rel).ok().as_ref().map(|p| p.as_path()))
 }
 
 /// 读—改—写一次（跨进程锁里；读不懂的不覆盖）。

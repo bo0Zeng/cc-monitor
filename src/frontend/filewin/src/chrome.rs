@@ -53,7 +53,7 @@ pub enum Cmd {
     NewFile,
     Upload,
     Term,
-    /// 「选中的」那一组：照右键菜单那一张表（[`super::select::actions_for`]）做。
+    /// 「选中的」那一组：照菜单成品里的那几件做（`files-menu` 的 `groups`）。
     Act(super::select::Action),
     Across,
     Hidden,
@@ -368,14 +368,14 @@ impl FileWindow {
         }
     }
 
-    /// 地址栏里手输的那一串回车了：去那儿（要从 `/` 起头）。回值 ＝ 真的换了目录。
+    /// 地址栏里手输的那一串回车了：去那儿 —— 那一串（只去掉首尾空白）原样交那台后端列，不归一、不判绝对：
+    /// `~` 由那台展开，相对路径由那台拒、照它那一句说，列成了当前目录换成它写好的那一级。回值 ＝ 真的换了目录。
     pub fn commit_address(&mut self) -> bool {
         let Some(buf) = self.addr_edit.take() else {
             return false;
         };
-        let want = cmd_wire::bookmarks::normalize_dir(buf.trim());
-        if !want.starts_with('/') {
-            self.set_key_notice(copy_text("rsFilewinChrome.address.notAbsolute", &[]));
+        let want = buf.trim().to_string();
+        if want.is_empty() {
             return false;
         }
         let before = self.cwd.clone();
@@ -383,49 +383,40 @@ impl FileWindow {
         self.cwd != before
     }
 
-    /// 「选中的」那一件此刻能不能做：能 ⇒ `None`；不能 ⇒ 悬停说的那一句（没选中 · 这几项做不了 · 这台做不到）。
+    /// 「选中的」那一件此刻能不能做：能 ⇒ `None`；不能 ⇒ 悬停说的那一句，照成品 `acts` 里那一件读
+    /// （没选中 · 这几项做不了 · 这台做不到都是后端写好的）；成品还没回来 ⇒ 「正在查询」；与 cc-monitor 断开 ⇒ 断开那一句。
     pub fn command_blocked(&self, a: super::select::Action) -> Option<String> {
-        let rows = self.listing.rows.lock().unwrap();
-        let idx = self.selection().picked_indices(&rows);
-        if idx.is_empty() {
-            return Some(copy_text("rsFilewinChrome.command.pickFirst", &[]));
-        }
-        let picked: Vec<&super::source::Listed> = idx.iter().map(|&i| &rows[i]).collect();
-        if !super::select::actions_for(&picked).contains(&a) {
-            return Some(super::select::refusal(a, idx.len()));
-        }
-        drop(rows);
-        self.refused_here(a)
+        self.act_why(a)
+            .unwrap_or_else(|()| Some(copy_text("rsFilewinSelect.menu.asking", &[])))
     }
 
-    /// 命令栏「⋯」里「选中的」那几件：照菜单那张表（这一种选中的那几组，去掉 `skip` 那几件），每一项灰不灰问 [`Self::command_blocked`]。
-    /// 没选中 ⇒ 那几件照列、全灰（悬停「先选中一项」），位置不跳。
+    /// 命令栏「⋯」里「选中的」那几件：照成品那几组里的那几件排（去掉 `skip` 那几件），字照成品 `acts`，灰不灰问
+    /// [`Self::command_blocked`]。没选中（成品里没有一件）⇒ 那几件照列、全灰（悬停「先选中一项」），位置不跳。
     fn picked_menu_groups(
         &self,
         ctx: &egui::Context,
         skip: &[super::select::Action],
     ) -> Vec<Vec<(super::kit::MenuRow, Cmd)>> {
-        let kind = {
-            let rows = self.listing.rows.lock().unwrap();
-            let idx = self.selection().picked_indices(&rows);
-            let picked: Vec<&super::source::Listed> = idx.iter().map(|&i| &rows[i]).collect();
-            super::select::picked_kind(&picked)
-        };
-        let n = self.selection().len().max(1);
-        let groups: Vec<Vec<super::select::Action>> = if kind == super::select::Picked::Here {
-            vec![PICK_SHOWN.into_iter().chain(PICK_MORE).collect()]
-        } else {
-            super::select::menu_groups(kind, false)
-                .into_iter()
-                .map(|g| {
-                    g.into_iter()
-                        .filter_map(|it| match it {
-                            Item::Act(a) => Some(a),
-                            _ => None,
+        let groups: Vec<Vec<super::select::Action>> = {
+            let now = self.menu_now.lock().unwrap();
+            now.current()
+                .or(now.latest())
+                .map(|m| {
+                    m.groups
+                        .iter()
+                        .map(|g| {
+                            g.iter()
+                                .filter_map(|e| match e.item {
+                                    Item::Act(a) => Some(a),
+                                    _ => None,
+                                })
+                                .collect::<Vec<_>>()
                         })
-                        .collect()
+                        .filter(|g| !g.is_empty())
+                        .collect::<Vec<_>>()
                 })
-                .collect()
+                .filter(|g| !g.is_empty())
+                .unwrap_or_else(|| vec![PICK_SHOWN.into_iter().chain(PICK_MORE).collect()])
         };
         groups
             .into_iter()
@@ -436,7 +427,7 @@ impl FileWindow {
                     .map(|a| {
                         let it = Item::Act(a);
                         (
-                            super::kit::MenuRow::new(it.icon(), it.label(n, None))
+                            super::kit::MenuRow::new(it.icon(), self.act_text(a))
                                 .key(it.shortcut().map(|k| ctx.format_shortcut(&k)))
                                 .danger(it.danger())
                                 .blocked(self.command_blocked(a)),
@@ -453,8 +444,7 @@ impl FileWindow {
     pub fn command_bar_ui(&mut self, ui: &mut egui::Ui, view: ViewState) -> Option<Cmd> {
         let tier = Tier::of(ui.ctx().content_rect().width());
         let mut hit = None;
-        let n = self.selection().len();
-        let sel_label = |a: super::select::Action| a.label(n.max(1));
+        let sel_label = |a: super::select::Action| self.act_text(a);
         ui.horizontal_centered(|ui| {
             if kit::toggle(ui, ph::SIDEBAR_SIMPLE, "", view.sidebar)
                 .on_hover_text(SIDEBAR_LABEL.as_str())
@@ -506,7 +496,7 @@ impl FileWindow {
             if tier == Tier::Narrow {
                 // 窄档：终端 ｜ 选中的那几件（照菜单那张表）｜ 看法那三个开关，全收进这一颗「⋯」。
                 let mut groups: Vec<Vec<(kit::MenuRow, Cmd)>> = vec![vec![(
-                    kit::MenuRow::new(Item::Term.icon(), Item::Term.label(1, None))
+                    kit::MenuRow::new(Item::Term.icon(), TERMINAL_LABEL.to_string())
                         .blocked(term_why.clone()),
                     Cmd::Term,
                 )]];
@@ -844,18 +834,18 @@ impl WriteGate {
     }
 
     /// 断在哪一段：那台在重连 / 离线 ⇒ 那台；窗口与 monitor 之间那对管子断了 ⇒ monitor；连着 / 还没说 ⇒ `None`。
-    pub fn cut(&self) -> Option<pick_core::Cut> {
+    pub fn cut(&self) -> Option<cmd_wire::files::Cut> {
         use super::source::LinkSeen;
         match self.seen()? {
             LinkSeen::Up => None,
-            LinkSeen::Reconnecting | LinkSeen::Down => Some(pick_core::Cut::Machine),
-            LinkSeen::Severed => Some(pick_core::Cut::Monitor),
+            LinkSeen::Reconnecting | LinkSeen::Down => Some(cmd_wire::files::Cut::Machine),
+            LinkSeen::Severed => Some(cmd_wire::files::Cut::Monitor),
         }
     }
 
-    /// 🔴 此刻能不能写、不能 ⇒ 为什么（判法在 [`pick_core::write_refused`]）：菜单 · 命令栏 · 编辑页的［保存］· 关窗那一问都读这一格。
+    /// 🔴 此刻能不能写、不能 ⇒ 为什么（那一句住 [`copy_core::write_refused`]）：菜单 · 命令栏 · 编辑页的［保存］· 关窗那一问都读这一格。
     pub fn write_refused(&self) -> Option<String> {
-        pick_core::write_refused(self.cut())
+        copy_core::write_refused(self.cut())
     }
 
     /// 流上来了一格。由断转连 ⇒ 记一次「又连上了」。
@@ -995,7 +985,7 @@ impl Workspace {
                             ],
                         )
                     } else {
-                        comms_inward::chan::said::offline(&machine)
+                        copy_core::offline(&machine)
                     };
                     (text, vec![copy_text("history.list.reconnect", &[])])
                 }
@@ -1210,7 +1200,14 @@ impl Workspace {
             ui.label(egui::RichText::new(title).color(p.text2).small().strong());
             ui.add_space(2.0);
         };
-        let here_dir = cmd_wire::bookmarks::normalize_dir(&self.pane_on(f).cwd);
+        // 「家」「根」亮不亮照那台答的（`LsHead.at_home` · `up` 为空），窗口不自己归一了比。
+        let (at_home, at_root) = {
+            let l = &self.pane_on(f).listing;
+            (
+                l.at_home.load(std::sync::atomic::Ordering::SeqCst),
+                l.at_root.load(std::sync::atomic::Ordering::SeqCst),
+            )
+        };
         egui::ScrollArea::vertical()
             .auto_shrink([false; 2])
             .show(ui, |ui| {
@@ -1223,15 +1220,27 @@ impl Workspace {
                     let list = shelf.list();
                     let at = shelf.here(&cwd);
                     if list.is_empty() {
-                        ui.label(egui::RichText::new(copy_text("rsFilewinChrome.side.noBookmarks", &[])).color(p.text2).small());
-                        ui.label(egui::RichText::new(copy_text("rsFilewinChrome.side.noBookmarksHint", &[("star", ph::STAR)])).color(p.faint).small());
+                        ui.label(
+                            egui::RichText::new(copy_text("rsFilewinChrome.side.noBookmarks", &[]))
+                                .color(p.text2)
+                                .small(),
+                        );
+                        ui.label(
+                            egui::RichText::new(copy_text(
+                                "rsFilewinChrome.side.noBookmarksHint",
+                                &[("star", ph::STAR)],
+                            ))
+                            .color(p.faint)
+                            .small(),
+                        );
                     }
                     let mut drop: Option<String> = None;
                     for (i, d) in list.into_iter().enumerate() {
                         let tail = super::source::remote_basename(&d);
                         let tail = if tail.is_empty() { "/" } else { tail };
                         let here = at == Some(i);
-                        let r = side_item(ui, ph::STAR, tail, here, SideMark::None).on_hover_text(&d);
+                        let r =
+                            side_item(ui, ph::STAR, tail, here, SideMark::None).on_hover_text(&d);
                         if r.clicked() {
                             go = Some(d.clone());
                         }
@@ -1240,7 +1249,9 @@ impl Workspace {
                             egui::pos2(r.rect.right() - 14.0, r.rect.center().y),
                             egui::vec2(18.0, 18.0),
                         );
-                        if let Some(xresp) = super::kit::hover_reveal(ui, &r, xr, r.id.with("drop"), false) {
+                        if let Some(xresp) =
+                            super::kit::hover_reveal(ui, &r, xr, r.id.with("drop"), false)
+                        {
                             let xresp = xresp
                                 .on_hover_text(copy_text("rsFilewinBookmarks.bar.removeHint", &[]));
                             ui.painter().text(
@@ -1271,13 +1282,26 @@ impl Workspace {
                     HomeState::Known(h) => (SideMark::None, h.clone()),
                     HomeState::Failed(why) => {
                         tracing::warn!("filewin: home not known: {why}");
-                        (SideMark::Warn, copy_text("rsFilewinChrome.side.homeFailed", &[]))
+                        (
+                            SideMark::Warn,
+                            copy_text("rsFilewinChrome.side.homeFailed", &[]),
+                        )
                     }
                     _ => (SideMark::Busy, String::new()),
                 };
-                let here_home = matches!(&home, HomeState::Known(h) if cmd_wire::bookmarks::normalize_dir(h) == here_dir);
-                let r = side_item(ui, ph::HOUSE, &copy_text("rsFilewinChrome.side.home", &[]), here_home, mark);
-                let r = if tip.is_empty() { r } else { r.on_hover_text(&tip) };
+                let here_home = at_home;
+                let r = side_item(
+                    ui,
+                    ph::HOUSE,
+                    &copy_text("rsFilewinChrome.side.home", &[]),
+                    here_home,
+                    mark,
+                );
+                let r = if tip.is_empty() {
+                    r
+                } else {
+                    r.on_hover_text(&tip)
+                };
                 if r.clicked() {
                     match &home {
                         HomeState::Known(h) => go = Some(h.clone()),
@@ -1295,9 +1319,15 @@ impl Workspace {
                     self.home_go = false;
                     go = Some(h.clone());
                 }
-                if side_item(ui, ph::HARD_DRIVE, &copy_text("rsFilewinChrome.side.root", &[]), here_dir == "/", SideMark::None)
-                    .on_hover_text("/")
-                    .clicked()
+                if side_item(
+                    ui,
+                    ph::HARD_DRIVE,
+                    &copy_text("rsFilewinChrome.side.root", &[]),
+                    at_root,
+                    SideMark::None,
+                )
+                .on_hover_text("/")
+                .clicked()
                 {
                     go = Some("/".to_string());
                 }
@@ -1307,8 +1337,13 @@ impl Workspace {
                     ui.add_space(8.0);
                     section(ui, copy_text("rsFilewinChrome.side.otherMachines", &[]));
                     for m in others {
-                        let tip = copy_text("rsFilewinChrome.side.openOther", &[("machine", &m)]);
-                        if side_item(ui, ph::MONITOR, &m, false, SideMark::None).on_hover_text(tip).clicked() {
+                        let shown = copy_core::machine_word(&cmd_wire::Machine::named(m.as_str()));
+                        let tip =
+                            copy_text("rsFilewinChrome.side.openOther", &[("machine", &shown)]);
+                        if side_item(ui, ph::MONITOR, &shown, false, SideMark::None)
+                            .on_hover_text(tip)
+                            .clicked()
+                        {
                             open_other = Some(m);
                         }
                     }
@@ -1325,14 +1360,18 @@ impl Workspace {
         }
     }
 
-    /// 「其他机器」那一摞：开窗种子带来的机器名单，去掉这一台与本机（本机没有文件窗口）。
+    /// 「其他机器」那一摞：本机打头（本机也开文件窗口），再接开窗种子带来的机器名单；去掉这一台。
     pub fn other_machines(&self) -> Vec<String> {
         let pane = self.pane_on(0);
         let me = pane.source.label();
-        pane.machines
-            .iter()
-            .filter(|m| **m != me && m.as_str() != cmd_wire::LOCAL)
-            .cloned()
+        std::iter::once(cmd_wire::LOCAL.to_string())
+            .chain(
+                pane.machines
+                    .iter()
+                    .filter(|m| m.as_str() != cmd_wire::LOCAL)
+                    .cloned(),
+            )
+            .filter(|m| *m != me)
             .collect()
     }
 

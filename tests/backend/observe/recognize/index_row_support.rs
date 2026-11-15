@@ -9,7 +9,8 @@ pub fn index_row(kind: &str, line: &[u8], offset: u64, len: u64) -> IndexRow {
     let at = crate::agents::Line::new(&text, offset);
     let rec = crate::agents::record_face(kind)
         .and_then(|f| (f.parse)(&at).ok().flatten())
-        .and_then(|t| t.record);
+        .and_then(|t| t.record)
+        .map(|b| b.rec);
     let v = crate::observe::lines::parse(line);
     let beat = v.as_ref().and_then(|v| crate::agents::beat_of(kind, v));
     index_row_of(kind, v.as_ref(), beat.as_ref(), rec.as_ref(), offset, len)

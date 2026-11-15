@@ -67,4 +67,41 @@ class AgentsListTest {
         val only = runs.copy(groups = RunGroups(running = emptyList(), recent = listOf("a"), older = emptyList()))
         assertEquals(listOf(recent, "row:a"), shape(agentsList(only, olderOpen = false)))
     }
+
+    /**
+     * 三层：a（第一层，那台说开着）→ b（第二层，收着，汇总照那台写好的）→ c · d；e 没派过。
+     * 汇总故意不是数出来的样子：界面若自己数，这条就红。
+     */
+    private val tree =
+        SessionRuns(
+            sid = "s1",
+            runs =
+                listOf(
+                    info("a", RunState.RUNNING).copy(kids = listOf("b"), kidsText = "那台·a 底下", kidsOpen = true),
+                    info("b", RunState.DONE).copy(parent = "a", kids = listOf("c", "d"), kidsText = "那台·b 底下"),
+                    info("c", RunState.RUNNING).copy(parent = "b"),
+                    info("d", RunState.DONE).copy(parent = "b"),
+                    info("e", RunState.DONE),
+                ),
+            ended = emptyList(),
+            groups = RunGroups(running = listOf("a"), recent = listOf("e"), older = emptyList()),
+        )
+
+    private fun rows(items: List<AgentsItem>) =
+        items.filterIsInstance<AgentsItem.Row>().map {
+            "${it.info.run}@${it.depth}" + (if (it.fold) (if (it.open) "+" else "-") else "") + (it.below?.let { b -> ":$b" } ?: "")
+        }
+
+    @Test
+    fun `第一层开着、第二层收着：收着那一行写那台的汇总，第三层不出行`() {
+        assertEquals(listOf("a@0+", "b@1-:那台·b 底下", "e@0"), rows(agentsList(tree, olderOpen = false)))
+    }
+
+    @Test
+    fun `手动开合反着那台给的默认；开合只看这一份，不看下层有没有事`() {
+        assertEquals(listOf("a@0+", "b@1+", "c@2", "d@2", "e@0"), rows(agentsList(tree, olderOpen = false, flipped = setOf("b"))))
+        assertEquals(listOf("a@0-:那台·a 底下", "e@0"), rows(agentsList(tree, olderOpen = false, flipped = setOf("a"))))
+        val busy = tree.copy(runs = tree.runs.map { if (it.run == "c") it.copy(lastText = "那台·在等人") else it })
+        assertEquals(listOf("a@0+", "b@1-:那台·b 底下", "e@0"), rows(agentsList(busy, olderOpen = false)))
+    }
 }

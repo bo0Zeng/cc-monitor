@@ -35,7 +35,10 @@ vi.mock("../../../src/frontend/ui/account-reads", () => ({ fetchAccounts: async 
 import { invoke } from "@tauri-apps/api/core";
 import { TabSessionActions } from "../../../src/frontend/ui/tab-session-actions";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
-import { offerResyncRetry } from "../../../src/frontend/ui/resync";
+import { offerResyncRetry, resyncMachinesSaid } from "../../../src/frontend/ui/resync";
+import { noteMachine } from "../../../src/frontend/ui/ipc/chan-caller";
+import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 import { resync } from "../../../src/frontend/ui/control-said";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { chanArgsJson, chanReply, type ChanCallArgs } from "../../test-support/chan-fake";
@@ -65,8 +68,8 @@ const flush = () => new Promise((r) => setTimeout(r, 0));
 describe("〔RESYNC〕手动对齐", () => {
   it("★ 金样：带 sid 的请求体 == 金样那份；整机不带 sid；成品按类型用（形状由握手指纹管）", async () => {
     invokeMock.mockImplementation(async () => chanReply(golden.reply));
-    const { added, removed, retagged, caught_up: caughtUp, watchers } = golden.reply as Record<string, number>;
-    expect(await resync("devbox", golden.request.sid)).toEqual({ added, removed, retagged, caughtUp, watchers });
+    // 那一句由后端写好（`said`），界面照抄，不再拿几格计数自己拼。
+    expect(await resync("devbox", golden.request.sid)).toEqual({ said: golden.reply.said });
     await resync("devbox");
     expect(sentCalls()).toEqual([
       ["devbox", "resync", golden.request],
@@ -93,15 +96,34 @@ describe("〔RESYNC〕手动对齐", () => {
 
   it("★ 〔㉟①〕固定条记录没了 ⇒ 说一句（点名没了的那几条）、不自动摘；点那条才摘；问不到的不算", async () => {
     records.clear();
-    records.set("s-gone", false).set("s-here", true).set("s-dunno", "throw");
+    records.set("s-gone", false).set("s-gone-2", false).set("s-here", true).set("s-dunno", "throw");
     const unpinned: string[] = [];
     const actions = new TabSessionActions({
       tab: () => undefined,
     });
     const tab = (sid: string) => ({ sessionId: sid, origin: "devbox", title: sid, pinned: true }) as unknown as Tab;
-    await actions.flagPinsWithoutRecord("devbox", [tab("s-gone"), tab("s-here"), tab("s-dunno")], (sid) => unpinned.push(sid));
+    await actions.flagPinsWithoutRecord("devbox", [tab("s-gone"), tab("s-here"), tab("s-gone-2"), tab("s-dunno")], (sid) => unpinned.push(sid));
     expect([toasts.length, unpinned]).toEqual([1, []]);
+    // 点名的那几条用文案表的分隔符接（不写字面的逗号）。
+    expect(toasts[0].body).toBe(copyText("sessionState.pinGone.body", { n: 2, names: ["s-gone", "s-gone-2"].join(copyText("kit.text.sep")) }));
     toasts[0].onClick!();
-    expect(unpinned).toEqual(["s-gone"]);
+    expect(unpinned).toEqual(["s-gone", "s-gone-2"]);
+  });
+
+  it("★ 按台一行：称呼那台照它成品的名字（本机远端同一条，界面不自取「本机」）", () => {
+    noteMachine(LOCAL, { name: "这台（夹具）", offlineSaid: "" });
+    noteMachine("devbox", { name: "devbox（成品）", offlineSaid: "" });
+    const said = resyncMachinesSaid([
+      { origin: LOCAL, why: "why-a（夹具）" },
+      { origin: "devbox", why: "why-b（夹具）" },
+      { origin: "devbox", r: { said: "后端那一句（夹具）" } },
+    ]);
+    expect(said).toBe(
+      [
+        copyText("resync.machines.failed", { machine: "这台（夹具）", why: "why-a（夹具）" }),
+        copyText("resync.machines.failed", { machine: "devbox（成品）", why: "why-b（夹具）" }),
+        copyText("kit.text.machineSaid", { machine: "devbox（成品）", said: "后端那一句（夹具）" }),
+      ].join("\n"),
+    );
   });
 });

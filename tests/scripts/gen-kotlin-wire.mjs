@@ -191,7 +191,7 @@ function phoneCommands() {
 
 // ───────────────────── Rust 字段的格宽 ─────────────────────
 
-/** 仓里 `src/common` · `src/backend` 底下每一份 Rust 源的格宽（见 [rustFieldWidths]）。 */
+/** 仓里 `src/common` · `src/backend` · 手机核心 `src/mobile/core-rs/rust` 底下每一份 Rust 源的格宽（见 [rustFieldWidths]）。 */
 export function rustFloatFields() {
   const texts = [];
   const walk = (d) => {
@@ -203,6 +203,7 @@ export function rustFloatFields() {
   };
   walk(join(ROOT, "src/common"));
   walk(join(ROOT, "src/backend"));
+  walk(join(ROOT, "src/mobile/core-rs/rust"));
   return rustFieldWidths(texts);
 }
 
@@ -655,9 +656,33 @@ const esc = (s) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\$/g, 
 /** 线上带格式约束、TS 里只是 string 的格 ⇒ 夹具里填一个合格的值（Rust 那头解的时候核）。 */
 const FORMATS = { b16: "6869", sha256: "0".repeat(64) };
 
-/** 一份结构夹具：每格都填（可空的填非空、可缺的也给），并集取第一形，数组 · 键集合各一项。 */
-function sample(t, decls, floats, owner, field, depth = 0, env = {}) {
-  if (depth > 40) return null;
+/**
+ * 截断往外交的记号（见 [sample]），由外面那一格决定怎么接。`fallback`：外面那一格是必有的、只好落下时给它的值；`undefined` ⇒ 没有，再往外。
+ * `null` ⇒ 截断落在一个可空的位置上（并集带 null）：外面是数组 · 键集合的元素就照放 null。
+ * `[]` · `{}` ⇒ 容器自己兜底的：只给必有的格，不往别的容器里塞。
+ */
+class Cut {
+  constructor(fallback) {
+    this.fallback = fallback;
+  }
+}
+
+/** 一个声明自己的末端（截断落在它身上时给的值）：数组 `[]` · 键集合 `{}` · 可空 null；经别名照它指的那一份；别的形没有（`undefined`）。 */
+export function endOf(t, decls, seen = new Set()) {
+  if (t.k === "array") return [];
+  if (t.k === "map") return {};
+  if (t.k === "union" && t.alts.some((a) => a.k === "prim" && a.v === "null")) return null;
+  if (t.k === "ref" && !seen.has(t.name) && decls.get(t.name)) return endOf(decls.get(t.name).ty, decls, new Set([...seen, t.name]));
+  return undefined;
+}
+
+/**
+ * 一份结构夹具：每格都填（可空的填非空、可缺的也给），并集取第一形，数组 · 键集合各一项。
+ * 递归 / 自引用的类型只往里套一层：同一个类型（名 ＋ 代换后的实参）在一条路径上已有两层、要套第三层时截断 ——
+ * 那个声明自己有末端（[endOf]）⇒ 就给它；没有 ⇒ 出 [Cut] 往外交，由外面最近一格接：可缺的格不给 · 并集换一形不回头的 ·
+ * 数组 · 键集合的元素截在可空的位置上给 null · 必有的格（连元组每一项）落成 [Cut.fallback]；都接不住 ⇒ 到顶上报错。
+ */
+function sample(t, decls, floats, owner, field, env, stack) {
   switch (t.k) {
     case "prim":
       // 线上带格式约束、TS 里只是 string 的那几格（[FORMATS]）。
@@ -669,26 +694,63 @@ function sample(t, decls, floats, owner, field, depth = 0, env = {}) {
     case "lit": return t.v;
     case "boollit": return t.v;
     case "numlit": return Number(t.v);
-    case "array": return [sample(t.of, decls, floats, owner, field, depth + 1, env)];
-    case "map": return { k: sample(t.of, decls, floats, owner, field, depth + 1, env) };
-    case "tuple": return t.items.map((x, i) => sample(x, decls, floats, owner, `p${i}`, depth + 1, env));
+    case "array": {
+      const x = sample(t.of, decls, floats, owner, field, env, stack);
+      if (!(x instanceof Cut)) return [x];
+      return x.fallback === null ? [null] : new Cut([]);
+    }
+    case "map": {
+      const x = sample(t.of, decls, floats, owner, field, env, stack);
+      if (!(x instanceof Cut)) return { k: x };
+      return x.fallback === null ? { k: null } : new Cut({});
+    }
+    case "tuple": {
+      // 元组的每一项都是必有的格：照对象的必有格接。
+      const xs = t.items.map((x, i) => sample(x, decls, floats, owner, `p${i}`, env, stack));
+      if (xs.some((x) => x instanceof Cut && x.fallback === undefined)) return new Cut();
+      return xs.map((x) => (x instanceof Cut ? x.fallback : x));
+    }
     case "union": {
       const alts = t.alts.filter((a) => !(a.k === "prim" && a.v === "null"));
-      return sample(alts[0], decls, floats, owner, field, depth + 1, env);
+      const cuts = [];
+      for (const a of alts) {
+        const x = sample(a, decls, floats, owner, field, env, stack);
+        if (!(x instanceof Cut)) return x;
+        cuts.push(x);
+      }
+      // 都截断了：这一层带 null，或哪一形截在可空的位置上（可空藏在别名里）⇒ 可空；否则交容器兜底的那一个。
+      if (alts.length < t.alts.length || cuts.some((c) => c.fallback === null)) return new Cut(null);
+      return cuts.find((c) => c.fallback !== undefined) ?? new Cut();
     }
     case "obj": {
       const o = {};
-      for (const f of t.fields) o[f.key] = sample(f.ty, decls, floats, owner, f.key, depth + 1, env);
+      for (const f of t.fields) {
+        const x = sample(f.ty, decls, floats, owner, f.key, env, stack);
+        if (!(x instanceof Cut)) o[f.key] = x;
+        else if (f.opt) continue;
+        else if (x.fallback !== undefined) o[f.key] = x.fallback;
+        else return new Cut();
+      }
       return o;
     }
-    case "inter": return Object.assign({}, ...t.parts.map((p) => sample(p, decls, floats, owner, field, depth + 1, env)));
+    case "inter": {
+      const parts = t.parts.map((p) => sample(p, decls, floats, owner, field, env, stack));
+      if (parts.some((x) => x instanceof Cut && x.fallback === undefined)) return new Cut();
+      return Object.assign({}, ...parts.map((x) => (x instanceof Cut ? x.fallback : x)));
+    }
     case "ref": {
-      if (env[t.name]) return sample(env[t.name], decls, floats, owner, field, depth + 1, {});
+      if (env[t.name]) return sample(env[t.name], decls, floats, owner, field, {}, stack);
       const d = decls.get(t.name);
       if (!d) return {};
       const e = {};
       d.params.forEach((p, i) => { const a = t.args[i]; e[p] = a && a.k === "ref" && env[a.name] ? env[a.name] : a; });
-      return sample(d.ty, decls, floats, t.name, field, depth + 1, e);
+      // 同一个类型 ＝ 名 ＋ 代换后的实参：`W<W<string>>` 里的两个 W 不算一个，不截。
+      const key = `${t.name}<${JSON.stringify(d.params.map((p) => e[p]))}>`;
+      if (stack.filter((n) => n === key).length >= 2) {
+        const end = endOf(d.ty, decls);
+        return end === undefined ? new Cut() : end;
+      }
+      return sample(d.ty, decls, floats, t.name, field, e, [...stack, key]);
     }
     default: return null;
   }
@@ -1029,17 +1091,38 @@ export function localConst(text) {
   return `/** 本机那台的机器键（\`cmd_wire::machine::LOCAL\`）。 */\nconst val LOCAL: String = "${esc(JSON.parse(m[1]))}"\n`;
 }
 
+/** 一个类型的结构夹具（`--samples` 出的那一形）；`floats`：类型名 ⇒ 它在 Rust 侧是浮点的那几格（[rustFloatFields]）。 */
+export function sampleOf(t, decls, floats) {
+  const x = sample(t, decls, floats, "", "", {}, []);
+  const v = x instanceof Cut ? x.fallback : x;
+  if (v === undefined) throw new Error(`${t.k === "ref" ? t.name : JSON.stringify(t)} 的结构夹具截不断：必有的格只能回到自己，出不了可解的末端`);
+  return v;
+}
+
+/** 仓里导出的声明 ＋ 手机那张表里每条命令的回包类型与结构夹具（`--samples` 印的就是 `replies` 里的夹具）。 */
+export function replySamples() {
+  const decls = loadDecls();
+  const cmds = loadCommands();
+  const floats = rustFloatFields();
+  const replies = new Map();
+  for (const c of phoneCommands()) {
+    const reply = cmds.get(c).reply;
+    replies.set(c, { reply, sample: sampleOf(reply, decls, floats) });
+  }
+  return { decls, replies };
+}
+
 function main() {
+  if (process.argv.includes("--samples")) {
+    const out = {};
+    for (const [c, { sample: v }] of replySamples().replies) out[c] = v;
+    process.stdout.write(JSON.stringify(out, null, 2) + "\n");
+    return;
+  }
   const decls = loadDecls();
   const cmds = loadCommands();
   const floats = rustFloatFields();
   const phone = phoneCommands();
-  if (process.argv.includes("--samples")) {
-    const out = {};
-    for (const c of phone) out[c] = sample(cmds.get(c).reply, decls, floats, "", "");
-    process.stdout.write(JSON.stringify(out, null, 2) + "\n");
-    return;
-  }
   const g = emitAll(decls, floats);
   const table = [];
   for (const c of phone) {

@@ -29,6 +29,15 @@ pub struct Facts {
     /// 伪终端里那个子进程。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub child_pid: Option<u32>,
+    /// 里面那个 ccm 起 agent 的那一跳（`control::ccm` 起好那一刻经托管口 `hop` 交来，只这一处写）：POSIX 就地 exec，就是子进程自己；
+    /// Windows 是 ccm 起的子进程（原生 `claude.exe` 就是会话进程；`claude.cmd` · `.ps1` 是 `cmd.exe` · PowerShell，会话进程是它的子进程）。
+    /// 读不到终端那一样的平台照它认前台（`host::managed` 的 `seat_in`）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hop_pid: Option<u32>,
+    /// 那一跳是 ccm 起它时就知道的「包一层」（`cmd.exe /c` 起 `.cmd` · `.bat`、`powershell -File` 起 `.ps1`，`platform::shell::launch_wraps`）：
+    /// 那一层只跑这一条命令，它的直接子进程就是 agent。与 `hop_pid` 同一帧写。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hop_wrapped: bool,
     pub cwd: String,
     /// 哪一家（`claude` · `codex` …；起的时候 ccm 交来，后端 `tag` 可改）。
     #[serde(default)]
@@ -57,8 +66,8 @@ pub fn id_ok(id: &str) -> bool {
         && !id.starts_with('.')
 }
 
-/// `hosts/` 那一层。
-pub(crate) fn hosts_dir(own: &Own) -> Result<OwnPath, Said> {
+/// `hosts/` 那一层（观测侧盯它底下各家的 `facts.json`）。
+pub fn hosts_dir(own: &Own) -> Result<OwnPath, Said> {
     own.path(HOSTS)
 }
 

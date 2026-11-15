@@ -246,7 +246,12 @@ impl super::super::TapPort for NoTap {
 
 /// 起一个中转（监听回环），上游是 `https://localhost:<假上游端口>`；开 TCP 那一口一律连回环上的假上游。
 fn spawn_pool_relay(stub_port: u16) -> SocketAddr {
-    let base = Base::parse(&format!("https://localhost:{stub_port}")).expect("base");
+    let base = Base {
+        tls: true,
+        host: "localhost".to_string(),
+        port: stub_port,
+        path: String::new(),
+    };
     let open: Arc<OpenFor> = Arc::new(move |_from, _h, _p, _d| {
         TcpStream::connect(SocketAddr::new(LOOPBACK, stub_port)).map(|tcp| upstream::Opened {
             tcp,

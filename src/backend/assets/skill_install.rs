@@ -62,20 +62,107 @@ fn name_ok(name: &str) -> Result<String, crate::common::said::Said> {
     Ok(name.to_string())
 }
 
-/// skill 的根与目录：`project` 给了 ⇒ 那个项目里的（项目目录须是这台上的绝对路径）；没给 ⇒ 用户级。
-fn skill_dir(
+/// 问 skill 的那一下是哪一家的哪个根（全仓取 skill 根只此一处：读 · 判 · 装记录 · 卸 · cc-bus 都经它）：`agent` 缺 ⇒ 默认那一家；
+/// `project` 给了 ⇒ 那个项目里的，没给 ⇒ 用户级。指名的家认不出 / 没有资产面 ⇒ `bad_args`（不退回默认那一家）；
+/// 说不出根 ⇒ `Ok(None)`（调用方各说各的那一句）。
+pub(crate) fn skill_root_among(
+    registry: &[crate::agents::Adapter],
+    agent: Option<&str>,
+    project: Option<&Path>,
+) -> Result<Option<PathBuf>, crate::common::said::Said> {
+    Ok(family_among(registry, agent)?
+        .and_then(|kind| crate::agents::skill_root_among(registry, kind, project)))
+}
+
+/// 问资产的那一下是哪一家：`agent` 缺 ⇒ 默认那一家（说不出 ⇒ `Ok(None)`）；指名的家认不出 / 没有资产面 ⇒ `bad_args`。
+pub(crate) fn family_among(
+    registry: &[crate::agents::Adapter],
+    agent: Option<&str>,
+) -> Result<Option<&'static str>, crate::common::said::Said> {
+    let kind = match agent {
+        Some(a) => crate::agents::asset_kinds_among(registry)
+            .into_iter()
+            .find(|k| *k == a),
+        None => crate::agents::asset_default_among(registry),
+    };
+    match (kind, agent) {
+        (None, Some(a)) => Err(crate::wire::spec::fail(
+            "bad_args",
+            crate::common::contract::malformed(&format!(
+                "`agent` {a:?} has no skills on this machine"
+            )),
+        )),
+        (kind, _) => Ok(kind),
+    }
+}
+
+/// 请求里的家规整一次（枢纽 · 卸 · 备注的入口都先过它，之后只用规整后的家）：缺 · 指名默认那一家 ⇒ 缺；
+/// 别的家 ⇒ 它；认不出 / 没有资产面 ⇒ `bad_args`。「默认那一家记成缺」照 [`crate::agents::family_tag`]。
+pub(crate) fn family_of(
+    registry: &[crate::agents::Adapter],
+    agent: Option<&cmd_wire::AgentKind>,
+) -> Result<Option<cmd_wire::AgentKind>, crate::common::said::Said> {
+    let default = crate::agents::asset_default_among(registry);
+    Ok(family_among(registry, agent.map(|a| a.as_str()))?
+        .and_then(|kind| crate::agents::family_tag(kind, default)))
+}
+
+/// 一趟读 / 判在哪找根：认家的注册表（生产 = `agents::REGISTRY`）＋ 用户级根的覆盖（判据交临时目录；生产 `None` ⇒ 照家现算）。
+#[derive(Clone, Copy)]
+pub(crate) struct Roots<'a> {
+    pub registry: &'a [crate::agents::Adapter],
+    pub user: Option<&'a Path>,
+}
+
+impl Roots<'_> {
+    /// 这台生产那一份。
+    pub(crate) const HERE: Roots<'static> = Roots {
+        registry: crate::agents::REGISTRY,
+        user: None,
+    };
+}
+
+#[cfg(test)]
+impl<'a> Roots<'a> {
+    /// 判据用：生产那张注册表 ＋ 用户级根换成给定的那一个（临时目录）。
+    pub(crate) fn here_with(user: Option<&'a Path>) -> Roots<'a> {
+        Roots {
+            registry: crate::agents::REGISTRY,
+            user,
+        }
+    }
+}
+
+/// 一趟要的那个 skill 根：`agent` 那一家的（缺 = 默认那一家）；`project` 给了 ⇒ 那个项目里的（项目目录须是这台上的绝对路径），
+/// 没给 ⇒ 用户级（有覆盖 ⇒ 覆盖那一个，指名的家照样先认）。读 · 判 · 装记录都经它（装记录记下的目录与 plan 答的 `dir` 同一个根）。
+pub(crate) fn skill_root_of(
+    roots: Roots<'_>,
+    agent: Option<&str>,
     project: Option<&str>,
-    name: &str,
-) -> Result<(PathBuf, PathBuf), crate::common::said::Said> {
+) -> Result<Option<PathBuf>, crate::common::said::Said> {
     let project = project
         .map(crate::assets::mcp_edit::project_root)
         .transpose()?;
-    let root = crate::agents::asset_kind()
-        .and_then(|k| crate::agents::skill_root_at(k, project.as_deref().map(Path::new)))
-        .ok_or(crate::common::said::Said::new(
-            "io_failed",
-            copy_text("beSkillInstall.read.noRoot", &[]),
-        ))?;
+    match (project, roots.user) {
+        (None, Some(r)) => {
+            family_among(roots.registry, agent)?;
+            Ok(Some(r.to_path_buf()))
+        }
+        (p, _) => skill_root_among(roots.registry, agent, p.as_deref().map(Path::new)),
+    }
+}
+
+/// skill 的根与目录（[`skill_root_of`] ＋ 名字）；说不出根 ⇒ `io_failed`。
+fn skill_dir(
+    roots: Roots<'_>,
+    agent: Option<&str>,
+    project: Option<&str>,
+    name: &str,
+) -> Result<(PathBuf, PathBuf), crate::common::said::Said> {
+    let root = skill_root_of(roots, agent, project)?.ok_or(crate::common::said::Said::new(
+        "io_failed",
+        copy_text("beSkillInstall.read.noRoot", &[]),
+    ))?;
     let dir = root.join(name);
     Ok((root, dir))
 }
@@ -155,19 +242,16 @@ fn walk(dir: &Path) -> Result<Walked, crate::common::said::Said> {
 
 /// `skill-read`：来源那台上这个 skill 的全部文件。
 pub(crate) fn answer_read(req: &SkillReadReq) -> Result<SkillRead, crate::common::said::Said> {
-    answer_read_at(None, req)
+    answer_read_at(Roots::HERE, req)
 }
 
-/// [`answer_read`] 的本体：skill 根可喂（判据拿临时目录喂）。
+/// [`answer_read`] 的本体：认家的注册表与用户级根都可喂（判据拿替身家 · 临时目录喂）。
 pub(crate) fn answer_read_at(
-    root: Option<&Path>,
+    roots: Roots<'_>,
     req: &SkillReadReq,
 ) -> Result<SkillRead, crate::common::said::Said> {
     let name = name_ok(&req.name)?;
-    let (root, dir) = match root {
-        Some(r) => (r.to_path_buf(), r.join(&name)),
-        None => skill_dir(req.project.as_deref(), &name)?,
-    };
+    let (root, dir) = skill_dir(roots, req.agent.as_deref(), req.project.as_deref(), &name)?;
     if !Ro::metadata(&dir).is_ok_and(|m| m.is_dir()) {
         return Err(crate::wire::spec::fail(
             "not_found",
@@ -336,20 +420,17 @@ fn source_arg(
 
 /// 帧面入口。
 pub(crate) fn answer_plan(req: &SkillPlanReq) -> Result<SkillPlan, crate::common::said::Said> {
-    answer_plan_with(&mcp_sync::Live::from_env(), None, req)
+    answer_plan_with(&mcp_sync::Live::from_env(), Roots::HERE, req)
 }
 
-/// [`answer_plan`] 的本体：事实与 skill 根都可喂（判据拿临时目录喂，不改进程环境）。
+/// [`answer_plan`] 的本体：事实 · 认家的注册表 · 用户级根都可喂（判据拿替身家 · 临时目录喂，不改进程环境）。
 pub(crate) fn answer_plan_with(
     facts: &dyn Facts,
-    root: Option<&Path>,
+    roots: Roots<'_>,
     req: &SkillPlanReq,
 ) -> Result<SkillPlan, crate::common::said::Said> {
     let name = name_ok(&req.name)?;
-    let (root, dir) = match root {
-        Some(r) => (r.to_path_buf(), r.join(&name)),
-        None => skill_dir(req.project.as_deref(), &name)?,
-    };
+    let (root, dir) = skill_dir(roots, req.agent.as_deref(), req.project.as_deref(), &name)?;
     let source = source_arg(&req.source)?;
     let set = |v: &Option<Vec<String>>| {
         v.as_ref()

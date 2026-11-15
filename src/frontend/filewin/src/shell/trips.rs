@@ -1,108 +1,28 @@
-//! 起一趟、收一趟：拖入上传 · 复制为 · 一组（复制到另一栏 · 删除 · 改权限）· 解压 · 往外拖 · 算大小。
+//! 起一趟、收一趟：上传 · 复制为 · 一组（复制到另一栏 · 删除 · 改权限 · 下载）· 解压 · 算大小。
 //! 每一趟是「进度」表里一行（[`crate::progress`]），结局只在那一行判一次；这个标签页只记号、照那一个结局收场（[`FileWindow::settle_trips`]）。
 
 use super::*;
 
 impl FileWindow {
-    /// 拖进来的那几个本机文件 → 待传清单（**目标目录 = 当前目录**）。
-    ///
-    /// 🔴 **这里没有「是不是远端」那道闸，而那是对的。** 「窗口看着本机时把本机文件拖进本机」
-    /// 这个状态**写不出来**：`Source` 是 newtype，只可能是一台远端（理由住 `crate::source::Source` 头注）。
-    pub fn pending_for(&self, local_paths: &[String]) -> Vec<Pending> {
-        local_paths
-            .iter()
-            .filter_map(|p| Pending::into_remote_dir(p, &self.cwd))
-            .collect()
-    }
-
-    /// 起一趟上传：整组一条开单（同名由后端在落点那台探，有同名冲突框问一次），开了单的并行传（[`crate::transfer::run_drop`]）。
-    /// 接不上（**没运行时**）要**出声**，判据见 `shell_tests`。
-    pub fn start_drop(&mut self, items: Vec<Pending>, ctx: Option<egui::Context>) -> bool {
-        if items.is_empty() {
-            return false;
-        }
-        // 有损目录里也传：暂存区那一段与目录无关，探在不在与提交按目录的字节寻址（此前 W5-FILES 在这里出声拒）。
-        let items: Vec<Pending> = items
-            .into_iter()
-            .map(|p| Pending {
-                remote_dir_raw: self.cwd_raw.clone(),
-                ..p
-            })
-            .collect();
-        self.start_drop_items(items, ctx)
-    }
-
-    /// 同 [`Self::start_drop`]，只是这一摞的目标目录照它们自己带着的（「进度」表上「重试失败的」「继续」走这里）。
-    pub fn start_drop_items(&mut self, items: Vec<Pending>, ctx: Option<egui::Context>) -> bool {
-        if items.is_empty() {
-            return false;
-        }
-        let Some(h) = self.rt.clone() else {
-            *self.say_slot() = Some(copy_text("rsFilewinShell.upload.noRuntime", &[]).into());
+    /// 拖进来（选到）的那几个本机文件 ⇒ 一组上传到当前目录：一条寻址本机的 `transfer-copy`（[`crate::transfer::upload_plan`]），
+    /// 同名由本机后端在落点那台探、冲突框问一次。有损目录里也传（落点按目录的字节）。
+    /// 一份能放的都没有（拿不到末段名）· 接不上（**没运行时** · 没通道）⇒ 不起、后者出声。
+    pub fn start_drop(&mut self, local_paths: &[String], ctx: Option<egui::Context>) -> bool {
+        let Some(plan) = crate::transfer::upload_plan(
+            &self.source.origin(),
+            self.source.label(),
+            local_paths,
+            &self.cwd,
+            self.cwd_raw.as_deref(),
+        ) else {
             return false;
         };
-        let Some(line) = self.line.clone() else {
-            *self.say_slot() = Some(NO_LINE.to_string().into());
-            return false;
-        };
-        let origin = self.source.origin();
-        // 🔴一摞一块新看板（「进度」表里独立的一行）：上一摞还在飞也不碍事、互不清掉。
-        //    新看板的取消台是新的 ⇒ 上一摞按过的取消拦不下这一摞。
-        let board = self.board.fresh_like();
-        self.board = board.clone();
-        // 🔴 **把窗口交给看板**，它自己会在「进度动了 / 跑完了」时敲一下。
-        board.attach(ctx.clone());
-        let dir = crate::source::parent_dir(&items[0].remote_path);
-        // 开单那一问（同名冲突框挂在这个标签页上，与复制 · 下载同一个框）。
-        let ask = crate::batch::BatchBoard::new(batch_core::Plan {
-            verb: batch_core::Verb::Upload,
-            cmd: crate::transfer::CMD_UPLOAD,
-            args: serde_json::to_value(crate::transfer::group_ask(&items, None, None))
-                .unwrap_or_default(),
-            names: items.iter().map(|p| p.name.clone()).collect(),
-            into: Some(dir.clone()),
-            machine: self.source.label(),
-        });
-        ask.attach(ctx);
-        self.adopt_trip(
-            crate::progress::Trip::Upload {
-                board: board.clone(),
-                items: items.clone(),
-                dir: crate::source::remote_basename(&dir).to_string(),
-                ask: ask.clone(),
-            },
-            Some(dir),
-            None,
-        );
-        h.spawn(async move {
-            let (up_line, up_origin) = (line.clone(), origin.clone());
-            let up_board = board.clone();
-            let open_board = board.clone();
-            let out = crate::transfer::run_drop(
-                items,
-                crate::transfer::lanes(),
-                move || async move {
-                    crate::transfer::open_group(&line, &origin, &ask, &open_board).await
-                },
-                move |t| {
-                    let (line, origin) = (up_line.clone(), up_origin.clone());
-                    let b = up_board.clone();
-                    // 🔴**取消那道闸在这儿**：按过取消之后，还没起的那几件一件都不起
-                    //   （键由那道闸造并登记，理由住 `launch_unless_cancelled`）。
-                    async move {
-                        let desk = b.cancels();
-                        let name = t.item.name.clone();
-                        crate::transfer::launch_unless_cancelled(&desk, &name, |_id| async move {
-                            crate::transfer::upload_remote(&line, &origin, &t, &b).await
-                        })
-                        .await
-                    }
-                },
-            )
-            .await;
-            board.finish(out);
-        });
-        true
+        self.start_batch(
+            plan,
+            crate::source::Origin::local(),
+            egui_phosphor::regular::UPLOAD_SIMPLE,
+            ctx,
+        )
     }
 
     /// 把这一帧 egui 收到的拖入文件接走。
@@ -128,8 +48,10 @@ impl FileWindow {
         if dropped.is_empty() {
             return;
         }
-        let items = self.pending_for(&dropped);
-        if items.is_empty() {
+        if dropped
+            .iter()
+            .all(|p| std::path::Path::new(p).file_name().is_none())
+        {
             *self.listing.error.lock().unwrap() = Some(
                 copy_text(
                     "rsFilewinShell.drop.noNames",
@@ -139,7 +61,7 @@ impl FileWindow {
             );
             return;
         }
-        self.start_drop(items, Some(ctx.clone()));
+        self.start_drop(&dropped, Some(ctx.clone()));
     }
 
     /// 开一趟：「进度」表里一行，记进这个标签页起的那几趟（收场由 [`Self::settle_trips`] 照它的结局做）。回那一行的号。
@@ -204,9 +126,7 @@ impl FileWindow {
 
     /// 摆出「把第 `i` 行复制成什么名字」那个框。回值 = 真的摆出来了。
     ///
-    /// ⚠ **这里只剩一道闸了，如实记**：`pick_core::Pick::copyable` —— 名字寻址不到的
-    /// 一律不接。列表上那两档压根不画那颗按钮，这里是第二道，防的是
-    /// 「按钮没了、调用还在」（那正是死值验刀 2 那一形）。
+    /// 能不能复制只经 [`Self::perform`] 进来时判过了（本机后端 `files-menu` 成品里「复制」那一件）。
     ///
     /// 🔴 **没有「远端才有」那道闸**：`copy-data` 是 SFTP 协议的扩展，而窗口**只可能**看着一台远端
     /// （`Source` 是 newtype）⇒ 本机源这个状态写不出来。
@@ -215,7 +135,7 @@ impl FileWindow {
         let row = {
             let rows = self.listing.rows.lock().unwrap();
             match rows.get(i) {
-                Some(r) if r.pick().copyable() => r.clone(),
+                Some(r) => r.clone(),
                 _ => return false,
             }
         };
@@ -294,6 +214,8 @@ impl FileWindow {
             *self.say_slot() = Some(NO_LINE.to_string().into());
             return false;
         };
+        // 落在这一台当前目录上的 ⇒ 落地后重列它；下载落在本机，这一栏不用重列。
+        let dir = (plan.verb != batch_core::Verb::Download).then(|| self.cwd.clone());
         let board = crate::batch::BatchBoard::new(plan);
         board.attach(ctx);
         self.adopt_trip(
@@ -301,7 +223,7 @@ impl FileWindow {
                 board: board.clone(),
                 icon,
             },
-            Some(self.cwd.clone()),
+            dir,
             None,
         );
         crate::batch::spawn(&h, line, self.source.origin(), home, board);
@@ -411,13 +333,13 @@ impl FileWindow {
         use crate::picker::{PickKind, Purpose};
         let kind = match purpose {
             Purpose::Upload => PickKind::OpenFiles,
-            // 建议名按本机平台改成合法的（Windows 不认的字换成 `_`），落在系统的「下载」文件夹。
             Purpose::DownloadMany => PickKind::Folder,
+            // 建议名是那一项显示的名字（没改它 ⇒ 落名由本机后端照源那一段定，落本机那一段改成这台认的合法名）。
             Purpose::Download => PickKind::SaveFile {
                 suggested_name: self
                     .pull_want
                     .as_ref()
-                    .map(|(_, n)| crate::download::local_name(n, crate::platform::WINDOWS_NAMES))
+                    .map(|(_, n)| n.clone())
                     .unwrap_or_default(),
             },
         };
@@ -449,8 +371,7 @@ impl FileWindow {
                     .map(|p| p.to_string_lossy().to_string())
                     .collect();
                 if !paths.is_empty() {
-                    let items = self.pending_for(&paths);
-                    self.start_drop(items, ctx);
+                    self.start_drop(&paths, ctx);
                 }
             }
             Purpose::DownloadMany => match picked.and_then(|v| v.into_iter().next()) {
@@ -461,84 +382,44 @@ impl FileWindow {
             },
             Purpose::Download => {
                 let want = self.pull_want.take();
-                match (want, picked.and_then(|v| v.into_iter().next())) {
-                    (Some((src, _)), Some(dest)) => {
-                        self.start_pull(&src, &dest.to_string_lossy(), true, ctx);
-                    }
-                    _ => self.pull_raw = None,
+                if let (Some((src, shown)), Some(dest)) =
+                    (want, picked.and_then(|v| v.into_iter().next()))
+                {
+                    self.start_pull(src, &shown, &dest.to_string_lossy(), ctx);
                 }
             }
         }
         true
     }
 
-    /// 下载多项：先选一个本机目录（系统的选目录框），选好了一组一条（[`crate::download::pull_many`]）。只收文件（菜单那张表管）。
+    /// 下载多项：先选一个本机目录（系统的选目录框），选好了一组一条（[`crate::download::many_plan`]）。
+    /// 只收文件：只经 [`Self::perform`] 进来，那里照 `files-menu` 成品判过了。
     pub fn begin_pull_many(&mut self, idx: &[usize]) -> bool {
         let rows: Vec<Listed> = {
             let all = self.listing.rows.lock().unwrap();
             idx.iter().filter_map(|&i| all.get(i).cloned()).collect()
         };
-        if rows.is_empty() || rows.iter().any(|r| !r.pick().downloadable()) {
-            self.key_notice = Some(select::refusal(Action::Download, rows.len()));
+        if rows.is_empty() {
             return false;
         }
         self.pull_many = rows;
         self.start_pick(crate::picker::Purpose::DownloadMany, None)
     }
 
-    /// 选好了本机目录 ⇒ 起那一组。
+    /// 选好了本机目录 ⇒ 起那一组（这一台 → 本机，同名问）。
     pub fn start_pull_many(&mut self, dir: &str, ctx: Option<egui::Context>) -> bool {
         let rows = std::mem::take(&mut self.pull_many);
-        let Some(h) = self.rt.clone() else {
-            *self.say_slot() = Some(copy_text("rsFilewinShell.pull.noRuntime", &[]).into());
-            return false;
-        };
-        let Some(line) = self.line.clone() else {
-            *self.say_slot() = Some(NO_LINE.to_string().into());
-            return false;
-        };
-        let ask = cmd_wire::transfer::TransferDownloadAsk {
-            items: rows
-                .iter()
-                .map(|r| cmd_wire::transfer::DownloadItem {
-                    remote_path: r.path.clone(),
-                    name: Some(cmd_wire::files::WirePath(name_bytes(r))),
-                })
-                .collect(),
-            local_dir: cmd_wire::files::WirePath::from(dir),
-            on_exists: None,
-            decide: None,
-        };
-        let board = crate::batch::BatchBoard::new(batch_core::Plan {
-            verb: batch_core::Verb::Download,
-            cmd: crate::batch::CMD_DOWNLOAD,
-            args: serde_json::to_value(&ask).unwrap_or_default(),
-            names: rows.iter().map(|r| r.name.clone()).collect(),
-            into: Some(dir.to_string()),
-            machine: self.source.label(),
-        });
-        board.attach(ctx);
-        // 开单那一问也是「进度」表里一行（开成了 ⇒ 开了单的每一项各一行，这一行拿掉；开不成 ⇒ 这一行说没成）。
-        self.adopt_trip(
-            crate::progress::Trip::Batch {
-                board: board.clone(),
-                icon: egui_phosphor::regular::DOWNLOAD_SIMPLE,
-            },
-            None,
-            None,
-        );
-        let srcs = rows
+        let rows: Vec<(cmd_wire::files::WirePath, String)> = rows
             .iter()
-            .map(|r| (r.path.clone(), r.name.clone()))
+            .map(|r| (self.row_path(r).path(), r.name.clone()))
             .collect();
-        h.spawn(crate::download::pull_many(
-            line,
-            self.source.origin(),
-            board,
-            self.progress.clone(),
-            srcs,
-        ));
-        true
+        let plan = crate::download::many_plan(&self.source.origin(), rows, dir);
+        self.start_batch(
+            plan,
+            crate::source::Origin::local(),
+            egui_phosphor::regular::DOWNLOAD_SIMPLE,
+            ctx,
+        )
     }
 
     pub fn begin_pull(&mut self, i: usize) -> bool {
@@ -549,114 +430,38 @@ impl FileWindow {
     }
 
     /// 同 [`Self::begin_pull`]，那一行直接给（编辑页「下载到本机」走这里：它手上没有列表）。
+    /// 有损名带着字节 / 有损目录里的行也下得了（路径一路是原始字节）。
     pub fn begin_pull_row(&mut self, row: Listed) -> bool {
         *self.prompt_error.lock().unwrap() = None;
-        // 有损名带着字节 / 有损目录里的行也拉得下来（按字节，`lossy_pull.rs`）。
-        if !row.pick().downloadable() {
-            return false;
-        }
-        let full = self.row_path(&row);
-        self.pull_raw = full
-            .is_lossy()
-            .then(|| (full.bytes(), row.name.clone(), name_bytes(&row)));
-        self.pull_want = Some((row.path.clone(), row.name.clone()));
+        self.pull_want = Some((self.row_path(&row).bytes(), row.name.clone()));
         self.start_pick(crate::picker::Purpose::Download, None)
     }
 
-    /// 收掉那个框，什么都不做。
-    pub(super) fn pull_local(&self, dest: &str) -> (serde_json::Value, Option<String>) {
-        match &self.pull_raw {
-            Some((_, shown, raw)) => crate::lossy_pull::local_dest(dest, shown, raw),
-            None => (serde_json::Value::String(dest.to_string()), None),
-        }
-    }
-
-    /// 答完当前这一问 → 下一步。回值 = **这一下真的推进了**。
-    ///
-    /// 🔴 三支各自的下一跳完全不同（理由住 `download::DestVerdict` 的头注）：
-    /// 不合法 ⇒ **框留着 ＋ 出声**（收掉的话「点了确认什么都没发生」与成功同形）；
-    /// 要确认 ⇒ 换成第二问；可以做 ⇒ 起那一趟并收掉框。
-    /// 起了 ⇒ 回它在「进度」表里那一行的号（重试那一处拿它顶替按下的那一行）；没起 ⇒ `None`。
+    /// 存盘框给了落点 ⇒ 起那一组（这一台 → 本机，一项；存盘框问过盖不盖 ⇒ 同名照盖）。落点拆不出目录与名字 ⇒ 出声。
     pub fn start_pull(
         &mut self,
-        src_path: &str,
+        src: Vec<u8>,
+        shown: &str,
         dest: &str,
-        overwrite: bool,
         ctx: Option<egui::Context>,
-    ) -> Option<u64> {
-        let Some(h) = self.rt.clone() else {
-            *self.say_slot() = Some(copy_text("rsFilewinShell.pull.noRuntime", &[]).into());
-            return None;
+    ) -> bool {
+        let Some(plan) = crate::download::one_plan(
+            &self.source.origin(),
+            cmd_wire::files::WirePath(src),
+            shown,
+            dest,
+        ) else {
+            *self.say_slot() = Some(copy_text("rsFilewinLossyPull.local.badDest", &[]).into());
+            return false;
         };
-        // 下载经通道开单、订阅进度 —— 要那条线 ＋ 那台机器的地址。
-        let Some(line) = self.line.clone() else {
-            *self.say_slot() = Some(NO_LINE.to_string().into());
-            return None;
-        };
-        let origin = self.source.origin();
-        // 一趟一块新看板（「进度」表里独立的一行）：上一趟还在下也不碍事。
-        let board = crate::download::DownloadBoard::default();
-        board.attach(ctx);
-        let src = src_path.to_string();
-        let to = dest.to_string();
-        let id = self.adopt_trip(
-            crate::progress::Trip::Download {
-                board: board.clone(),
-                name: crate::source::remote_basename(&src).to_string(),
-                src: src.clone(),
-                dest: to.clone(),
-            },
-            None,
-            None,
-        );
-        // 有损名：远端按字节（就地拷进暂存区再下）、本机按平台落名；否则与此前逐字同一条路。
-        let (local, note) = self.pull_local(dest);
-        let raw_src = self.pull_raw.take().map(|(b, _, _)| b);
-        board.set_note(note);
-        // ⚠ 走 `source::remote_basename`（**那一对**里的尾段那一份）——
-        //   这里原先是第四份 `rsplit('/')`，而那一对的头注逐字说了
-        //   「多一份就多一种『Windows 上 `\` 被当分隔符』的机会」。
-        //   盘上每一处按 `/` 切的地方由
-        //   `source_tests::every_place_that_splits_a_remote_path_is_declared` 逐条钉着。
-        let name = crate::source::remote_basename(&src).to_string();
-        board.begin(&name);
-        h.spawn(async move {
-            let desk = board.cancels();
-            let run = crate::transfer::launch_unless_cancelled(&desk, &name, |_id| {
-                let b = board.clone();
-                let (line, origin) = (line.clone(), origin.clone());
-                let src = src.clone();
-                let to = to.clone();
-                let (local, raw_src) = (local.clone(), raw_src.clone());
-                async move {
-                    match raw_src {
-                        Some(bytes) => crate::lossy_pull::pull_by_bytes(
-                            &line, &origin, &bytes, local, overwrite, &b,
-                        )
-                        .await
-                        .map_err(crate::source::Failed::from),
-                        None => crate::download::pull_one(&line, &origin, &src, &to, &b).await,
-                    }
-                }
-            })
-            .await;
-            let (got, total) = board.seen();
-            board.finish(match run {
-                // ⚠ 字节数报**真读数**（进度那一格最后一个值），不报「应该是多少」。
-                Ok(()) => crate::download::Outcome::Done {
-                    dest: to.clone(),
-                    bytes: if got > 0 { got } else { total },
-                },
-                Err(why) => crate::download::Outcome::Failed {
-                    dest: to.clone(),
-                    why,
-                },
-            });
-        });
-        Some(id)
+        self.start_batch(
+            plan,
+            crate::source::Origin::local(),
+            egui_phosphor::regular::DOWNLOAD_SIMPLE,
+            ctx,
+        )
     }
 
-    /// 记下这一类最近那一趟在表里的号；上一趟（这个标签页手上已经换了一块新看板）改由窗口那一级在落地时重列目录。
     /// 这个标签页开的那几趟里还有在跑的吗（标签上那个忙点）。
     pub fn has_running_jobs(&self) -> bool {
         self.my_trips()

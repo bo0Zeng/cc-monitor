@@ -9,17 +9,19 @@
 //! 连接断了那一刻也不在这一侧说：本机后端给那台活的 / 可重连的每一条发一帧 `session_left`（说不清），原样经 [`In::Told`] 进来；
 //! 这一侧只在那条连接收了时把那一本「清单报完了」作废（[`In::Closed`]），下一条连接自己再报。
 //!
-//! 裁决一条都不在这一侧。**每台那一本就是共享核心的会话簿**（[`SessionBook`]，手机核心同一份）：会话帧原样交进来（[`In::Told`]），
-//! 折法只调 [`SessionBook::fold`]，这一侧不另写一份。
+//! 裁决一条都不在这一侧，也不折：**手上每台一格成品**（[`Shelf`]：那几条此刻的整条 ＋ 清单报完了没有）。每台的都由本机后端照那台的会话簿
+//! 折好推来（本机那一台 `session_seats`，别台 `relayed` 的 `seats`；[`In::Seats`]：照它换，`whole` 换整格），会话帧原样交界面、不进折法。
+//! F5 重放 · 在不在活只照这一格，一条路。
 
 use parking_lot::RwLock;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::OnceLock;
 
+use cmd_wire::cells::Words;
 use cmd_wire::frame::{
-    BranchRun, Frame, Life, SessionAdded, SessionLeft, SessionRuns, SessionStatus,
+    BranchRun, Frame, Life, Seat, SessionAdded, SessionLeft, SessionRuns, SessionSeat,
+    SessionSeats, SessionStatus, SessionUnread,
 };
-use face_core::book::{Seat, SessionBook};
 
 /// 两条流交进来的一件事。`origin` 是线上串（本机 `<local>`）。
 #[derive(Debug, Clone, PartialEq)]
@@ -30,6 +32,8 @@ pub enum In {
         origin: String,
         frame: crate::stream_source::Frame,
     },
+    /// 本机后端照那台的会话簿折好的整条（本机那一台 `session_seats` · 别台 `relayed` 的 `seats`）：照它换那台那一格。
+    Seats { origin: String, seats: SessionSeats },
     /// 到那台的这一条连接收了：那一本「清单报完了」作废（下一条连接自己再报）；会话一条都不动 —— 说不清由本机后端发。
     Closed { origin: String },
     /// `session_branch`：那台后端给的一个会话的主线外清单的一截 ——「那份记录（`path`）的清单前 `at` 条照旧，其后换成 `off`」
@@ -78,6 +82,11 @@ pub enum Out {
         off: Vec<String>,
         runs: Vec<BranchRun>,
     },
+    /// 一个会话在这条连接上的未读变了（整条里那一格；不带字 ⇒ 没有了）。
+    Unread {
+        origin: String,
+        unread: SessionUnread,
+    },
 }
 
 /// 手上一个会话的主线外清单：哪份记录的 · 拼好的整份与段 · 那台给的摘要（`None` ＝ 拼的时候中间缺过一截，说不准 ⇒ 下次要整份）。
@@ -96,13 +105,78 @@ pub struct Replay {
     pub after: Vec<Out>,
 }
 
+/// 手上一台的成品：那几条此刻的整条（活的带运行表，F5 重放跟在宣告后面再说一次）· 那台在这一条连接上说过清单报完了。
+#[derive(Debug, Default, Clone, PartialEq)]
+pub(crate) struct Shelf {
+    pub(crate) seats: BTreeMap<String, Seat>,
+    pub(crate) listed: bool,
+    /// 那几条在这条连接上的未读（整条里那一格，那台写好的字；没有的不在）。
+    pub(crate) unread: BTreeMap<String, Words>,
+}
+
+impl Shelf {
+    /// 照一份成品换（`whole` ⇒ 整格换；不带 `seat` 的那条 ⇒ 不在了）。回未读变了的那几条（此刻的字；没有了 ⇒ `None`）。
+    fn take(&mut self, s: SessionSeats) -> Vec<SessionUnread> {
+        let before = if s.whole {
+            self.seats.clear();
+            std::mem::take(&mut self.unread)
+        } else {
+            BTreeMap::new()
+        };
+        let mut moved = Vec::new();
+        for SessionSeat { sid, seat, unread } in s.seats {
+            match seat {
+                Some(seat) => {
+                    self.seats.insert(sid.clone(), seat);
+                }
+                None => {
+                    self.seats.remove(&sid);
+                }
+            }
+            let was = if s.whole {
+                before.get(&sid).cloned()
+            } else {
+                self.unread.get(&sid).cloned()
+            };
+            if was != unread {
+                moved.push(SessionUnread {
+                    sid: sid.clone(),
+                    said: unread.clone(),
+                });
+            }
+            match unread {
+                Some(u) => {
+                    self.unread.insert(sid, u);
+                }
+                None => {
+                    self.unread.remove(&sid);
+                }
+            }
+        }
+        // 整本换掉：手上有、整本里没有的那几条 ⇒ 没有了。
+        for sid in before.into_keys() {
+            if !self.unread.contains_key(&sid) && !moved.iter().any(|m| m.sid == sid) {
+                moved.push(SessionUnread { sid, said: None });
+            }
+        }
+        moved.sort_by(|a, b| a.sid.cmp(&b.sid));
+        self.listed = s.listed;
+        moved
+    }
+
+    /// 那一条此刻是活的。
+    fn is_live(&self, sid: &str) -> bool {
+        matches!(self.seats.get(sid), Some(Seat::Live { .. }))
+    }
+}
+
 /// 全部机器的成品账（见模块头注）。
 #[derive(Debug, Default)]
 pub struct Book {
-    /// 每台那一本（端核心的会话簿；运行表也在里面，F5 重放跟在宣告后面再说一次）。
-    origins: HashMap<String, SessionBook>,
+    /// 每台手上那一格成品（键是线上串，本机 `<local>`）。
+    shelves: HashMap<String, Shelf>,
     /// 每台每个会话手上那份主线外清单（F5 重放跟在宣告后面再说一次 · 报名单时交回手上有什么）。
-    /// **断线不摘**（不跟 `origins` 那一台一起走）：重接之后交回它，那台只补缺的那一截。会话离开 · 关 tab · 那台报完清单时不在了 ⇒ 摘。
+    /// **断线不摘**（不跟 `shelves` 那一台的清单作废一起走）：重接之后交回它，那台只补缺的那一截。会话离开 · 关 tab · 那台报完清单时不在了 ⇒ 摘。
     branch: HashMap<crate::origin::Origin, BTreeMap<String, BranchCopy>>,
 }
 
@@ -110,12 +184,18 @@ impl Book {
     /// **纯**：一件事 × 这本账 ⇒ 账怎么变 ＋ 交给出口什么。
     pub fn step(&mut self, ev: In) -> Vec<Out> {
         match ev {
-            In::Told { origin, frame } => {
-                if !self.origins.entry(origin.clone()).or_default().fold(&frame) {
-                    return Vec::new();
-                }
-                self.told(origin, frame)
-            }
+            In::Told { origin, frame } => self.told(origin, frame),
+            In::Seats { origin, seats } => self
+                .shelves
+                .entry(origin.clone())
+                .or_default()
+                .take(seats)
+                .into_iter()
+                .map(|unread| Out::Unread {
+                    origin: origin.clone(),
+                    unread,
+                })
+                .collect(),
             In::Branch {
                 origin,
                 sid,
@@ -154,15 +234,23 @@ impl Book {
                 }]
             }
             In::Closed { origin } => {
-                if let Some(b) = self.origins.get_mut(&origin) {
-                    b.listed = false;
-                }
-                Vec::new()
+                let Some(s) = self.shelves.get_mut(&origin) else {
+                    return Vec::new();
+                };
+                s.listed = false;
+                // 未读是那条连接上数的：连接收了就说不清 ⇒ 整份作废（下一条连接从 0 数）。
+                std::mem::take(&mut s.unread)
+                    .into_keys()
+                    .map(|sid| Out::Unread {
+                        origin: origin.clone(),
+                        unread: SessionUnread { sid, said: None },
+                    })
+                    .collect()
             }
         }
     }
 
-    /// 那台那一本刚折进一帧会话帧 ⇒ 交给出口什么（帧原样；清单报完了带「各台都报完」）。
+    /// 那台的一帧会话帧 ⇒ 交给出口什么（帧原样；清单报完了带「各台都报完」）。
     fn told(&mut self, origin: String, frame: crate::stream_source::Frame) -> Vec<Out> {
         match frame {
             Frame::SessionAdded(meta) => vec![Out::Live {
@@ -186,12 +274,12 @@ impl Book {
             Frame::SessionRuns(runs) => vec![Out::Runs { origin, runs }],
             Frame::SessionsReplayed(_) => {
                 // 清单报完了：那台此刻不在的会话，手上那份清单没用了。
-                let live = &self.origins[&origin].live;
+                let shelf = self.shelves.get(&origin);
                 if let Some(m) = self
                     .branch
                     .get_mut(&crate::origin::Origin::named(origin.clone()))
                 {
-                    m.retain(|sid, _| live.contains_key(sid));
+                    m.retain(|sid, _| shelf.is_some_and(|s| s.is_live(sid)));
                 }
                 vec![Out::Listed { origin }]
             }
@@ -200,10 +288,10 @@ impl Book {
         }
     }
 
-    /// 那台那一本（判据 · 两端对拍读）。
+    /// 那台手上那一格（判据读）。
     #[cfg(test)]
-    pub(crate) fn of(&self, origin: &str) -> Option<&SessionBook> {
-        self.origins.get(origin)
+    pub(crate) fn of(&self, origin: &str) -> Option<&Shelf> {
+        self.shelves.get(origin)
     }
 
     /// 报名单时交回的那一格（`stream-watch.branch`）：那台这几个会话的主线外清单手上各有什么（没有 / 说不准 ⇒ `at: 0`）。
@@ -236,15 +324,16 @@ impl Book {
 
     /// 那台那个会话此刻是活的（它最近的成品是 `Live`）。
     pub fn is_live(&self, origin: &crate::origin::Origin, sid: &str) -> bool {
-        self.origins
+        self.shelves
             .get(&origin.to_string())
-            .is_some_and(|b| b.live.contains_key(sid))
+            .is_some_and(|s| s.is_live(sid))
     }
 
     /// 用户关掉一个已结束的 tab（`EventReplay::forget` 同一刻）⇒ 它的成品也忘掉（不再重放）。
     pub fn forget(&mut self, sid: &str) {
-        for b in self.origins.values_mut() {
-            b.forget(sid);
+        for s in self.shelves.values_mut() {
+            s.seats.remove(sid);
+            s.unread.remove(sid);
         }
         for m in self.branch.values_mut() {
             m.remove(sid);
@@ -258,19 +347,18 @@ impl Book {
     ///   报完了清单的那几台再说一次「报完了」（排在最后：前端处理它时活着的已经翻回活）。
     pub fn replay(&self, kept: &[(String, String)]) -> Replay {
         let mut r = Replay::default();
-        let mut origins: Vec<&String> = self.origins.keys().collect();
+        let mut origins: Vec<&String> = self.shelves.keys().collect();
         origins.sort();
         for o in &origins {
-            let b = &self.origins[*o];
-            for (sid, p) in b.seats() {
-                match p {
-                    Seat::Live(m) => {
+            for (sid, seat) in &self.shelves[*o].seats {
+                match seat {
+                    Seat::Live { meta, runs } => {
                         r.before.push(Out::Live {
                             origin: (*o).clone(),
                             sid: sid.clone(),
-                            meta: m.clone(),
+                            meta: meta.clone(),
                         });
-                        if let Some(runs) = b.runs.get(sid) {
+                        if let Some(runs) = runs {
                             r.before.push(Out::Runs {
                                 origin: (*o).clone(),
                                 runs: runs.clone(),
@@ -286,28 +374,44 @@ impl Book {
                             });
                         }
                     }
-                    Seat::Left(s) if reconnectable(s) => r.after.push(Out::Left {
+                    Seat::Left { left } if reconnectable(left) => r.after.push(Out::Left {
                         origin: (*o).clone(),
-                        left: s.clone(),
+                        left: left.clone(),
                     }),
-                    Seat::Left(_) => {}
+                    Seat::Left { .. } => {}
                 }
             }
         }
         for (sid, origin) in kept {
             // 走了的（已结束 · 说不清 …）照那一帧再说一次；没被说过 ⇒ 不说：那台后端照手上留着的答它的去向（答过就在账里）。
-            if let Some(Seat::Left(s)) = self.origins.get(origin).and_then(|b| b.seat(sid)) {
-                if !reconnectable(s) {
+            if let Some(Seat::Left { left }) =
+                self.shelves.get(origin).and_then(|s| s.seats.get(sid))
+            {
+                if !reconnectable(left) {
                     r.after.push(Out::Left {
                         origin: origin.clone(),
-                        left: s.clone(),
+                        left: left.clone(),
                     });
                 }
             }
         }
+        for o in &origins {
+            if self.shelves[*o].listed {
+                r.after.push(Out::Listed {
+                    origin: (*o).clone(),
+                });
+            }
+        }
+        // 手上的未读末尾再说一次（排在去向之后：照它画的是那一格，不被前面那几格盖掉）。
         for o in origins {
-            if self.origins[o].listed {
-                r.after.push(Out::Listed { origin: o.clone() });
+            for (sid, said) in &self.shelves[o].unread {
+                r.after.push(Out::Unread {
+                    origin: o.clone(),
+                    unread: SessionUnread {
+                        sid: sid.clone(),
+                        said: Some(said.clone()),
+                    },
+                });
             }
         }
         r
@@ -322,7 +426,8 @@ impl Out {
             | Out::Status { origin, .. }
             | Out::Left { origin, .. }
             | Out::Listed { origin, .. }
-            | Out::Runs { origin, .. } => origin.clone(),
+            | Out::Runs { origin, .. }
+            | Out::Unread { origin, .. } => origin.clone(),
             Out::Branch { origin, .. } => origin.to_string(),
         }
     }
@@ -343,6 +448,7 @@ impl Out {
                 off: off.clone(),
                 runs: runs.clone(),
             }),
+            Out::Unread { unread, .. } => F::Unread(unread.clone()),
         }
     }
 }

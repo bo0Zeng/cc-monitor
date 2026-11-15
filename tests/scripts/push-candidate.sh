@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# 用法（用户手敲）：在本仓任一棵树里 `bash tests/scripts/push-candidate.sh <合并工作树名>`
+# 用法（用户手敲）：在本仓任一棵树里 `bash tests/scripts/push-candidate.sh <发版名>`
+#   推的是发版分支 w8/<名>：合并工作树的头压成的一个提交、父是 origin/main（做法见 src/doc/RELEASING.md §2）
 #   ① w8/<名> 强推到 origin/next（候选分支；ci.yml 在它上面跑与 main 同一套 job，不打标签、不发版）
 #   ② 用 gh 等这一提交在 next 上的那一趟 CI 跑完（next 早已是它 ⇒ 推送不起新 run：已绿的直接认，没绿的 `gh run rerun --failed` 再等）
 #   ③ 全部 job 绿 ⇒ 主仓 main `merge --ff-only w8/<名>` 并推 origin main；
@@ -12,8 +13,8 @@
 # 环境变量（一般不用设）：PUSH_FIND_MIN 每一趟等 run 出现的分钟数（默认 10）· PUSH_WAIT_MIN 每一趟等跑完的分钟数（默认 60）·
 #   GATE_STATE_DIR 失败日志落在它下面的 logs/（默认 ${XDG_RUNTIME_DIR:-/tmp}/cc-monitor-gate）。
 set -euo pipefail
-case "${1:-}" in -h|--help) sed -n '2,13p' "$0"; exit 0 ;; esac
-name=${1:?用法：bash tests/scripts/push-candidate.sh <合并工作树名>（推的是 w8/<名>）}
+case "${1:-}" in -h|--help) sed -n '2,14p' "$0"; exit 0 ;; esac
+name=${1:?用法：bash tests/scripts/push-candidate.sh <发版名>（推的是 w8/<名>）}
 br="w8/$name"
 scan=$(command -v private-scan.sh) \
   || { echo "push: PATH 上没有 private-scan.sh —— 要推的提交扫不了私人标识，不推；扫描脚本放上 PATH 再来" >&2; exit 1; }
@@ -27,14 +28,14 @@ cd "$main_tree"
 die() { echo "push: $*" >&2; exit 1; }
 [ "$(git symbolic-ref --short HEAD 2>/dev/null)" = main ] || die "主仓不在 main 上（脚本不切分支），先回 main 再来"
 sha=$(git rev-parse --verify --quiet "$br^{commit}") || die "没有分支 $br"
-git merge-base --is-ancestor main "$sha" || die "$br 不是 main 的快进（先在合并工作树里 merge main）"
+git merge-base --is-ancestor main "$sha" || die "$br 不是 main 的快进（照 RELEASING.md §2 在发版树里以 origin/main 为父重压一次）"
 git fetch -q origin main
-git merge-base --is-ancestor origin/main "$sha" || die "$br 不是 origin/main 的快进（远端 main 动过，先在合并工作树里 merge 它）"
+git merge-base --is-ancestor origin/main "$sha" || die "$br 不是 origin/main 的快进（远端 main 动过，照 RELEASING.md §2 在发版树里以新的 origin/main 为父重压）"
 gh auth status >/dev/null 2>&1 || die "gh 没登录（gh auth status）"
 # 本机门禁：CI 盖不到的格（tmux-default · 无网与私有 /tmp 下的 e2e · rotation-500 …）只有本机跑；这一提交要有 gate-affected 绿过的记录。
 recs=$(bash "$here/gate-affected.sh" --recorded "$sha") || die "读不了 $br 上的本机门禁记录"
 printf '%s\n' "$recs" | grep -qxE 'trust-ci|affected|full' \
-  || die "${sha:0:9}（$br）上没有本机门禁绿过的记录 —— 先在合并工作树里跑 bash tests/scripts/gate-affected.sh --trust-ci（或 --full），AFFECTED: OK 时它会记下；main 没动"
+  || die "${sha:0:9}（$br）上没有本机门禁绿过的记录 —— 先在发版树里跑 bash tests/scripts/gate-affected.sh --trust-ci（或 --full），AFFECTED: OK 时它会记下；main 没动"
 # 要推出去的这一段提交：说明与改动里不许有私人标识（树里干净不够——旧提交里的会跟着历史出去）
 bash "$scan" --history "origin/main..$sha" || die "要推的提交历史里有私人标识（见上）；main 没动"
 node "$here/dep-advisories.mjs" --root "$main_tree" --rev "$sha" || die "依赖漏洞判据没过（见上：红 ⇒ 升锁或登记豁免，判不了 ⇒ OSV 问不到）；main 没动"

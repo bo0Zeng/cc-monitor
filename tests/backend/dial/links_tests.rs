@@ -250,7 +250,7 @@ fn the_relay_hop_lands_on_the_local_machine_as_one_link_line() {
         bytes_out: 300,
         last: Some(relay::Last::Up),
     };
-    let line = facts.line().expect("走过一发 ⇒ 有那一句");
+    let line = hop_line(&facts).expect("走过一发 ⇒ 有那一句");
     assert_eq!(
         local_from(Some(facts)),
         Some(Way {
@@ -263,5 +263,38 @@ fn the_relay_hop_lands_on_the_local_machine_as_one_link_line() {
         local_from(Some(relay::HopFacts::default())),
         None,
         "一发都没走过 ⇒ 本机没有这一段"
+    );
+}
+
+/// 中转那一跳那一句：经代理那一形照出网口的写法、收发两格照大小的写法、连上了 ⇒ 不说卡在哪（逐字比）；直连那一形就是地址本身。
+#[test]
+fn the_relay_line_names_the_upstream_the_proxy_and_both_byte_counts() {
+    let up = |via_proxy: bool| relay::HopFacts {
+        endpoint: Some("api.example.test:443".to_string()),
+        via_proxy,
+        bytes_in: 2048,
+        bytes_out: 5 << 20,
+        last: Some(relay::Last::Up),
+    };
+    let want = |place: &str| {
+        copy_text(
+            "beLinks.relay.line",
+            &[
+                ("endpoint", place),
+                ("in", &copy_core::size_text(2048)),
+                ("out", &copy_core::size_text(5 << 20)),
+            ],
+        )
+    };
+    let proxied = copy_text(
+        "beLinks.route.proxy",
+        &[("endpoint", "api.example.test:443")],
+    );
+    assert_eq!(hop_line(&up(true)), Some(want(&proxied)));
+    assert_eq!(hop_line(&up(false)), Some(want("api.example.test:443")));
+    assert_eq!(
+        hop_line(&relay::HopFacts::default()),
+        None,
+        "一发都没走过 ⇒ 没有那一句"
     );
 }

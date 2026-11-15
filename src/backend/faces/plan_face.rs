@@ -2,7 +2,7 @@
 //! pb 在哪（这台偏好里设的路径；没设 ⇒ 各配置根底下的插件目录，问注册表）· 会话在哪些目录里（会话表）· 一个 id 是哪个会话（会话表 ＋ 记录树）。
 //!
 //! 命令：
-//! - `plan-list {dirs?, fresh?}`：这台的工作区与片。目录 ＝ 此刻活着的会话的工作目录 ∪ `dirs`；每个目录让 pb 自己往上找工作区
+//! - `plan-list {fresh?}`：这台的工作区与片。目录 ＝ 此刻活着的会话的工作目录 ∪ 这台偏好里手加的（`Prefs.plan_dirs`）；每个目录让 pb 自己往上找工作区
 //!   （认过的目录不再问，`fresh: true` 全部重问）。
 //! - `plan-read {workspace}`：一个工作区的成品（[`crate::plan::product`]，顶上带 `rev` · `readAt` · `stale`）。
 //!   已在盯、盯盘那一路追上了这期间的动静 ⇒ 给它读好的那一份，不起 pb；有动静 ⇒ 等那一趟重读完再给；没在盯 ⇒ 起 pb（[`Fresh`]）。
@@ -23,6 +23,7 @@ use crate::common::time::now_ms;
 use crate::plan::{book, locate, watch, Live, Whose};
 use crate::wire::typed::{self, Command, Cx, Handle};
 use cmd_wire::plan as wire;
+use cmd_wire::plan::{PlanCellView, PlanCellViewReq, PlanListReq, PlanReadReq};
 use copy_core::copy_text;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -36,9 +37,12 @@ fn bad(what: &str) -> Said {
     crate::wire::spec::fail("bad_args", crate::common::contract::malformed(what))
 }
 
-/// 这台的配置根：默认那一个 ＋ 账号库里每个号的配置目录。
+/// 这台的配置根：各家默认那一个 ＋ 账号库里每个号的配置目录。
 fn config_roots() -> Vec<PathBuf> {
-    let mut roots = vec![crate::history::listing::agent_home()];
+    let mut roots: Vec<PathBuf> = crate::agents::local_homes()
+        .into_iter()
+        .map(|h| h.home)
+        .collect();
     if let Some(home) = crate::platform::paths::home_dir() {
         roots.extend(crate::accounts::manage::scan::config_dirs(&home));
     }
@@ -48,30 +52,28 @@ fn config_roots() -> Vec<PathBuf> {
 
 /// pb 的入口脚本（这台设了路径只认它，没设认装着的插件）；找不到 ⇒ `no_pb`。
 fn entry() -> Result<PathBuf, Said> {
+    found().map_err(|m| locate::no_pb(&m))
+}
+
+/// 找 pb 的结局（找不到是哪一种：`plan-list` 照它写 pb 那一格）。
+fn found() -> Result<PathBuf, locate::Missing> {
     let set = crate::control::machine_prefs::pb_dir_now();
     locate::pick(set.as_deref(), &crate::agents::plugins(&config_roots()))
-        .map_err(|m| crate::wire::spec::fail("no_pb", m.said()))
 }
 
 /// 生产的「这条会话此刻在不在等人」：活会话表那一判（`LiveTable::waiting`，同 `sessions-needs`），这一次读取取一份表。
 fn waiting_port() -> impl Fn(&str) -> bool {
-    let table = crate::history::live_table::now(&crate::history::listing::agent_home());
+    let table = crate::history::live_table::now(&crate::agents::local_homes());
     move |sid: &str| table.waiting(sid)
 }
 
-/// 生产的「这个 id 是谁」：活会话表（判活与在干什么同主窗口标签页）· 有它的记录（哪一家都算）⇒ 会话；
-/// 记录树里有它的子 agent 记录 ⇒ 挂在父会话底下（活不活看父会话）；都不中 ⇒ 认不出。
+/// 生产的「这个 id 是谁」：备好这台的事实（活会话表 · 记录树 · 标签页起名）与此刻的名单（`host::Housing`，同清单那一路：
+/// 这一次读取至多列一次名单，一条活会话都没问就不列），认法全在 [`whose_in`]；认过的记下。
 fn who_port() -> impl Fn(&str) -> Whose {
-    let home = crate::history::listing::agent_home();
-    let root = crate::agents::records_root(&home);
+    let home = crate::agents::local_homes();
     let doing = crate::observe::accounts_query::live_doing(&home);
-    let live = move |sid: &str| {
-        doing.get(sid).map(|d| Live {
-            activity: d.activity,
-            needs: d.needs,
-        })
-    };
-    // 子 agent 的负责人写成「{父会话} 的 agent」：父会话叫什么与标签页同一条规则（改过的名 ＞ 记录里的标题）。
+    let housing = crate::host::Housing::here();
+    // 会话叫什么（会话本身 ⇒ 它的标题；子 agent ⇒「{父会话} 的 agent」）与标签页同一条规则（改过的名 ＞ 记录里的标题）。
     let annotations = match crate::history::history_annotations::load() {
         crate::history::history_annotations::Loaded::Read(t) => t,
         _ => Default::default(),
@@ -81,34 +83,68 @@ fn who_port() -> impl Fn(&str) -> Whose {
         if let Some(w) = memo.lock().unwrap_or_else(|e| e.into_inner()).get(id) {
             return w.clone();
         }
-        let w = if let Some(l) = live(id) {
-            Whose::Session {
-                sid: id.to_string(),
-                live: Some(l),
-            }
-        } else if crate::agents::find_session(&home, id).is_ok() {
-            Whose::Session {
-                sid: id.to_string(),
-                live: None,
-            }
-        } else if let Some(parent) = root
-            .as_deref()
-            .and_then(|r| crate::agents::child_parent_sid(r, id))
-        {
-            let l = live(&parent);
-            let parent_title = crate::history::session_hidden::title_here(&parent, &annotations);
-            Whose::Subagent {
-                parent,
-                parent_title,
-                live: l,
-            }
-        } else {
-            Whose::Unknown
+        let recorded = |sid: &str| crate::agents::find_session_in(&home, sid).is_ok();
+        let parent = |child: &str| {
+            home.iter()
+                .find_map(|h| h.child_parent_sid(&h.records_root()?, child))
         };
+        let title = |sid: &str| crate::history::session_hidden::title_here(sid, &annotations);
+        let facts = WhoFacts {
+            doing: &doing,
+            recorded: &recorded,
+            parent: &parent,
+            title: &title,
+        };
+        let w = whose_in(id, &facts, &housing);
         memo.lock()
             .unwrap_or_else(|e| e.into_inner())
             .insert(id.to_string(), w.clone());
         w
+    }
+}
+
+/// [`whose_in`] 认一个 id 要问的那几样事实（生产接这台的活会话表 · 记录树 · 标签页起名）。
+struct WhoFacts<'a> {
+    /// 此刻活着的会话各在干什么（`live_doing`）。
+    doing: &'a BTreeMap<String, crate::observe::accounts_query::Doing>,
+    /// 有它的会话记录（哪一家都算）。
+    recorded: &'a dyn Fn(&str) -> bool,
+    /// 记录树里它是子 agent ⇒ 它挂在哪个会话底下。
+    parent: &'a dyn Fn(&str) -> Option<String>,
+    /// 会话叫什么（同标签页）。
+    title: &'a dyn Fn(&str) -> String,
+}
+
+/// 一个 id 是谁：活着 ⇒ 会话（在干什么照活会话表，住在哪照 `housing`）· 有记录 ⇒ 会话（不活）·
+/// 记录树里是子 agent ⇒ 挂在父会话底下（活不活 · 住在哪都照父会话问）· 都不中 ⇒ 认不出。
+fn whose_in(id: &str, facts: &WhoFacts<'_>, housing: &crate::host::Housing<'_>) -> Whose {
+    let live = |sid: &str| {
+        facts.doing.get(sid).map(|d| Live {
+            activity: d.activity,
+            needs: d.needs,
+            housed: housing.of(sid),
+        })
+    };
+    if let Some(l) = live(id) {
+        Whose::Session {
+            sid: id.to_string(),
+            title: (facts.title)(id),
+            live: Some(l),
+        }
+    } else if (facts.recorded)(id) {
+        Whose::Session {
+            sid: id.to_string(),
+            title: (facts.title)(id),
+            live: None,
+        }
+    } else if let Some(parent) = (facts.parent)(id) {
+        Whose::Subagent {
+            parent_title: (facts.title)(&parent),
+            live: live(&parent),
+            parent,
+        }
+    } else {
+        Whose::Unknown
     }
 }
 
@@ -118,8 +154,16 @@ fn review_now() -> crate::plan::review::Review {
 }
 
 /// 给本子出的成品标上认可 · 要你看的数 · 退回的状态（每次答之前现读那份记录，本子里存的是没标的）。不写时刻的字（[`annotated`] 写）。
-pub(crate) fn marked(mut doc: wire::PlanRead) -> wire::PlanRead {
-    review_now().annotate(&mut doc);
+pub(crate) fn marked(doc: wire::PlanRead) -> wire::PlanRead {
+    marked_with(doc, &review_now())
+}
+
+/// [`marked`]，照给的那一份记录标（认可写口写完答数：读它写的那一份）。
+pub(crate) fn marked_with(
+    mut doc: wire::PlanRead,
+    review: &crate::plan::review::Review,
+) -> wire::PlanRead {
+    review.annotate(&mut doc);
     doc
 }
 
@@ -193,6 +237,7 @@ fn read_in(
     let kept = (how == Fresh::Kept && settled(ws))
         .then(|| b.last(&ws.to_string_lossy()))
         .flatten();
+    // 标好的那一份只留没认可的需手动（[`crate::plan::needs::mark_acked`] 摘的；认可 · 撤认可读本子里那一份，不经这里）。
     match kept {
         Some(doc) => Ok(annotated(doc, tz)),
         None => read(ws),
@@ -233,7 +278,7 @@ fn miss(m: book::Miss) -> Said {
             crate::wire::spec::fail("not_workspace", copy_text("bePlan.face.notWorkspace", &[]))
                 .and_raw(Some(&said))
         }
-        book::Miss::Unsupported(said) => crate::wire::spec::fail("pb_unsupported", said),
+        book::Miss::Unsupported(why) => locate::too_old(why),
         book::Miss::Failed { said, raw } => {
             crate::wire::spec::fail("failed", said).and_raw(raw.as_deref())
         }
@@ -266,6 +311,15 @@ fn new_form(req: &PlanNewReq) -> wire::PlanNewForm {
     )
 }
 
+/// 新计划框提交前照 `plan-new` 那一份拦：pb 用不了 ⇒ 那一格的报错（[`locate::refused`]，码与读面同一个）；起 pb 没成 ⇒ `failed`。
+fn repo_refused(f: &wire::PlanNewForm) -> Option<Said> {
+    locate::refused(&f.pb).or_else(|| {
+        f.failed
+            .clone()
+            .map(|s| crate::wire::spec::fail("failed", s))
+    })
+}
+
 /// `plan-command {workspace, cmd, slice?, path?, domain?}`：以人的身份代敲 pb 的一条命令（[`crate::plan::command`]）。
 /// 写盘的是 pb；改了工作区配置 ⇒ 盯盘那一路照常推 `changed {plan}`（`auto` · 只做计划 · 当前仓库都在成品里）。
 /// `adopt` 先现读一次（起 pb），按那个仓库此刻是不是只做计划 · 是不是当前仓库定敲哪几条。
@@ -288,13 +342,8 @@ fn command(req: &PlanCommandReq, tz: &crate::common::time::Tz) -> Result<wire::P
             path: path.to_string(),
             domain: req.domain.clone(),
         });
-        if let Some(said) =
-            f.pb.said
-                .clone()
-                .filter(|_| f.pb.state != "ok")
-                .or(f.failed)
-        {
-            return Err(crate::wire::spec::fail("failed", said));
+        if let Some(no) = repo_refused(&f) {
+            return Err(no);
         }
         let args = crate::plan::new_slice::repo_args(
             path,
@@ -351,26 +400,28 @@ fn files(dir: &str, tz: &crate::common::time::Tz) -> wire::PlanFiles {
 }
 
 fn list(req: &PlanListReq, tz: &crate::common::time::Tz) -> wire::PlanList {
-    let (pb, docs) = reads(req, tz);
+    let (pb, docs) = reads(req.fresh.unwrap_or(false), tz);
     list_of(pb, &docs)
 }
 
+/// 要问的那一组目录：活会话的工作目录 ∪ 这台偏好里手加的目录（`plan-list` 与需手动的计划那一截同这一处）。
+fn ask_dirs(cwds: Vec<String>, prefs: &crate::common::machine_prefs::Prefs) -> Vec<String> {
+    let mut dirs = cwds;
+    dirs.extend(prefs.plan_dirs.iter().cloned());
+    dirs
+}
+
 /// `plan-list` 那一路读到的几份成品（标过认可的，照工作区排）· pb 的结局：[`list`] 与 [`need_slices`] 同一处取。
-fn reads(req: &PlanListReq, tz: &crate::common::time::Tz) -> (wire::PlanPb, Vec<wire::PlanRead>) {
-    let mut dirs: Vec<String> =
-        crate::history::live_table::now(&crate::history::listing::agent_home()).cwds();
-    dirs.extend(req.dirs.iter().flatten().cloned());
-    let entry = match entry() {
+fn reads(fresh: bool, tz: &crate::common::time::Tz) -> (wire::PlanPb, Vec<wire::PlanRead>) {
+    let dirs = ask_dirs(
+        crate::history::live_table::now(&crate::agents::local_homes()).cwds(),
+        &crate::common::machine_prefs::read_now().prefs(),
+    );
+    let entry = match found() {
         Ok(e) => e,
-        Err(f) => return (pb_state("missing", Some(f.said)), Vec::new()),
+        Err(m) => return (locate::pb_missing(&m), Vec::new()),
     };
-    reads_in(
-        book::book(),
-        dirs,
-        req.fresh.unwrap_or(false),
-        &|dir| read_dir(&entry, dir),
-        tz,
-    )
+    reads_in(book::book(), dirs, fresh, &|dir| read_dir(&entry, dir), tz)
 }
 
 fn list_of(pb: wire::PlanPb, docs: &[wire::PlanRead]) -> wire::PlanList {
@@ -392,7 +443,8 @@ fn reads_in(
     dirs.sort();
     dirs.dedup();
     let mut seen: BTreeMap<String, wire::PlanRead> = BTreeMap::new();
-    let mut pb = pb_state("ok", None);
+    // 版本照读到的那一份填。
+    let mut pb = locate::pb_ok();
     for d in &dirs {
         let dir = Path::new(d);
         let unread = (!fresh).then(|| b.unread(dir)).flatten();
@@ -417,7 +469,7 @@ fn reads_in(
                 seen.entry(v.workspace.clone()).or_insert(v);
             }
             Err(book::Miss::NotWorkspace(_)) => {}
-            Err(book::Miss::Unsupported(said)) => pb = pb_state("unsupported", Some(said)),
+            Err(book::Miss::Unsupported(why)) => pb = locate::pb_unsupported(why),
             Err(book::Miss::Failed { .. }) => {}
         }
     }
@@ -427,67 +479,10 @@ fn reads_in(
     (pb, seen.into_values().collect())
 }
 
-/// pb 装没装、认不认得它的输出（版本由 [`reads_in`] 照读到的那一份填）。
-fn pb_state(state: &str, said: Option<String>) -> wire::PlanPb {
-    wire::PlanPb {
-        state: state.to_string(),
-        said,
-        version: None,
-    }
-}
-
 /// 这台计划里要人看的每一条（工作区 · 片名 · 落在哪一格，照 `plan-list` 的先后；[`crate::plan::needs::need_items`] 摊开）：
 /// 同 `plan-list {}` 那一路取（认过的目录照本子里那一份，不重问 pb）。读不出的工作区不在里头（计划那一截空着，不挡会话那几项）。
 pub(crate) fn need_slices(tz: &crate::common::time::Tz) -> Vec<crate::wire::needs::NeedAt> {
-    crate::plan::needs::need_items(&reads(&PlanListReq::default(), tz).1)
-}
-
-/// `plan-list` 的入参。
-#[derive(Debug, Clone, Default, serde::Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-#[serde(deny_unknown_fields)]
-pub struct PlanListReq {
-    /// 另要问的目录（这台的路径）。
-    #[serde(default)]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
-    pub(crate) dirs: Option<Vec<String>>,
-    /// `true` ⇒ 认过的目录也重问 pb。
-    #[serde(default)]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
-    pub(crate) fresh: Option<bool>,
-}
-
-/// `plan-read` 的入参。
-#[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-#[serde(deny_unknown_fields)]
-pub struct PlanReadReq {
-    /// 工作区根（`plan-list` 给的那个）。
-    pub(crate) workspace: String,
-}
-
-/// `plan-cell-view` 的入参。
-#[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-#[serde(deny_unknown_fields)]
-pub struct PlanCellViewReq {
-    /// 工作区根。
-    pub(crate) workspace: String,
-    /// 片名。
-    pub(crate) slice: String,
-    /// 格的编号。
-    pub(crate) id: String,
-}
-
-/// `plan-cell-view` 的回包：pb 印给站在这一格的 agent 的那一段，原样。
-#[derive(Debug, Clone, serde::Serialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct PlanCellView {
-    pub(crate) view: String,
+    crate::plan::needs::need_items(&reads(false, tz).1)
 }
 
 /// `plan-command` 的入参。
@@ -749,7 +744,7 @@ impl Handle for PlanPbCheckCmd {
 fn refs(req: &PlanRefsReq) -> wire::PlanMsgRefs {
     let b = book::book();
     let docs: Vec<wire::PlanRead> = b.workspaces().iter().filter_map(|w| b.last(w)).collect();
-    let home = crate::history::listing::agent_home();
+    let home = crate::agents::local_homes();
     let cwd = crate::history::live_table::now(&home)
         .rows()
         .iter()

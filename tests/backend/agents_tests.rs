@@ -132,20 +132,33 @@ fn the_launch_faces_agree_with_the_golden_table() {
             "nested_env" => f.nested_env.join(" "),
             "launch_args" => f.launch_args.join(" "),
             "preset_sid" => f.preset_sid.unwrap_or_default().to_string(),
+            // 每一档写成 `档名: 参数 参数`，档与档之间 ` · `。
             "permission" => f
                 .permission
                 .map(|p| {
-                    std::iter::once(p.flag)
-                        .chain(p.modes.iter().map(|c| c.value))
+                    p.modes
+                        .iter()
+                        .map(|m| format!("{}: {}", m.value, m.args.join(" ")))
                         .collect::<Vec<_>>()
-                        .join(" ")
+                        .join(" · ")
                 })
                 .unwrap_or_default(),
+            // 起会话选了模型交给那一家的参数，模型写成 `<模型>`。
+            "model_args" => f
+                .model_args
+                .map(|a| a("<模型>", None).join(" "))
+                .unwrap_or_default(),
+            // 列模型清单时接在启动器后面的那几个词。
+            "model_list" => f.model_list.map(|m| m.args.join(" ")).unwrap_or_default(),
             "self_sid_env" => f.self_sid_env.unwrap_or_default().to_string(),
             // 答题口挂 hook 的那个旗标（注册表 `Adapter.asks`；没有答题口 ⇒ 空）。
             "answer_hook_flag" => crate::agents::ask_face_among(REGISTRY, agent)
                 .map(|a| a.launch_flag)
                 .unwrap_or_default()
+                .to_string(),
+            // 有没有账号这一维：与生成器 `render_row` 的 `hasAccounts` 同一个取法（声明了账号载体 `Adapter.account_env`）。
+            "has_accounts" => crate::agents::account_env_among(REGISTRY, agent)
+                .is_some()
                 .to_string(),
             other => panic!("夹具里出现了未知 key `{other}` —— 加一项要来这里表态"),
         };
@@ -179,19 +192,22 @@ fn exactly_one_family_is_the_default_and_exactly_one_owns_the_credentials_file()
         .filter(|u| u.owns_credentials_file)
         .map(|u| u.route_id)
         .collect();
+    // 期望值手写（不从注册表现推）：声明 `owns_credentials_file` 那一格的恰是 `claude-code` 那一行的默认上游；
+    // 上游选择装表时照 `Upstreams::file_agent` 读的也是这一家（`upstream_select/table_tests` 那条钉着）。
     assert_eq!(
         owners,
-        [crate::agents::credentials_file_agent()],
-        "声明拥有凭据文件的不是恰一家：{owners:?}"
+        ["claude-code"],
+        "声明拥有凭据文件的不是恰 claude-code 一家：{owners:?}"
     );
 }
 
-/// ★★ 收 agent 名字的入口只有一种认法（`pick_among`）：没写 / 写空 ⇒ 默认那一家；拼错 ⇒ 报错、列出认得的几家，**不落默认**。
+/// ★★ 收 agent 名字的入口只有一种认法（`pick_kind_among`）：没写 / 写空 ⇒ 默认那一家；拼错 ⇒ 报错、列出认得的几家，**不落默认**。
 /// 喂一张含夹具家的注册表，期望的名单逐字手写（不从被测的注册表现推）。
 #[test]
 fn an_agent_name_left_out_is_the_default_and_a_misspelled_one_is_refused() {
     let row = |kind, home, launch| Adapter {
         kind,
+        display_name: None,
         home,
         account_env: None,
         assets: None,
@@ -309,12 +325,13 @@ fn the_resume_kind_column_matches_reality() {
 #[test]
 fn the_launch_facts_are_spelled_in_one_place() {
     let rows = golden_rows();
-    let names: Vec<String> = rows
+    // （哪一家, 标记名）：每一家的嵌套标记只住它自己那一格的 `resume.rs`。
+    let names: Vec<(String, String)> = rows
         .iter()
-        .filter(|r| r.1 == "nested_env")
+        .filter(|r| r.1 == "nested_env" && r.2 != "<empty>")
         .flat_map(|r| {
             r.2.split_whitespace()
-                .map(str::to_string)
+                .map(|n| (r.0.clone(), n.to_string()))
                 .collect::<Vec<_>>()
         })
         .collect();
@@ -353,17 +370,16 @@ fn the_launch_facts_are_spelled_in_one_place() {
         monitor.len()
     );
     let mut bad = Vec::new();
-    for n in &names {
+    for (kind, n) in &names {
         let lit = format!("\"{n}\"");
+        let home = format!("src/backend/agents/{}/resume.rs", family_dir(kind));
         let hits: Vec<&str> = backend
             .iter()
             .filter(|(_, b)| b.contains(&lit))
             .map(|(f, _)| f.as_str())
             .collect();
-        if hits != ["src/backend/agents/claudecode/resume.rs"] {
-            bad.push(format!(
-                "后端里 {lit} 住在 {hits:?}（该只在 agents/claudecode/resume.rs）"
-            ));
+        if hits != [home.as_str()] {
+            bad.push(format!("后端里 {lit} 住在 {hits:?}（该只在 {home}）"));
         }
         for (f, b) in &monitor {
             if b.contains(&lit) {
@@ -372,6 +388,14 @@ fn the_launch_facts_are_spelled_in_one_place() {
         }
     }
     assert!(bad.is_empty(), "{}", bad.join("\n"));
+}
+
+/// 金样里一家的名字 ⇒ 它的适配层目录（`src/backend/agents/<目录>/`）。
+fn family_dir(kind: &str) -> &str {
+    match kind {
+        "claude" => "claudecode",
+        other => other,
+    }
 }
 
 // ── 把前端那份画像**生成出去**（值的家是后端注册表）──
@@ -401,8 +425,6 @@ export type AgentProfileRow = {
   nestedEnvVars: string[];
   /** 这一家有没有账号这一维（选号 · 跟随上次的号只对有的那一家）。 */
   hasAccounts: boolean;
-  /** 这一家对用户的叫法（产品全称：「{名} 默认」·「{名} 会话还不能选账号」这类话里用）。 */
-  displayName: string;
   /** 这一家认得的模型名（账号页「默认模型」下拉的选项）；`null` ＝ 没考据过。 */
   models: string[] | null;
   /** 消息流里说话的那一方叫什么（卡头 · 刻度悬停）：短名。 */
@@ -418,6 +440,17 @@ export const AGENT_PROFILE_TABLE: readonly AgentProfileRow[] = [
 /// `DEFAULT_AGENT` 那一格的头注。
 const DEFAULT_HEADER: &str = r#"
 /** 不说是哪一家时起的那一家（注册表里声明默认的那一家）：不给 agent 名字 ⇒ 就是它；给了表里没有的名字 ⇒ 拒。 */
+"#;
+
+/// 家名表的头注（[`render_family_said`]）。
+const FAMILY_HEADER: &str = r#"
+/** 注册表每一家对人的叫法（行头那一格，没有起会话面的家也在；没声明 ⇒ 照实的那一句）：键是线上的 kind。 */
+export const FAMILY_SAID: Readonly<Record<string, string>> = {
+"#;
+
+/// 表外那一格的头注。
+const UNSAID_HEADER: &str = r#"
+/** 注册表里没有的家（别的版本那台报上来的）对人说的那一句。 */
 "#;
 
 /// 一个 TS 串字面量。**这个生成器不做转义** —— 真出现要转义的字符就当场炸，不产坏 TS。
@@ -444,7 +477,6 @@ fn render_row(kind: &str, f: &LaunchFace, has_accounts: bool) -> String {
         ("resumeToken", ts_str(f.resume_token)),
         ("nestedEnvVars", format!("[{}]", list.join(", "))),
         ("hasAccounts", has_accounts.to_string()),
-        ("displayName", ts_str(f.display_name)),
         (
             "models",
             f.models.map_or_else(
@@ -484,6 +516,27 @@ fn render_agent_profile_table() -> String {
         "export const DEFAULT_AGENT: string = {};\n",
         ts_str(crate::agents::default_kind())
     ));
+    s.push_str(&render_family_said(REGISTRY));
+    s
+}
+
+/// 家名表：注册表每一家对人的叫法（[`crate::agents::family_said_among`]，行头那一格；没有起会话面的家也在），
+/// 和表外那一格（注册表里没有的家：同一个函数对空表问出来的那一句）。界面只照抄这两样（`agent-profile.ts::displayNameOf`）。
+fn render_family_said(registry: &[crate::agents::Adapter]) -> String {
+    let mut s = String::from(FAMILY_HEADER);
+    for a in registry {
+        s.push_str(&format!(
+            "  {}: {},\n",
+            ts_str(a.kind),
+            ts_str(&crate::agents::family_said_among(registry, a.kind))
+        ));
+    }
+    s.push_str("};\n");
+    s.push_str(UNSAID_HEADER);
+    s.push_str(&format!(
+        "export const FAMILY_UNSAID: string = {};\n",
+        ts_str(&crate::agents::family_said_among(&[], ""))
+    ));
     s
 }
 
@@ -494,6 +547,33 @@ fn export_bindings_agent_profile_table() {
         guard_core::addr::repo_root().join("src/frontend/ui/generated/agent-profile-table.ts");
     std::fs::write(&out, render_agent_profile_table())
         .unwrap_or_else(|e| panic!("写不进 {}：{e}", out.display()));
+}
+
+/// ★ 家名表收注册表每一家（不只起会话那几家）：没有起会话面、行头声明了叫法的照抄；没声明的给照实那一句、不露 kind；
+/// 表外那一格（别的版本那台报上来的家）也是后端那一句。替身家。
+#[test]
+fn the_family_name_table_takes_every_row_head_not_only_launchable_ones() {
+    use crate::agents::fake;
+    let reg = [
+        fake::unlaunched_row("stand-said", Some("替身丙")),
+        fake::unlaunched_row("stand-unsaid", None),
+    ];
+    let got = render_family_said(&reg);
+    let unsaid = copy_core::copy_text("rsAgents.family.unsaid", &[]);
+    assert!(
+        got.contains("  \"stand-said\": \"替身丙\",\n"),
+        "没有起会话面的家没进家名表：\n{got}"
+    );
+    assert!(
+        got.contains(&format!("  \"stand-unsaid\": \"{unsaid}\",\n")),
+        "没声明叫法的家没照实说：\n{got}"
+    );
+    assert!(
+        got.contains(&format!(
+            "export const FAMILY_UNSAID: string = \"{unsaid}\";\n"
+        )),
+        "表外那一格不是后端那一句：\n{got}"
+    );
 }
 
 /// ★ ccm 不再做 resume 的决定（之后它是 claude 的壳；从 monitor `agent_profile_parity_tests.rs` 搬来）。
@@ -645,6 +725,7 @@ const fn records(find: fn(&Path, &str) -> Result<PathBuf, String>) -> RecordFace
         drift: None,
         text: None,
         delete: None,
+        archive: None,
         response_id: None,
         run_of: None,
         child_link: None,
@@ -664,17 +745,19 @@ const fn accounts(config_file: &'static str) -> AccountsFace {
         shared: &[],
         shared_on_demand: &[],
         config_file,
-        user_mcp_key: "servers",
+        mcp: None,
+        mcp_logins: None,
         shared_root,
         email_in: no_email,
         login: None,
         sign_in: None,
         session_env: crate::agents::SessionEnvKeys {
             config_dir: "",
-            base_url: "",
+            base_url: None,
             settings_may_set_base_url: |_, _, _| false,
         },
         trust: None,
+        renew: crate::agents::Renew::Anytime,
     }
 }
 
@@ -685,6 +768,7 @@ fn two_families() -> Vec<Adapter> {
                acc: AccountsFace,
                find: fn(&Path, &str) -> Result<PathBuf, String>| Adapter {
         kind,
+        display_name: None,
         home: synth_home_unknown,
         account_env: None,
         assets: Some(assets),
@@ -692,7 +776,7 @@ fn two_families() -> Vec<Adapter> {
         upstream: None,
         mcp: Some(McpFace {
             read: mcp,
-            login_command: "/m",
+            login: Some(|n| vec!["/m".to_string(), n.to_string()]),
             sign_in: None,
             needs_login_file: None,
         }),
@@ -719,6 +803,7 @@ fn two_families() -> Vec<Adapter> {
                 project_mcp_file: ".alpha-mcp.json",
                 servers_key: "servers",
                 plugins: |_| Vec::new(),
+                plugin_cells: None,
                 session_scan: |_, _| crate::agents::SessionAssets::default(),
                 builtin_commands: &[],
             },
@@ -736,6 +821,7 @@ fn two_families() -> Vec<Adapter> {
                 project_mcp_file: ".beta-mcp.json",
                 servers_key: "servers",
                 plugins: |_| Vec::new(),
+                plugin_cells: None,
                 session_scan: |_, _| crate::agents::SessionAssets::default(),
                 builtin_commands: &[],
             },
@@ -786,13 +872,14 @@ fn finding_a_session_asks_every_family_under_its_own_root() {
             file_name: |sid| format!("{sid}.a"),
         });
     }
+    reg[1].home = || Some(PathBuf::from("/beta-home"));
     reg[1].history = Some(crate::agents::HistoryFace {
-        sessions: Vec::new,
+        sessions: |_| Vec::new(),
         excerpt: |_| String::new(),
-        root: || Some(PathBuf::from("/beta-dated")),
+        roots: |hs| hs.iter().map(|_| PathBuf::from("/beta-dated")).collect(),
     });
     let home = Path::new("/h");
-    let at = |reg: &[Adapter], sid| find_session_among(reg, home, sid).map(|s| (s.root, s.file));
+    let at = |reg: &[Adapter], sid| find_session_in_among(reg, home, sid).map(|s| (s.root, s.file));
     assert_eq!(
         at(&reg, "beta-sid"),
         Ok((PathBuf::from("/beta-dated"), PathBuf::from("/beta/rec")))
@@ -807,27 +894,120 @@ fn finding_a_session_asks_every_family_under_its_own_root() {
     assert_eq!(at(&reg, "beta-sid"), Err("alpha: not mine".to_string()));
 }
 
-/// 请求里没说是哪一家时那几处取「唯一声明了那一格的那一家」：两家都声明 ⇒ 说不出（`None`，照实拒），不按注册序挑。
+/// 请求里没说是哪一家时那几处只认默认起的那一家（它也声明了那一格）：没有默认那一家 ⇒ 说不出（`None`，照实拒），
+/// 不另找「恰一家声明了那一格」。
 #[test]
-fn the_sole_family_is_answered_only_when_there_is_exactly_one() {
+fn the_unnamed_family_is_only_the_default_one() {
     let reg = two_families();
-    assert_eq!(sole_kind_among(&reg, |a| a.assets.is_some()), None);
-    assert_eq!(sole_kind_among(&reg, |a| a.accounts.is_some()), None);
-    assert_eq!(record_tree_kind_among(&reg), None);
+    assert_eq!(asset_default_among(&reg), None);
+    assert_eq!(account_kind_among(&reg, None), None);
     assert_eq!(
-        sole_kind_among(&reg[1..], |a| a.assets.is_some()),
-        Some("beta")
+        asset_default_among(&reg[1..]),
+        None,
+        "只剩一家、它又不是默认 ⇒ 照样说不出"
     );
-    assert_eq!(sole_kind_among(&reg, |a| a.launch.is_some()), None);
-    // 生产注册表上今天各恰一家（账号库 · 资产面 · MCP 读面 · 记录树）。
+    // 生产注册表上默认那一家声明了资产面与账号面。
     for (what, got) in [
-        ("账号库", sole_kind(|a| a.accounts.is_some())),
-        ("资产面", sole_kind(|a| a.assets.is_some())),
-        ("MCP 读面", sole_kind(|a| a.mcp.is_some())),
-        ("记录树", record_tree_kind_among(crate::agents::REGISTRY)),
+        ("账号库缺省那一家", crate::agents::account_kind(None)),
+        (
+            "资产面缺省那一家",
+            crate::agents::asset_default_among(crate::agents::REGISTRY),
+        ),
     ] {
-        assert!(got.is_some(), "生产注册表上「{what}」不是恰一家");
+        assert!(got.is_some(), "生产注册表上「{what}」说不出是哪一家");
     }
+}
+
+/// 「这一问是哪一家的」按面取只判一处（[`kind_with_face_among`]）：说了家 ⇒ 那一家、得声明了那一面；
+/// 没说 ⇒ 默认起的那一家、它声明了那一面才算。账号面 · MCP 面 · 资产面那三问都照它答，面不同各看各的那一格。
+#[test]
+fn which_family_a_question_belongs_to_is_judged_once_per_face() {
+    let mut reg = two_families();
+    reg[1].launch = Some(LaunchFace {
+        is_default: true,
+        ..crate::agents::fake::LAUNCH
+    });
+    let accounts = |a: &Adapter| a.accounts.is_some();
+    let mcp = |a: &Adapter| a.mcp.is_some();
+    assert_eq!(
+        kind_with_face_among(&reg, Some("alpha"), accounts),
+        Some("alpha")
+    );
+    assert_eq!(
+        kind_with_face_among(&reg, Some("gamma"), accounts),
+        None,
+        "认不出"
+    );
+    assert_eq!(
+        kind_with_face_among(&reg, None, accounts),
+        Some("beta"),
+        "没说 ⇒ 默认那一家"
+    );
+    reg[0].mcp = None;
+    assert_eq!(
+        kind_with_face_among(&reg, Some("alpha"), mcp),
+        None,
+        "alpha 没声明 MCP 面"
+    );
+    assert_eq!(
+        kind_with_face_among(&reg, Some("alpha"), accounts),
+        Some("alpha"),
+        "别的面不受牵连"
+    );
+    reg[1].accounts = None;
+    assert_eq!(
+        kind_with_face_among(&reg, None, accounts),
+        None,
+        "默认那一家没声明账号面"
+    );
+    assert_eq!(kind_with_face_among(&reg, None, mcp), Some("beta"));
+    // 三个按面的名字就是它绑上那一面：与它逐问同答。
+    for agent in [None, Some("alpha"), Some("beta"), Some("gamma")] {
+        assert_eq!(
+            account_kind_among(&reg, agent),
+            kind_with_face_among(&reg, agent, accounts)
+        );
+    }
+    for agent in ["alpha", "beta", "gamma"] {
+        assert_eq!(
+            mcp_kind_among(&reg, agent),
+            kind_with_face_among(&reg, Some(agent), mcp)
+        );
+    }
+    assert_eq!(
+        asset_default_among(&reg),
+        kind_with_face_among(&reg, None, |a| a.assets.is_some())
+    );
+}
+
+/// 资产面一家一份：声明了的每一家都列（注册序）；请求说了家 ⇒ 那一家（没声明资产面 · 认不出 ⇒ `None`）；
+/// 没说 ⇒ 默认起的那一家；两家都声明、又都不是默认 ⇒ 说不出（不按注册序挑）。
+#[test]
+fn every_family_with_an_asset_face_gets_its_own_and_the_default_answers_the_unnamed() {
+    let mut reg = two_families();
+    assert_eq!(asset_kinds_among(&reg), vec!["alpha", "beta"]);
+    assert_eq!(
+        asset_default_among(&reg),
+        None,
+        "两家都声明、谁都不是默认 ⇒ 说不出"
+    );
+    reg[1].launch = Some(LaunchFace {
+        is_default: true,
+        ..crate::agents::fake::LAUNCH
+    });
+    assert_eq!(
+        asset_default_among(&reg),
+        Some("beta"),
+        "没说 ⇒ 默认起的那一家"
+    );
+    reg[0].assets = None;
+    assert_eq!(asset_kinds_among(&reg), vec!["beta"]);
+    reg[1].assets = None;
+    assert_eq!(
+        asset_default_among(&reg),
+        None,
+        "默认那一家没声明资产面 ⇒ 说不出"
+    );
 }
 
 /// 账 · 表 · 路由键里存着的路由名只在 [`route_named`] 这一处换成 [`RouteId`]：认路由名、不认 kind、不认注册表里没有的。
@@ -917,4 +1097,262 @@ fn an_unknown_agent_gets_relative_lines_and_no_attachment_means_no_change() {
     let plain = typed_with(claudecode::AGENT_KIND, "接着改", &[]);
     assert_eq!((plain.text.as_str(), plain.pastes.len()), ("接着改", 0));
     assert_eq!(plain.first_say, "接着改");
+}
+
+/// Claude 那一行的 MCP 那一格：改一个服务器只动 `mcpServers` 里那一条，别的顶层键原样（逐字节）、BOM 留着；
+/// 删一条别的服务器还在；读不懂的不出新原文。
+#[test]
+fn claude_mcp_cells_change_one_server_and_leave_the_rest() {
+    let cells = crate::agents::claudecode::ADAPTER
+        .accounts
+        .and_then(|a| a.mcp)
+        .expect("Claude 声明了 MCP 那一格");
+    assert_eq!(cells.file, ".claude.json");
+    let text = "\u{feff}{\n  \"numStartups\": 3,\n  \"mcpServers\": {\n    \"a\": {\"command\": \"a\"},\n    \"b\": {\"command\": \"b\"}\n  },\n  \"tipsHistory\": {\"x\": 1.0}\n}\n";
+    let read = (cells.read)(text).expect("读得懂");
+    assert_eq!(read.keys().collect::<Vec<_>>(), vec!["a", "b"]);
+    let added = (cells.edit)(text, "c", Some(&serde_json::json!({ "command": "c" }))).unwrap();
+    assert!(added.starts_with('\u{feff}'), "BOM 留着");
+    assert!(
+        added.contains("\"numStartups\": 3,\n") && added.contains("\"tipsHistory\": {\"x\": 1.0}")
+    );
+    assert_eq!(
+        (cells.read)(&added).unwrap().keys().collect::<Vec<_>>(),
+        vec!["a", "b", "c"]
+    );
+    let removed = (cells.edit)(&added, "a", None).unwrap();
+    let left = (cells.read)(&removed).unwrap();
+    assert_eq!(left.keys().collect::<Vec<_>>(), vec!["b", "c"]);
+    assert_eq!(left["b"], serde_json::json!({ "command": "b" }));
+    assert!(
+        removed.contains("\"tipsHistory\": {\"x\": 1.0}"),
+        "别的顶层键原样"
+    );
+    assert!((cells.edit)("[1]", "a", None).is_err());
+    let fresh = (cells.edit)("", "a", Some(&serde_json::json!({}))).unwrap();
+    assert_eq!(
+        (cells.read)(&fresh).unwrap().keys().collect::<Vec<_>>(),
+        vec!["a"]
+    );
+}
+
+/// MCP 面逐家问：声明了的每一家都列（注册序）；问哪一家只收家名 ⇒ 那一家（没声明 · 认不出 ⇒ `None`），没有不说家的那一问。
+#[test]
+fn every_family_with_an_mcp_face_is_asked_by_its_own_name() {
+    let mut reg = two_families();
+    assert_eq!(mcp_kinds_among(&reg), vec!["alpha", "beta"]);
+    assert_eq!(mcp_kind_among(&reg, "beta"), Some("beta"));
+    assert_eq!(mcp_kind_among(&reg, "gamma"), None);
+    reg[1].mcp = None;
+    assert_eq!(mcp_kinds_among(&reg), vec!["alpha"]);
+    assert_eq!(mcp_kind_among(&reg, "beta"), None, "beta 没声明 MCP 面");
+    assert_eq!(mcp_kind_among(&reg, "alpha"), Some("alpha"));
+}
+
+/// 登录 MCP 那一格照服务器名拼 argv，名字恰在里面；没声明那一格 ⇒ 那一项不出。替身家（假 agent 声明了它）。
+#[test]
+fn mcp_login_line_carries_the_server_name_and_an_undeclared_cell_gives_none() {
+    let full = crate::agents::fake::full_row(|| None);
+    let reg = [full];
+    let kind = crate::agents::fake::AGENT_KIND;
+    let login = mcp_login_argv_among(&reg, kind, "my srv").expect("声明了登录");
+    assert_eq!(
+        login.iter().filter(|w| w.as_str() == "my srv").count(),
+        1,
+        "服务器名恰在一处：{login:?}"
+    );
+    assert_eq!(login.last().map(String::as_str), Some("my srv"));
+    let bare = [Adapter {
+        mcp: Some(crate::agents::fake::MCP_NO_LOGIN),
+        ..crate::agents::fake::full_row(|| None)
+    }];
+    assert_eq!(mcp_login_argv_among(&bare, kind, "my srv"), None);
+    assert_eq!(
+        mcp_login_argv_among(&reg, "gamma", "my srv"),
+        None,
+        "认不出的那一家"
+    );
+}
+
+#[test]
+fn a_family_declaring_plugin_cells_puts_its_spelling_in_install_and_remove_and_reads_its_list() {
+    let reg = crate::agents::fake::two_families();
+    let c = crate::agents::plugin_cells_among(reg, "fake").expect("声明了插件那一格的家要出那一格");
+    assert_eq!(
+        (c.install)("shelf/widget"),
+        ["fakeagent", "gadget", "fit", "shelf/widget"]
+    );
+    assert_eq!(
+        (c.remove)("shelf/widget"),
+        ["fakeagent", "gadget", "drop", "shelf/widget"]
+    );
+    assert_eq!((c.list)(), ["fakeagent", "gadget", "roster"]);
+    assert_eq!(
+        (c.read_list)("shelf/widget 1.2 on\nyard/lamp - off\n"),
+        Some(vec![
+            crate::agents::PluginListed {
+                key: "shelf/widget".into(),
+                name: "widget".into(),
+                version: Some("1.2".into()),
+                on: true,
+            },
+            crate::agents::PluginListed {
+                key: "yard/lamp".into(),
+                name: "lamp".into(),
+                version: None,
+                on: false,
+            },
+        ])
+    );
+    for unreadable in ["{\"installed\": []}", "lamp - off\n"] {
+        assert_eq!(
+            (c.read_list)(unreadable),
+            None,
+            "读不懂的输出说读不懂，不猜：{unreadable}"
+        );
+    }
+}
+
+#[test]
+fn a_family_without_plugin_cells_offers_none_of_the_three() {
+    let reg = crate::agents::fake::two_families();
+    assert!(crate::agents::plugin_cells_among(reg, "fake").is_some());
+    assert!(
+        crate::agents::plugin_cells_among(reg, "fake2").is_none(),
+        "没声明的那一家装 · 删 · 列都不出"
+    );
+    assert!(crate::agents::plugin_cells_among(reg, "nobody").is_none());
+}
+
+/// 「这台装的那一家是哪一版」只一个家无关的函数（[`crate::agents::installed_version`]）：照那一家 `HookGate` 声明的命令名与包名找。
+/// 两个替身家声明不同的包名 ⇒ 各读各的；原生安装（真身文件名就是版本）也认；包名对不上 · 版本串怪形 ⇒ `None`。
+#[cfg(unix)]
+#[test]
+fn one_family_free_function_reads_the_installed_version_by_the_declared_package() {
+    use crate::agents::{installed_version, HookGate};
+    use std::os::unix::fs::symlink;
+    let root = test_home::scratch("hookver");
+    let bin = root.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    // npm 那一形：`bin/<命令>` 链到 `lib/node_modules/<包>/<入口>`，包目录里一份 `package.json`。
+    let npm = |cmd: &str, pkg: &str, json: &str| {
+        let dir = root.join("lib/node_modules").join(pkg);
+        std::fs::create_dir_all(dir.join("bin")).unwrap();
+        std::fs::write(dir.join("package.json"), json).unwrap();
+        std::fs::write(dir.join("bin/run.js"), "").unwrap();
+        symlink(dir.join("bin/run.js"), bin.join(cmd)).unwrap();
+    };
+    npm(
+        "fakeagent",
+        "@fake/agent",
+        r#"{"name":"@fake/agent","version":"1.2.3"}"#,
+    );
+    npm(
+        "otheragent",
+        "@other/agent",
+        r#"{"name":"@other/agent","version":"4.5.6"}"#,
+    );
+    npm(
+        "oddagent",
+        "@odd/agent",
+        r#"{"name":"@odd/agent","version":"1.2"}"#,
+    );
+    npm(
+        "betaagent",
+        "@beta/agent",
+        r#"{"name":"@beta/agent","version":"1.2.3-beta.1"}"#,
+    );
+    // 原生那一形：真身文件名就是版本。
+    std::fs::create_dir_all(root.join("versions")).unwrap();
+    std::fs::write(root.join("versions/7.8.9"), "").unwrap();
+    symlink(root.join("versions/7.8.9"), bin.join("nativeagent")).unwrap();
+
+    let path = bin.to_string_lossy().to_string();
+    let gate = |command: &'static str, package: &'static str| HookGate {
+        min_version: [0, 0, 1],
+        command,
+        package,
+    };
+    let read = |g: HookGate| installed_version(&g, Some(&path));
+    let fake = crate::agents::fake::GATE;
+    assert_eq!(fake.command, crate::agents::fake::DEFAULT_COMMAND);
+    assert_eq!(read(fake), Some([1, 2, 3]), "替身家照它声明的包名读");
+    assert_eq!(
+        read(gate("otheragent", "@other/agent")),
+        Some([4, 5, 6]),
+        "另一家同一个函数、各读各的"
+    );
+    assert_eq!(
+        read(gate("nativeagent", "@native/agent")),
+        Some([7, 8, 9]),
+        "原生安装认文件名"
+    );
+    assert_eq!(
+        read(gate("fakeagent", "@other/agent")),
+        None,
+        "包名对不上不算"
+    );
+    assert_eq!(
+        read(gate("oddagent", "@odd/agent")),
+        None,
+        "版本只两段 ⇒ 认不出"
+    );
+    assert_eq!(
+        read(gate("betaagent", "@beta/agent")),
+        None,
+        "带预发布尾巴 ⇒ 认不出"
+    );
+    assert_eq!(
+        read(gate("nobody", "@no/body")),
+        None,
+        "PATH 上没有那个命令"
+    );
+    assert_eq!(installed_version(&fake, None), None, "没有 PATH ⇒ 认不出");
+}
+
+/// 合成历史按号：替身家声明合成历史面、两个号各一份会话（账号 0 的家 · 具名号的家）⇒ 注册表那一格交两份、各在自己的家底下。
+/// 经注册表那一行的合成历史面问，不认哪一家。
+#[test]
+fn each_account_home_of_a_synth_history_family_lists_its_own_sessions() {
+    use crate::agents::fake::runs::history as chats;
+    use crate::agents::AccountHome;
+    let base = test_home::scratch("synth-accounts");
+    let (zero, b) = (base.join("chats-0"), base.join("chats-b"));
+    for (home, sid) in [(&zero, "s-zero"), (&b, "s-b")] {
+        let root = chats::records_root(home);
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join(chats::file_name(sid)),
+            format!("{{\"chat\":\"{sid}\",\"dir\":\"/w\",\"said\":\"hi\"}}\n"),
+        )
+        .unwrap();
+    }
+    let homes = [
+        AccountHome {
+            account: None,
+            home: zero.clone(),
+        },
+        AccountHome {
+            account: Some("b".into()),
+            home: b.clone(),
+        },
+    ];
+    let reg = [chats::row(|| None)];
+    let face = adapter_among(&reg, chats::KIND)
+        .and_then(|a| a.history)
+        .expect("替身家声明了合成历史面");
+    let mut got: Vec<(String, bool, bool)> = (face.sessions)(&homes)
+        .into_iter()
+        .map(|s| (s.sid, s.path.starts_with(&zero), s.path.starts_with(&b)))
+        .collect();
+    got.sort();
+    assert_eq!(
+        got,
+        vec![
+            ("s-b".to_string(), false, true),
+            ("s-zero".to_string(), true, false),
+        ],
+        "两个号各一份 ⇒ 各在自己的家底下"
+    );
+    let _ = std::fs::remove_dir_all(&base);
 }

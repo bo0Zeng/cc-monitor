@@ -117,3 +117,80 @@ pub fn snapshot() -> &'static crate::common::session_snapshot::SessionSnapshot {
         crate::common::session_snapshot::SessionSnapshot::new(Box::new(tmux::list_sessions))
     })
 }
+
+/// **一条会话住在哪的唯一一处判法**：名单里挂着 `sid` 的那一行（tmux 在前、托管在后，取第一行）⇒ 那种宿主 ＋ 句柄；
+/// 哪行都不挂 ⇒ `None`（不知道：没打上标 · 私有 socket 上的 tmux 都认不出，不许说「不在宿主里」）。
+pub fn housed(rows: &[TermRow], sid: &str) -> Option<crate::wire::SessionContainer> {
+    if sid.is_empty() {
+        return None;
+    }
+    rows.iter()
+        .find(|r| r.sid == sid)
+        .map(|r| container(r.host, r.handle()))
+}
+
+/// 一种宿主 ＋ 它的句柄 ⇒ 会话脸要的容器那一格（[`housed`] 与按名单停会话那一处同一个写法）。
+pub fn container(
+    host: crate::wire::TerminalHost,
+    terminal: String,
+) -> crate::wire::SessionContainer {
+    use crate::wire::{SessionContainer, TerminalHost};
+    let terminal = Some(terminal);
+    match host {
+        TerminalHost::Tmux => SessionContainer::Tmux { terminal },
+        TerminalHost::Managed => SessionContainer::Managed { terminal },
+    }
+}
+
+/// 一趟请求问几条会话住哪（清单 · 搜索 · 分组 · 历史脸 · 一批会话）：名单第一次被问到才列（一趟至多一次，一条都没问就不列），
+/// 不跨请求留着（宿主会变，留着就是拿陈值说话）。哪一臂列不出就只少那一臂的行 ⇒ 住在那里的都是不知道。
+pub struct Housing<'a> {
+    list: &'a dyn Fn() -> Vec<TermRow>,
+    rows: std::cell::OnceCell<Vec<TermRow>>,
+}
+
+impl Housing<'static> {
+    /// 这台此刻的名单（tmux 那一臂列不出只丢那一臂：托管那几行照认）。
+    pub fn here() -> Self {
+        Self::with(&rows_here)
+    }
+}
+
+impl<'a> Housing<'a> {
+    /// 名单那一发由调用方给（判据交假名单）。
+    pub fn with(list: &'a dyn Fn() -> Vec<TermRow>) -> Self {
+        Self {
+            list,
+            rows: std::cell::OnceCell::new(),
+        }
+    }
+
+    /// `sid` 住在哪（[`housed`]）。
+    pub fn of(&self, sid: &str) -> Option<crate::wire::SessionContainer> {
+        housed(self.rows.get_or_init(|| (self.list)()), sid)
+    }
+
+    /// 那台判的一生是活着 ⇒ 它住在哪（[`Housing::of`]）；不是活着 ⇒ 不问（宿主只给活会话的脸用，不为它列名单）。
+    pub fn live(
+        &self,
+        sid: &str,
+        life: &crate::wire::WireLife,
+    ) -> Option<crate::wire::SessionContainer> {
+        if matches!(life, crate::wire::WireLife::Live { .. }) {
+            self.of(sid)
+        } else {
+            None
+        }
+    }
+}
+
+/// [`Housing::here`] 那一发：tmux 那几行（没装 · 列不出 ⇒ 没有）＋ 托管那几行。
+fn rows_here() -> Vec<TermRow> {
+    let mut rows = tmux::rows_here().ok().flatten().unwrap_or_default();
+    rows.extend(managed::listed().0);
+    rows
+}
+
+#[cfg(test)]
+#[path = "../../../tests/backend/host/housed_tests.rs"]
+mod housed_tests;

@@ -20,7 +20,7 @@ fn home(tag: &str) -> PathBuf {
 }
 
 fn put(home: &Path, sid: &str, name: &str, body: &str) {
-    let dir = tasks_root(home).join(sid);
+    let dir = tasks_root(&crate::agents::IntoHomes::into_homes(home)[0]).join(sid);
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join(name), body).unwrap();
 }
@@ -43,7 +43,7 @@ fn ids(lines: &[String]) -> Vec<String> {
 fn a_session_without_a_task_dir_is_an_honest_empty() {
     let h = home("empty");
     assert_eq!(
-        session_task_lines(&h, "no-such-sid").unwrap(),
+        session_task_lines(&crate::agents::IntoHomes::into_homes(&h)[0], "no-such-sid").unwrap(),
         Vec::<String>::new()
     );
 }
@@ -60,7 +60,7 @@ fn only_numbered_json_files_are_tasks_and_they_come_back_in_numeric_order() {
     }
     // 扩展名大小写不敏感。
     put(&h, "s", "3.JSON", &task("3"));
-    let got = session_task_lines(&h, "s").unwrap();
+    let got = session_task_lines(&crate::agents::IntoHomes::into_homes(&h)[0], "s").unwrap();
     assert_eq!(ids(&got), vec!["1", "2", "3", "10"]);
 }
 
@@ -73,7 +73,10 @@ fn a_torn_file_is_skipped_and_the_rest_still_comes_back() {
     put(&h, "s", "5.json", "[1,2]");
     // BOM 剥掉照读。
     put(&h, "s", "6.json", &format!("\u{feff}{}", task("6")));
-    assert_eq!(ids(&session_task_lines(&h, "s").unwrap()), vec!["4", "6"]);
+    assert_eq!(
+        ids(&session_task_lines(&crate::agents::IntoHomes::into_homes(&h)[0], "s").unwrap()),
+        vec!["4", "6"]
+    );
 }
 
 #[test]
@@ -81,7 +84,7 @@ fn every_field_goes_through_untouched() {
     let h = home("verbatim");
     let body = r#"{"id":"1","subject":"占位","description":"d","activeForm":"a","status":"in_progress","blocks":["2"],"blockedBy":["0"],"future":{"x":1}}"#;
     put(&h, "s", "1.json", body);
-    let got = session_task_lines(&h, "s").unwrap();
+    let got = session_task_lines(&crate::agents::IntoHomes::into_homes(&h)[0], "s").unwrap();
     assert_eq!(got.len(), 1);
     let back: serde_json::Value = serde_json::from_str(&got[0]).unwrap();
     let want: serde_json::Value = serde_json::from_str(body).unwrap();
@@ -101,16 +104,20 @@ fn an_oversized_file_is_skipped_not_the_whole_list() {
         &format!(r#"{{"id":"2","subject":"{pad}","status":"pending"}}"#),
     );
     put(&h, "s", "3.json", &task("3"));
-    assert_eq!(ids(&session_task_lines(&h, "s").unwrap()), vec!["1", "3"]);
+    assert_eq!(
+        ids(&session_task_lines(&crate::agents::IntoHomes::into_homes(&h)[0], "s").unwrap()),
+        vec!["1", "3"]
+    );
 }
 
 #[test]
 fn a_sid_that_would_walk_out_of_the_task_root_is_refused() {
     let h = home("fence");
     // 正控：一个普通 sid 过得去。
-    assert!(session_task_lines(&h, "abc-123").is_ok());
+    assert!(session_task_lines(&crate::agents::IntoHomes::into_homes(&h)[0], "abc-123").is_ok());
     for bad in ["", ".", "..", "../x", "a/b", "a\\b", "a\0b", "a_b", " a"] {
-        let err = session_task_lines(&h, bad).expect_err(bad);
+        let err =
+            session_task_lines(&crate::agents::IntoHomes::into_homes(&h)[0], bad).expect_err(bad);
         assert_eq!(err.code.as_deref(), Some("bad_args"), "{bad:?}");
     }
 }
@@ -121,12 +128,12 @@ fn a_dir_that_is_there_but_unreadable_is_not_an_empty_list() {
     use std::os::unix::fs::PermissionsExt;
     let h = home("unreadable");
     put(&h, "s", "1.json", &task("1"));
-    let dir = tasks_root(&h).join("s");
+    let dir = tasks_root(&crate::agents::IntoHomes::into_homes(&h)[0]).join("s");
     std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o000)).unwrap();
     // root 跑测试时权限位拦不住读 —— 那一格判不了，如实跳过而不是假绿。
     let perms_bite = std::fs::File::open(&dir).is_err();
-    let got = session_task_lines(&h, "s");
-    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let got = session_task_lines(&crate::agents::IntoHomes::into_homes(&h)[0], "s");
+    test_home::set_dir_mode(&dir, 0o755);
     if !perms_bite {
         return;
     }

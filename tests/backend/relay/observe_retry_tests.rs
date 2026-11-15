@@ -208,7 +208,7 @@ impl comms_outward::Destinations for Scripted {
             upstream: &self.retry_to,
             auth: comms_outward::AuthSwap {
                 clear: &["Authorization", "x-api-key"],
-                write: Some(("Authorization", "Bearer swapped")),
+                write: &[("Authorization", "Bearer swapped")],
             },
             body: Some(&self.body),
             tag: &tag,
@@ -225,7 +225,7 @@ impl comms_outward::Destinations for Scripted {
 }
 
 fn base_of(up: SocketAddr) -> comms_outward::Base {
-    comms_outward::Base::parse(&format!("http://127.0.0.1:{}", up.port())).expect("base")
+    crate::relay::base_of(&format!("http://127.0.0.1:{}", up.port())).expect("base")
 }
 
 fn refused_429() -> String {
@@ -420,7 +420,7 @@ fn dead_token_endpoint() -> crate::accounts::oauth::TokenEndpoint {
         .expect("bind")
         .port();
     crate::accounts::oauth::TokenEndpoint {
-        base: comms_outward::Base::parse(&format!("http://127.0.0.1:{port}")).expect("base"),
+        base: crate::relay::base_of(&format!("http://127.0.0.1:{port}")).expect("base"),
         rest: "/v1/oauth/token".into(),
         deadline: std::time::Duration::from_millis(2_000),
     }
@@ -736,6 +736,7 @@ fn a_session_on_its_own_upstream_goes_there_with_its_own_auth_and_never_rotates(
     let desc = UpstreamDesc {
         egress: Vec::new(),
         base: Some(format!("http://127.0.0.1:{}/gw", gw.port())),
+        account: None,
         pid: std::process::id(),
         at: 1,
     };

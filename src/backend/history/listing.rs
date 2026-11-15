@@ -1,6 +1,6 @@
 //! **会话清单那一族**：项目清单 · 平铺会话清单（连那份「没变不重扫、变长只扫尾巴」的缓存）·
 //! 后台热缓存 · 叫一条会话什么（[`label_facts_of`] · [`session_title_of`]）· 「这一行能做什么」（[`can_of`]）·
-//! 藏起来的那个工作目录（[`hidden_cwd`]）· `<agent_home>/projects/` 那道围栏（[`fence_under_projects`]）· 这台的 agent 家（[`agent_home`]）。
+//! 藏起来的那个工作目录（[`hidden_cwd`]）· 各家记录树那道围栏（[`fenced`]）。家由调用方交（`agents::local_homes`，每一家各一份）。
 //!
 //! 历史清单（`history_list`）· 资产目录（`assets::asset_catalog`）· 观测侧（记录级的读 · 全文搜索 · watcher）都来这里拿；
 //! 这一族不引 observe（历史清单那个包排在观测面之下，不依赖它）。
@@ -9,6 +9,7 @@
 //! 读记录只 read_dir / read；写只有清单缓存落盘那一份（经启动时装的 [`Own`]）。
 
 use super::listing_scan::{SessionRow, SessionScan};
+use crate::agents::AgentHome;
 use crate::common::append_read::{Blocks, Step, Tailed};
 use crate::common::fence::Fence;
 use crate::platform::fs::{Own, OwnPath, Ro};
@@ -20,29 +21,73 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::UNIX_EPOCH;
 
 /// **这条会话能做什么**（`can`）——界面按它画，不另判：
-/// - `resume`：`yes` 能恢复 · `switch` 在跑（切过去，不再起第二份）· `bg` 分身会话（要接着聊得恢复主会话）；
+/// - `resume`：`yes` 能恢复 · `switch` 在跑（切过去，不再起第二份）· `bg` 分身会话（要接着聊得恢复主会话）· `no` 认不出是哪一家的（没有那一家可起）；
+/// - `resumeWhy`：恢复不给时那一句（`bg` · `no`）；
 /// - `accounts`：恢复时能不能选号（那一家有没有账号这一维）· `fork`：能不能从某一轮分叉；
 /// - `delete`：`yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑（`life` 判不了 ⇒ 确认框里多说一句）。
 ///
-/// 历史清单的行与全文搜索的命中同一个函数。
-pub fn can_of(kind: &str, life: &WireLife, bg: bool) -> Can {
+/// 历史清单的行与全文搜索的命中同一个函数。`kind` 缺 ＝ 认不出是哪一家的 ⇒ 恢复是 `no`（在跑的照样切过去）· 选号 · 分叉都不给（没有那一家可问）。
+pub fn can_of(kind: Option<&str>, life: &WireLife, bg: bool) -> Can {
     let live = matches!(life, WireLife::Live { .. });
+    let resume = if live {
+        CanResume::Switch
+    } else if kind.is_none() {
+        CanResume::No
+    } else if bg {
+        CanResume::Bg
+    } else {
+        CanResume::Yes
+    };
+    let why = match resume {
+        CanResume::No => Some(copy_text("rsAgents.family.unknown", &[])),
+        CanResume::Bg => Some(copy_text("history.row.bgHint", &[])),
+        CanResume::Yes | CanResume::Switch => None,
+    };
     Can {
-        resume: if live {
-            CanResume::Switch
-        } else if bg {
-            CanResume::Bg
-        } else {
-            CanResume::Yes
-        },
-        accounts: crate::agents::account_env_of(kind).is_some(),
-        fork: crate::agents::record_face(kind).is_some_and(|r| r.branch.is_some()) && !bg,
+        resume,
+        resume_why: why.map(cmd_wire::cells::Words),
+        accounts: kind.and_then(crate::agents::account_env_of).is_some(),
+        fork: kind
+            .and_then(crate::agents::record_face)
+            .is_some_and(|r| r.branch.is_some())
+            && !bg,
         delete: match life {
             WireLife::Live { .. } => CanDelete::Live,
             WireLife::Unclear => CanDelete::Unsure,
             _ => CanDelete::Yes,
         },
     }
+}
+
+/// **这份会话记录在菜单里的归档那一项**：归的那一家声明了归档面 ⇒ 此刻是不是已归档照它判，那一项的字与没成那一句照文案表写
+/// （`label` ＝ 这一行显示的标题）；没声明 ⇒ `None`（界面不出那一项）。历史清单的行经它填。
+pub fn archive_item(p: &Path, label: &str) -> Option<cmd_wire::listing::RowArchive> {
+    archive_item_among(crate::agents::REGISTRY, p, label)
+}
+
+/// [`archive_item`] 的可喂夹具那一半。
+pub fn archive_item_among(
+    registry: &[crate::agents::Adapter],
+    p: &Path,
+    label: &str,
+) -> Option<cmd_wire::listing::RowArchive> {
+    let archived = crate::agents::archive_state_among(registry, p)?;
+    let (item, failed) = if archived {
+        (
+            copy_text("history.menu.unarchive", &[]),
+            copy_text("history.unarchive.failed", &[("label", label)]),
+        )
+    } else {
+        (
+            copy_text("history.menu.archive", &[]),
+            copy_text("history.archive.failed", &[("label", label)]),
+        )
+    };
+    Some(cmd_wire::listing::RowArchive {
+        archived,
+        label: cmd_wire::cells::Words(item),
+        failed: cmd_wire::cells::Words(failed),
+    })
 }
 
 /// 项目清单里的一项：一个真实目录（[`group_by_cwd`] 分的那一组）与它最近一次活动。
@@ -56,25 +101,43 @@ pub struct Project {
 
 /// 项目清单（资产目录 `asset_catalog` · 起会话框的「最近目录」读它）。
 ///
-/// 记录树根不在 ⇒ `Ok(None)`（这台还没起过会话 —— 判定只在这一处）；怎么说由调用方定：资产目录当零个项目。
-pub fn list_projects(agent_home: &Path) -> Result<Option<Vec<Project>>, String> {
-    let Some(root) = records_root(agent_home) else {
-        return Ok(None);
-    };
-    let entries = match Ro::read_dir(&root) {
-        Ok(it) => it,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(e) => return Err(unreadable_dir(&root, &e)),
-    };
-    let mut out = Vec::new();
-    for entry in entries.flatten() {
-        let dir = entry.path();
-        if dir.is_dir() {
-            // 空目录（全删过/只剩本机后端）不展示；一个记录目录里会话的真实目录不止一个 ⇒ 一组一项。
-            out.extend(project_rows(&dir));
+/// `homes` 里住记录树的每一家各列一遍，并成一份。
+/// 哪一家的记录树根都不在 ⇒ `Ok(None)`（这台还没起过会话 —— 判定只在这一处）；怎么说由调用方定：资产目录当零个项目。
+/// 记录树根 · 认会话文件 · 读项目目录都照生产注册表（这一处取它、往下传）。
+pub fn list_projects(homes: impl crate::agents::IntoHomes) -> Result<Option<Vec<Project>>, String> {
+    let registry = crate::agents::REGISTRY;
+    let homes_v = homes.into_homes_among(registry);
+    let homes: &[crate::agents::AgentHome] = &homes_v;
+    let mut out: Option<Vec<Project>> = None;
+    for (home, root) in tree_roots_among(registry, homes) {
+        let entries = match Ro::read_dir(&root) {
+            Ok(it) => it,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(unreadable_dir(&root, &e)),
+        };
+        let got = out.get_or_insert_with(Vec::new);
+        for entry in entries.flatten() {
+            let dir = entry.path();
+            if dir.is_dir() {
+                // 空目录（全删过/只剩本机后端）不展示；一个记录目录里会话的真实目录不止一个 ⇒ 一组一项。
+                got.extend(project_rows(registry, home, &dir));
+            }
         }
     }
-    Ok(Some(out))
+    Ok(out)
+}
+
+/// `homes` 里住记录树的每一家与它家下那棵树的根（注册序 · `homes` 的次序；树根照 `registry`）。
+fn tree_roots_among<'a>(
+    registry: &[crate::agents::Adapter],
+    homes: &'a [AgentHome],
+) -> Vec<(&'a AgentHome, PathBuf)> {
+    homes
+        .iter()
+        .filter_map(|h| {
+            crate::agents::records_root_among(registry, h.kind, &h.home).map(|r| (h, r))
+        })
+        .collect()
 }
 
 /// 一个记录目录里的会话按**真实目录**分组 —— 记录目录名把非 ASCII 字符、`.`、`/` 都折成 `-`，
@@ -112,8 +175,8 @@ pub(crate) fn unreadable_dir(dir: &Path, e: &std::io::Error) -> String {
 ///
 /// 判据要判的是**这一行带了什么**。
 /// 同样的分法在本文件里已有先例：`analyze_session` 也是把「算出那一行」与「把它印出去」分开的。
-fn project_rows(dir: &Path) -> Vec<Project> {
-    project_rows_hiding(dir, &hidden_cwd)
+fn project_rows(registry: &[crate::agents::Adapter], home: &AgentHome, dir: &Path) -> Vec<Project> {
+    project_rows_hiding(registry, home, dir, &hidden_cwd)
 }
 
 /// 这台家里那个不出会话的工作目录（`~/.cc-monitor/autostart/`，名字住 [`crate::common::own_dir::HIDDEN_WORK_DIR`]）：
@@ -133,16 +196,24 @@ pub(crate) fn hidden_cwd_in(data_home: &Path, cwd: &str) -> bool {
     cwd == dir || crate::common::fence::Fence::at(&dir).is_ok_and(|f| cwd == f.root())
 }
 
-/// [`project_rows`] 的本体：`hide(目录)` ⇒ 那一组不出。
-fn project_rows_hiding(dir: &Path, hide: &dyn Fn(&str) -> bool) -> Vec<Project> {
-    // 目录只读开头（`project_dir_of`，不整份扫）：与会话清单整行那一格（扫整份时取到的第一个）只在
+/// [`project_rows`] 的本体：`hide(目录)` ⇒ 那一组不出；认会话文件 · 读项目目录照 `registry`。
+fn project_rows_hiding(
+    registry: &[crate::agents::Adapter],
+    home: &AgentHome,
+    dir: &Path,
+    hide: &dyn Fn(&str) -> bool,
+) -> Vec<Project> {
+    // 目录只读开头（`project_dir_among`，不整份扫）：与会话清单整行那一格（扫整份时取到的第一个）只在
     // 写着目录的那一行落在开头上限之后时不同，那种会话在这里归最近那一组（[`group_by_cwd`]）。
     let mut sessions: Vec<(Option<String>, i64)> = Vec::new();
     if let Ok(files) = Ro::read_dir(dir) {
         for f in files.flatten() {
             let p = f.path();
-            if p.is_file() && crate::agents::is_tree_session_file(&p) {
-                sessions.push((crate::agents::project_dir_of(&p), Ro::mtime_ms(&p)));
+            if p.is_file() && crate::agents::is_session_file_among(registry, home.kind, &p) {
+                sessions.push((
+                    crate::agents::project_dir_among(registry, &p),
+                    Ro::mtime_ms(&p),
+                ));
             }
         }
     }
@@ -163,8 +234,11 @@ fn project_rows_hiding(dir: &Path, hide: &dyn Fn(&str) -> bool) -> Vec<Project> 
 
 /// 一个项目目录的会话清单（每份会话一行）。`only` ＝ 只要这一个会话的整行（按 sid 问清单那一条）：别的会话只出分组要的那几格
 /// （sid · 读出的目录 · 修改时刻 —— 都不用扫整份），整行只扫叫这个名字的那一份。
-pub(crate) fn list_sessions_for(
-    agent_home: &Path,
+/// 项目目录在 `homes` 里哪一家的记录树下：头一家围栏放行的那一家（目录名各家不相交时就是它那一家）。
+/// 记录树根 · 认会话文件照 `registry`（生产传 [`crate::agents::REGISTRY`]）。
+pub(crate) fn list_sessions_among(
+    registry: &[crate::agents::Adapter],
+    homes: &[AgentHome],
     project_dir: &str,
     only: Option<&str>,
 ) -> Result<Vec<SessionRow>, String> {
@@ -177,19 +251,19 @@ pub(crate) fn list_sessions_for(
     // ——canonicalize 解析 symlink 后做前缀校验挡住。
     // **改调共享围栏**（E3）：此前这里是一份内联副本，
     // 注释写着「与 `read_session` 对齐」—— 靠手工对齐的两份迟早会漂。
-    let dir = fence_under_projects(agent_home, Path::new(project_dir))?;
+    let (home, dir) = fenced_among(registry, homes, Path::new(project_dir))?;
     let entries = Ro::read_dir(&dir).map_err(|e| unreadable_dir(&dir, &e))?;
     let mut rows = Vec::new();
     for entry in entries.flatten() {
         let p = entry.path();
-        if !p.is_file() || !crate::agents::is_tree_session_file(&p) {
+        if !p.is_file() || !crate::agents::is_session_file_among(registry, home.kind, &p) {
             continue;
         }
         let own = crate::agents::sid_of(&p).unwrap_or_default();
         rows.push(match only {
             Some(sid) if own != sid => SessionRow {
                 session_id: own,
-                cwd: crate::agents::project_dir_of(&p),
+                cwd: crate::agents::project_dir_among(registry, &p),
                 updated_at_ms: Ro::mtime_ms(&p),
                 ..SessionRow::default()
             },
@@ -199,38 +273,57 @@ pub(crate) fn list_sessions_for(
     Ok(rows)
 }
 
-/// 平铺清单的每个记录目录：`(目录名, 那一目录的会话行 | 读不了的那一句)`。
-pub(crate) type DirSessions = Vec<(String, Result<Vec<SessionRow>, String>)>;
+/// 平铺清单的每个记录目录：`(目录名, 那一目录的会话行 | 读不了 ⇒ [`Unread`])`。
+pub(crate) type DirSessions = Vec<(String, Result<Vec<SessionRow>, Unread>)>;
 
-/// 平铺清单（`history-list`）那一份：这台**每个**记录目录 ⇒ [`DirSessions`]。
-/// 会话行同 [`list_sessions_for`]，`cwd` 换成按 [`group_by_cwd`] 归的那一组 ——
-/// 与项目清单同一个分组（记录目录名会撞，按真实目录分）；归到藏起来的那个目录（[`hidden_cwd`]）的不出。
-/// 记录树根不在 ⇒ `Ok(None)`（这台还没起过会话，同 [`list_projects`]）。
-pub(crate) fn sessions_by_dir(agent_home: &Path) -> Result<Option<DirSessions>, String> {
-    sessions_by_dir_for(agent_home, None)
+/// 读不了的一个记录目录：扫它时手里是哪一家的记录根（那一家，不事后照目录名另认）· 为什么读不了。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Unread {
+    pub kind: &'static str,
+    pub why: String,
 }
 
-/// [`sessions_by_dir`] 的本体；`only` 见 [`list_sessions_for`]（别的会话那几行只够分组用，调用方按 sid 滤掉）。
-pub(crate) fn sessions_by_dir_for(
-    agent_home: &Path,
+/// 平铺清单（`history-list`）那一份：这台**每个**记录目录 ⇒ [`DirSessions`]。
+/// 会话行同 [`list_sessions_among`]，`cwd` 换成按 [`group_by_cwd`] 归的那一组 ——
+/// 与项目清单同一个分组（记录目录名会撞，按真实目录分）；归到藏起来的那个目录（[`hidden_cwd`]）的不出。
+/// 记录树根不在 ⇒ `Ok(None)`（这台还没起过会话，同 [`list_projects`]）。
+pub(crate) fn sessions_by_dir(
+    homes: impl crate::agents::IntoHomes,
+) -> Result<Option<DirSessions>, String> {
+    let homes_v = crate::agents::IntoHomes::into_homes(homes);
+    sessions_by_dir_among(crate::agents::REGISTRY, &homes_v, None)
+}
+
+/// [`sessions_by_dir`] 的本体（注册表可喂）；`only` 见 [`list_sessions_among`]（别的会话那几行只够分组用，调用方按 sid 滤掉）。
+/// `homes` 里住记录树的每一家的目录一起交给几条线程扫，并成一份照目录名排（同名的照家的先后）；
+/// 读不了的目录带上扫它的那一家（[`Unread`]）。
+pub(crate) fn sessions_by_dir_among(
+    registry: &[crate::agents::Adapter],
+    homes: &[AgentHome],
     only: Option<&str>,
 ) -> Result<Option<DirSessions>, String> {
-    let Some(root) = records_root(agent_home) else {
+    let mut dirs: Vec<(AgentHome, String)> = Vec::new();
+    let mut any = false;
+    for (home, root) in tree_roots_among(registry, homes) {
+        let entries = match Ro::read_dir(&root) {
+            Ok(it) => it,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(unreadable_dir(&root, &e)),
+        };
+        any = true;
+        dirs.extend(
+            entries
+                .flatten()
+                .filter(|e| e.path().is_dir())
+                .map(|e| (home.clone(), e.file_name().to_string_lossy().into_owned())),
+        );
+    }
+    if !any {
         return Ok(None);
-    };
-    let entries = match Ro::read_dir(&root) {
-        Ok(it) => it,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(e) => return Err(unreadable_dir(&root, &e)),
-    };
-    let dirs: Vec<String> = entries
-        .flatten()
-        .filter(|e| e.path().is_dir())
-        .map(|e| e.file_name().to_string_lossy().into_owned())
-        .collect();
+    }
     // 〔perfC〕按目录分给几条线程扫（冷的时候是整台每份会话从头扫一遍，单线程要几秒）；结果最后按目录名排，与单线程逐字相同。
-    let mut out: Vec<_> = crate::common::par::par_in_order(dirs, |dir_name| {
-        rows_of_dir(agent_home, &dir_name, only).map(|got| (dir_name, got))
+    let mut out: Vec<_> = crate::common::par::par_in_order(dirs, |(home, dir_name)| {
+        rows_of_dir(registry, &home, &dir_name, only).map(|got| (dir_name, got))
     })
     .into_iter()
     .flatten()
@@ -244,11 +337,17 @@ pub(crate) fn sessions_by_dir_for(
 
 /// 一个记录目录的会话行（`None` ＝ 这一目录一行都没有，不出）。
 fn rows_of_dir(
-    agent_home: &Path,
+    registry: &[crate::agents::Adapter],
+    home: &AgentHome,
     dir_name: &str,
     only: Option<&str>,
-) -> Option<Result<Vec<SessionRow>, String>> {
-    let rows = list_sessions_for(agent_home, dir_name, only).map(|mut rows| {
+) -> Option<Result<Vec<SessionRow>, Unread>> {
+    let rows = list_sessions_among(registry, std::slice::from_ref(home), dir_name, only);
+    let rows = rows.map_err(|why| Unread {
+        kind: home.kind,
+        why,
+    });
+    let rows = rows.map(|mut rows| {
         let keys: Vec<(Option<String>, i64)> = rows
             .iter()
             .map(|r| (r.cwd.clone(), r.updated_at_ms))
@@ -422,7 +521,8 @@ struct ListingEntry {
 
 impl ListingEntry {
     /// 从头逐行流式扫一份（不整份进内存）：完整行进 `done`、交给账本；末尾没写完的那截进 `tail`。
-    fn scan(p: &Path, mtime: Option<std::time::SystemTime>) -> Self {
+    /// `kind` ＝ 照哪一家的读法扫（缓存里的那几份照路径认的那一家；按 sid 找到的照找到它的那一家，[`row_as`]）。
+    fn scan(p: &Path, kind: Option<&str>, mtime: Option<std::time::SystemTime>) -> Self {
         use std::io::BufRead;
         let mut e = Self {
             read: Tailed::default(),
@@ -431,7 +531,6 @@ impl ListingEntry {
             row: SessionRow::default(),
             last_bytes: 0,
         };
-        let kind = crate::agents::record_kind_of(p).unwrap_or_default();
         let mut end = 0u64;
         if let Ok(file) = Ro::open(p) {
             let mut r = std::io::BufReader::new(file);
@@ -464,7 +563,7 @@ impl ListingEntry {
         mtime: Option<std::time::SystemTime>,
         new: &mut Blocks<R>,
     ) -> bool {
-        let kind = crate::agents::record_kind_of(p).unwrap_or_default();
+        let kind = crate::agents::record_kind_of(p);
         let base = self.read.consumed();
         loop {
             match new.next() {
@@ -489,12 +588,12 @@ impl ListingEntry {
 
 /// 后端一起来就后台把清单缓存热好（一条一次性线程，降到低优先级；不是定时器，扫完就退）：
 /// 第一次打开历史页 / 按 sid 打开查看窗时不必再等整台从头扫一遍。远端流后端与本机常驻后端同一个调用点（`stream/entry.rs` 的 `run`）。
-pub fn warm_listing_in_background(agent_home: PathBuf) {
+pub fn warm_listing_in_background(homes: Vec<AgentHome>) {
     let spawned = std::thread::Builder::new()
         .name("listing-warm".into())
         .spawn(move || {
             let lowered = crate::platform::proc::lower_this_thread();
-            let n = warm_listing(&agent_home);
+            let n = warm_listing(&homes);
             tracing::info!("历史清单缓存：后台热好 {n} 份（低优先级：{lowered}）");
         });
     if let Err(e) = spawned {
@@ -503,9 +602,11 @@ pub fn warm_listing_in_background(agent_home: PathBuf) {
 }
 
 /// [`warm_listing_in_background`] 的本体（判据直接调它）：整台扫一遍清单，回缓存里有几份。
-pub(crate) fn warm_listing(agent_home: &Path) -> usize {
+pub(crate) fn warm_listing(homes: impl crate::agents::IntoHomes) -> usize {
+    let homes_v = crate::agents::IntoHomes::into_homes(homes);
+    let homes: &[crate::agents::AgentHome] = &homes_v;
     // 读不了记录树 ⇒ 这一趟热不了，说一句；第一次问清单时照样现扫、照样把那一句交给界面。
-    if let Err(e) = sessions_by_dir(agent_home) {
+    if let Err(e) = sessions_by_dir(homes) {
         tracing::warn!("历史清单缓存：后台热缓存读不了记录树（{e}）");
     }
     table().len()
@@ -516,20 +617,50 @@ pub fn label_facts_of(p: &Path) -> super::search_rules::LabelFacts {
     label_facts_among(crate::agents::REGISTRY, p)
 }
 
-/// [`label_facts_of`] 的可喂夹具那一半（注册表是参数）。
+/// [`label_facts_of`] 的可喂夹具那一半（注册表是参数）：照路径认那一家；认不出 ⇒ 只数行的那一行（说不清）。
 pub(crate) fn label_facts_among(
     registry: &[crate::agents::Adapter],
     p: &Path,
 ) -> super::search_rules::LabelFacts {
+    match crate::agents::record_kind_among(registry, p) {
+        Some(kind) => facts_as(registry, kind, p, || analyze_session_cached(p)),
+        None => row_facts(analyze_session_cached(p)),
+    }
+}
+
+/// 已知是哪一家的（按 sid 找到它的那一家，[`crate::agents::SessionAt::kind`]）：叫它的那几样照那一家取、不照路径另认；
+/// 注册表里没有这一家 ⇒ 说不清（那几样都空，不退到注册序头一家去读）。
+fn label_facts_as_among(
+    registry: &[crate::agents::Adapter],
+    kind: &'static str,
+    p: &Path,
+) -> super::search_rules::LabelFacts {
+    facts_as(registry, kind, p, || row_as(p, kind))
+}
+
+/// 照 `kind` 那一家取叫它的那几样：有合成历史面 ⇒ 它的摘录法与项目目录；住记录树 ⇒ `row` 扫出的那一行。
+fn facts_as(
+    registry: &[crate::agents::Adapter],
+    kind: &str,
+    p: &Path,
+    row: impl FnOnce() -> SessionRow,
+) -> super::search_rules::LabelFacts {
+    let Some(adapter) = crate::agents::adapter_among(registry, kind) else {
+        return super::search_rules::LabelFacts::default();
+    };
     // 有合成历史面的那一家（记录格式不是记录树那一家的）：第一句照它自己的读法（与历史清单那一行同一个摘录）；它没有标题记录。
-    if let Some(excerpt) = crate::agents::synth_excerpt_among(registry, p) {
+    if let Some(h) = adapter.history {
         return super::search_rules::LabelFacts {
-            first: super::search_rules::excerpt_of(&excerpt(p)),
-            project_dir: crate::agents::project_dir_among(registry, p),
+            first: super::search_rules::excerpt_of(&(h.excerpt)(p)),
+            project_dir: crate::agents::project_dir_as(registry, kind, p),
             ..Default::default()
         };
     }
-    let row = analyze_session_cached(p);
+    row_facts(row())
+}
+
+/// 清单那一行里叫它的那几样。
+fn row_facts(row: SessionRow) -> super::search_rules::LabelFacts {
     super::search_rules::LabelFacts {
         title: row.ai_title,
         first: row.first_user_excerpt,
@@ -545,6 +676,20 @@ pub fn session_title_of(p: &Path, custom: Option<String>) -> String {
     super::search_rules::session_label(&super::search_rules::LabelFacts {
         custom,
         ..label_facts_of(p)
+    })
+    .0
+}
+
+/// [`session_title_of`] 的已知那一家一形（[`label_facts_as_among`]：照 `kind` 那一家取，不照路径另认）。
+pub fn session_title_as(
+    registry: &[crate::agents::Adapter],
+    kind: &'static str,
+    p: &Path,
+    custom: Option<String>,
+) -> String {
+    super::search_rules::session_label(&super::search_rules::LabelFacts {
+        custom,
+        ..label_facts_as_among(registry, kind, p)
     })
     .0
 }
@@ -603,7 +748,7 @@ fn analyze_session_cached(p: &Path) -> SessionRow {
             tally_read(p, e.last_bytes);
             e
         }
-        _ => ListingEntry::scan(p, seen.0),
+        _ => ListingEntry::scan(p, crate::agents::record_kind_of(p), seen.0),
     };
     let row = entry.row.clone();
     // 拿不到修改时刻 ⇒ 不留（下次认不出它变没变）。
@@ -621,35 +766,42 @@ fn analyze_session_cached(p: &Path) -> SessionRow {
 }
 
 // **围栏住 `common/fence.rs`**〔审计 F 🔴-6〕：这里原来是具名围栏
-// `fence_under_projects` 的本体（「全文件唯一的一处 `canonicalize` + 前缀校验」，audit-0805 08-06 定框 E3 从
+// [`fenced`] 那道围栏（「全文件唯一的一处 `canonicalize` + 前缀校验」，audit-0805 08-06 定框 E3 从
 // `list_sessions` 的内联副本收成一份）。E3 只收到了**本文件**，`search_query` 里还有一份内联的（头注逐字「复刻 history_query」）
 // ⇒ 判定本体（解开根 · 解开目标 · 前缀比）搬去 observe 内部唯一的家 `common/fence.rs::Fence`；这里只剩「以 `projects/` 为根」
 //   那一行（根是哪一个属 Claude 的目录布局，留在认得它的这一侧），三条按路径读的路照旧调它，报错原话逐字不变。
 // LOC1b 在这里把本体提成了「根是参数」的一形（为各家合成历史面给的记录根）—— 那一形就是
 // `common/fence.rs::Fence::at(根)?.admit(候选)`（报错取根目录名，与 LOC1b 那一版逐字同形），下面 [`validate_session_path_among`] 改调它。
 
-/// `<agent_home>/projects/` 这道围栏放行一个候选路径（本体在 [`Fence`]；`candidate` 相对按根拼、绝对直用）。
-pub fn fence_under_projects(
-    agent_home: &Path,
+/// 记录树那道围栏放行一个候选路径（本体在 [`Fence`]；`candidate` 相对按根拼、绝对直用）：`homes` 里住记录树的每一家，
+/// 头一家放行的就是它（连那一家一起交回）；都不放行 ⇒ 头一家那一句；哪一家都不住记录树 ⇒ [`NO_TREE`]。
+pub fn fenced<'a>(
+    homes: &'a [AgentHome],
     candidate: &Path,
-) -> Result<std::path::PathBuf, String> {
-    Fence::at(&records_root(agent_home).ok_or(NO_TREE)?)?.admit(candidate)
+) -> Result<(&'a AgentHome, std::path::PathBuf), String> {
+    fenced_among(crate::agents::REGISTRY, homes, candidate)
 }
 
-/// 这台记录树的根（记录树那一家的布局，注册表 `RecordFace.tree`）。没有记录树那一家 ⇒ `None`。
-pub fn records_root(agent_home: &Path) -> Option<PathBuf> {
-    crate::agents::records_root(agent_home)
+/// [`fenced`] 的可喂注册表那一半。
+fn fenced_among<'a>(
+    registry: &[crate::agents::Adapter],
+    homes: &'a [AgentHome],
+    candidate: &Path,
+) -> Result<(&'a AgentHome, std::path::PathBuf), String> {
+    let mut first_err = None;
+    for (home, root) in tree_roots_among(registry, homes) {
+        match Fence::at(&root).and_then(|f| f.admit(candidate)) {
+            Ok(p) => return Ok((home, p)),
+            Err(e) => {
+                first_err.get_or_insert(e);
+            }
+        }
+    }
+    Err(first_err.unwrap_or_else(|| NO_TREE.to_string()))
 }
 
 /// 注册表里没有记录树那一家时，按路径读的那几条拒的那一句。
 pub const NO_TREE: &str = "no agent here keeps a record tree";
-
-/// 帧面那几条要的「这台的 agent 家目录」—— 与 `stream/entry.rs` 的 `resolve_agent_home` **同一个出处**。
-///
-/// 问注册表里后端盯着的那一家（`agents::home_at`），照进程环境解。
-pub fn agent_home() -> std::path::PathBuf {
-    crate::agents::home_at(None, true)
-}
 
 pub(crate) fn created_ms_or_mtime(p: &Path) -> i64 {
     let meta = match Ro::metadata(p) {
@@ -677,7 +829,17 @@ pub(crate) fn analyze_session(p: &Path) -> SessionRow {
     // 会话清单对该项目**每个** jsonl 都调它一次，43 个项目 / 2.4 GB 的机器上
     // 一次列表就是把 2.4 GB 读进内存再逐行解析。扫描是必须的（要数行、要判 bg），**但不必先整份进内存**。
     let mtime = Ro::metadata(p).and_then(|m| m.modified()).ok();
-    ListingEntry::scan(p, mtime).row
+    ListingEntry::scan(p, crate::agents::record_kind_of(p), mtime).row
+}
+
+/// 照 `kind` 那一家的读法扫这一份：路径认的也是这一家 ⇒ 走清单缓存；不是（路径认不出 · 认成别家）⇒ 现扫、不进缓存
+/// （缓存里那几份一律照路径认的那一家扫，变长只扫尾巴也照它）。
+fn row_as(p: &Path, kind: &'static str) -> SessionRow {
+    if crate::agents::record_kind_of(p) == Some(kind) {
+        return analyze_session_cached(p);
+    }
+    let mtime = Ro::metadata(p).and_then(|m| m.modified()).ok();
+    ListingEntry::scan(p, Some(kind), mtime).row
 }
 
 #[cfg(test)]

@@ -6,8 +6,16 @@ import type { PasteKind } from "./PasteKind";
  * 会不会自己登完（发起它的浏览器在这台 ⇒ 回调到那一家自己开的本机端口，登完推一帧 `changed {login}`，粘码框只是后备；
  * 不在这台 ⇒ `false`，只能粘）。
  */
-export type LoginStarted = { job: string, url: string, paste: PasteKind, auto: boolean, 
+export type LoginStarted = { job: string, url: string, paste: PasteKind, 
+/**
+ * 显示码那一形印的那段码（人在登录页里填它）；别的形 ⇒ `null`。
+ */
+code: string | null, auto: boolean, 
 /**
  * 那一家自己在这台开了登录页（它那一形自己开浏览器、发起它的浏览器又在这台）⇒ 界面不再开第二页。
  */
-opened: boolean, };
+opened: boolean, 
+/**
+ * 这一趟只能在那一台的浏览器里登完（不粘回、发起它的浏览器又不在那一台）⇒ 写好的那一句（两端照摆）；别的 ⇒ `null`。
+ */
+elsewhere: string | null, };

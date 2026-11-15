@@ -1,4 +1,5 @@
 use super::*;
+use crate::relay::base_of;
 use creds_core::store;
 
 /// 判据里这些行挂在谁名下。**名字刻意不是任何一家真 agent** —— 本文件量的是
@@ -6,7 +7,7 @@ use creds_core::store;
 const AGENT: &str = "agent-under-test";
 
 fn base(u: &str) -> Base {
-    Base::parse(u).expect("夹具的 base 应当解析得了")
+    base_of(u).expect("夹具的 base 应当解析得了")
 }
 
 fn entries(raw: &str) -> Vec<AccountEntry> {
@@ -355,7 +356,7 @@ fn every_auth_style_other_than_the_default_gets_announced() {
 // ════════════════════════════════════════════════════════════════════════════
 //
 // 期望值一律**手写字面量**（`"claude-code"` · `"CCM_AGENT_UPSTREAM_CLAUDE_CODE"` · 那条官方 URL 的主机名），
-// 不拿被测的 `CREDENTIALS_FILE_AGENT` / 适配层那一格（`agents::Adapter::upstream`）去算 —— 拿被测常量写期望值再拿它去读，
+// 不拿被测的 `Upstreams::file_agent` / 适配层那一格（`agents::Adapter::upstream`）去算 —— 拿被测那一格写期望值再拿它去读，
 // 两侧同源，恒真。
 
 use super::super::{decide, Upstreams};
@@ -396,7 +397,7 @@ fn ask_naming(
             Destination::Passthrough { upstream, .. } => Said::Passthrough(upstream.host_header()),
             Destination::Substitute { upstream, auth, .. } => Said::Substitute(
                 upstream.host_header(),
-                auth.write.map(|(_, v)| v.to_string()),
+                auth.write.first().map(|(_, v)| v.to_string()),
             ),
         });
     });
@@ -553,9 +554,12 @@ fn the_per_agent_upstream_table_has_no_duplicate_agent_or_knob_and_holds_the_cre
         rows.len(),
         "两家共用一个环境旋钮 ⇒ 盖一家等于盖两家"
     );
-    assert!(
-        agents.contains("claude-code"),
-        "凭据文件那一家（手写 `claude-code`）没登记 ⇒ 文件里的行没有默认上游可取"
+    // 凭据文件那一家（手写 `claude-code`）：装表时文件里的行挂在它名下；属主必在登记了默认上游的那几家里（`from_env` 照它们找），
+    // 所以这一条也说了它登记了。
+    assert_eq!(
+        upstreams_without_env().file_agent(),
+        "claude-code",
+        "装表时凭据文件里的行挂到了别家名下"
     );
 }
 
@@ -664,4 +668,140 @@ fn a_by_header_default_upstream_picks_by_the_request_s_own_header_names() {
         ),
         Said::Passthrough("absent.invalid".into())
     );
+}
+
+// ── 一条 `base_url` 读成中转的 `Base`（`relay::base_of`；装表那一条 `base_if_usable` 用同一份 `base_from` · `shape_said`）──
+
+#[test]
+fn parses_the_two_schemes_and_their_default_ports() {
+    assert_eq!(
+        base_of("https://api.example.com"),
+        Ok(Base {
+            tls: true,
+            host: "api.example.com".to_string(),
+            port: 443,
+            path: String::new()
+        })
+    );
+    assert_eq!(
+        base_of("http://127.0.0.1:18789"),
+        Ok(Base {
+            tls: false,
+            host: "127.0.0.1".to_string(),
+            port: 18789,
+            path: String::new()
+        })
+    );
+}
+
+#[test]
+fn rejects_shapes_it_does_not_understand() {
+    // 分母 = 我列出的这 5 形。
+    for bad in [
+        "ftp://x",
+        "api.example.com",
+        "https://",
+        "://x",
+        "https://:443",
+    ] {
+        assert!(base_of(bad).is_err(), "这一形不该被接受：{bad}");
+    }
+    // ★ 非空对照排在后面也够（上面几形都是 `Err`，尺子不可能恒 `Err` 还让这一句过）。
+    assert!(base_of("https://ok.example").is_ok(), "这把尺子是瞎的");
+}
+
+/// ★★★ `base_url` 里那一段路径**装得下**：
+/// 不会被 `rest.split('/').next()` 整个丢掉、还照样回 `Some`。
+///
+/// # 死值验就在这条判据的第一格上
+///
+/// 第一格逐字是 PM 补充里点名的那个读数：`base_of("https://h:443/v1")`。
+/// **改前**它回 `Some(Base{host:"h",port:443})`，`/v1` 静默消失、没有任何东西出声；
+/// **改后**那一段留在 `path` 里。⇒ 把 `upstream_url_core::normalize_prefix` 的返回改成
+/// 恒 `Ok(String::new())`（形状对、恒答「没有前缀」那张脸），本条当场红。
+#[test]
+fn the_path_part_of_a_base_url_is_kept_instead_of_being_silently_dropped() {
+    // 分母 = 我列出的这 7 形，逐形手写期望值。
+    let cases: &[(&str, &str)] = &[
+        ("https://h:443/v1", "/v1"),
+        ("https://vendor.example/anthropic", "/anthropic"),
+        ("http://127.0.0.1:11434/v1", "/v1"),
+        ("https://h/openai/v1", "/openai/v1"),
+        // 尾随的 `/` 在一个前缀里不携带信息 ⇒ 去掉。
+        ("https://h/v1/", "/v1"),
+        // 整段就是一个 `/` ⇒ 说的是「根」，等价于没有前缀。
+        ("https://h/", ""),
+        ("https://h", ""),
+    ];
+    for (url, want) in cases {
+        let b = base_of(url).unwrap_or_else(|e| panic!("{url} 该解析得了：{e:?}"));
+        assert_eq!(&b.path, want, "这一形的前缀取错了：{url}");
+    }
+    // ★ 非空对照承重：这把尺子**分得出**「有前缀」与「没前缀」
+    //   （没有这一格，上面那两条 `""` 可能只是因为它恒回空串）。
+    assert_ne!(
+        base_of("https://h/v1").expect("有前缀那一形").path,
+        base_of("https://h").expect("没前缀那一形").path
+    );
+}
+
+/// **`base_url` 里丢东西要出声** —— 三形各自的理由**不许挤进同一个 `None`**。
+#[test]
+fn a_base_url_that_carries_things_a_prefix_cannot_carry_says_why() {
+    // 分母 = 我列出的这 4 形。
+    for bad in [
+        "https://h/v1?beta=true",
+        "https://h/v1#frag",
+        "https://h//v1",
+        "https://h:99999/v1",
+    ] {
+        assert!(base_of(bad).is_err(), "这一形不该被接受：{bad}");
+    }
+    // ★★ 理由**逐形不同**：四个理由串放进集合去重之后必须还是 4 个。
+    //    这一格才是「一个 None 装了几件事」被治掉的读数 —— 只断 `is_err()` 的话，
+    //    把每一支的理由都换成同一句，本条照样全绿。
+    let mut whys: Vec<&'static str> = ["ftp://x", "https://", "https://h/v1?x=1", "https://h//v1"]
+        .iter()
+        .map(|u| base_of(u).expect_err("这几形都该是 Err"))
+        .collect();
+    let n = whys.len();
+    whys.sort();
+    whys.dedup();
+    assert_eq!(
+        whys.len(),
+        n,
+        "有两形共用了同一句理由 —— 那句话在其中一形上是假的指引：{whys:?}"
+    );
+}
+
+/// **本地部署那一格的谓词** —— 回环认得出来，别的一律说「不是」。
+///
+/// ⚠ 它只是**谓词**；「明文非回环要不要拒」是 `table::build` 的决定，判据在那边。
+#[test]
+fn the_loopback_predicate_says_yes_only_to_the_local_machine() {
+    // 分母 = 我列出的这 4 形回环写法。
+    for yes in [
+        "http://127.0.0.1:11434",
+        "http://127.0.0.1",
+        "http://localhost:8000/v1",
+        "http://[::1]:11434/v1",
+    ] {
+        assert!(
+            upstream_url_core::upstream_is_loopback(&base_of(yes).expect("该解析得了").host),
+            "这一形是回环，却被说成不是：{yes}"
+        );
+    }
+    // ★ 非空对照 + 单断：分母 = 我列出的这 4 形非回环写法。
+    for no in [
+        "http://1.2.3.4/v1",
+        "https://api.example.com",
+        "http://192.0.2.1:8000",
+        // ⚠ 一个**名字**里含 localhost 不算 —— 它解到哪儿本条判不了。
+        "http://localhost.evil.example",
+    ] {
+        assert!(
+            !upstream_url_core::upstream_is_loopback(&base_of(no).expect("该解析得了").host),
+            "这一形不是回环，却被说成是：{no}"
+        );
+    }
 }

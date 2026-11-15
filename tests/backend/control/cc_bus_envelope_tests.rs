@@ -6,9 +6,9 @@ const B: &str = "9a8b7c6d-aaaa-bbbb-cccc-ddddeeeeffff";
 
 /// 入参照线上那一份收（同分派走的 typed 那一处），再交本体。
 fn check_json(v: serde_json::Value) -> Result<Checked, String> {
-    let req: crate::control::cc_bus_wire::BusEnvelopeReq =
+    let req: crate::control::cc_bus::wire::BusEnvelopeReq =
         crate::wire::typed::take(&v).map_err(|_| "bad_args".to_string())?;
-    check(&req).map_err(|s| s.code_or_fallback().to_string())
+    check(&req).map_err(|s| cmd_wire::failed::Failed::code_or_fallback(s.code.clone()))
 }
 
 fn ok_req() -> serde_json::Value {
@@ -169,7 +169,7 @@ fn body_is_at_most_1200_bytes() {
 #[test]
 fn every_refusal_code_is_in_the_command_code_table() {
     use crate::wire::typed::Codes;
-    let table = crate::control::cc_bus_wire::BusSendErr::ALL;
+    let table = crate::control::cc_bus::wire::BusSendErr::ALL;
     for c in [
         "bad_from",
         "bad_to",

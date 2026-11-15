@@ -38,17 +38,24 @@ pub(crate) struct Store {
     pub paused: bool,
     /// MCP 登录那一半的底（只有指纹，没有令牌）。
     pub logins: super::mcp_logins::LoginBase,
+    /// 别的家（不是缺省那一家）各自那一份（家名 → 那一家的共享集合 ＋ 底 ＋ 登录的底）；停不停只看顶层这一格。
+    /// 只在同一家的号之间同步：各家的服务器表各管各的，同名不相撞。
+    pub others: BTreeMap<String, Store>,
 }
 
+/// 别的家那几份那一格的键。
+const OTHERS_KEY: &str = "agents";
+
 impl Store {
-    /// 解盘上那份。`key` = 服务器表的键（与各号配置文件里的同名，读用户级 MCP 的几处因此一种读法）。
+    /// 解盘上那份。`key` = 服务器表那一格的键（缺省那一家资产面声明的那个：有账号库时它的扩展页把这份当用户级 MCP 读，
+    /// 读法与它自己那份同一种；别的家那几格照用同一个键）。
     /// 形状不对 ⇒ `Err`（这一份不拿来算，更不拿来盖）。报错里只有位置，不带任何值。
     pub(crate) fn parse(text: &str, key: &str) -> Result<Store, String> {
         let shape = || copy_text("reason.content.unparsable", &[]);
         let root: Value =
             serde_json::from_str(text.trim_start_matches('\u{feff}')).map_err(|e| {
                 copy_text(
-                    "beAcctMcpShare.read.badJson",
+                    "beAcctMcpShare.read.unreadable",
                     &[("line", &e.line().to_string())],
                 )
             })?;
@@ -58,6 +65,25 @@ impl Store {
         if o.get("version").and_then(Value::as_u64) != Some(VERSION) {
             return Err(shape());
         }
+        let mut top = Self::parse_body(&mut o, key)?;
+        match o.remove(OTHERS_KEY) {
+            None => {}
+            Some(Value::Object(m)) => {
+                for (kind, v) in m {
+                    let Value::Object(mut one) = v else {
+                        return Err(shape());
+                    };
+                    top.others.insert(kind, Self::parse_body(&mut one, key)?);
+                }
+            }
+            Some(_) => return Err(shape()),
+        }
+        Ok(top)
+    }
+
+    /// 一家那一份（服务器表 · 底 · 停 · 登录的底）。
+    fn parse_body(o: &mut Map<String, Value>, key: &str) -> Result<Store, String> {
+        let shape = || copy_text("reason.content.unparsable", &[]);
         let servers = match o.remove(key) {
             None => Servers::new(),
             Some(Value::Object(m)) => m,
@@ -106,29 +132,86 @@ impl Store {
             base,
             paused,
             logins,
+            others: BTreeMap::new(),
         })
     }
 
     /// 写回去的那份原文（两格缩进、末尾换行）。
     pub(crate) fn render(&self, key: &str) -> String {
+        let mut root = Map::new();
+        root.insert("version".to_string(), json!(VERSION));
+        self.render_body(&mut root, key);
+        if self.paused {
+            root.insert(SYNC_KEY.to_string(), json!(false));
+        }
+        if !self.others.is_empty() {
+            let others: Map<String, Value> = self
+                .others
+                .iter()
+                .map(|(k, s)| {
+                    let mut one = Map::new();
+                    s.render_body(&mut one, key);
+                    (k.clone(), Value::Object(one))
+                })
+                .collect();
+            root.insert(OTHERS_KEY.to_string(), Value::Object(others));
+        }
+        let mut out = serde_json::to_string_pretty(&Value::Object(root)).unwrap_or_default();
+        out.push('\n');
+        out
+    }
+
+    fn render_body(&self, root: &mut Map<String, Value>, key: &str) {
         let base: Map<String, Value> = self
             .base
             .iter()
             .map(|(d, s)| (d.clone(), Value::Object(s.clone())))
             .collect();
-        let mut root = Map::new();
-        root.insert("version".to_string(), json!(VERSION));
         root.insert(key.to_string(), Value::Object(self.servers.clone()));
         root.insert(BASE_KEY.to_string(), Value::Object(base));
-        if self.paused {
-            root.insert(SYNC_KEY.to_string(), json!(false));
-        }
         if !self.logins.is_empty() {
             root.insert(LOGINS_KEY.to_string(), json!(self.logins));
         }
-        let mut out = serde_json::to_string_pretty(&Value::Object(root)).unwrap_or_default();
-        out.push('\n');
-        out
+    }
+
+    /// 一家那一份：`None` = 缺省那一家（顶层）；`Some(家)` = 别的家那一格（没有 ⇒ 空的）。停不停照顶层。
+    pub(crate) fn slot(&self, kind: Option<&str>) -> Store {
+        let mut one = match kind {
+            None => Store {
+                others: BTreeMap::new(),
+                ..self.clone()
+            },
+            Some(k) => self.others.get(k).cloned().unwrap_or_default(),
+        };
+        one.paused = self.paused;
+        one
+    }
+
+    /// 一家那一份放回去（[`Self::slot`] 的反向）：别的家那几份原样留着；停不停照放进来的那一份。
+    pub(crate) fn put_slot(&mut self, kind: Option<&str>, one: Store) {
+        self.paused = one.paused;
+        let body = Store {
+            paused: false,
+            others: BTreeMap::new(),
+            ..one
+        };
+        match kind {
+            None => {
+                let others = std::mem::take(&mut self.others);
+                *self = Store {
+                    paused: self.paused,
+                    others,
+                    ..body
+                };
+            }
+            Some(k) => {
+                if body == Store::default() {
+                    self.others.remove(k);
+                } else {
+                    self.others.insert(k.to_string(), body);
+                }
+            }
+        }
     }
 }
 
@@ -143,7 +226,7 @@ pub(crate) struct Seen {
 
 /// 冲突里的一版。
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Choice {
+pub(crate) struct McpChoice {
     /// `None` = 共享集合里的那一版；`Some(号)` = 那个号里的那一版。
     pub from: Option<String>,
     /// 此刻是这一版的那几个号。
@@ -156,7 +239,7 @@ pub(crate) struct Choice {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Conflict {
     pub name: String,
-    pub choices: Vec<Choice>,
+    pub choices: Vec<McpChoice>,
 }
 
 /// 一趟对照的结果。
@@ -252,6 +335,7 @@ pub(crate) fn plan(store: &Store, seen: &[Seen]) -> Plan {
             base,
             paused: store.paused,
             logins: store.logins.clone(),
+            others: store.others.clone(),
         },
         writes,
         adopted,
@@ -273,7 +357,7 @@ fn conflict_of(
     };
     let mut choices = Vec::new();
     if s.is_some() || proposals.iter().any(|p| p.2) {
-        choices.push(Choice {
+        choices.push(McpChoice {
             from: None,
             holders: holders_of(s),
             gone: s.is_none(),
@@ -285,7 +369,7 @@ fn conflict_of(
             continue;
         }
         seen_values.push(v);
-        choices.push(Choice {
+        choices.push(McpChoice {
             from: Some((*from).to_string()),
             holders: holders_of(Some(v)),
             gone: false,

@@ -2,6 +2,6 @@
 import type { Decide } from "./Decide";
 
 /**
- * 同名那一问的一种答：答法 · 整组按钮那一句（`跳过同名`）· 逐项那一格的字（`跳过`）。字由核心写好，两端照摆。
+ * 同名那一问的一种答：答法 · 整组按钮那一句（`跳过同名`）· 逐项那一格的字（`跳过`）。字由核心写好（`batch_core::choices`），手机抽屉与文件窗口冲突框照摆。
  */
 export type ClashChoice = { decide: Decide, label: string, pick: string, };

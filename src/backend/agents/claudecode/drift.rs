@@ -4,28 +4,20 @@
 //! `parse.rs` 对未知 `type` 刻意不 warn（几万条 `mode` 会刷屏）、未登记的 pidfile `kind` 一声不吭（`kind` 是授权型判据）——
 //! 两者都对，但都不该是无声的。本模块只做一件事：记账。不改变任何行为，不发 warn，不影响渲染。
 //!
-//! # 有界
-//!
-//! 键数上限 [`MAX_KEYS`]；再多的一律并进 `<overflow>`。样例只留首见的一条并截断到 [`EXCERPT_BYTES`](cmd_wire::record::EXCERPT_BYTES)。这是诊断面，不是数据管道。
+//! 这里只交面（[`DriftFace`] 与它的线上词）；计数 · 封顶 · 空键 · 快照排序住通用的 [`DriftLedger`]，这一家开一本。
 //!
 //! # 按机器分
 //!
 //! 记录在那台机器自己的后端里解析 ⇒ 账天然按机器分；界面按机器经通道问那台后端（帧命令 `drift-report`）。
 //! 计数是每条记录一次（解析热路径）；要看的是键的集合，不是数字。
 
-use crate::agents::drift::{DriftEntry, DriftFaceReport};
-use std::collections::BTreeMap;
+use crate::agents::drift::{DriftFaceReport, DriftFaceWord, DriftLedger};
 use std::sync::Mutex;
 
-/// 每个面最多记多少个不同的键。超出的并进 [`OVERFLOW_KEY`]。
-pub(crate) const MAX_KEYS: usize = 64;
-/// 键数超限之后的归并键。
-pub(crate) const OVERFLOW_KEY: &str = "<overflow>";
-
-/// 记录那两个「降级点」。每一个都对应一处**刻意的**宽容。
+/// 记录那几个「降级点」。每一个都对应一处**刻意的**宽容。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum DriftFace {
-    /// jsonl 里我们不认识的记录 `type`（`parse.rs` 抢救成 `Unrecognized`，刻意不 warn）。
+    /// jsonl 里我们不认识的记录 `type`（`parse.rs` 抢救成 `CcMonitorUnrecognized`，刻意不 warn）。
     UnknownRecordType,
     /// 已知 `type` 但字段解析失败（**这一类值得警惕**：多半是 CC 改了已知类型的形状）。
     KnownTypeParseFailed,
@@ -39,9 +31,9 @@ pub(crate) enum DriftFace {
     UnknownMcpList,
 }
 
-impl DriftFace {
+impl DriftFaceWord for DriftFace {
     /// 线上那个词（漂移账里 `face` 那一格；界面按它排、壳不认）。
-    pub(crate) fn word(self) -> &'static str {
+    fn word(self) -> &'static str {
         match self {
             DriftFace::UnknownRecordType => "unknown_record_type",
             DriftFace::KnownTypeParseFailed => "known_type_parse_failed",
@@ -53,64 +45,17 @@ impl DriftFace {
     }
 }
 
-/// 这台机器的账：面 → 键 → 记账。
-type Ledger = BTreeMap<DriftFace, BTreeMap<String, DriftEntry>>;
-
-fn ledger() -> &'static Mutex<Ledger> {
-    static L: std::sync::OnceLock<Mutex<Ledger>> = std::sync::OnceLock::new();
-    L.get_or_init(|| Mutex::new(BTreeMap::new()))
-}
-
-fn lock() -> std::sync::MutexGuard<'static, Ledger> {
-    // 毒化了也继续用：这是诊断面，绝不能因为它 panic 而拖垮解析热路径。
-    ledger().lock().unwrap_or_else(|e| e.into_inner())
-}
+/// 这台机器的账。
+static LEDGER: Mutex<DriftLedger<DriftFace>> = Mutex::new(DriftLedger::new());
 
 /// 记一次。**这是本模块唯一的写入口。**
-///
-/// `key` 为空时用 `"<empty>"`（空串当键会让诊断面显示成空行，看不出是哪一类）。
 pub(crate) fn record(face: DriftFace, key: &str) {
-    record_into(&mut lock(), face, key);
-}
-
-/// [`record`] 的纯形式：显式传账本。账本是进程内全局的，任何跑过 `parse_line` 的测试都会往里写 ⇒ 「reset + 断言整表形状」必然 flaky。
-/// 单测一律在局部账本上跑；只有接缝测试碰全局，而它写成容忍污染的形状（断言「我那条在」，不断言「表里只有我那条」）。
-fn record_into(led: &mut Ledger, face: DriftFace, key: &str) {
-    let key = if key.is_empty() { "<empty>" } else { key };
-    let per_face = led.entry(face).or_default();
-    // 有界：键数触顶且是新键 ⇒ 并进 `<overflow>`。
-    let effective = if per_face.len() >= MAX_KEYS && !per_face.contains_key(key) {
-        OVERFLOW_KEY
-    } else {
-        key
-    };
-    let e = per_face
-        .entry(effective.to_string())
-        .or_insert_with(|| DriftEntry {
-            key: effective.to_string(),
-            count: 0,
-        });
-    e.count += 1;
+    DriftLedger::lock(&LEDGER).record(face, key);
 }
 
 /// 只读快照（也是诊断面的读口：帧命令 `drift-report` 经注册表 `RecordFace.drift` 够到它）。按需调用，不轮询。
 pub(crate) fn snapshot() -> Vec<DriftFaceReport> {
-    snapshot_of(&lock())
-}
-
-/// [`snapshot`] 的纯形式：**显式传账本**（见 [`record_into`] 的头注）。
-fn snapshot_of(led: &Ledger) -> Vec<DriftFaceReport> {
-    let mut out = Vec::new();
-    for (face, per_face) in led.iter() {
-        let mut entries: Vec<DriftEntry> = per_face.values().cloned().collect();
-        // count 降序、同数按键名升序 —— 稳定顺序，诊断面不许每次刷新都跳。
-        entries.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.key.cmp(&b.key)));
-        out.push(DriftFaceReport {
-            face: face.word().to_string(),
-            entries,
-        });
-    }
-    out
+    DriftLedger::lock(&LEDGER).snapshot()
 }
 
 #[cfg(test)]

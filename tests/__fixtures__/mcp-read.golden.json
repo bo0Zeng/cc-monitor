@@ -49,12 +49,7 @@
         "login": null,
         "failed": null
       }
-    ],
-    "dirs": [
-      "/other",
-      "<DIR>"
-    ],
-    "problems": []
+    ]
   },
   "codes": [
     "bad_args",
@@ -182,8 +177,6 @@
         "login": null,
         "failed": null
       }
-    ],
-    "dirs": [],
-    "problems": []
+    ]
   }
 }

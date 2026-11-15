@@ -167,7 +167,7 @@ fn unreadable_subdirs_are_named_up_to_the_cap() {
     let can_read = std::fs::metadata(locked[0].join("probe")).is_ok();
     let snap = build(&root);
     for d in &locked {
-        std::fs::set_permissions(d, std::fs::Permissions::from_mode(0o755)).ok();
+        test_home::set_dir_mode(d, 0o755);
     }
     std::fs::remove_dir_all(&root).ok();
     assert!(

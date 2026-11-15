@@ -30,7 +30,7 @@
 
 use std::sync::{Mutex, OnceLock};
 
-use crate::backend_route::{no_channel, route_call_error, Routed};
+use crate::backend_route::{no_channel, route_call_error};
 use crate::inbound_client;
 use crate::origin::Origin;
 use copy_core::copy_text;
@@ -58,7 +58,7 @@ async fn exit_policy_call<C: cmd_wire::Call>(
     let origin_s = origin.to_string();
     let origin = origin_s.as_str();
     let Some(client) = inbound_client::local_client() else {
-        return Err(said(no_channel(origin)));
+        return Err(no_channel(origin));
     };
     // 本机：这条连接的命令表先拦；别台：经本机后端转过去（认不认由那一端连那台的客户端判）。
     if local && !client.accepts(C::NAME) {
@@ -67,29 +67,18 @@ async fn exit_policy_call<C: cmd_wire::Call>(
     let at = (!local).then_some(origin);
     let deadline = tokio::time::Instant::now() + budget;
     let got = client.ask(at, req, None, deadline).await.map_err(|e| {
-        said(route_call_error(
-            &e,
-            &machine_label(origin),
-            |_code, message| {
-                copy_text(
-                    "rsBackendPolicy.call.failed",
-                    // 对端那一句（原话在应答 detail 里，不在这一格）。
-                    &[
-                        ("machine", &origin.to_string()),
-                        ("said", &message.to_string()),
-                    ],
-                )
-            },
-        ))
+        route_call_error(&e, &machine_label(origin), |_code, message| {
+            copy_text(
+                "rsBackendPolicy.call.failed",
+                // 对端那一句（原话在应答 detail 里，不在这一格）。
+                &[
+                    ("machine", &origin.to_string()),
+                    ("said", &message.to_string()),
+                ],
+            )
+        })
     })?;
     got.map_err(|_| copy_core::reply_unreadable(&machine_label(origin)))
-}
-
-/// 三态里给人看的那句话（同 `frame_query::said`）。`Done` 在本族走不到。
-fn said(r: Routed) -> String {
-    match r {
-        Routed::NoChannel(s) | Routed::Refused(s) => s,
-    }
 }
 
 /// 〔`§3.3b ④`〕**monitor 退出臂在决定那一刻现问一次**：这台机器要不要跟着结束。

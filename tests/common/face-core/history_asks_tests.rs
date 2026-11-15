@@ -33,6 +33,12 @@ fn deleting_names_the_machine_only_when_it_is_another_and_says_when_life_is_uncl
     );
     assert_eq!(delete_ask(&pi, CanDelete::Yes).0, remote);
     assert_eq!(
+        delete_ask_named(Some("树莓派"), CanDelete::Yes).0,
+        copy_text("history.delete.bodyRemote", &[("machine", "树莓派")]),
+        "点名照给的称呼（手机核心照它的机器表称呼重写）"
+    );
+    assert_eq!(delete_ask_named(None, CanDelete::Live).0, body);
+    assert_eq!(
         delete_ask(&pi, CanDelete::Unsure).0,
         format!("{remote}\n{unsure}")
     );

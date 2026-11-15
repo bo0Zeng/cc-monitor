@@ -2,7 +2,7 @@
 //! 换号那一侧问 [`missed`] 就知道它此刻接不接得上，不再每一发去续一次。
 //!
 //! - 端点不收刷新令牌 · 过期又没有刷新令牌 · 里面没有令牌 ⇒ [`Unrenewed::Manual`]（要重新登录）；
-//!   没连上 · 回包读不懂 · 写不回 ⇒ [`Unrenewed::RetryAt`]（到点再试）；别的进程正在续（锁有人持着）不记。
+//!   没连上 · 回包读不懂 · 写不回 ⇒ [`Unrenewed::RetryAt`]（到点再试）；别的进程正在续（锁有人持着）· 那一家声明不归我方续的账号 0 不记。
 //! - 凭据文件一动（重新登录了 · 那个号自己续过）⇒ 这一条不作数；续成了 ⇒ 删掉。
 //! - 只在进程内存里（同 [`super::writeback`]）：后端重启后第一次要这个号时再续一次，照实再记。
 
@@ -58,13 +58,14 @@ pub(super) fn note(
     r: &Result<creds_core::SecretKey, Unusable>,
 ) {
     let m = match r {
-        Ok(_) | Err(Unusable::Busy) => None,
+        // 不算那个号的事实的（[`Unusable::is_account_fact`]）不记，照实说过就算。
+        Ok(_) => None,
+        Err(u) if !u.is_account_fact() => None,
         Err(Unusable::Refused(_) | Unusable::Expired | Unusable::NotLoggedIn) => {
             Some(Unrenewed::Manual)
         }
-        Err(Unusable::NotRenewed(_) | Unusable::WriteFailed(_) | Unusable::Unreadable(_)) => {
-            Some(Unrenewed::RetryAt(now.saturating_add(AGAIN_AFTER)))
-        }
+        // 余下的（续期那一发没成 · 写不回 · 读不出）：一时的，过一阵再试。
+        Err(_) => Some(Unrenewed::RetryAt(now.saturating_add(AGAIN_AFTER))),
     };
     let mut g = book();
     match m {

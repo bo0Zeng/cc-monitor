@@ -13,4 +13,9 @@ origin: Machine,
 /**
  * 那台筛好的几行（算上只为挂住分叉才带上的父会话）。
  */
-total: number, read: HistoryMachineRead, };
+total: number, read: HistoryMachineRead, 
+/**
+ * 远端那台：这一问读到的那份副本的代号（每换一次就变大，`remote_listing` 那一格）。几问的回包先后不定，
+ * 界面同一台只认代号不比已画的小的那一包。这台 · 那台从没读过 ⇒ 不上线。
+ */
+seen?: number, };

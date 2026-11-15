@@ -33,7 +33,13 @@ fn following_with_no_last_account_lands_on_the_default_when_it_is_selectable() {
             .iter()
             .map(|v| v.as_str().unwrap())
             .collect();
-        let picked = pick(&AccountAsk::Follow, &typed, None).expect("跟随没有上次的号不会拒");
+        let picked = pick(
+            &AccountAsk::Follow,
+            &typed,
+            None,
+            &crate::agents::default_kind().into(),
+        )
+        .expect("跟随没有上次的号不会拒");
         let want_pick = case["effectiveDefault"]
             .as_str()
             .filter(|d| selectable.contains(d));

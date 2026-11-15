@@ -26,10 +26,10 @@ pub(crate) fn fail(kind: FailKind, line: Option<usize>, msg: impl Into<String>) 
 
 /// ★ 编一份代码：`code` 前面已垫好空行（报第几行时与文件对得上）。
 pub(crate) fn compile(code: &str) -> Result<Code, Fail> {
-    let e = engine().map_err(|m| fail(FailKind::Broke, None, m))?;
+    let e = engine().map_err(|m| fail(FailKind::Failed, None, m))?;
     let ast = e.compile(code).map_err(|x| {
         let p = x.position();
-        fail(FailKind::Broke, p.line(), x.to_string())
+        fail(FailKind::Failed, p.line(), x.to_string())
     })?;
     if !ast
         .iter_functions()
@@ -109,6 +109,14 @@ fn ctx_dynamic(c: &Ctx<'_>) -> Dynamic {
         .map(|a| {
             let mut m = Map::new();
             m.insert("id".into(), a.id.clone().into());
+            // 这个号是哪一家的号：照线上的 kind 写（同号表那一格）。
+            m.insert(
+                "agent".into(),
+                crate::agents::kind_of_route(&a.agent)
+                    .as_str()
+                    .to_string()
+                    .into(),
+            );
             m.insert("pos".into(), Dynamic::from(a.pos as i64));
             m.insert("kind".into(), (if a.api { "api" } else { "sub" }).into());
             m.insert("sendable".into(), a.sendable.into());
@@ -333,7 +341,7 @@ impl Code {
 
     /// 在进程里那一份 [`engine`] 上判。
     pub(crate) fn decide(&self, ctx: &Ctx<'_>) -> Result<Verdict, Fail> {
-        let e = engine().map_err(|m| fail(FailKind::Broke, None, m))?;
+        let e = engine().map_err(|m| fail(FailKind::Failed, None, m))?;
         self.decide_in(e, ctx)
     }
 }

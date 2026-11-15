@@ -31,7 +31,7 @@ describe("金样：后端出的转发清单，原样交到调用方", () => {
   it("照收", async () => {
     invokeMock.mockResolvedValue(chanReply(golden));
     expect(await listForwards()).toEqual([
-      { id: "fwd-1", origin: "dev", localPort: 15432, remoteHost: "localhost", remotePort: 5432, state: "running", connCount: 2 },
+      { id: "fwd-1", origin: "dev", localPort: 15432, remoteHost: "localhost", remotePort: 5432, state: "running", said: "dev · 127.0.0.1:15432 → localhost:5432 · 连接 2" },
     ]);
   });
 });

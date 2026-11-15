@@ -6,18 +6,18 @@
 //! 提示（`warn`）：还没登录 · 共享库本身的源头断了 · 身份本体哪儿都找不到 · 按需目录在号里各有一份自己的。
 //! 既不是身份、又不在共享集里的名字（共享库顶层与各号里的实体）各号各用各的：全报告一条 `ok` 级「没归类」列出来，不提示。
 
-use super::layout::{identity, is_identity, share_items, shared_on_demand};
+use super::layout::{identity_of, of_store_family, share_items_of};
 use super::model::Manifest;
 use super::scan::{join, Snapshot};
 use crate::platform::acct_view::Item;
 use cmd_wire::accounts::{CheckLevel, VerifyCheck, VerifyReport};
 use copy_core::copy_text;
 
-struct Out {
+struct Checks {
     checks: Vec<VerifyCheck>,
 }
 
-impl Out {
+impl Checks {
     fn push(&mut self, level: CheckLevel, account: Option<&str>, text: String) {
         self.checks.push(VerifyCheck {
             level,
@@ -29,8 +29,27 @@ impl Out {
 
 /// 核一遍。`names` 非空 ⇒ 只核这几个号（全局那几条照核）。清单不在 / 读不动 ⇒ 一条 `fail` 说清楚。
 pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
-    let mut o = Out { checks: Vec::new() };
+    verify_among(crate::agents::REGISTRY, s, names)
+}
+
+/// [`verify`] 的可喂注册表那一半：共享库那一侧照缺省那一家（清单里没写是哪一家的号归它）的身份 · 共享两张表核，
+/// 每个号照它那一家的身份表核身份与凭据；共享库不是它那一家的（[`of_store_family`]）⇒ 不按共享表核链接、不报缺链。
+pub(crate) fn verify_among(
+    registry: &[crate::agents::Adapter],
+    s: &Snapshot,
+    names: &[String],
+) -> VerifyReport {
+    let mut o = Checks { checks: Vec::new() };
     let r = s.roots();
+    let face_of = |agent: Option<&str>| {
+        crate::agents::account_kind_among(registry, agent)
+            .and_then(|k| crate::agents::accounts_face_among(registry, k))
+    };
+    let lib = face_of(None);
+    let lib_identity = lib.as_ref().map(identity_of).unwrap_or_default();
+    let is_identity = |n: &str| lib_identity.iter().any(|(i, _, _)| *i == n);
+    let config_file = lib.as_ref().map_or("", |f| f.config_file);
+    let on_demand = lib.as_ref().map_or(&[][..], |f| f.shared_on_demand);
     let m: &Manifest = match &s.manifest {
         None => {
             o.push(
@@ -58,16 +77,19 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
         );
         return finish(o);
     }
-    let inplace = m.managed().any(|a| a.config_dir == r.shared);
-    let isolated = m.managed().any(|a| a.config_dir != r.shared);
-    let home_cj = join(&r.home, super::layout::identity_config_file());
+    // 全局那几条只数共享库那一家的号：别家的号不链共享库，也不照这一家的身份表看。
+    let store_family: Vec<_> = m
+        .managed()
+        .filter(|a| of_store_family(registry, a.agent.as_deref()))
+        .collect();
+    let inplace = store_family.iter().any(|a| a.config_dir == r.shared);
+    let isolated = store_family.iter().any(|a| a.config_dir != r.shared);
+    let home_cj = join(&r.home, config_file);
     if inplace {
-        let shared_cj = join(&r.shared, super::layout::identity_config_file());
+        let shared_cj = join(&r.shared, config_file);
         let split = shared_cj != home_cj
-            && s.shared.get(super::layout::identity_config_file()).exists()
-            && s.home_items
-                .get(super::layout::identity_config_file())
-                .is_some_and(Item::exists);
+            && s.shared.get(config_file).exists()
+            && s.home_items.get(config_file).is_some_and(Item::exists);
         let text = if split {
             copy_text(
                 "beAcctVerify.global.inPlaceSplit",
@@ -80,7 +102,7 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
     }
     if isolated {
         let mut zero = false;
-        for (item, home_rooted, secret) in identity() {
+        for (item, home_rooted, secret) in lib_identity.iter().copied() {
             if !secret || !s.shared.get(item).exists() {
                 continue;
             }
@@ -111,11 +133,7 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
             copy_text("beAcctVerify.global.zeroOut", &[])
         };
         o.push(CheckLevel::Ok, None, text);
-        if !inplace
-            && s.home_items
-                .get(super::layout::identity_config_file())
-                .is_some_and(Item::exists)
-        {
+        if !inplace && s.home_items.get(config_file).is_some_and(Item::exists) {
             o.push(
                 CheckLevel::Warn,
                 None,
@@ -133,8 +151,12 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
         }
     }
 
-    let items = share_items(&s.shared);
-    let mut emails: Vec<(String, String)> = Vec::new();
+    let items = lib
+        .as_ref()
+        .map(|f| share_items_of(f, &s.shared))
+        .unwrap_or_default();
+    // `(号, 邮箱, 那一家)`：重复只在同一家的号之间判（同一个人两家各登一个号是常态）。
+    let mut emails: Vec<(String, String, Option<&'static str>)> = Vec::new();
     // 按需才建的共用目录在号里是自己的一份（两个号以上各有一份，起来时那一步不替人合并）：`(项, 哪几个号)`，最后一项一条提示。
     let mut own_copies: Vec<(String, Vec<String>)> = Vec::new();
     // 既不是身份、又不在共享集里的名字（共享库顶层的 ＋ 各号里的实体），去重排好序，最后一条「没归类」。
@@ -195,31 +217,34 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
                 ),
             ),
         }
-        for (item, _, secret) in identity() {
+        // 凭据那一项：这个号那一家声明的凭据文件名（号表判「已登录」问的同一格，`agents::creds_file_among`）；没声明 ⇒ 不判。
+        let agent = a.agent.as_deref();
+        let kind = crate::agents::account_kind_among(registry, agent);
+        let creds = kind.and_then(|k| crate::agents::creds_file_among(registry, k));
+        let own = face_of(agent).as_ref().map(identity_of).unwrap_or_default();
+        for (item, _, secret) in own {
             match d.get(item) {
                 Item::Link { .. } => o.push(
                     CheckLevel::Fail,
                     n,
                     copy_text("beAcctVerify.acct.identityLink", &[("item", item)]),
                 ),
-                Item::File { mode, .. } if secret && item == acct_core::CREDENTIALS_NAME => {
-                    match mode {
-                        Some(0o600) | None => o.push(
-                            CheckLevel::Ok,
-                            n,
-                            copy_text("beAcctVerify.acct.credOk", &[("item", item)]),
+                Item::File { mode, .. } if secret && Some(item) == creds => match mode {
+                    Some(0o600) | None => o.push(
+                        CheckLevel::Ok,
+                        n,
+                        copy_text("beAcctVerify.acct.credOk", &[("item", item)]),
+                    ),
+                    Some(mo) => o.push(
+                        CheckLevel::Fail,
+                        n,
+                        copy_text(
+                            "beAcctVerify.acct.credMode",
+                            &[("mode", &format!("{mo:o}"))],
                         ),
-                        Some(mo) => o.push(
-                            CheckLevel::Fail,
-                            n,
-                            copy_text(
-                                "beAcctVerify.acct.credMode",
-                                &[("mode", &format!("{mo:o}"))],
-                            ),
-                        ),
-                    }
-                }
-                Item::Absent if item == acct_core::CREDENTIALS_NAME => {
+                    ),
+                },
+                Item::Absent if Some(item) == creds => {
                     if !a.is_api_key() {
                         o.push(
                             CheckLevel::Warn,
@@ -242,7 +267,7 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
                 n,
                 copy_text("beAcctVerify.acct.inPlaceLinks", &[]),
             );
-        } else {
+        } else if of_store_family(registry, agent) {
             let (mut missing, mut bad) = (0usize, false);
             for it in &items {
                 let want = join(&r.shared, it);
@@ -283,7 +308,7 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
                         }
                     }
                     Item::Link { .. } => {}
-                    _ if shared_on_demand().contains(&it.as_str()) => {
+                    _ if on_demand.contains(&it.as_str()) => {
                         match own_copies.iter_mut().find(|(i, _)| i == it) {
                             Some((_, names)) => names.push(a.name.clone()),
                             None => own_copies.push((it.clone(), vec![a.name.clone()])),
@@ -334,7 +359,7 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
                     n,
                     copy_text("beAcctVerify.acct.email", &[("email", e)]),
                 );
-                emails.push((a.name.clone(), e.to_string()));
+                emails.push((a.name.clone(), e.to_string(), kind));
             }
             None => o.push(
                 CheckLevel::Skip,
@@ -365,9 +390,9 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
         );
     } else {
         let mut dup = false;
-        for (i, (na, ea)) in emails.iter().enumerate() {
-            for (nb, eb) in &emails[i + 1..] {
-                if ea == eb {
+        for (i, (na, ea, ka)) in emails.iter().enumerate() {
+            for (nb, eb, kb) in &emails[i + 1..] {
+                if ea == eb && ka == kb {
                     dup = true;
                     o.push(
                         CheckLevel::Fail,
@@ -392,11 +417,18 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
         }
     }
 
-    // 只问身份本体：本机状态那几项是 Claude Code 用到才建的，哪儿都没有是常态，说不明这张表过期了。
-    for (item, _, _) in identity().into_iter().filter(|(_, _, secret)| *secret) {
+    // 只问身份本体：本机状态那几项是那一家用到才建的，哪儿都没有是常态，说不明这张表过期了。
+    // 共享库那一家一个号都没有 ⇒ 不问（找不到是常态）。
+    for (item, _, _) in lib_identity
+        .iter()
+        .copied()
+        .filter(|(_, _, secret)| *secret && !store_family.is_empty())
+    {
         let found = s.shared.get(item).exists()
             || s.home_items.get(item).is_some_and(Item::exists)
-            || m.managed().any(|a| s.dir(&a.config_dir).get(item).exists());
+            || store_family
+                .iter()
+                .any(|a| s.dir(&a.config_dir).get(item).exists());
         if !found {
             o.push(
                 CheckLevel::Warn,
@@ -423,7 +455,7 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
     finish(o)
 }
 
-fn finish(o: Out) -> VerifyReport {
+fn finish(o: Checks) -> VerifyReport {
     let failed: Vec<&VerifyCheck> = o
         .checks
         .iter()

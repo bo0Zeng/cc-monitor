@@ -5,9 +5,9 @@
 //!
 //! | 契约 | 规矩出处 | 这里的口 |
 //! |---|---|---|
-//! | 表 A 的键与行（(OS, arch) · 有产线的格） | | [`Key`] · [`LINES`] · [`key_of`] · [`key_from_uname`] |
+//! | 表 A 的键与行（(OS, arch) · 有产线的格） | | [`Key`] · [`LINES`] · [`key_of`] |
 //! | 拒绝的形状与对人说的话 | | [`Refusal`] · [`Refusal::say`] |
-//! | 身份戳的格式（读它字节里那段，不跑它） | | [`STAMP_OPEN`] · [`STAMP_CLOSE`] · [`Marks`] · [`RemoteIdentity`] · [`identity_of_bytes`] · [`stamp_scan_cmd`] · [`interpret_stamp_scan`] · [`build_order`] · [`build_relation`] |
+//! | 身份戳的格式（读它字节里那段，不跑它） | | [`STAMP_OPEN`] · [`STAMP_CLOSE`] · [`Marks`] · [`RemoteIdentity`] · [`identity_of_bytes`] · [`RemoteIdentity::of_ids`] · [`build_order`] · [`build_relation`] |
 //! | 装那一趟做了什么 | `IPC-PROTOCOL.md` 的 `deploy-install` | [`DeployAction`] |
 //!
 //! 判定（那台要哪一格 · 表 B 承诺 · 换不换 · 落点那一份认不认 · 每台机器状态成品「态 ⇒ 字」）住后端 `deploy` crate 一家（`src/backend/deploy/`，桌面后端与手机同一份）；
@@ -17,7 +17,7 @@
 //!
 //! - 字节本身（`include_bytes!` 那几槽）与「这一版带没带那一格」—— monitor `byte_table.rs`（放字节的一侧才知道）；
 //! - `BUILD_ID` —— 留在后端（进了这里就又成了 monitor 读得到的源码常量；monitor 的「我这一版」只认手上那份字节自报的）；
-//! - 任何 IO（问那台、读盘、写）。
+//! - 任何 IO（问那台、读盘、写），连同问那台的两条命令与它们回话的解读（`uname` 那一条 · 扫身份戳那一条）—— 只有后端部署那一趟跑，住后端 `deploy`。
 
 pub use cmd_wire::attach::Relation;
 use copy_core::copy_text;
@@ -244,39 +244,6 @@ pub const LINES: &[Key] = &[
     },
 ];
 
-/// 问那台机器的 (OS, arch) 那条命令（后端部署那一趟一次性 exec）。
-pub const UNAME_CMD: &str = "uname -s -m";
-
-/// `uname -s -m` 的收全结果 → 键。**纯函数**。
-///
-/// 退出码非 0 / 空 ⇒ 问不出 OS（Windows 默认 shell 没有 `uname` 就是这一形）；只答一段 ⇒ 问不出 arch；
-/// 多于两段 ⇒ 问不出 OS（认不出哪段是什么）。句子只说原因词（无应答 · 应答报错 · 应答无法解析）；
-/// 那台答的原话（stderr 或答的那几段）进 [`Refusal::raw`]、由出错那一端写进复制详情 —— 不照抄进句子：
-/// 真 Win11 上 PowerShell 按控制台代码页（GBK）报错，后端那一跳按 UTF-8 有损解（`ssh-dial/uses.rs`），照抄就是一串乱码。
-pub fn key_from_uname(exit: Option<u32>, stdout: &str, stderr: &str) -> Result<Key, Refusal> {
-    if exit != Some(0) {
-        let said = stderr.trim();
-        let why = if said.is_empty() {
-            copy_text("reason.link.noAnswer", &[])
-        } else if said.contains('\u{FFFD}') {
-            copy_text("rsByteTable.key.unreadable", &[])
-        } else {
-            copy_text("rsByteTable.key.said", &[])
-        };
-        return Err(Refusal::OsUnknown(Said::with_raw(why, said)));
-    }
-    let parts: Vec<&str> = stdout.split_whitespace().collect();
-    match parts.as_slice() {
-        [] => key_of("", ""),
-        [os] => key_of(os, ""),
-        [os, arch] => key_of(os, arch),
-        _ => Err(Refusal::OsUnknown(Said::with_raw(
-            copy_text("rsByteTable.key.unreadable", &[]),
-            stdout.trim(),
-        ))),
-    }
-}
-
 // ═══ 身份：那台落点上那一份是谁 ═══════════════════════════════════════════════════════
 
 /// 身份戳的开界标：后端二进制里那段 `<开><BUILD_ID><关>`（后端 `lib.rs::CC_MONITOR_BUILD_STAMP`）的头。
@@ -311,19 +278,21 @@ pub enum RemoteIdentity {
     Unreadable(String),
 }
 
-/// 收齐的几个身份 → 结论（恰好一个才是身份）。
-fn settle(mut ids: Vec<String>) -> RemoteIdentity {
-    ids.sort();
-    ids.dedup();
-    match ids.len() {
-        0 => RemoteIdentity::NoStamp,
-        1 => RemoteIdentity::Stamp(ids.remove(0)),
-        _ => RemoteIdentity::Ambiguous(ids),
+impl RemoteIdentity {
+    /// 收齐的几个身份 → 结论（恰好一个才是身份；重复的去掉）。字节自报（[`identity_of_bytes`]）与后端读远端扫描的回话同一份。
+    pub fn of_ids(mut ids: Vec<String>) -> RemoteIdentity {
+        ids.sort();
+        ids.dedup();
+        match ids.len() {
+            0 => RemoteIdentity::NoStamp,
+            1 => RemoteIdentity::Stamp(ids.remove(0)),
+            _ => RemoteIdentity::Ambiguous(ids),
+        }
     }
 }
 
 /// **手上一份字节自报的身份**（本机那一跳：不经 shell、不跑它，直接扫字节）。
-/// 与远端那条扫描（[`stamp_scan_cmd`] ＋ [`interpret_stamp_scan`]）同一条规矩：界标之间 `[[:alnum:]_.-]+`，恰好一个才是身份。**纯函数**。
+/// 与后端 `deploy` 在远端跑的那条扫描同一条规矩：界标之间 `[[:alnum:]_.-]+`，恰好一个才是身份。**纯函数**。
 pub fn identity_of_bytes(bytes: &[u8], marks: Marks<'_>) -> RemoteIdentity {
     if bytes.is_empty() {
         return RemoteIdentity::Empty;
@@ -340,58 +309,7 @@ pub fn identity_of_bytes(bytes: &[u8], marks: Marks<'_>) -> RemoteIdentity {
         }
         i = start;
     }
-    settle(ids)
-}
-
-/// 在目标机器上扫身份戳的那一条命令（档 A：目标机器**自己的**只读工具，一次 exec，常数字节回传）。
-///
-/// 正则与 `tests/scripts/re-embed.sh::bytes_id` 同一条（界标之间是 `[[:alnum:]_.-]`，这里要**至少一个字符** ——
-/// 两个界标在 `.rodata` 里挨着就是空串那一形，[`identity_of_bytes`] 也不收它）。**纯函数**。
-/// `word` 是那个文件在远端 shell 里的**写法**（固定落点常量，自带 `"$HOME"`），不是一条要 quote 的外来路径。
-pub fn stamp_scan_cmd(word: &str, marks: Marks<'_>) -> String {
-    let ere = |s: &str| -> String {
-        s.chars()
-            .map(|c| {
-                if "\\^$.|?*+()[]{}".contains(c) {
-                    format!("\\{c}")
-                } else {
-                    c.to_string()
-                }
-            })
-            .collect()
-    };
-    let pattern = format!("{}[[:alnum:]_.-]+{}", ere(marks.open), ere(marks.close));
-    format!(
-        "LC_ALL=C grep -aoE {} -- {word}",
-        shell_quote_core::posix_quote(&pattern),
-    )
-}
-
-/// 那一条扫描的收全结果 → [`RemoteIdentity`]（落点在、不是 0 字节时才问）。**纯函数**。
-///
-/// `grep` 的退出码：0 = 扫到了 · 1 = 一个都没有 · 其余（2 = 读不了 / 链路断了没给退出码）= 判不了。
-pub fn interpret_stamp_scan(
-    exit: Option<u32>,
-    stdout: &str,
-    stderr: &str,
-    marks: Marks<'_>,
-) -> RemoteIdentity {
-    match exit {
-        Some(0) => settle(
-            stdout
-                .lines()
-                .filter_map(|l| l.trim().strip_prefix(marks.open)?.strip_suffix(marks.close))
-                .filter(|id| !id.is_empty())
-                .map(str::to_string)
-                .collect(),
-        ),
-        Some(1) => RemoteIdentity::NoStamp,
-        // 退出码不进这句话（`Some(..)` / `None` 是实现的形状）：没有错误输出时只说「没答完」。
-        _ => RemoteIdentity::Unreadable(match stderr.trim() {
-            "" => copy_text("rsSftp.stamp.unfinished", &[]),
-            said => said.to_string(),
-        }),
-    }
+    RemoteIdentity::of_ids(ids)
 }
 
 // ═══ 计划答话的形状 · 戳的序键（换不换是判定，住后端 `deploy` crate）══════════════
@@ -407,18 +325,6 @@ pub enum DeployAction {
     /// 照旧连上那一份。`theirs` = 那台上那一份自报的身份；`why` = 人读原因（点名两边各是哪一版）。
     /// 只有后端 `deploy/lib.rs::identity_decision` 产这一格。
     Keep { theirs: String, why: String },
-}
-
-impl DeployAction {
-    /// 线上那个标签（`deploy-install` 回包的 `action`）。
-    pub fn tag(&self) -> cmd_wire::deploy::ActionTag {
-        use cmd_wire::deploy::ActionTag;
-        match self {
-            DeployAction::Skip => ActionTag::Skip,
-            DeployAction::Deploy(_) => ActionTag::Deploy,
-            DeployAction::Keep { .. } => ActionTag::Keep,
-        }
-    }
 }
 
 /// 〔部署只在「我的比盘上的新」时才换（BUILD_ID 可比序）〕**`BUILD_ID` 的序键** —— 唯一实现。

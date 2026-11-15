@@ -3,4 +3,12 @@
 /**
  * pb 装没装、认不认得它的输出。
  */
-export type PlanPb = { state: "ok" | "missing" | "unsupported", said: string | null, version?: string, };
+export type PlanPb = { state: "ok" | "missing" | "unsupported", 
+/**
+ * 不是 `ok` 时那一句（一行）。
+ */
+said: string | null, 
+/**
+ * 下一步（为什么 · 怎么办，一行）；没有 ⇒ 缺。
+ */
+hint?: string, version?: string, };

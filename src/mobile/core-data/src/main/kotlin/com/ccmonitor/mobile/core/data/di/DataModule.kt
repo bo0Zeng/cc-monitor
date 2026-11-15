@@ -7,6 +7,8 @@ import com.ccmonitor.mobile.core.data.crypto.CryptoBox
 import com.ccmonitor.mobile.core.data.crypto.KeystoreCryptoBox
 import com.ccmonitor.mobile.core.data.db.AppDatabase
 import com.ccmonitor.mobile.core.data.db.CacheDatabase
+import com.ccmonitor.mobile.core.data.db.CommonGroupName
+import com.ccmonitor.mobile.core.data.db.MachineNamer
 import com.ccmonitor.mobile.core.data.db.STATE_DB_FILE
 import com.ccmonitor.mobile.core.data.db.allMigrations
 import com.ccmonitor.mobile.core.data.db.cacheDatabase
@@ -23,16 +25,23 @@ import org.koin.dsl.module
 val dataModule =
     module {
         // 迁移链（升级不丢数据，从 OLDEST_STATE_DB 起），见 allMigrations；更老的库 App 起来时就拒开了（StateDbAge），走不到这里。
+        // 跳板取名（23→24 那一跳）照注入的 MachineNamer：app 绑核心那一份。
         single {
-            Room
-                .databaseBuilder(androidContext(), AppDatabase::class.java, STATE_DB_FILE)
-                .addMigrations(*allMigrations())
-                // 新装也要种默认三组按键：迁移只在升级时跑。
-                .addCallback(
-                    object : RoomDatabase.Callback() {
-                        override fun onCreate(db: SupportSQLiteDatabase) = seedDefaultKeys(db)
-                    },
-                ).build()
+            val common = get<CommonGroupName>()
+
+            // 起库只一次、迁移链只几跳：展开那一份数组不值得省。
+            @Suppress("SpreadOperator")
+            val stateDb =
+                Room
+                    .databaseBuilder(androidContext(), AppDatabase::class.java, STATE_DB_FILE)
+                    .addMigrations(*allMigrations(get<MachineNamer>()))
+                    // 新装也要种默认三组按键：迁移只在升级时跑。「常用」那个组名照注入的 CommonGroupName（app 绑文案表那一份）。
+                    .addCallback(
+                        object : RoomDatabase.Callback() {
+                            override fun onCreate(db: SupportSQLiteDatabase) = seedDefaultKeys(db, common.name())
+                        },
+                    ).build()
+            stateDb
         }
         single { get<AppDatabase>().hostDao() }
         single { get<AppDatabase>().identityDao() }

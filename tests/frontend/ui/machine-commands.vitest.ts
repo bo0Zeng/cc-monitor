@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 
 vi.mock("../../../src/frontend/ui/ipc/chan-caller", () => ({ budgetWithin: () => 0, callTyped: vi.fn() }));
 vi.mock("../../../src/frontend/ui/open-settings", () => ({ openSettingsWindow: vi.fn(async () => {}) }));
+vi.mock("../../../src/frontend/ui/file-window", () => ({ openFileWindow: vi.fn(async () => true) }));
 
 import { machineBlock, machineRows, type MachineActions } from "../../../src/frontend/ui/machine-commands";
 import type { Command } from "../../../src/frontend/ui/views/command-bar";
@@ -24,6 +25,8 @@ const state = (name: string, over: Partial<MachineState> = {}): MachineState => 
   said: "",
   offlineSaid: `${name} w-off`,
   heldSaid: "夹具·离线",
+  withdrawHeld: "夹具·撤着",
+  rewindHeld: "夹具·上一版撤着",
   fixes: [],
   seenHostKey: null,
   expectedHostKey: null,
@@ -115,5 +118,14 @@ describe("加入机器表…（A2-17-14-1）", () => {
     machineActions.addMachine("backup");
     expect(vi.mocked(openSettingsWindow)).toHaveBeenCalledWith(undefined, addMachineOf("backup"));
     expect(addMachineOf("backup")).toEqual({ page: "machines", anchor: "add-machine:backup" });
+  });
+});
+
+describe("「文件」", () => {
+  it("直接开文件窗口、落在那台主目录（不给落点）", async () => {
+    const { openFileWindow } = await import("../../../src/frontend/ui/file-window");
+    const { machineActions } = await import("../../../src/frontend/ui/machine-commands");
+    machineActions.files("nas");
+    expect(vi.mocked(openFileWindow).mock.calls).toEqual([["nas"]]);
   });
 });

@@ -13,7 +13,6 @@ const ALL_CAPS: &[&str] = &[
     "cwd",
     "agent",
     "launcher",
-    "ccm-sid",
     "print",
     "detach",
     "tmux-size",
@@ -28,7 +27,6 @@ pub fn launch(agent: &str, act: super::super::Act) -> super::super::Launch {
         act,
         tmux: None,
         cwd: None,
-        ccm_sid: None,
         model: None,
         launcher,
         default_launcher,
@@ -72,16 +70,13 @@ pub fn cells() -> Vec<Cell> {
     };
     let attach = |name: &str| tmux(launch("claude", Act::Attach(name.into())), name);
     let claude = |act| launch("claude", act);
-    let mut ident = claude(Act::New);
-    ident.ccm_sid = Some("sid-1".into());
     let mut own_launcher = claude(Act::New);
     own_launcher.launcher = "mycc".into();
     let mut same_launcher = claude(Act::New);
     same_launcher.launcher = "claude".into();
     let mut probe = cwd(tmux(claude(Act::New), "cc-proj"), "/home/pi/my proj");
     probe.launcher = "CCMPROBE".into();
-    let mut p1 = cwd(tmux(claude(resume("p1")), "cc-p1"), "/tmp");
-    p1.ccm_sid = Some("p1".into());
+    let p1 = cwd(tmux(claude(resume("p1")), "cc-p1"), "/tmp");
     let mut p1_opus = p1.clone();
     p1_opus.model = Some("opus".into());
     vec![
@@ -101,7 +96,6 @@ pub fn cells() -> Vec<Cell> {
             None,
             Ok("ccm --resume s1 --model opus -- --ccm-agent claude --account z --cwd /w"),
         ),
-        ("身份标记", ident, Settled::Base, None, Ok("ccm -- new --ccm-sid=sid-1 --ccm-agent claude --base")),
         ("自定义启动命令", own_launcher, Settled::Base, None, Ok("ccm -- new --ccm-agent claude --base --launcher mycc")),
         ("启动命令等于默认 ⇒ 不写 --launcher", same_launcher, Settled::Base, None, Ok("ccm -- new --ccm-agent claude --base")),
         ("接回（不起 agent，不收修饰）", attach("cc-foo"), Settled::Base, None, Ok("ccm -- --attach cc-foo")),
@@ -142,7 +136,7 @@ pub fn cells() -> Vec<Cell> {
             None,
             Ok("ccm resume s1 -- --ccm-agent codex --base --cwd /p"),
         ),
-        ("Codex 选了具名账号", cwd(launch("codex", resume("s1")), "/p"), named("z", None), None, Err("Codex 会话不可选账号")),
+        ("Codex 选了具名账号", cwd(launch("codex", resume("s1")), "/p"), named("z", None), None, Ok("ccm resume s1 -- --ccm-agent codex --account z --cwd /p")),
         (
             "直路恢复 ＋ 具名",
             cwd(claude(resume("s1")), "/p"),
@@ -152,11 +146,11 @@ pub fn cells() -> Vec<Cell> {
         ),
         ("接回 cc-s1", attach("cc-s1"), Settled::Base, None, Ok("ccm -- --attach cc-s1")),
         (
-            "恢复进 tmux ＋ 身份标记",
+            "恢复进 tmux",
             p1,
             Settled::Base,
             None,
-            Ok("ccm --resume p1 -- --ccm-tmux=cc-p1 --ccm-sid=p1 --ccm-agent claude --base --cwd /tmp"),
+            Ok("ccm --resume p1 -- --ccm-tmux=cc-p1 --ccm-agent claude --base --cwd /tmp"),
         ),
         (
             "新起进 tmux ＋ 自定义启动命令",
@@ -171,7 +165,7 @@ pub fn cells() -> Vec<Cell> {
             p1_opus,
             Settled::Base,
             None,
-            Ok("ccm --resume p1 --model opus -- --ccm-tmux=cc-p1 --ccm-sid=p1 --ccm-agent claude --base --cwd /tmp"),
+            Ok("ccm --resume p1 --model opus -- --ccm-tmux=cc-p1 --ccm-agent claude --base --cwd /tmp"),
         ),
     ]
 }

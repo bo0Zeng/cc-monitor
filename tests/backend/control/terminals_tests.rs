@@ -30,7 +30,7 @@ fn input_on(on: On<'_>, args: &Value) -> Result<Value, Said> {
 }
 
 fn input_of(args: &Value) -> Result<Input, Said> {
-    super::input_of(&req(args)?)
+    super::input_of(&req(args)?, &[])
 }
 
 fn terminal_json(r: &TermRow, clients: &[(String, u64, u64)], who: Option<&str>) -> Value {
@@ -838,6 +838,7 @@ fn on_a_real_tmux_a_line_for_a_session_goes_only_to_its_agent_not_to_the_shell_l
         val(super::say_on(
             iso.on(),
             &req::<TerminalInputReq>(&json!({ "sid": sid, "text": text, "enter": true })).unwrap(),
+            &[],
         )
         .unwrap())
     };
@@ -1610,14 +1611,19 @@ async fn a_hosted_terminal_that_never_arrived_is_read_off_its_screen() {
     let screen = tokio::task::spawn_blocking(move || hosted_screen_in(&o, "name-t-scr"))
         .await
         .expect("没崩");
-    let ArriveEnd::Missed { said, terminal } =
-        missed(1_000, Some(("name-t-scr", TerminalHost::Managed, screen)))
+    let ArriveEnd::Missed {
+        said,
+        words,
+        terminal,
+        ..
+    } = missed(1_000, Some(("name-t-scr", TerminalHost::Managed, screen)))
     else {
         panic!("应是没见到");
     };
+    let words = words.unwrap_or_default();
     assert!(
-        said.contains("Error: unknown flag --zz") && said.contains("boot"),
-        "那一句带末几行：{said}"
+        words.contains("Error: unknown flag --zz") && words.contains("boot"),
+        "末几行那一格：{words}"
     );
     assert!(!said.contains("tmux"), "托管那几句不提 tmux：{said}");
     assert_eq!(terminal.as_deref(), Some("t-scr"), "回托管终端的句柄");

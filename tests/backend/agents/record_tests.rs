@@ -19,23 +19,19 @@ fn the_common_fields_are_camel_case_and_the_kind_is_t() {
     );
 }
 
-/// 来话（agent 交回 · 另一个会话 · 主会话后来的话）的正文在造记录那一下解成树（与助手正文同一个 `md_core::parse`）；
-/// 线上只交树，`body` 原文不上线；没有正文 ⇒ 两格都缺。
+/// 来话（agent 交回 · 另一个会话 · 主会话后来的话）的正文原文住后端那一形（[`Heard`]），造记录那一下解成树
+/// （与助手正文同一个 `md_core::parse`）；线上只交树（原文那一格线上类型里没有）；没有正文 ⇒ 树也缺。
 #[test]
 fn incoming_message_bodies_go_out_as_trees() {
-    use cmd_wire::record::{Speaker, UserText};
+    use cmd_wire::record::Speaker;
     let md = "交回：\\(a+b\\)\n\n- 一\n- 二";
-    let said = |speaker: Speaker| {
+    let said = |speaker: Speaker, body: Option<String>| {
         record(
             "a".into(),
             "i".into(),
             None,
             Body::Said {
-                who: UserText {
-                    speaker,
-                    text: String::new(),
-                    parts: Vec::new(),
-                },
+                who: Heard::of(speaker, body).said(),
                 blocks: Vec::new(),
                 results: Default::default(),
                 cwd: None,
@@ -48,22 +44,17 @@ fn incoming_message_bodies_go_out_as_trees() {
             from: Some("a1".into()),
             name: None,
             handback: true,
-            body: Some(md.into()),
             doc: None,
         },
         Speaker::PeerSession {
             from: None,
-            body: Some(md.into()),
             doc: None,
             title: None,
         },
-        Speaker::Coordinator {
-            body: Some(md.into()),
-            doc: None,
-        },
+        Speaker::Coordinator { doc: None },
     ];
     for sp in speakers {
-        let r = said(sp);
+        let r = said(sp, Some(md.into()));
         let wire = serde_json::to_value(&r).unwrap();
         let s = &wire["who"]["speaker"];
         assert_eq!(
@@ -71,14 +62,10 @@ fn incoming_message_bodies_go_out_as_trees() {
             serde_json::to_value(md_core::parse(md)).unwrap(),
             "{s}"
         );
-        assert!(s.get("body").is_none(), "原文不上线：{s}");
     }
-    let none = said(Speaker::Coordinator {
-        body: None,
-        doc: None,
-    });
+    let none = said(Speaker::Coordinator { doc: None }, None);
     let s = &serde_json::to_value(&none).unwrap()["who"]["speaker"];
-    assert!(s.get("doc").is_none() && s.get("body").is_none(), "{s}");
+    assert!(s.get("doc").is_none(), "{s}");
 }
 
 /// 画成哪一形 · 人说没说：逐种来源与回复的样子（判定只在 [`record`]，两家适配层造记录都经它）。
@@ -118,7 +105,6 @@ fn draw_and_human_are_worked_out_once_from_the_body() {
         bytes: 1,
         at: 0,
         n: 0,
-        data: String::new(),
     };
     let quiet = |r: Body| match r {
         Body::Reply {
@@ -253,13 +239,7 @@ fn draw_and_human_are_worked_out_once_from_the_body() {
         ),
         (
             "压缩摘要、空",
-            said(
-                Speaker::CompactSummary {
-                    chars_text: cmd_wire::cells::Words("0".into()),
-                },
-                "",
-                vec![],
-            ),
+            said(Speaker::CompactSummary { title_text: None }, "", vec![]),
             Draw::None,
             false,
         ),
@@ -319,28 +299,6 @@ fn draw_and_human_are_worked_out_once_from_the_body() {
         ),
         ("reply-error", failed(reply(vec![], &[])), Draw::Card, false),
         (
-            "retry",
-            Body::Retry {
-                reason: cmd_wire::record::ApiReason::Unknown,
-                attempt: None,
-                max: None,
-                text: None,
-            },
-            Draw::Card,
-            false,
-        ),
-        (
-            "接在一串后面的重试",
-            Body::Retry {
-                reason: cmd_wire::record::ApiReason::Unknown,
-                attempt: Some(2),
-                max: Some(10),
-                text: None,
-            },
-            Draw::None,
-            false,
-        ),
-        (
             "标题",
             Body::Title {
                 text: "x".into(),
@@ -359,5 +317,19 @@ fn draw_and_human_are_worked_out_once_from_the_body() {
     for (what, body, draw, human) in cases {
         let r = record("a".into(), "i".into(), None, body);
         assert_eq!((r.draw, r.human), (draw, human), "{what}");
+    }
+    // 重试那一条照后端的行里的次数画：头一次（或没写次数）成卡，接在一串后面的不画。
+    for (what, attempt, draw) in [
+        ("retry", None, Draw::Card),
+        ("接在一串后面的重试", Some(2), Draw::None),
+    ] {
+        let facts = RetryFacts {
+            reason: cmd_wire::record::ApiReason::Unknown,
+            attempt,
+            max: attempt.map(|_| 10),
+        };
+        let b = retry("a".into(), "i".into(), None, facts);
+        assert_eq!((b.rec.draw, b.rec.human), (draw, false), "{what}");
+        assert_eq!(b.retry, Some(facts), "{what}");
     }
 }

@@ -282,6 +282,31 @@ fn every_declared_arg_is_really_read_by_the_parser() {
     for st in ["probe-seq", "probe-stream-a"] {
         crate::files::index::ticket(st, 9).expect("登记一个先来的号");
     }
+    // `files.menu` 那几对：选中的一行文件（`files-ls` 回包里那一形）· 那台连着 / 断着。
+    let at = w::WirePath(b"/srv/data/a.txt".to_vec());
+    let menu_row = serde_json::to_value(w::LsEntry {
+        path: at.clone(),
+        name: w::WirePath(b"a.txt".to_vec()),
+        kind: w::FileKind::File,
+        size: Some(3),
+        size_text: None,
+        mtime_secs: None,
+        mtime_text: None,
+        mtime_full: None,
+        link_dir: None,
+        link_to: None,
+        class: w::FileClass::Text,
+        type_text: String::new(),
+        gates: None,
+        shown: at,
+    })
+    .expect("一行写成 JSON");
+    let here_on = serde_json::to_value(w::Here::default()).expect("连着那一形");
+    let here_cut = serde_json::to_value(w::Here {
+        offline: Some(w::Cut::Machine),
+        unavailable: Vec::new(),
+    })
+    .expect("断着那一形");
     // 🔴 探针表：`(能力, 被测参数, 甲, 乙)` —— 甲乙只差那一个键，答案必须不同。
     //   ⚠ 顺序承重：`files.browse` 会往 overlay 里加东西、`files.index.rebuild` 会把
     //   常驻那一份整份换掉 ⇒ 两者都排在 `files.find` 之后，免得前一条把后一条的地基抽了。
@@ -465,6 +490,25 @@ fn every_declared_arg_is_really_read_by_the_parser() {
             serde_json::json!({ "path": p(&text_dir), "needle": "a", "limit": 1000 }),
             serde_json::json!({ "path": p(&text_dir), "needle": "a", "limit": 1 }),
         ),
+        // `files.menu` 的三个参数：选中空着 vs 一行文件 · 连着 vs 那台断着 · 不归计划 vs 归「T」那一格，菜单成品必然不同。
+        (
+            "files.menu",
+            "picked",
+            serde_json::json!({ "picked": [], "here": here_on, "plan": null }),
+            serde_json::json!({ "picked": [menu_row.clone()], "here": here_on, "plan": null }),
+        ),
+        (
+            "files.menu",
+            "here",
+            serde_json::json!({ "picked": [menu_row.clone()], "here": here_on, "plan": null }),
+            serde_json::json!({ "picked": [menu_row.clone()], "here": here_cut, "plan": null }),
+        ),
+        (
+            "files.menu",
+            "plan",
+            serde_json::json!({ "picked": [menu_row.clone()], "here": here_on, "plan": null }),
+            serde_json::json!({ "picked": [menu_row.clone()], "here": here_on, "plan": "T" }),
+        ),
     ];
 
     // ── ① 分区恒等：探针表 ↔ `args` 声明，逐条能力**两向相等** ─────────────
@@ -525,8 +569,9 @@ fn every_declared_arg_is_really_read_by_the_parser() {
     // 24 → 25（`files.ls` 的 `dirs_only` 一对）。
     // 25 → 26（`files.ls` 的 `sort` 一对）。
     // 26 → 28（`files.ls` 的 `held` · `range` 两对）。
+    // 28 → 31（`files.menu` 的 `picked` · `here` · `plan` 三对）。
     assert_eq!(
-        checked, 28,
+        checked, 31,
         "行使的探针对数变了 —— 本条的射程跟着变了，先查探针表"
     );
     std::fs::remove_dir_all(&text_dir).ok();
@@ -1380,4 +1425,223 @@ fn held_of(d: &std::path::Path) -> serde_json::Value {
     )
     .expect("ls")["held"]
         .clone()
+}
+
+/// `files.stat` · `files.size` 回包里那一格 `size_text` 就是那个数写好的字（`copy_core::size_text`），窗口照抄、不自己格式化。
+#[test]
+fn stat_and_size_carry_the_size_already_written() {
+    let d = f7a_dir("size-text");
+    let f = d.join("b.bin");
+    std::fs::write(&f, vec![0u8; 3000]).expect("铺文件");
+    let stat = answer(
+        "files.stat",
+        &serde_json::json!({ "path": path_json(&f) }),
+        &Default::default(),
+    )
+    .expect("stat 一个在的文件不该失败");
+    assert_eq!(
+        stat["size_text"].as_str(),
+        Some(copy_core::size_text(3000).as_str()),
+        "{stat}"
+    );
+    let size = answer(
+        "files.size",
+        &serde_json::json!({ "path": path_json(&d) }),
+        &Default::default(),
+    )
+    .expect("算一个在的目录不该失败");
+    let bytes = size["bytes"].as_u64().expect("bytes");
+    assert_eq!(
+        size["size_text"].as_str(),
+        Some(copy_core::size_text(bytes).as_str()),
+        "{size}"
+    );
+    std::fs::remove_dir_all(&d).ok();
+}
+
+/// 目录打不开：那一句由这台写好（带目录名与原因词），窗口照画；码照旧分「不在 · 无权限 · 不是目录 · 别的」（窗口只拿它挑出路）。
+#[test]
+fn a_directory_that_cannot_be_opened_is_said_here_with_its_name_and_reason() {
+    let d = f7a_dir("ls-open");
+    let file = d.join("plain.txt");
+    std::fs::write(&file, b"x").expect("铺文件");
+    for (path, code, reason) in [
+        (d.join("gone"), "not_found", std::io::ErrorKind::NotFound),
+        (file, "not_dir", std::io::ErrorKind::NotADirectory),
+    ] {
+        let got = answer(
+            "files.ls",
+            &serde_json::json!({ "path": path_json(&path) }),
+            &Default::default(),
+        )
+        .expect_err("打不开的目录竟然列成了");
+        assert_eq!(got.code.as_deref(), Some(code), "{got:?}");
+        let name = path.file_name().unwrap().to_str().unwrap();
+        let why = copy_core::io_reason(reason);
+        assert!(
+            got.said.contains(name) && got.said.contains(&why),
+            "那一句该带「{name}」与「{why}」：{}",
+            got.said
+        );
+        assert_ne!(
+            why,
+            copy_core::io_reason(std::io::ErrorKind::Other),
+            "{code} 的原因词跟「原因不明」一样"
+        );
+    }
+    std::fs::remove_dir_all(&d).ok();
+}
+
+/// `files-ls` 收到相对路径（`~` 展开之后仍不是绝对的）⇒ `bad_args`，不拿后端进程的工作目录去补；
+/// 列家目录 ⇒ 头上 `at_home == true`，列别处 ⇒ `false`（窗口「家」那一项亮不亮照它，不自己归一了比）。
+#[cfg(unix)]
+#[test]
+fn ls_refuses_a_relative_path_and_says_whether_it_is_home() {
+    let _lock = resident_lock();
+    let got = answer(
+        "files.ls",
+        &serde_json::json!({ "path": "foo" }),
+        &Default::default(),
+    )
+    .expect_err("相对路径竟然列成了（读的是后端工作目录）");
+    assert_eq!(got.code.as_deref(), Some("bad_args"), "{got:?}");
+    let home = crate::platform::paths::home_dir().expect("测试档的家是沙箱");
+    let sub = home.join(format!("ccm-ls-home-{}", std::process::id()));
+    std::fs::create_dir_all(&sub).expect("铺家里一个目录");
+    let at_home = |p: serde_json::Value| {
+        let v = answer(
+            "files.ls",
+            &serde_json::json!({ "path": p }),
+            &Default::default(),
+        )
+        .expect("列得出");
+        v["head"]["info"]["at_home"].as_bool()
+    };
+    assert_eq!(at_home(path_json(&home)), Some(true));
+    assert_eq!(at_home(serde_json::json!("~")), Some(true));
+    assert_eq!(at_home(path_json(&sub)), Some(false));
+    std::fs::remove_dir_all(&sub).ok();
+}
+
+/// 头上 `descending` ＝ 这一屏那一列是不是从大到小（窗口表头的箭头照它画，不自己算）：名称 · 类型第一下 A 在前，
+/// 大小 · 时间第一下大的在前，`reverse` 反过来；不说排法 ⇒ 名称那一下。
+#[cfg(unix)]
+#[test]
+fn ls_says_whether_the_sorted_column_runs_high_to_low() {
+    let d = f7a_dir("ls-descending");
+    std::fs::create_dir_all(&d).expect("铺目录");
+    let desc = |sort: serde_json::Value| {
+        let mut args = serde_json::json!({ "path": path_json(&d) });
+        if !sort.is_null() {
+            args["sort"] = sort;
+        }
+        let v = answer("files.ls", &args, &Default::default()).expect("列得出");
+        v["head"]["info"]["descending"].as_bool()
+    };
+    assert_eq!(
+        desc(serde_json::Value::Null),
+        Some(false),
+        "缺省按名称 A 在前"
+    );
+    for (by, first) in [
+        ("name", false),
+        ("type", false),
+        ("size", true),
+        ("mtime", true),
+    ] {
+        assert_eq!(
+            desc(serde_json::json!({ "by": by })),
+            Some(first),
+            "{by} 第一下"
+        );
+        assert_eq!(
+            desc(serde_json::json!({ "by": by, "reverse": true })),
+            Some(!first),
+            "{by} 反过来"
+        );
+    }
+    std::fs::remove_dir_all(&d).ok();
+}
+
+/// 头上 `by` ＝ 这一屏实际排的那一列（窗口表头的箭头画在它上面，不照窗口自己记的那一列）：每一列正反都答请求的那一列；
+/// 不说排法 ⇒ `name`。
+#[cfg(unix)]
+#[test]
+fn ls_head_names_the_column_it_sorted_by() {
+    let d = f7a_dir("ls-by");
+    std::fs::create_dir_all(&d).expect("铺目录");
+    let by_of = |sort: serde_json::Value| {
+        let mut args = serde_json::json!({ "path": path_json(&d) });
+        if !sort.is_null() {
+            args["sort"] = sort;
+        }
+        let v = answer("files.ls", &args, &Default::default()).expect("列得出");
+        v["head"]["info"]["by"].clone()
+    };
+    assert_eq!(
+        by_of(serde_json::Value::Null),
+        serde_json::json!("name"),
+        "缺省按名称"
+    );
+    for by in ["name", "type", "size", "mtime"] {
+        for reverse in [false, true] {
+            assert_eq!(
+                by_of(serde_json::json!({ "by": by, "reverse": reverse })),
+                serde_json::json!(by),
+                "{by} reverse={reverse}"
+            );
+        }
+    }
+    std::fs::remove_dir_all(&d).ok();
+}
+
+/// 带上跳段 · `.` 的路径按字面折掉再列：列的那一级、面包屑最后一段（窗口照它换当前目录）、`up` 是同一条路径。
+#[cfg(unix)]
+#[test]
+fn ls_folds_parent_segments_so_the_crumbs_name_the_listed_dir() {
+    let d = f7a_dir("ls-dotdot");
+    std::fs::create_dir_all(d.join("sub")).expect("铺子目录");
+    std::fs::write(d.join("here.txt"), b"x").expect("铺文件");
+    let typed = format!("{}/sub/./..", d.to_str().unwrap());
+    let v = answer(
+        "files.ls",
+        &serde_json::json!({ "path": typed }),
+        &Default::default(),
+    )
+    .expect("列得出");
+    let crumbs = v["head"]["info"]["crumbs"].as_array().expect("带面包屑");
+    assert_eq!(crumbs.last().unwrap()["path"], path_json(&d), "{v}");
+    assert_eq!(
+        v["head"]["info"]["up"],
+        path_json(d.parent().unwrap()),
+        "{v}"
+    );
+    assert!(
+        ls_rows(&v).iter().any(|r| r["name"] == "here.txt"),
+        "列的不是折完的那一级：{v}"
+    );
+    std::fs::remove_dir_all(&d).ok();
+}
+
+/// 家目录名不是 UTF-8：`files-ls` 的 `~/…` 照字节展开、照实带，列的是盘上真在的那一级，面包屑最后一段是那串原始字节。
+#[cfg(unix)]
+#[test]
+fn ls_expands_a_tilde_under_a_home_that_is_not_utf8_by_its_bytes() {
+    use std::os::unix::ffi::OsStrExt;
+    let base = f7a_dir("ls-home-bytes");
+    let home = base.join(std::ffi::OsStr::from_bytes(b"caf\xe9"));
+    std::fs::create_dir_all(home.join("w").join("a")).unwrap();
+    let req: w::LsReq = serde_json::from_value(serde_json::json!({ "path": "~/w" })).unwrap();
+    let got = ls_now(req, &Default::default(), Some(home.clone()));
+    std::fs::remove_dir_all(&base).ok();
+    let (head, rows) = got.unwrap_or_else(|e| panic!("非 UTF-8 的家没照字节展开：{e:?}"));
+    assert_eq!(
+        rows.iter().map(|(k, _)| k.as_str()).collect::<Vec<_>>(),
+        vec!["a"]
+    );
+    assert_eq!(
+        head.crumbs.last().unwrap().path.bytes(),
+        raw::path_bytes(&home.join("w")),
+        "面包屑最后一段不是展开后的那串原始字节"
+    );
 }

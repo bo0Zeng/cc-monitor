@@ -7,11 +7,7 @@ import type { OwnItem } from "./OwnItem";
 /**
  * `data-report` 的回包。也收（`Deserialize`）：本机后端替界面记的「上次值」按它核存档（`last_seen`）。
  */
-export type DataReport = { 
-/**
- * 这台家目录（显示时 `~` 缩写按它）。
- */
-home: string, changedFiles: Array<ChangedFile>, todo: Array<Chore>, 
+export type DataReport = { changedFiles: Array<ChangedFile>, todo: Array<Chore>, 
 /**
  * 这台有没有 tmux（查不动 ⇒ `null`）。
  */

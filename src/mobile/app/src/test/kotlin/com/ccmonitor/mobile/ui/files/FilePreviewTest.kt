@@ -65,7 +65,7 @@ class FilePreviewTest {
                 }
             val png = RemotePath.of("/w/p.png")
             val got = FilePreview(l) { "box" }.show(png, PreviewGate.Image(4_194_304)).getOrThrow()
-            assertEquals(Transfer.Pull(png, 4_194_304), l.transfers.single().first)
+            assertEquals(Transfer.Pull(png, 4_194_304), l.transfers.single())
             assertTrue(got is FilePreview.Image && got.bytes.contentEquals(byteArrayOf(0x89.toByte(), 0x50, 0x4e)))
             assertEquals("解不开", (got as FilePreview.Image).undecodable)
         }

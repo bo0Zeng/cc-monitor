@@ -214,8 +214,9 @@ pub enum Reach {
 /// 复制详情里通道这一跳那几项（壳 · 文件窗口进程各自写详情时同一份取法）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HopFacts {
-    /// 一个字节都没发出去（机器那一项后面标「未连上」）。
-    pub not_sent: bool,
+    /// 没够着那台：没发出去、而且断在路上（`Unreachable` · `Dropped`）⇒ 机器那一项后面标「未连接」。
+    /// 期限已过（`Overrun`）· 本侧在等的满了（`Full`）也没发出去，可那台不一定够不着，不算。
+    pub unreached: bool,
     /// 断在哪一跳：`<跳号>:<动作> <发没发出>`；不是传输错 ⇒ `None`。
     pub hop: Option<String>,
     /// 码：传输错的那一种 · `unsupported` · `refused` · 本侧那一种（那台对撤单不认 ⇒ 后接 ` runs_on`）。
@@ -227,26 +228,30 @@ impl CallError {
     pub fn hop_facts(&self) -> HopFacts {
         match self {
             CallError::Hop { at, reach, why } => HopFacts {
-                not_sent: *reach == Reach::NotSent,
+                unreached: *reach == Reach::NotSent
+                    && match why {
+                        HopFault::Unreachable | HopFault::Dropped => true,
+                        HopFault::Overrun | HopFault::Full => false,
+                    },
                 hop: Some(format!("{}:{} {reach:?}", at.idx, at.tag)),
                 code: format!("{why:?}"),
             },
             CallError::Peer {
                 why: PeerFault::Unsupported,
             } => HopFacts {
-                not_sent: false,
+                unreached: false,
                 hop: None,
                 code: "unsupported".to_string(),
             },
             CallError::Peer {
                 why: PeerFault::Refused { .. },
             } => HopFacts {
-                not_sent: false,
+                unreached: false,
                 hop: None,
                 code: "refused".to_string(),
             },
             CallError::Ours { why, runs_on } => HopFacts {
-                not_sent: false,
+                unreached: false,
                 hop: None,
                 code: if *runs_on {
                     format!("{why:?} runs_on")
@@ -258,15 +263,17 @@ impl CallError {
     }
 }
 
-/// 传输错的三种。
+/// 传输错的四种。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HopFault {
     /// 断开 / 没有这条路。
     Unreachable,
     /// 路断在半途。
     Dropped,
-    /// 期限到了（或容量顶满）。
+    /// 期限到了。
     Overrun,
+    /// 本侧在等答的满了：这一问当场拒，一个字节没发（恒与 `Reach::NotSent` 一起出）。
+    Full,
 }
 
 /// 对端错的两种。`body` 不透明，原样上交 —— 通信层一解释就撞 `C1`。

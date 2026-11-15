@@ -6,8 +6,8 @@
 //! - 限流：每一对 [`RATE_PAIR`] 封、全台 [`RATE_GLOBAL`] 封 / [`RATE_WINDOW_MS`]（固定窗）；超了 ⇒ `throttled`。来回不停的两条会话由它挡。
 //! - 敲不敲：tier 1 且收件人那条会话 [`KNOCK_DEBOUNCE_MS`] 内没敲过 ⇒ 敲（记下这一刻）；tier 2 不敲。
 
+use super::wire::BusEnvelope;
 use crate::common::said::Said;
-use crate::control::cc_bus_wire::BusEnvelope;
 use std::collections::BTreeMap;
 
 /// 去重窗。

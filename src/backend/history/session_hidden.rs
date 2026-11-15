@@ -166,9 +166,21 @@ pub fn hidden_here(
 /// 记录找不到 ⇒ 那条规则里「记录没读到」那一档。
 pub fn title_here(sid: &str, annotations: &Table) -> String {
     let custom = annotations.get(sid).and_then(|e| e.custom_title.clone());
-    match crate::agents::find_session(&super::listing::agent_home(), sid) {
-        Ok(at) => super::listing::session_title_of(&at.file, custom),
-        Err(_) => {
+    let found = crate::agents::find_session_in(&crate::agents::local_homes(), sid).ok();
+    title_found(crate::agents::REGISTRY, found.as_ref(), sid, custom)
+}
+
+/// [`title_here`] 的可喂夹具那一半：`found` ＝ 按 sid 找到的那一份（找不到 ⇒ `None`）。
+/// 记录里的那几样照找到它的那一家（`at.kind`）读，不照路径另认；`registry` 里没有那一家 ⇒ 说不清。
+pub(crate) fn title_found(
+    registry: &[crate::agents::Adapter],
+    found: Option<&crate::agents::SessionAt>,
+    sid: &str,
+    custom: Option<String>,
+) -> String {
+    match found {
+        Some(at) => super::listing::session_title_as(registry, at.kind, &at.file, custom),
+        None => {
             super::search_rules::session_label(&super::search_rules::LabelFacts::unread(
                 sid, custom,
             ))

@@ -18,7 +18,8 @@ use crate::exit_policy::{ExitPolicy, ExitPolicyReadReq, ExitPolicySetReq};
 use crate::files::*;
 use crate::listing::{HistoryHead, HistoryListReq, HistoryRow};
 use crate::machine::{
-    MachineRead, MachineReadReq, MachineState, MachineStopReq, MachineStopped, MachineWakeReq,
+    MachineInterruptsReply, MachineInterruptsReq, MachineRead, MachineReadReq, MachineState,
+    MachineStopReq, MachineStopped, MachineWakeReq,
 };
 use crate::needs::{AnswerReq, Answered, NeedsList, SessionsNeedsReq};
 use crate::open::{OpenFactsReq, SessionOpenReq};
@@ -43,10 +44,7 @@ use crate::sync::Patch;
 use crate::terminal::{
     SshCommand, TerminalInputReq, TerminalPreviewReq, TerminalSshReq, TerminalsListReq, UnfollowReq,
 };
-use crate::transfer::{
-    TransferCopyAsk, TransferCopyReq, TransferDownloadAsk, TransferDownloadReq, TransferOpened,
-    TransferStartReq, TransferStopReq, TransferUploadAsk, TransferUploadReq,
-};
+use crate::transfer::TransferCopyReq;
 use serde::Serialize;
 
 /// 一条命令的入参类型就选中了那条命令：名字与回包类型都挂在它上面。
@@ -59,7 +57,7 @@ pub trait Call: Serialize {
 /// 一行：`入参 => 名字, 回包;`。
 /// 表还出两样（判据 · 导出 TS 那一档）：表里每条的名字 `COMMANDS` · 照类型解再写回的 `typed_text`（手机生成的 Kotlin 类写回要与它逐字节同）。
 /// 回包里记录那一格是原样的一团（`Value`）的那几条（[`crate::record::records_cell`]）：客户端按完整记录解的那一形不在本 crate，
-/// 照那一形解再写回的对拍住 `face-core` 的 `record` 判据。
+/// 照那一形解再写回的对拍住手机核心 `record` 的判据。
 macro_rules! calls {
     ($($req:ty => $name:literal, $reply:ty;)*) => {
         $(impl Call for $req {
@@ -92,6 +90,8 @@ calls! {
     StatReq => "files-stat", StatReply;
     HomeReq => "files-home", FilesPathReply;
     SizeReq => "files-size", SizeReply;
+    // 寻址本机：本机后端照桌面那张表答（[`DeskMenu`]）。
+    FilesMenuReq => "files-menu", DeskMenu;
     ReadTextReq => "files-read-text", ReadTextReply;
     ReadChunkReq => "files-read-chunk", ReadChunkReply;
     GrepReq => "files-grep", GrepReply;
@@ -108,6 +108,8 @@ calls! {
     FilesExtractReq => "files-extract", FilesTreeReply;
     FilesWriteTextReq => "files-write-text", FilesWrittenReply;
     FilesDeleteSessionReq => "files-delete-session", FilesPathReply;
+    FilesArchiveSessionReq => "files-archive-session", ();
+    FilesUnarchiveSessionReq => "files-unarchive-session", ();
     FilesStageChunkReq => "files-stage-chunk", FilesStageChunkReply;
     FilesCommitTextReq => "files-commit-text", FilesWrittenReply;
     FilesCommitUploadReq => "files-commit-upload", FilesPathBytesReply;
@@ -127,20 +129,13 @@ calls! {
     MachineReadReq => "machine-read", MachineRead;
     MachineWakeReq => "machine-wake", MachineState;
     MachineStopReq => "machine-stop", MachineStopped;
+    MachineInterruptsReq => "machine-interrupts", MachineInterruptsReply;
     DiagnosticsReportReq => "diagnostics-report", DiagnosticsReport;
-    // 记录那一格是原样的一团（`Value`）：各端照自己的读法再判（手机核心 `face_core::record::mend_records` · 壳搬成品）。
+    // 记录那一格是原样的一团（`Value`）：各端照自己的读法再判（手机核心 `record::mend_records` · 壳搬成品）。
     HistoryReadReq => "history-read", HistoryRead;
     HistoryTailReq => "history-tail", HistoryTail;
     HistoryLinesReq => "history-lines", HistoryLines;
-    // 传输台那三条各两层：窗口说给 monitor 的（`*Ask`）· monitor 补上那台转给本机后端的（`*Req`），名字同一个。
-    TransferUploadAsk => "transfer-upload", TransferOpened;
-    TransferUploadReq => "transfer-upload", TransferOpened;
-    TransferDownloadAsk => "transfer-download", TransferOpened;
-    TransferDownloadReq => "transfer-download", TransferOpened;
-    TransferCopyAsk => "transfer-copy", BatchReply;
     TransferCopyReq => "transfer-copy", BatchReply;
-    TransferStartReq => "transfer-start", ();
-    TransferStopReq => "transfer-stop", ();
     QuotaReadReq => "quota-read", QuotaRead;
     RotationFactsReq => "rotation-facts", RotationFactsReply;
     RotationStrategiesReq => "rotation-strategies", RotationStrategiesReply;

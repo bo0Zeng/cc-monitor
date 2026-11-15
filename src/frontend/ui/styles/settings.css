@@ -808,17 +808,6 @@ body.settings-window-mode .settings-panel {
   gap: 12px;
 }
 
-.settings-data-loading,
-.settings-data-error {
-  font-size: var(--font-size-small);
-  color: var(--text-2);
-  padding: 8px 0;
-}
-
-.settings-data-error {
-  color: var(--error);
-}
-
 .settings-data-block {
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-m);
@@ -844,15 +833,6 @@ body.settings-window-mode .settings-panel {
   color: var(--text-faint);
   font-family: var(--font-mono);
   word-break: break-all;
-}
-
-.settings-data-block-subtitle.clickable {
-  cursor: pointer;
-  text-decoration: underline dotted;
-}
-
-.settings-data-block-subtitle.clickable:hover {
-  color: var(--text-2);
 }
 
 .settings-data-list {
@@ -942,13 +922,6 @@ body.settings-window-mode .settings-panel {
   grid-area: open;
   display: flex;
   gap: 4px;
-}
-
-/* 「在「日志」页打开」：住打开那一格（那一行不给按钮）。 */
-.settings-data-item-see {
-  grid-area: open;
-  font-size: var(--font-size-xs);
-  color: var(--text-2);
 }
 
 .settings-data-item-open {
@@ -2044,7 +2017,7 @@ body.settings-window-mode .settings-panel {
 
 .acct-row {
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) 140px 90px 150px 28px;
+  grid-template-columns: 24px minmax(0, 1fr) 230px 150px 28px;
   align-items: center;
   column-gap: var(--space-4);
   min-height: 44px;
@@ -2081,20 +2054,33 @@ body.settings-window-mode .settings-panel {
   font-size: var(--font-size-small);
 }
 
-.acct-row-slot {
+/* 额度那一列：那台写好的每号几行，一行一条（收到几窗列几行；行多了整行跟着长高）。 */
+.acct-row-quota {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2) 0;
   color: var(--text-2);
   font-size: var(--font-size-small);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
-.acct-row-slot[data-shade="refused"],
+.acct-row-quota-line {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.acct-row-quota-line > :first-child {
+  min-width: 4.5em;
+}
+
+.acct-row-quota [data-shade="refused"],
 .acct-row-name [data-shade="error"] {
   color: var(--error);
 }
 
-.acct-row-slot[data-shade="warn"],
-.acct-row-slot[data-stale="true"] {
+.acct-row-quota [data-shade="warn"] {
   color: var(--warn);
 }
 

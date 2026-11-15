@@ -126,9 +126,18 @@ fn dressed_needs(base: Option<crate::observe::recognize::facts::Needs>) -> Vec<V
             "options": [{"label": "l", "description": "d"}]}]}
     });
     let asked = crate::agents::claudecode::asks::read(&hook).unwrap();
-    let ask = crate::agents::asks::product_of("ask-1", &asked, None, 1);
+    let ask = crate::agents::asks::Asked {
+        ask: crate::agents::asks::product_of("ask-1", &asked, true, false, None),
+        since_ms: 1,
+    };
+    // 挡着终端的那一条（上面那份，带 agent_id）界面答不了、不交 `ask`；再配一条答得了的替身请求，`ask` 那几格才在真成品里出现。
+    let answerable = crate::agents::asks::Asked {
+        ask: crate::agents::asks::specimen(),
+        since_ms: 1,
+    };
     [
         crate::observe::recognize::facts::dress_ask_with(base.clone(), Some(ask), 2),
+        crate::observe::recognize::facts::dress_ask_with(base.clone(), Some(answerable), 2),
         crate::observe::recognize::facts::dress_ask_with(base, None, 2),
     ]
     .into_iter()
@@ -164,10 +173,19 @@ fn corpus(name: &str) -> Vec<Value> {
                 since_ms: Some(1),
                 read_at_ms: 0,
             };
-            f["needs"] = serde_json::to_value(crate::observe::recognize::facts::needs_of(
-                crate::agents::claudecode::AGENT_KIND,
-                &pending,
-                Some(&wait),
+            // 配上一条挂着、界面答得了的替身请求（`ask` 那几格才在真成品里出现；`ask` 与 `manualText` 同一份里只有一格有字，
+            // `manualText` 那一格照 null 出现）。
+            f["needs"] = serde_json::to_value(crate::observe::recognize::facts::dress_ask_with(
+                crate::observe::recognize::facts::needs_of(
+                    Some(crate::agents::claudecode::AGENT_KIND),
+                    &pending,
+                    Some(&wait),
+                ),
+                Some(crate::agents::asks::Asked {
+                    ask: crate::agents::asks::specimen(),
+                    since_ms: 0,
+                }),
+                1,
             ))
             .unwrap();
             // 金样那份会话不在后台任务运行中那一态（`background` 是 null）⇒ 同上，用真判定现造一份（一条没收场的后台命令；那份账不上线）。
@@ -277,7 +295,7 @@ fn corpus(name: &str) -> Vec<Value> {
                 read_at_ms: 2,
             };
             let needs = crate::observe::recognize::facts::needs_of(
-                crate::agents::claudecode::AGENT_KIND,
+                Some(crate::agents::claudecode::AGENT_KIND),
                 &pending,
                 Some(&wait),
             )
@@ -286,14 +304,6 @@ fn corpus(name: &str) -> Vec<Value> {
                 serde_json::to_value(crate::observe::accounts_query::NeedsRow {
                     sid: "s".into(),
                     label: crate::common::cells::Words("t".into()),
-                    // 宣告时判出的终端句柄跟着「在这里开」走（真代码 `housed_in`）。
-                    face: crate::wire::SessionFace::of(crate::wire::Life::Live {
-                        activity: Some(crate::agents::SessionActivity::NeedsYou),
-                        host: None,
-                    })
-                    .housed_in(Some(&crate::wire::SessionContainer::Tmux {
-                        terminal: Some("t".into()),
-                    })),
                     needs: needs.clone(),
                     // 隐藏的会话照样在需手动清单里、带着那一格（真判定现造）。
                     hidden: crate::history::session_hidden::judge(
@@ -381,8 +391,20 @@ fn corpus(name: &str) -> Vec<Value> {
             let mut r = up.values().next().unwrap().clone();
             r["face"] = gone;
             r["sessionId"] = Value::from("gone");
-            up.insert("gone".into(), r);
-            g["order"].as_array_mut().unwrap().push(Value::from("gone"));
+            up.insert("gone".into(), r.clone());
+            // 金样那几行都出自不声明归档面的那一家（`archive` 是 null）⇒ 再补一行带归档那一格（真类型写出来），那三格才露得出来。
+            let mut a = r;
+            a["archive"] = serde_json::to_value(cmd_wire::listing::RowArchive {
+                archived: false,
+                label: cmd_wire::cells::Words("label-x".into()),
+                failed: cmd_wire::cells::Words("failed-x".into()),
+            })
+            .unwrap();
+            a["sessionId"] = Value::from("archivable");
+            up.insert("archivable".into(), a);
+            let order = g["order"].as_array_mut().unwrap();
+            order.push(Value::from("gone"));
+            order.push(Value::from("archivable"));
             vec![g]
         }
         // 组：没有跨语言金样 ⇒ 照本机后端那一步真合一份（`groups::merge`，纯函数）：答了的一台 · 上次所知的一台 · 读不到的一台 · 没同步过的一台，
@@ -477,7 +499,7 @@ fn real_groups_read() -> cmd_wire::groups::GroupsRead {
                 Half::Before {
                     here: before,
                     at: w("1h"),
-                    offline: w(&comms_inward::chan::said::offline("e")),
+                    offline: w(&copy_core::offline("e")),
                 },
             ),
             (m("f"), Half::None),
@@ -536,6 +558,7 @@ fn real_quota_read() -> crate::faces::quota_read::QuotaRead {
     let facts = |kind| show::Facts {
         kind,
         login: show::LoginState::Ok,
+        retry_at: None,
     };
     let mut sh = show::show(
         Some((&o.reading, o.seen_at)),
@@ -557,7 +580,7 @@ fn real_quota_read() -> crate::faces::quota_read::QuotaRead {
             detail: None,
             path: Some("/q".into()),
             now,
-            usable: vec!["a".into()],
+            usable: vec![(o.agent.clone(), "a".into())],
             earliest: None,
         },
         vec![Seen {
@@ -589,15 +612,12 @@ fn real_quota_read() -> crate::faces::quota_read::QuotaRead {
 const NEVER_WRITTEN: &[(&str, &str)] = &[
     ("facts", "startedBy.face.account"),
     ("facts", "children[].face.account"),
-    ("needs_row", "face.account"),
     // 状态一句那两格（会走的 · 悬停句）只有 watcher 推的活会话脸、记录读完之后才带：冷读的脸（血缘 · 需手动行 · 清单行 · 组员）、
     // 宣告那一帧（记录还在预读）、离开那一帧（不活了）都不带。
     ("facts", "startedBy.face.clock"),
     ("facts", "startedBy.face.peek"),
     ("facts", "children[].face.clock"),
     ("facts", "children[].face.peek"),
-    ("needs_row", "face.clock"),
-    ("needs_row", "face.peek"),
     ("session_added", "face.clock"),
     ("session_added", "face.peek"),
     ("session_left", "face.clock"),
@@ -613,14 +633,7 @@ const NEVER_WRITTEN: &[(&str, &str)] = &[
     ("history_list", "up.*.face.life.by"),
     // 离开那一帧的脸是那台照活会话表现写的、手上没有容器那一格：「看它的终端」接哪个终端的句柄恒缺（交了由那台认）。
     ("session_left", "face.can.view.open.terminal"),
-    // 清单行 · 组员那张脸是冷读出来的、没有容器那一格：同上，句柄恒缺。
-    ("history_list", "up.*.face.can.view.open.terminal"),
-    (
-        "groups_read",
-        "groups[].members[].face.can.view.open.terminal",
-    ),
-    ("groups_read", "pinned[].face.can.view.open.terminal"),
-    // 组员那张脸是各台照清单那一行冷读出来的，同上。
+    // 组员那张脸是各台照清单那一行冷读出来的、没有容器那一格：号恒缺。
     ("groups_read", "groups[].members[].face.account"),
     ("groups_read", "pinned[].face.account"),
     // 调用那一份行差从入参算，不知道在文件第几行：行号恒缺（结果那一份才带真行号）。

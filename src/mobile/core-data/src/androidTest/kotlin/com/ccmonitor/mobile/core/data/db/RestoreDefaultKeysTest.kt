@@ -32,7 +32,7 @@ class RestoreDefaultKeysTest {
                 .inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), AppDatabase::class.java)
                 .addCallback(
                     object : RoomDatabase.Callback() {
-                        override fun onCreate(db: SupportSQLiteDatabase) = seedDefaultKeys(db)
+                        override fun onCreate(db: SupportSQLiteDatabase) = seedDefaultKeys(db, COMMON)
                     },
                 ).build()
         dao = db.keyDao()
@@ -70,15 +70,15 @@ class RestoreDefaultKeysTest {
             dao.putBack(git, gone)
             assertEquals(gone, dao.keys("kg-git"))
 
-            val preview = resetPreview(dao.groups(), dao.allKeys())
-            assertEquals(listOf("常用", "shell"), preview.changedDefaultGroups)
+            val preview = resetPreview(dao.groups(), dao.allKeys(), COMMON)
+            assertEquals(listOf(COMMON, "shell"), preview.changedDefaultGroups)
             assertEquals(listOf("git"), preview.deletedGroups.map { it.name })
 
             // 恢复默认：回到默认原样。
-            dao.restoreDefaults()
-            assertEquals(defaultKeyGroups(), dao.observeGroups().first())
+            dao.restoreDefaults(COMMON)
+            assertEquals(defaultKeyGroups(COMMON), dao.observeGroups().first())
             assertEquals(sorted(defaultKeys()), dao.allKeys())
-            assertTrue(resetPreview(dao.groups(), dao.allKeys()).pristine)
+            assertTrue(resetPreview(dao.groups(), dao.allKeys(), COMMON).pristine)
         }
 
     @Test
@@ -91,4 +91,9 @@ class RestoreDefaultKeysTest {
             dao.upsertKey(dao.key("odd")!!.copy(tap = KeyBinding.App(AppAction.CAPTURE), unconverted = null))
             assertEquals(emptyList<TermKey>(), dao.observeUnconverted().first())
         }
+
+    private companion object {
+        /** 交进去的「常用」组名（上屏的字在 app 取）。 */
+        const val COMMON = "常用"
+    }
 }

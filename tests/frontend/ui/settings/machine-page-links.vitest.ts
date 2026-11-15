@@ -33,6 +33,8 @@ const up = (more: Partial<MachineState> = {}): MachineState => ({
   said: "",
   offlineSaid: "deep 离线（夹具）",
   heldSaid: "夹具·离线",
+  withdrawHeld: "夹具·撤着",
+  rewindHeld: "夹具·上一版撤着",
   fixes: [],
   seenHostKey: null,
   expectedHostKey: null,

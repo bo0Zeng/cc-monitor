@@ -145,3 +145,97 @@ pub enum LiveWhy {
     /// 出了这条连接的名单。
     Unwatched,
 }
+
+// ───────────── 折好的成品（`face_core::live::Board` 折出来的那一形；本机后端替别台折好转来，界面 · Kotlin 照画） ─────────────
+
+/// 一张活卡此刻的样子。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct LiveCardNow {
+    /// 卡号（那台整台唯一）。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub card: u64,
+    /// 对账键（与那一轮记录的 `rid` 同值）。
+    pub rid: String,
+    pub phase: LivePhase,
+    /// 正文截过头（只留了尾巴）。
+    pub clipped: bool,
+    /// 头一行（生成中 · 已生成等写入记录）：板写好，两端照摆。
+    pub head: String,
+    /// 正文，一串顶层块：截过头先一段说一句 · 思考 · 工具块各一段 · 文字块照那台解析好的树；两端照树排版。
+    pub body: Vec<MdBlock>,
+    /// 运行那一行「最近：…」那一截（还在说、最后一块是文字 · 思考 · 工具时才有）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub last: Option<String>,
+}
+
+/// 某会话某运行此刻的活卡（整份，先来的在前）：空 ⇒ 那里此刻没有卡。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct LiveCards {
+    pub sid: String,
+    /// 归哪个子运行；缺 ＝ 主运行。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub run: Option<String>,
+    pub cards: Vec<LiveCardNow>,
+}
+
+/// 某张卡只换了正文的尾巴：前 `keep` 块不变，从第 `keep` 块起换成 `blocks`；`last` 照新的。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct LiveTail {
+    pub sid: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub run: Option<String>,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub card: u64,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub keep: u64,
+    pub blocks: Vec<MdBlock>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub last: Option<String>,
+}
+
+/// 折完一帧哪里变了（`t` 是标签）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(tag = "t", rename_all = "snake_case")]
+pub enum LiveChange {
+    /// 那一处此刻整份（照它整份换）。
+    Whole { whole: LiveCards },
+    /// 某张卡只换了尾巴（手上那一张前 `keep` 块留着，接上 `blocks`）。
+    Tail { tail: LiveTail },
+}
+
+impl LiveChange {
+    /// 变的是哪一处。
+    pub fn at(&self) -> Where {
+        match self {
+            LiveChange::Whole { whole } => (whole.sid.clone(), whole.run.clone()),
+            LiveChange::Tail { tail } => (tail.sid.clone(), tail.run.clone()),
+        }
+    }
+}
+
+/// 哪个会话的哪个运行（`None` ＝ 主运行）。
+pub type Where = (String, Option<String>);

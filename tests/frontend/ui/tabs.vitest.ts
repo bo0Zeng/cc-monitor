@@ -9,7 +9,7 @@
 
 import { fmtDur } from "../../../src/frontend/ui/duration-format";
 import { owned } from "../../test-support/owned-tab-manager.ts";
-import { stateLine } from "../../../src/frontend/ui/session-face";
+import { needsOf, stateLine, stepOf } from "../../../src/frontend/ui/session-face";
 import { type Mock, describe, it, expect, vi, beforeEach, afterEach, onTestFinished } from "vitest";
 
 // ★ audit-0805 F15：**「每行调了几次」要可测** —— 折叠层的 stub 带计数器（`cardsAdded` · `rebuildNow` · 收到的主线外清单），
@@ -163,6 +163,7 @@ import {
   historyCalls,
   isChanCall,
   launchRenderShim,
+  refusedReply,
   sessionReadCalls,
   UNSUPPORTED,
   withAccountReads,
@@ -221,14 +222,17 @@ import { buildStepLine, settleStepLine } from "../../../src/frontend/ui/cards/st
 import { resolve } from "node:path";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
 import { closeMenu } from "../../../src/frontend/ui/kit/menu";
+import { TabBarHead } from "../../../src/frontend/ui/tab-bar-head";
+import { DEFAULT_HEAD, HEAD_ENTRIES, type HeadId } from "../../../src/frontend/ui/global-dests";
 import { answerAskDialog, askDialogText, noAskDialog } from "../../test-support/ask-dialog-driver.ts";
 import type { TabStore } from "../../../src/frontend/ui/tab-store";
 import type { TabBarView } from "../../../src/frontend/ui/tab-bar-view";
 import type { TabBarDrag } from "../../../src/frontend/ui/tab-bar-drag";
 import type { TabBarPrefs } from "../../../src/frontend/ui/tab-bar-prefs";
-import type { TabStreamView } from "../../../src/frontend/ui/tab-stream-view";
+import { tabRenderContext, type TabStreamView } from "../../../src/frontend/ui/tab-stream-view";
 import type { TabSessionActions } from "../../../src/frontend/ui/tab-session-actions";
 import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
+import { noteMachine } from "../../../src/frontend/ui/ipc/chan-caller";
 import { appStore, putIn } from "../../../src/frontend/ui/app-store";
 import type { SessionAccountReply } from "../../../src/frontend/ui/generated/SessionAccountReply";
 import { copyText } from "../../../src/frontend/ui/copy-table";
@@ -625,19 +629,6 @@ describe("TabManager 生命周期", () => {
     expect(light()).toBeUndefined();
   });
 
-  it("★ 离开在等 ⇒ 手上那份需手动当场清掉（流里在等的那一步直接读它）；进程退了也清", () => {
-    const tab = tm.ensureTab("nw", "/x", "p", LOCAL);
-    const approve = { kind: "approve" } as unknown as NonNullable<typeof tab.needs>;
-    tm.onFace("nw", liveFace("needs_you"));
-    tab.needs = approve;
-    tm.onFace("nw", liveFace("working"));
-    expect(tab.needs, "答完了").toBeNull();
-    tm.onFace("nw", liveFace("needs_you"));
-    tab.needs = approve;
-    tm.onFace("nw", goldenFace("ended"));
-    expect(tab.needs, "在等时进程退了").toBeNull();
-  });
-
   it("★ 能不能换模型 · 权限档照脸上那两格", () => {
     const tab = tm.ensureTab("sw", "/x", "p", LOCAL);
     tm.onFace("sw", liveFace("working"));
@@ -732,15 +723,27 @@ describe("TabManager 生命周期", () => {
     });
   });
 
-  it("switchTo：切 active + 清 unread + 加 .active 类", () => {
+  it("switchTo：切 active + 加 .active 类", () => {
     tm.ensureTab("s10", "/x", "p", LOCAL); // 首个 → 自动 active
     const tab2 = tm.ensureTab("s11", "/y", "p", LOCAL);
-    tab2.unread = 5;
     expect(home(tm).store.activeId).toBe("s10");
     tm.switchTo("s11");
     expect(home(tm).store.activeId).toBe("s11");
-    expect(tab2.unread).toBe(0);
     expect(tab2.streamEl.classList.contains("active")).toBe(true);
+  });
+
+  it("★ 未读照后端写好的字摆：前端不数、切过去不自己清（后端照在看名单清了再给一格）；别台同名 sid 不认", () => {
+    tm.ensureTab("u1", "/x", "p", LOCAL); // 首个 → 在看
+    const bg = tm.ensureTab("u2", "/y", "p", LOCAL);
+    expect(bg.unreadSaid).toBeNull();
+    tm.onSessionUnread(LOCAL, "u2", "99+");
+    expect(bg.unreadSaid).toBe("99+");
+    tm.onSessionUnread("pi", "u2", "3");
+    expect(bg.unreadSaid, "别台的那一格落到了本机这个 tab 上").toBe("99+");
+    tm.switchTo("u2");
+    expect(bg.unreadSaid, "切过去前端自己清了（该等后端那一格）").toBe("99+");
+    tm.onSessionUnread(LOCAL, "u2", null);
+    expect(bg.unreadSaid).toBeNull();
   });
 
   // === Batch13-F40a：尾部优先门控 / 物化（D 审计 C-3 补测） ===
@@ -770,7 +773,7 @@ describe("TabManager 生命周期", () => {
     return renderContentRecord as unknown as ReturnType<typeof vi.fn>;
   }
 
-  it("F40a 门控矩阵：批期 active 首条钉 floor 直渲；后台恒收纳且不计 unread", async () => {
+  it("F40a 门控矩阵：批期 active 首条钉 floor 直渲；后台恒收纳", async () => {
     const spy = await spyRender();
     spy.mockClear();
     tm.onLine(mkContent("act", 100, "a-1")); // 首个 tab → auto active
@@ -786,7 +789,6 @@ describe("TabManager 生命周期", () => {
     expect(spy.mock.calls.length).toBe(actCalls); // 没为后台建卡
     expect(bg.window.floorSeq).toBeNull();
     expect(bg.window.pendingCount).toBe(2);
-    expect(bg.unread).toBe(0); // 收纳不计 unread（修 S-2）
   });
 
   it("F40a 门控：批后 seq<floor 收纳、seq≥floor 渲染", async () => {
@@ -861,13 +863,6 @@ describe("TabManager 生命周期", () => {
     tm.onLine(mkContent("r1b", 200, "rb-mid2"));
     expect(spy.mock.calls.length).toBe(0);
     expect(bg.midBatchBuffer.map((p) => p.seq)).toEqual([300, 200]);
-    // ★ F15 订正：原写 2，那个 2 是**量具缺陷的产物**。
-    // `:742` 那行（seq 100）直渲进后台 tab r1b，生产里 `timeline.size` 会涨 ⇒
-    // `tabs.ts:891` 的 `inserted` 为真 ⇒ unread 该 +1；而旧 stub 的 `size` **恒返回 0**，
-    // 那一次自增在测试里根本不存在。三条真新消息（100 / 300 / 200）⇒ **3**。
-    // ⚠ 这条值得记：量具把一条性质测没了之后，**依赖它的既有断言会跟着长出一个假数**，
-    // 而那个假数看起来完全正常（谁会怀疑一个跑了几百次的绿断言？）。
-    expect(bg.unread).toBe(3); // 离线期真新消息照计（3 条：seq 100 / 300 / 200）
     tm.onLine(mkContent("r1b", 600, "rb-tail")); // >maxSeq…但 mock maxSeq 恒 500 → 600≥500?
     // 600 > maxSeq(500) → 不缓冲,直渲
     expect(spy.mock.calls.length).toBe(1);
@@ -1330,6 +1325,8 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
   // 栏顶一按 ⇒ 有打开 tab 的每台**恰好一次**整机 `resync`（不带 sid），台数 == 机器数（两向：多一台少一台都红）；
   // 各台并行（全部发出去之后才有一台回来）；在飞时再按不重入；做完按台说一句，没问到的说原因。
   it("〔REREAD〕命令面板「刷新各台机器上的会话」⇒ 每台恰好一次整机 resync，并行、按台汇总", async () => {
+    // 按台那一句称呼那台照它成品的名字（本机后端写的就是本机那一词）。
+    noteMachine(LOCAL, { name: copyText("detail.label.local"), offlineSaid: "" });
     const asked: [string, unknown][] = [];
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));
@@ -1340,7 +1337,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
         await gate;
         if (a.origin === "box") throw new Error(copyText("beServer.words.cantConnect"));
         const u = new TextEncoder().encode(
-          JSON.stringify({ added: 0, removed: 0, retagged: 0, caught_up: a.origin === "laptop" ? 2 : 0, watchers: 1, unavailable: [] }),
+          JSON.stringify({ added: 0, removed: 0, said: `对齐那一句（夹具 ${a.origin}）`, unavailable: [] }),
         );
         return u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength);
       }
@@ -1363,8 +1360,8 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     expect(lines).toHaveLength(3);
     expect(lines).toEqual(
       expect.arrayContaining([
-        copyText("kit.text.machineSaid", { machine: copyText("detail.label.local"), said: copyText("resync.done.caughtNone") + copyText("resync.done.same") }),
-        copyText("kit.text.machineSaid", { machine: "laptop", said: copyText("resync.done.caughtUp", { n: 2 }) + copyText("resync.done.same") }),
+        copyText("kit.text.machineSaid", { machine: copyText("detail.label.local"), said: "对齐那一句（夹具 <local>）" }),
+        copyText("kit.text.machineSaid", { machine: "laptop", said: "对齐那一句（夹具 laptop）" }),
         expect.stringMatching(copyPattern("resync.machines.failed", { machine: "box" }, { whole: true })),
       ]),
     );
@@ -1501,7 +1498,7 @@ describe("已结束的 tab 右键「恢复 ▸」：与历史页「恢复 ▾」
   const RESUME = copyText("history.row.resume");
   const TMUX = copyText("resumeMenu.run.tmux");
   const DIRECT = copyText("resumeMenu.run.direct");
-  const BASE = copyText("resumeMenu.account.base");
+  const BASE = copyText("sessionOpen.account.useBase");
 
   const accounts = (...names: string[]) =>
     vi.mocked(invoke).mockImplementation(withHistoryReads(withAccountReads((cmd: string) =>
@@ -1871,7 +1868,7 @@ describe("F91b TabManager.peekSession（监控板内容 peek 纯读派生）", (
     const tm = makeTM();
     tm.ensureTab("s2", "/x", "/p/s2.jsonl", LOCAL);
     const p = tm.peekSession("s2");
-    expect(p).toEqual({ model: null, recentFiles: [], agents: [], summary: null, more: null });
+    expect(p).toEqual({ model: null, recentFiles: [], filesHead: null, agents: [], summary: null, more: null });
   });
 
   // F91b-fix(batch18)：touchedFiles 近因序（peek `recentFiles` 尾部 = 最近改的）。近因序今天由后端排
@@ -1898,7 +1895,7 @@ describe("account-ux U5 tab 徽章：照会话那台写好的那一份（`sessio
       fromLine: null,
       usage: null,
       stale: false,
-      hover: [["b"]],
+      hover: [[{ text: "b", tone: "plain" }]],
       sampled: null,
       differs: false,
       badge: null,
@@ -2204,6 +2201,7 @@ describe("过程里还没结果的那几步照会话事实画（后端 pending[]
       return line;
     };
     const [b1, b2] = [step("b1"), step("b2")];
+    tm.onFace("l1", liveFace("needs_you")); // 「等批准」那几个字照脸说在等 ＋ 事实里那一份（`needsOf`）
     expect([b1.dataset.state, b2.dataset.state], "事实到之前不画").toEqual(["pending", "pending"]);
     const call = (id: string, state: "running" | "awaiting" | "unclear", why: "noWriter" | "untracked" | null = null) => ({ id, name: "Bash", what: id, at: null, atMs: null, state, why, text: state === "unclear" ? "U" : null, whyText: why === null ? null : `W:${why}` });
     const paint = (pending: Tab["pending"], needs: Tab["needs"]): void => {
@@ -2223,6 +2221,29 @@ describe("过程里还没结果的那几步照会话事实画（后端 pending[]
     settleStepLine(b1, undefined, { ok: true } as never, false);
     paint([call("b1", "running")], null);
     expect(b1.dataset.state, "结果到了的不动").toBe("ok");
+  });
+
+  const pend = (id: string, state: "running" | "awaiting" | "unclear") => ({ id, name: "Bash", what: id, at: null, atMs: null, state, why: null, text: null, whyText: null });
+
+  it("★ 某一步此刻怎样只经 session-face 那一道门（同 `needsOf`）：事实说在等、脸说不在等 ⇒ 不作数；脸说在等 ⇒ 照事实；别的状态照事实", () => {
+    const tm = makeTM();
+    const tab = tm.ensureTab("g1", "/w", "p", LOCAL);
+    tab.pending = [pend("c1", "awaiting"), pend("c2", "running")];
+    tm.onFace("g1", liveFace("working"));
+    expect([stepOf(tab, "c1"), stepOf(tab, "c2")?.state, stepOf(tab, "zz")], "脸说在跑：在等那一步不作数，在跑照事实，事实里没有 ⇒ null").toEqual([null, "running", null]);
+    tm.onFace("g1", liveFace("needs_you"));
+    expect(stepOf(tab, "c1")?.state, "脸说在等 ⇒ 照事实").toBe("awaiting");
+  });
+
+  it("★ 建卡时：事实说在等、脸说不在等 ⇒ 那一步先不画（等事实）；脸说在等 ⇒ 建出来就照事实画", () => {
+    const tm = makeTM();
+    const tab = tm.ensureTab("g2", "/w", "p", LOCAL);
+    tab.pending = [pend("c1", "awaiting")];
+    const host = { runLabelOf: () => undefined, markNewRunCard: () => {} };
+    tm.onFace("g2", liveFace("working"));
+    expect(tabRenderContext(tab, host, false).stepWait?.("c1"), "建卡时不画：等事实").toBeUndefined();
+    tm.onFace("g2", liveFace("needs_you"));
+    expect(tabRenderContext(tab, host, false).stepWait?.("c1")?.state).toBe("awaiting");
   });
 });
 
@@ -2386,7 +2407,7 @@ describe("F15 每行代价的现状基线", () => {
     expect(f15.setList).toEqual([["u-2", "u-3"]]);
   });
 
-  it("★ 后台 tab 每来一行，tab bar 就整刷一次", () => {
+  it("★ 未读一格一格来，tab bar 帧内不刷、帧末刷一次", () => {
     tm.ensureTab("front", "/w", "/w/front.jsonl", LOCAL);
     tm.ensureTab("bg", "/w", "/w/bg.jsonl", LOCAL);
     tm.switchTo("front");
@@ -2397,19 +2418,10 @@ describe("F15 每行代价的现状基线", () => {
       refreshes++;
       real();
     };
-    for (let i = 1; i <= 4; i++) tm.onLine(line("bg", i) as never);
+    for (let i = 1; i <= 4; i++) tm.onSessionUnread(LOCAL, "bg", String(i));
     // ★ 合批之后：**帧内一次都不刷**。
-    expect(
-      refreshes,
-      `后台 tab 连来 4 行，帧内就刷了 ${refreshes} 次 tab bar —— ` +
-        "unread 那条路（`tabs.ts:893-897`）又变回逐行整刷了。",
-    ).toBe(0);
-    // 抽取器自检：unread 真的涨了，才说明这条链走到了（否则下面是零命中地绿）。
-    expect(
-      home(tm).store.tabs.get("bg")!.unread,
-      "后台 tab 的 unread 一条都没涨 —— 多半是 `tabs.ts:891` 的 `inserted` 又恒假了" +
-        "（`renderContentRecord` 不塞 timeline / `size` 恒 0）。那时这条判据什么也没量。",
-    ).toBe(4);
+    expect(refreshes, `未读连来 4 格，帧内就刷了 ${refreshes} 次 tab bar —— 又变回逐格整刷了。`).toBe(0);
+    expect(home(tm).store.tabs.get("bg")!.unreadSaid, "最后那一格没落上").toBe("4");
     vi.advanceTimersByTime(50);
     expect(
       refreshes,
@@ -3906,8 +3918,9 @@ describe("骨架接入：索引 → 占位 → 门控 → 跳转", () => {
       await settle();
       expect(t0.skeleton, "前置：骨架要接上").not.toBeNull();
       tm.onSessionWatch(LOCAL, { sid, path: `/p/${sid}.jsonl`, seq: watchAt });
+      // 视口那一截取回来才换（换之前旧的那一份照摆着）
+      await vi.waitFor(() => expect(home(tm).store.tabs.get(sid), "缺得多却没重来正文").not.toBe(t0), UNTIL_CEILING);
       const t = home(tm).store.tabs.get(sid)!;
-      expect(t, "缺得多却没重来正文").not.toBe(t0);
       // 新的一代同样给一个「已满屏」的几何（同 `replay`），不然 jsdom 里补批会一路按行号取到第 0 行
       Object.defineProperty(t.streamEl, "scrollHeight", { value: 2000, configurable: true });
       Object.defineProperty(t.streamEl, "clientHeight", { value: 800, configurable: true });
@@ -4544,7 +4557,7 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
     expect(rendered, "见过的那一条也要上屏（放回账本 ⇒ 补批建卡）").toContain(240);
   });
 
-  it("★ S3′：会话流丢过格（`onStreamGap`）⇒ 那台机器的 tab：账本整份出账、从见过的最大行号 + 1 起往后取到 eof；别的机器的 tab 不动", async () => {
+  it("★ S3′：会话流丢过格（`onStreamGap`）⇒ 只补在看的那个 tab（流上只有它的行）：账本整份出账、从见过的最大行号 + 1 起往后取到 eof；后台 tab · 别的机器的 tab 不动", async () => {
     const pages = new Map<string, number>();
     vi.mocked(invoke).mockImplementation(withSessionReads((cmd: string, args?: Record<string, unknown>) => {
       const a = args as { jsonlPath: string; from: number; until?: number } | undefined;
@@ -4561,22 +4574,25 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
         payloads: [mk(sid, from), mk(sid, from + 1)],
       });
     }) as never);
-    tm.onLine(mk("head", 1));
+    tm.onLine(mk("bg1", 1)); // 头一个 tab（下面换成后台）
     tm.onLine(mk("gp", 100)); // 钉 floor = 100
     tm.onBatchStart();
     for (let s = 50; s < 55; s++) tm.onLine(mk("gp", s)); // < floor ⇒ 收纳进账本
     tm.onBatchEnd();
+    tm.onLine(mk("bg2", 1));
     tm.onLine(mk("far", 7, "box"));
     const t = home(tm).store.tabs.get("gp")!;
     const far = home(tm).store.tabs.get("far")!;
     expect(t.window.pendingCount).toBeGreaterThan(0);
+    // 在看的是 gp；bg1 · bg2 是两个后台 tab（平时收不到行；这里各见过一行）。只换在看的那一格，不走切 tab 那一路（那一路自己会补）。
+    home(tm).store.activeId = "gp";
     const { renderContentRecord } = await import("../../../src/frontend/ui/render-stream-record");
     const spy = renderContentRecord as unknown as ReturnType<typeof vi.fn>;
     spy.mockClear();
     tm.onStreamGap("<local>");
     expect(t.window.pendingCount, "账本没出账 —— 里面可能夹着洞").toBe(0);
     await settle();
-    // 本机那台上的两个 tab 都补（丢的是哪几个会话流里说不出来）；各自从自己见过的最大行号 + 1 起、到 eof 为止
+    // 只补在看的那个，从它见过的最大行号 + 1 起、到 eof 为止；后台 tab 一问都不问（不把积压整段拉回、建卡）
     const of = (path: string) =>
       asks()
         .filter((a) => (a as { jsonlPath: string }).jsonlPath === path)
@@ -4590,7 +4606,12 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
       { origin: "<local>", jsonlPath: "/p/gp.jsonl", from: 101 },
       { origin: "<local>", jsonlPath: "/p/gp.jsonl", from: 103 },
     ]);
-    expect(of("/p/head.jsonl").map((a) => a.from)).toEqual([2, 4]);
+    expect(of("/p/bg1.jsonl"), "后台 tab 被整段补回").toEqual([]);
+    expect(of("/p/bg2.jsonl"), "后台 tab 被整段补回").toEqual([]);
+    expect(
+      spy.mock.calls.some((c) => (c[0] as { session_id: string }).session_id.startsWith("bg")),
+      "给后台 tab 建了卡",
+    ).toBe(false);
     const rendered = spy.mock.calls
       .map((c) => c[0] as { seq: number; session_id: string })
       .filter((p) => p.session_id === "gp")
@@ -4848,6 +4869,191 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     expect(tab.title.includes("↳"), "界面不往标题上加记号").toBe(false);
     expect(cardText(tm, "fork-sid").split("\n")).toContain(said);
     expect(cardText(tm, "fork-sid"), "不再自己拼「分叉自 编号前 8 位」").not.toContain("abcd1234");
+  });
+
+  it("★ 需手动那一份只跟会话事实走：脸离开在等 ⇒ 不动它；再要的那份事实（那台的 `changed {needs}` 铃 · 在干什么变了）到了照它收；在等 → 在跑 → 又在等 · 在等时进程退了都不卡着上一回那份", async () => {
+    const approve = (call: string) => ({ kind: "approve" as const, tool: "Bash", call, what: call, text: "核心·等批准", head: "h", headCode: call, tone: "need" as const, rank: 1, waitedMs: 0, ask: null, manualText: "核心·只能在终端里答", receivedAt: 0 });
+    const prev = { said: "核心·上一条那一句", stays: false };
+    let cur = facts({ needs: approve("c1"), askEnd: prev });
+    answerFacts(() => cur);
+    tm.onLine(line("nw", 0));
+    tm.onFace("nw", liveFace("needs_you"));
+    await settle();
+    const tab = home(tm).store.tabs.get("nw")!;
+    expect(tab.needs?.call).toBe("c1");
+
+    // 答完了：脸先到、事实在路上 ⇒ 照手上那份事实（需手动与收场那一格还是同一份），不从脸这一路清；铃一响再要，到了照它收。
+    cur = facts({ needs: null, askEnd: { said: "核心·已有人答过", stays: false } });
+    tm.onFace("nw", liveFace("working"));
+    expect([tab.needs?.call, tab.askEnd?.said], "事实没到，不从脸这一路改").toEqual(["c1", prev.said]);
+    tm.rereadFacts("nw");
+    await settle();
+    expect([tab.needs, tab.askEnd?.said]).toEqual([null, "核心·已有人答过"]);
+
+    // 又在等：新事实到之前手上是在跑那一份（null），不是上一回那份；铃响、到了换上新的那一条。
+    cur = facts({ needs: approve("c2") });
+    tm.onFace("nw", liveFace("needs_you"));
+    expect(tab.needs, "不猜、不留上一回那份").toBeNull();
+    tm.rereadFacts("nw");
+    await settle();
+    expect(tab.needs?.call).toBe("c2");
+
+    // 在等时进程退了：铃（离开活）响了再要一份事实，到了照它收。
+    cur = facts({ needs: null });
+    tm.onFace("nw", goldenFace("ended"));
+    tm.rereadFacts("nw");
+    await settle();
+    expect(tab.needs, "在等时进程退了 ⇒ 事实到了就收").toBeNull();
+  });
+
+  it("★ 在等 T1 → 直接在等 T2（中间在跑那一帧合掉了）、事实没到 ⇒ 流里那一步不再说等批准、刻度不亮；新事实到了照它画", async () => {
+    const T1 = 1_780_000_000_000;
+    const T2 = T1 + 60_000;
+    const approve = (call: string, sinceMs: number) => ({ kind: "approve" as const, tool: "Bash", call, what: call, text: "核心·等批准", head: "h", headCode: call, tone: "need" as const, rank: 1, waitedMs: 125_000, ask: null, manualText: "核心·只能在终端里答", sinceMs }) as never;
+    const awaiting = (id: string) => ({ id, name: "Bash", what: id, at: null, atMs: null, state: "awaiting" as const, why: null, text: null, whyText: null });
+    const waitingFrom = (from: number): SessionFace => ({ ...liveFace("needs_you"), clock: { text: "核心·等批准 · {dur}", from } });
+    let cur: unknown = facts({ needs: approve("c1", T1), pending: [awaiting("c1")] });
+    vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) => {
+      if (!isChanCall(cmd, args, "history-facts")) return undefined;
+      if (cur === null) throw refusedReply("io", "核心·那一跳没答");
+      return chanReply(cur);
+    });
+    tm.onLine(line("tt", 0));
+    tm.switchTo("tt");
+    tm.onFace("tt", waitingFrom(T1));
+    await settle();
+    const tab = home(tm).store.tabs.get("tt")!;
+    const row = buildStepLine("Bash", { tool: "Bash", arg: "c1", known: true } as never, "c1");
+    tab.streamEl.appendChild(row);
+    tm.rereadFacts("tt");
+    await settle();
+    const rail = () => (tab.turnRail as unknown as { host: { waiting(): boolean } }).host.waiting();
+    const said = () => [rail(), row.dataset.state, row.querySelector(".step-await")?.textContent ?? null];
+    expect(said(), "这一轮在等").toEqual([true, "awaiting", copyText("beSession.needs.approve")]);
+
+    cur = null;
+    tm.onFace("tt", waitingFrom(T2));
+    expect(said(), "上一轮那一步不再说等批准").toEqual([false, "unclear", null]);
+
+    cur = facts({ needs: approve("c1", T2), pending: [awaiting("c1")] });
+    tm.rereadFacts("tt");
+    await settle();
+    expect(said(), "这一轮的事实到了照它画").toEqual([true, "awaiting", copyText("beSession.needs.approve")]);
+  });
+
+  it("★ 在等 → 在跑 → 又在等、中间那份事实没到 ⇒ 不拿出上一轮那份需手动（开始等的时刻对不上脸这一轮 ⇒ 读取中）；新事实到了照它画；两边有一边说不出开始的时刻 ⇒ 照事实画", async () => {
+    const T1 = 1_780_000_000_000;
+    const T2 = T1 + 60_000;
+    const approve = (call: string, sinceMs: number) => ({ kind: "approve" as const, tool: "Bash", call, what: call, text: "核心·等批准", head: "h", headCode: call, tone: "need" as const, rank: 1, waitedMs: 0, ask: null, manualText: "核心·只能在终端里答", sinceMs }) as never;
+    const waitingFrom = (from: number | null): SessionFace => {
+      const f = liveFace("needs_you");
+      if (from === null) delete f.clock;
+      else f.clock = { text: "核心·等批准 · {dur}", from };
+      return f;
+    };
+    let cur: unknown = facts({ needs: approve("c1", T1) });
+    asked = [];
+    vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) => {
+      if (!isChanCall(cmd, args, "history-facts")) return undefined;
+      if (cur === null) throw refusedReply("io", "核心·那一跳没答");
+      return chanReply(cur);
+    });
+    // 假时钟：tab 打开时排了停留那一下（`TabStreamView.STAY_MS`，150ms），到点再要一次事实。真时钟下它几时响看机器忙不忙，
+    // 落进下面故意要不到的那一段就多算一次失败（三次就不再要）⇒ 先把它拨过去，再进那一段。
+    vi.useFakeTimers();
+    try {
+      const tick = async (): Promise<void> => {
+        for (let i = 0; i < 5; i++) await vi.advanceTimersByTimeAsync(0);
+      };
+      tm.onLine(line("rw", 0));
+      tm.onFace("rw", waitingFrom(T1));
+      await vi.advanceTimersByTimeAsync(150);
+      await tick();
+      const tab = home(tm).store.tabs.get("rw")!;
+      expect(needsOf(tab)?.call).toBe("c1");
+
+      // 答完、在跑、又在等：中间那几份事实都没要到（手上还是上一轮 c1 那份）。
+      cur = null;
+      tm.onFace("rw", liveFace("working"));
+      await tick();
+      tm.onFace("rw", waitingFrom(T2));
+      await tick();
+      expect(tab.needs?.call, "手上那份照留（只跟事实走）").toBe("c1");
+      expect(needsOf(tab), "上一轮那份不画（带着答的按钮，那条请求已经过去了）").toBeNull();
+
+      // 新事实到了：这一轮的那份照画。
+      cur = facts({ needs: approve("c2", T2) });
+      tm.rereadFacts("rw");
+      await tick();
+      expect(needsOf(tab)?.call).toBe("c2");
+
+      // 脸说不出这一轮从几时开始等 ⇒ 判不了是不是同一轮，照事实画、不猜。
+      tm.onFace("rw", waitingFrom(null));
+      expect(needsOf(tab)?.call).toBe("c2");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("★ 在干什么变了、没有新行、那台也不响铃（在跑 → 后台）⇒ 照样再要一份事实：后台那一句是要事实那一刻照活会话表现配的", async () => {
+    const bg = { text: "核心·后台任务运行中", clock: null, what: null, count: 1, tone: "busy" as const };
+    let cur = facts({ background: null });
+    answerFacts(() => cur);
+    tm.onLine(line("bw", 0));
+    tm.onFace("bw", liveFace("working"));
+    await settle();
+    const tab = home(tm).store.tabs.get("bw")!;
+    expect(tab.backgroundWork).toBeNull();
+    cur = facts({ background: bg });
+    tm.onFace("bw", liveFace("background_work"));
+    await settle();
+    expect(tab.backgroundWork?.text, "转成后台：那一句跟上（这一下没有铃 · 没有新行）").toBe(bg.text);
+  });
+
+  it("★ 事实要不到、脸已不在等 ⇒ 刻度与那一步不再说在等（记录不在了 · 那一跳失败 · 放弃了，各一形）；需手动那一份不从脸这一路清", async () => {
+    const approve = (call: string) => ({ kind: "approve" as const, tool: "Bash", call, what: call, text: "核心·等批准", head: "h", headCode: call, tone: "need" as const, rank: 1, waitedMs: 125_000, ask: null, manualText: "核心·只能在终端里答", receivedAt: Date.now() });
+    const awaiting = (id: string) => ({ id, name: "Bash", what: id, at: null, atMs: null, state: "awaiting" as const, why: null, text: null, whyText: null });
+    const forms: [string, SessionFace, unknown][] = [
+      ["gone", goldenFace("gone"), refusedReply("io", "核心·记录不在了")],
+      ["blip", liveFace("working"), refusedReply("io", "核心·那一跳没答")],
+      ["old", liveFace("working"), UNSUPPORTED],
+    ];
+    const fail = new Map<string, unknown>();
+    asked = [];
+    vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) => {
+      if (!isChanCall(cmd, args, "history-facts")) return undefined;
+      const body = chanArgsJson(args) as { path: string };
+      asked.push({ origin: args.origin, path: body.path, body });
+      const sid = [...fail.keys()].find((s) => body.path.endsWith(`/${s}.jsonl`));
+      if (sid !== undefined) throw fail.get(sid);
+      const call = body.path.split("/").pop()!.replace(".jsonl", "");
+      return chanReply(facts({ needs: approve(call), pending: [awaiting(call)] }));
+    });
+    for (const [sid, face, err] of forms) {
+      tm.onLine(line(sid, 0));
+      tm.switchTo(sid);
+      tm.onFace(sid, liveFace("needs_you"));
+      await settle();
+      const tab = home(tm).store.tabs.get(sid)!;
+      const row = buildStepLine("Bash", { tool: "Bash", arg: sid, known: true } as never, sid);
+      tab.streamEl.appendChild(row);
+      tm.rereadFacts(sid);
+      await settle();
+      const rail = () => (tab.turnRail as unknown as { host: { waiting(): boolean } }).host.waiting();
+      const said = () => [rail(), row.querySelector(".step-await")?.textContent ?? null, row.querySelector(".step-right")?.textContent ?? ""];
+      expect(said(), `${sid}：在等时`).toEqual([true, copyText("beSession.needs.approve"), fmtDur(125)]);
+      // 那一家转走了 / 记录没了；那台的铃响了，事实却要不到（要不到时手上那份照留，见 facts-source）。
+      fail.set(sid, err);
+      tm.onFace(sid, face);
+      tm.rereadFacts(sid);
+      await settle();
+      expect(tab.needs?.call, `${sid}：需手动那一份不从脸这一路清`).toBe(sid);
+      expect([rail(), row.querySelector(".step-await"), row.dataset.state], `${sid}：脸已不在等 ⇒ 那一步不再说在等（手上事实说在等、脸说不在 ⇒ 说不清就说说不清）`).toEqual([false, null, "unclear"]);
+      expect(row.querySelector(".step-right")?.textContent, `${sid}：不带已等多久`).not.toBe(fmtDur(125));
+      // 脸又说在等（事实照旧要不到）⇒ 照手上那份事实当场画回在等，不等下一份事实。
+      tm.onFace(sid, liveFace("needs_you"));
+      expect([rail(), row.dataset.state, row.querySelector(".step-await")?.textContent], `${sid}：又在等 ⇒ 照事实画回`).toEqual([true, "awaiting", copyText("beSession.needs.approve")]);
+    }
   });
 
   it("★ 监控板那一格目录照会话事实的 `cwdShown`（那台写好的 `~/…`），不显原样 `projectDir`；事实没到 ⇒ null", async () => {
@@ -5534,7 +5740,7 @@ describe("起新会话的占位标签页接在标签页栏里", () => {
     tm.addLaunchSlot({ origin: "devbox", cwd: "/w/x", tmuxName: null, arrival: { by: { kind: "cwd", cwd: "/w/x" }, since: 0, session: null, host: null } });
     expect(sessionKeys.filter((k) => !tm.shadowedBySlot(k))).toEqual([]);
     expect(tm.shadowedBySlot("app.open-command-bar"), "全局的照常").toBe(false);
-    expect(tm.shadowedBySlot("needs.next")).toBe(false);
+    expect(tm.shadowedBySlot("asks.next")).toBe(false);
     tm.switchTo("a");
     expect(tm.shadowedBySlot("session.find"), "切回真标签页 ⇒ 照常").toBe(false);
   });
@@ -6016,18 +6222,19 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段", () 
     ({ session_id: sid, cwd: "/p", path: `/p/${sid}.jsonl`, seq, record: { t: "reply", id: `${sid}-${seq}` } as never }) as never;
   /** 按行号取：`[from, until ?? END)` 一页答完。 */
   const END = 3000;
-  const answerLines = () =>
+  /** `hold`：给了 ⇒ 那个会话的按行号取等它放行再答。 */
+  const answerLines = (hold?: (sid: string) => Promise<void> | undefined) =>
     vi.mocked(invoke).mockImplementation(withSessionReads((cmd: string, args?: Record<string, unknown>) => {
       if (cmd !== "read_session_lines") return Promise.resolve(undefined);
       const sid = String(args!.jsonlPath).replace(/^\/p\/|\.jsonl$/g, "");
       const from = args!.from as number;
       const until = (args!.until as number | undefined) ?? END;
-      return Promise.resolve({
+      return (hold?.(sid) ?? Promise.resolve()).then(() => ({
         from,
         next: until,
         eof: args!.until === undefined,
         payloads: Array.from({ length: until - from }, (_, k) => line(sid, from + k)),
-      });
+      }));
     }) as never);
   const lineReads = () =>
     recordReadCalls(vi.mocked(invoke).mock.calls, "read_session_lines").filter((a) => (a as { jsonlPath: string }).jsonlPath !== "/p/front.jsonl").map((a) => {
@@ -6096,6 +6303,28 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段", () 
     expect(t, "缺得多却没整份重来").not.toBe(before);
     expect(t.seenSeqs.has(5), "重来之后旧的那段还在账上").toBe(false);
     expect(t.seenSeqs.has(1400) && t.seenSeqs.has(2000) && t.seenSeqs.has(END - 1)).toBe(true);
+  });
+
+  it("★ 缺得多整份重来时先取回再换：视口那一截取回之前旧的那一份照摆着（不留空帧），取回来同一个任务里换上", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let held = false;
+    answerLines((sid) => (sid === "wgap" && held ? gate : undefined));
+    for (let s = 0; s < 10; s++) tm.onLine(line("wgap", s));
+    tm.switchTo("wgap");
+    for (let k = 0; k < 3; k++) await settle();
+    const before = home(tm).store.tabs.get("wgap")!;
+    held = true;
+    tm.onSessionWatch(LOCAL, { sid: "wgap", path: "/p/wgap.jsonl", seq: 2000 });
+    for (let k = 0; k < 3; k++) await settle();
+    expect(home(tm).store.tabs.get("wgap"), "取回之前就把旧的拆了（空帧）").toBe(before);
+    expect(before.streamEl.isConnected, "取回之前旧的流已经摘下").toBe(true);
+    release();
+    for (let k = 0; k < 6; k++) await settle();
+    const t = home(tm).store.tabs.get("wgap")!;
+    expect(t, "取回来了却没换").not.toBe(before);
+    expect(t.streamEl.isConnected && !before.streamEl.isConnected).toBe(true);
+    expect(t.seenSeqs.has(2000) && t.seenSeqs.has(END - 1)).toBe(true);
   });
 
   it("★ 缺得多整份重来时，已经拿过的轮次与大纲接着续：轮次从还没收尾那一轮的开头、大纲从上次的末端，不从 0 再要", async () => {
@@ -6573,5 +6802,40 @@ describe("那台握手时说过做不到的，菜单置灰并说为什么", () =
     const elsewhere = { id: "end", label: copyText("tabMenu.kill.label"), onClick: click };
     expect(gateByOffer("net2-other", elsewhere)).toBe(elsewhere);
     vi.mocked(invoke).mockResolvedValue(undefined);
+  });
+});
+
+describe("栏顶右键 · 状态点读屏名", () => {
+  afterEach(() => closeMenu());
+
+  it("★ 栏顶任何一处右键（按钮之间的空白也算）⇒ 开编辑那一处、不露原生菜单", () => {
+    const tm = makeTM();
+    const edit = vi.fn();
+    const run = Object.fromEntries(HEAD_ENTRIES.map((e) => [e.id, () => {}])) as unknown as Record<HeadId, (anchor: HTMLButtonElement) => void>;
+    new TabBarHead({ run, chord: () => undefined, mount: (b, e) => tm.mountHeadActions(b, e), edit }).show(DEFAULT_HEAD);
+    const head = document.querySelector<HTMLElement>(".tab-bar-head")!;
+    for (const at of [head.querySelector<HTMLElement>(".tab-bar-head-sp")!, head, head.querySelector<HTMLElement>("[data-head]")!]) {
+      const ev = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 5, clientY: 5 });
+      at.dispatchEvent(ev);
+      expect(ev.defaultPrevented, at.className).toBe(true);
+    }
+    expect(edit).toHaveBeenCalledTimes(3);
+  });
+
+  it("★ 只变状态词（点不变：状态不明 → 空闲，同一颗空闲点）⇒ 点的读屏名跟着变", () => {
+    const tm = makeTM();
+    tm.ensureTab("s", "/w/s", "p", LOCAL);
+    const tab = home(tm).store.tabs.get("s")!;
+    const flush = (): void => (tm as unknown as { refreshTabBar: () => void }).refreshTabBar();
+    const dot = (): HTMLElement => document.querySelector<HTMLElement>(".tab .tab-dot")!;
+    const [unclear, idle] = [liveFace(null), liveFace("idle")];
+    expect(unclear.dot, "两张脸同一颗点、只状态词不同").toBe(idle.dot);
+    expect(unclear.name).not.toBe(idle.name);
+    tab.face = unclear;
+    flush();
+    expect(dot().getAttribute("aria-label")).toBe(unclear.name);
+    tab.face = idle;
+    flush();
+    expect(dot().getAttribute("aria-label")).toBe(idle.name);
   });
 });

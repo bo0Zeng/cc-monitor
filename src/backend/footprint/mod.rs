@@ -71,7 +71,7 @@ pub struct FootprintReq {
     pub client: Option<FootprintClient>,
 }
 
-/// monitor 交来的它自己那台独有的事实：家目录（绝对路径）· `PATH`（取不到 ⇒ `null`）。
+/// monitor 交来的它自己那台独有的事实：家目录（绝对路径）· `PATH`（取不到 ⇒ `null`）· 网页引擎的数据目录（monitor 照它的运行时推，推不出 ⇒ `null`）。
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
@@ -81,15 +81,23 @@ pub struct FootprintClient {
     #[serde(default)]
     #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
     pub(crate) path: Option<String>,
+    #[serde(default)]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
+    pub(crate) webview: Option<String>,
 }
 
-/// 这台的整份足迹（[`data_answer`] 的原料）。
-fn answer(req: &FootprintReq) -> Result<ConfigSurfaceReport, Said> {
+/// 这台的整份足迹（[`data_answer`] 的原料）：照 `registry` 那几家收。
+fn answer(
+    registry: &[crate::agents::Adapter],
+    req: &FootprintReq,
+) -> Result<ConfigSurfaceReport, Said> {
     let get = |k: &str| std::env::var(k).ok();
     answer_with(
+        registry,
         &get,
         &crate::platform::shell::session_shell_path,
-        &crate::history::listing::agent_home(),
+        // 各家的家照进程环境逐家解（足迹申报的 `~/…` 那几条照申报那一家的布局）。
+        &crate::agents::local_homes_among(registry),
         &user_path_here,
         req,
     )
@@ -114,24 +122,43 @@ pub fn data_answer(
     door: &dyn crate::common::door::Door,
     req: &FootprintReq,
 ) -> Result<data::DataReport, Said> {
-    let report = answer(req)?;
-    let todo = chores::chores(&chores::gather::facts(door, data::needs_install(&report)));
+    // 足迹这一趟只取这一次注册表：整份足迹 · 要装的那几件 · 待办的原料都照同一份（判据拿替身家喂 [`answer_with`]）。
+    let registry = crate::agents::REGISTRY;
+    let report = answer(registry, req)?;
+    let todo = chores::chores(&chores::gather::facts(
+        door,
+        registry,
+        data::needs_install(&report, registry),
+    ));
     let tmux = crate::host::tmux::tmux_here();
     let own = crate::platform::paths::home_dir()
-        .map(|h| data::own_rows(&h))
+        .map(|h| {
+            data::rows_for(
+                &h,
+                crate::platform::paths::data_home().as_deref(),
+                req.client.as_ref(),
+            )
+        })
         .unwrap_or_default();
-    Ok(data::shape(&report, todo, tmux, own))
+    // cc-monitor 改过的项目级 MCP 配置记在装记录里；记录读不懂 ⇒ 清单那几行说不出，照拒（不当「没改过」）。
+    let touched = crate::assets::skill_ledger::touched_here()?;
+    Ok(data::with_touched(
+        data::shape(&report, todo, tmux, own),
+        &touched,
+    ))
 }
 
-/// [`answer`] 的本体（整份足迹，两种问法共用这一份）：环境取值器、起会话那个 shell 的 `PATH` 与 agent 家目录都是参数
-/// （判据拿夹具喂，不去改进程环境、不起登录 shell）。
+/// [`answer`] 的本体（整份足迹，两种问法共用这一份）：注册表、环境取值器、起会话那个 shell 的 `PATH` 与 agent 家目录都是参数
+/// （判据拿替身家与夹具喂，不去改进程环境、不起登录 shell）。两栏都照这一份注册表收。
 pub(crate) fn answer_with(
+    registry: &[crate::agents::Adapter],
     get: &dyn Fn(&str) -> Option<String>,
     session_path: &dyn Fn() -> Option<String>,
-    agent_home: &Path,
+    agent_homes: impl crate::agents::IntoHomes,
     user_path: &dyn Fn() -> Option<bool>,
     req: &FootprintReq,
 ) -> Result<ConfigSurfaceReport, Said> {
+    let agent_homes = agent_homes.into_homes_among(registry);
     let client = req.client.as_ref().map(client_of).transpose()?;
     let home = crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into))
         .ok_or_else(|| Said::new("failed", copy_text("beFootprint.env.noHome", &[])))?;
@@ -145,9 +172,23 @@ pub(crate) fn answer_with(
         list: &own_list,
         user_path,
     };
+    // 这台账号库里的具名号（没建 · 读不懂 ⇒ 一个都没有）。
+    let accounts: Vec<rows::AccountDir> = crate::accounts::manage::scan::book_at(&home)
+        .map(|b| {
+            b.named()
+                .filter_map(|a| {
+                    Some(rows::AccountDir {
+                        agent: a.agent.clone(),
+                        name: a.name.clone(),
+                        dir: PathBuf::from(a.config_dir.as_deref()?),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     let own = SurfaceEnv {
         home: &home,
-        agent_home,
+        agent_homes: &agent_homes,
         fs: &own_fs,
         path_env: path_env.as_deref(),
         session_path: session_path.as_deref(),
@@ -158,17 +199,22 @@ pub(crate) fn answer_with(
         } else {
             Vantage::Remote
         },
+        registry,
+        accounts: &accounts,
     };
     // monitor 那一族：按 monitor 交来的环境解，stat 仍是这台自己（同一台、同一用户）。
     let c_env = client.as_ref().map(|c| SurfaceEnv {
         home: &c.home,
-        agent_home,
+        agent_homes: &agent_homes,
         fs: &own_fs,
         path_env: c.path.as_deref(),
         session_path: session_path.as_deref(),
         system_root: system_root.as_deref(),
         windows: cfg!(windows),
         vantage: Vantage::Monitor,
+        registry,
+        // 各号那几行只由这台自己那一栏出（号在这台的账号库里）。
+        accounts: &[],
     });
     Ok(ConfigSurfaceReport {
         rows: build_rows(&own, c_env.as_ref()),

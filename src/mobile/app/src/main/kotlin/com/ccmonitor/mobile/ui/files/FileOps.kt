@@ -55,7 +55,7 @@ class FileOps(
     suspend fun readBytes(
         path: RemotePath,
         cap: Long,
-    ): Result<Transfer.Pull.Got> = reply(feed.transfer(Transfer.Pull(path, cap), { NO_FD }, CHUNK_MS) { _, _ -> }, READ, Transfer.Pull::of)
+    ): Result<Transfer.Pull.Got> = reply(feed.transfer(Transfer.Pull(path, cap), CHUNK_MS) { _, _ -> }, READ, Transfer.Pull::of)
 
     /** 存回（带读时的摘要：盘上被改过 ⇒ 那台拒）。 */
     suspend fun writeText(
@@ -201,8 +201,5 @@ class FileOps(
 
         /** 读进内存出错时详情里点名的命令。 */
         private const val READ = Commands.FilesReadChunk.NAME
-
-        /** 读进内存不开本机那一份。 */
-        private const val NO_FD = -1
     }
 }

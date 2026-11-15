@@ -109,24 +109,27 @@ fn the_attach_line_asks_for_the_stream_and_nothing_else() {
 fn the_stop_answer_is_one_of_three_words_or_an_error() {
     for (line, want) in [
         (
-            r#"{"stopped":"graceful","pid":42}"#,
+            r#"{"stopped":"graceful","pid":42,"said":"那台·收尾退了"}"#,
             StopAnswer {
                 stopped: StopWord::Graceful,
                 pid: Some(42),
+                said: "那台·收尾退了".into(),
             },
         ),
         (
-            r#"{"stopped":"killed","pid":7}"#,
+            r#"{"stopped":"killed","pid":7,"said":"那台·强杀了"}"#,
             StopAnswer {
                 stopped: StopWord::Killed,
                 pid: Some(7),
+                said: "那台·强杀了".into(),
             },
         ),
         (
-            r#"{"stopped":"not_running","pid":null}"#,
+            r#"{"stopped":"not_running","pid":null,"said":"那台·没在跑"}"#,
             StopAnswer {
                 stopped: StopWord::NotRunning,
                 pid: None,
+                said: "那台·没在跑".into(),
             },
         ),
     ] {
@@ -136,7 +139,13 @@ fn the_stop_answer_is_one_of_three_words_or_an_error() {
             "{line}"
         );
     }
-    for line in [r#"{"stopped":42}"#, r#"{"stopped":"stopped"}"#, r#"{}"#] {
+    // 那台没写那一句（老后端那一形）⇒ 错，壳不替它补字。
+    for line in [
+        r#"{"stopped":42}"#,
+        r#"{"stopped":"stopped"}"#,
+        r#"{}"#,
+        r#"{"stopped":"graceful","pid":42}"#,
+    ] {
         assert!(
             read_stop(&exec(line, "", Some(0)), "devbox").is_err(),
             "{line}"
@@ -166,32 +175,87 @@ fn the_stop_answer_is_one_of_three_words_or_an_error() {
     assert_eq!(wire, ["graceful", "killed", "not_running"]);
 }
 
-/// `machine-stop` 的回包照类型（`cmd_wire::machine::MachineStopped`）收，三个词之外的同样是错。
+/// `--resident-stop` 那一行经 [`stop_answer_of`] 读进来、再交给机器页：那台写好的那一句原样过去，壳不改字、不补字。
+#[test]
+fn the_remote_sentence_passes_through_to_the_machine_page() {
+    let line = serde_json::json!({"stopped": "killed", "pid": 7, "said": "那台·强杀了"});
+    let v = serde_json::to_value(stop_answer_of(&line, "devbox").unwrap()).unwrap();
+    assert_eq!(v, line);
+}
+
+/// 那台的结局里没有那一句（那台后端版本过旧，还不写它）：不替那台补字；那一句点明是那台后端要更新，「停」本身可能已经成了。
+#[test]
+fn a_stop_line_without_its_sentence_says_the_remote_is_too_old() {
+    let err = stop_answer_of(
+        &serde_json::json!({"stopped": "graceful", "pid": 42}),
+        "devbox",
+    )
+    .unwrap_err();
+    assert_eq!(
+        err.said,
+        copy_core::backend_old("devbox"),
+        "照版本族那一句说那台后端要更新"
+    );
+    assert!(
+        err.raw.as_deref().is_some_and(|r| r.contains("graceful")),
+        "原话进复制详情"
+    );
+}
+
+/// 壳自己那一侧的两种结局（没问到哪台的 `--resident-stop`）各说各的那一句：亲手强杀带 pid · 口上没人在听。
+#[test]
+fn the_shells_own_stop_outcomes_say_their_own_sentence() {
+    assert_eq!(
+        StopAnswer::killed_here(Some(9)),
+        StopAnswer {
+            stopped: StopWord::Killed,
+            pid: Some(9),
+            said: copy_text("backend.stopSaid.killed", &[("pid", "9")]),
+        }
+    );
+    assert_eq!(
+        StopAnswer::not_running_here(),
+        StopAnswer {
+            stopped: StopWord::NotRunning,
+            pid: None,
+            said: copy_text("backend.stopSaid.notRunning", &[]),
+        }
+    );
+}
+
+/// `machine-stop` 的回包照类型（`cmd_wire::machine::MachineStopped`）收，三个词之外的 · 没那一句的同样是错。
 #[test]
 fn the_machine_stop_reply_is_read_by_its_type() {
     use cmd_wire::machine::MachineStopped;
-    let got = |stopped: &str, pid| {
-        answer_of_stopped(&MachineStopped {
-            stopped: stopped.into(),
-            pid,
-        })
+    let got = |stopped: &str, pid, said: &str| {
+        answer_of_stopped(
+            &MachineStopped {
+                stopped: stopped.into(),
+                pid,
+                said: said.into(),
+            },
+            "devbox",
+        )
     };
     assert_eq!(
-        got("killed", Some(3)),
+        got("killed", Some(3), "那台·强杀了"),
         Ok(StopAnswer {
             stopped: StopWord::Killed,
             pid: Some(3),
+            said: "那台·强杀了".into(),
         })
     );
     assert_eq!(
-        got("not_running", None),
+        got("not_running", None, "那台·没在跑"),
         Ok(StopAnswer {
             stopped: StopWord::NotRunning,
             pid: None,
+            said: "那台·没在跑".into(),
         })
     );
-    assert!(got("stopped", None).is_err());
-    assert!(got("", Some(1)).is_err());
+    assert!(got("stopped", None, "x").is_err());
+    assert!(got("", Some(1), "x").is_err());
+    assert!(got("killed", Some(1), "").is_err(), "那台没写那一句");
 }
 
 /// **monitor 等那一趟的期限 > 那台停它的最长时间**（宽限期 ＋ 强杀后再等的那一段）：否则 monitor 先放弃、

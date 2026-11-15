@@ -14,7 +14,7 @@
 //! - `quick-check.sh` 重的那四段（后端 · 壳 · vitest · 手机）照挑格那张表挑：前三段恒跑，手机那一段改到它读的东西才跑，没改到说一声；
 //!   手机读的仓外路径对着 `src/mobile` 里字面写到的核（`plan.py --cover mobile`），漏一处就红；
 //!   cargo 那几段的逐条耗时从慢到快存进 `.build/quick-check/cargo-times.tsv`，收尾印最慢三条；
-//!   收尾修剪 `.build`（同组旧出窗口的增量会话与测试二进制删掉）；外面给了编译锁（`CCM_BUILD_LOCK`）只套编译那几段；
+//!   收尾修剪 `.build`（同组旧出窗口的增量会话与测试二进制删掉）；不认 bash 版编译锁（编译外派只经开发调度）；
 //! - 第三方许可生成器 `third-party-notices.py`：四家清单里有许可不在 accepted 名单里的依赖 ⇒ 生成失败。
 
 #[cfg(all(test, unix))]
@@ -105,10 +105,7 @@ mod tests {
                 let d = test_home::scratch("pscan");
                 let bin = tool_bin(&d, &["bash", "git", "sed", "dirname", "cat", "mkdir"]);
                 if on_path {
-                    use std::os::unix::fs::PermissionsExt;
-                    let on = bin.join("private-scan.sh");
-                    std::fs::write(&on, "exit 0\n").unwrap();
-                    std::fs::set_permissions(&on, std::fs::Permissions::from_mode(0o755)).unwrap();
+                    test_home::write_exe(&bin.join("private-scan.sh"), "exit 0\n");
                 }
                 let out = Command::new(bin.join("bash"))
                     .arg(root().join(rel))
@@ -645,21 +642,6 @@ mod tests {
         bin
     }
 
-    /// 写一份可执行的替身脚本。写盘那一下在子进程里做：本进程从不持有它的写句柄 ⇒ 并行的别的判据此刻 fork 出来的子进程
-    /// 继承不到这份写句柄，随后 exec 它不会撞 ETXTBSY（本进程里 `fs::write` 再 exec 在并行下偶发撞上）。
-    fn put_exec(p: &Path, text: &str) {
-        use std::io::Write;
-        use std::process::Stdio;
-        let mut c = Command::new("sh")
-            .args(["-c", "cat > \"$1\" && chmod 755 \"$1\"", "sh"])
-            .arg(p)
-            .stdin(Stdio::piped())
-            .spawn()
-            .unwrap();
-        c.stdin.take().unwrap().write_all(text.as_bytes()).unwrap();
-        assert!(c.wait().unwrap().success(), "写替身 {} 失败", p.display());
-    }
-
     fn heavy_with_path(d: &Path, bin: &Path, args: &[&str]) -> Output {
         Command::new(bin.join("bash"))
             .arg(root().join("tests/scripts/heavy.sh"))
@@ -674,9 +656,11 @@ mod tests {
             .unwrap()
     }
 
-    /// ★ 槽位先来先得：三个槽位都占着时先后来了 A、B，放开一个 ⇒ A 先拿到。
+    /// ★ 槽位先来先得：三个槽位都占着时先后来了 A、B，放开槽位 ⇒ A 先拿到。
     /// B 那一份认 4 个槽位、第 4 个空着：各自去问槽位的写法 B 一进门就拿走第 4 个、插到 A 前面；
-    /// 排队的写法 B 排在 A 后面，轮到它之前不问槽位。
+    /// 排队的写法 B 排在 A 后面，A 拿到槽位交了号它才问槽位。
+    /// 判的是状态不是时机：B 的命令起来那一刻排队目录里还剩几个号（A 已交号 ⇒ 0；B 插在 A 前面 ⇒ A 的号还在）。
+    /// 不比两边写进 order 的先后：A 交号之后才 exec 命令，机器忙时 B 拿到第 4 个、先写进 order 是常事。
     #[test]
     fn heavy_hands_a_freed_slot_to_whoever_waited_first() {
         use std::io::{BufRead, BufReader};
@@ -689,6 +673,7 @@ mod tests {
             ],
         );
         let slots = d.join("state/heavy-slots");
+        let queue = slots.join("queue");
         std::fs::create_dir_all(&slots).unwrap();
         // 三个槽位各由一个持锁的子进程占着；关掉它的标准输入就放开。
         let mut holders: Vec<Child> = (1..=3)
@@ -710,19 +695,33 @@ mod tests {
             .collect();
         let order = d.join("order");
         // 起一个等的人，等它说出「排队等」才回（它已经问过一圈、没拿到）。
-        let waiter = |name: &str, slots: &str| -> Child {
-            let mut c = Command::new(bin.join("bash"))
-                .arg(root().join("tests/scripts/heavy.sh"))
-                .args(["bash", "-c", "echo \"$0\" >> order", name])
-                .current_dir(&d)
-                .env("PATH", &bin)
-                .env("GATE_STATE_DIR", d.join("state"))
-                .env("HEAVY_SLOTS", slots)
-                .env_remove("HEAVY_HELD")
-                .stderr(Stdio::piped())
-                .spawn()
-                .unwrap();
-            let mut err = BufReader::new(c.stderr.take().unwrap());
+        // 它的命令（跑在 heavy 的 scrub 与 scope 之后、只用 bash 内建）写一行「名字 排队目录里还剩几个号」。
+        let probe =
+            r#"set -- "$1"/[0-9]*; if [ -e "$1" ]; then n=$#; else n=0; fi; echo "$0 $n" >> order"#;
+        // 判据红在半路时等的人不能留下：沙箱随测试进程删掉，留下的那一份找不到槽位目录、也没了 sleep，空转不停。
+        struct Reap(Child);
+        impl Drop for Reap {
+            fn drop(&mut self) {
+                let _ = self.0.kill();
+                let _ = self.0.wait();
+            }
+        }
+        let waiter = |name: &str, slots: &str| -> Reap {
+            let mut c = Reap(
+                Command::new(bin.join("bash"))
+                    .arg(root().join("tests/scripts/heavy.sh"))
+                    .args(["bash", "-c", probe, name])
+                    .arg(&queue)
+                    .current_dir(&d)
+                    .env("PATH", &bin)
+                    .env("GATE_STATE_DIR", d.join("state"))
+                    .env("HEAVY_SLOTS", slots)
+                    .env_remove("HEAVY_HELD")
+                    .stderr(Stdio::piped())
+                    .spawn()
+                    .unwrap(),
+            );
+            let mut err = BufReader::new(c.0.stderr.take().unwrap());
             let mut line = String::new();
             while line.trim_end() != format!("heavy: {slots} 个槽位都占着，排队等…") {
                 line.clear();
@@ -736,30 +735,21 @@ mod tests {
         };
         let mut a = waiter("A", "3");
         let mut b = waiter("B", "4");
-        drop(holders[0].stdin.take());
-        let _ = holders[0].wait();
-        let first = guard_core::wall::rounds()
-            .find_map(|()| {
-                let got = std::fs::read_to_string(&order).unwrap_or_default();
-                if got.is_empty() {
-                    std::thread::sleep(std::time::Duration::from_millis(50));
-                    return None;
-                }
-                Some(got)
-            })
-            .expect("放开一个槽位后谁都没拿到");
-        assert_eq!(
-            first.lines().next(),
-            Some("A"),
-            "后来的 B 抢在先来的 A 前面拿到了槽位"
-        );
-        for h in &mut holders[1..] {
+        for h in &mut holders {
             drop(h.stdin.take());
             let _ = h.wait();
         }
-        assert!(a.wait().unwrap().success());
-        assert!(b.wait().unwrap().success());
-        assert_eq!(std::fs::read_to_string(&order).unwrap(), "A\nB\n");
+        assert!(a.0.wait().unwrap().success());
+        assert!(b.0.wait().unwrap().success());
+        let got = std::fs::read_to_string(&order).unwrap();
+        let mut rows: Vec<&str> = got.lines().collect();
+        rows.sort_unstable();
+        assert_eq!(rows.len(), 2, "A 与 B 各跑一次：{got:?}");
+        assert!(rows[0].starts_with("A "), "A 没跑：{got:?}");
+        assert_eq!(
+            rows[1], "B 0",
+            "B 的命令起来时 A 的号还在排队目录里 ⇒ 后来的 B 抢在先来的 A 前面拿到了槽位"
+        );
         let _ = std::fs::remove_dir_all(&d);
     }
 
@@ -834,7 +824,7 @@ mod tests {
         );
         let log = d.join("calls.log");
         let fake = |name: &str, body: &str| {
-            put_exec(
+            test_home::write_exe(
                 &bin.join(name),
                 &format!(
                     "#!/bin/bash\necho \"{name} $*\" >> '{}'\n{body}\n",
@@ -894,7 +884,7 @@ mod tests {
             ],
         );
         let fake = |name: &str, body: &str| {
-            put_exec(&bin.join(name), &format!("#!/bin/bash\n{body}\n"));
+            test_home::write_exe(&bin.join(name), &format!("#!/bin/bash\n{body}\n"));
         };
         fake("systemctl", "exit 0");
         fake(
@@ -953,17 +943,11 @@ mod tests {
     fn quick_mobile(tag: &str, changed: &str, envs: &[(&str, Option<&str>)]) -> QuickMobile {
         let d = test_home::scratch(tag);
         git(&d, &["init", "-q", "-b", "main"]);
-        write(
+        exe(
             &d,
             "src/mobile/gradlew",
             "#!/bin/sh\necho \"$@\" > ../../gradlew-args\nenv | cut -d= -f1 > ../../gradlew-env\necho \"RUST_TEST_THREADS=$RUST_TEST_THREADS GATE_VITEST_WORKERS=$GATE_VITEST_WORKERS\" > ../../gradlew-share\nmkdir -p ../../.build/mobile/app/test-results/t\necho '<testsuite name=\"x\" tests=\"3\" failures=\"0\">' > ../../.build/mobile/app/test-results/t/TEST-x.xml\n",
         );
-        assert!(Command::new("chmod")
-            .args(["+x", "src/mobile/gradlew"])
-            .current_dir(&d)
-            .status()
-            .unwrap()
-            .success());
         write(
             &d,
             ".gitignore",
@@ -977,13 +961,7 @@ mod tests {
         git(&d, &["commit", "-q", "-m", "work"]);
         let script = root().join("tests/scripts/quick-check.sh");
         let bin = d.join("bin");
-        write(&d, "bin/nproc", "#!/bin/sh\necho 24\n");
-        assert!(Command::new("chmod")
-            .args(["+x", "bin/nproc"])
-            .current_dir(&d)
-            .status()
-            .unwrap()
-            .success());
+        exe(&d, "bin/nproc", "#!/bin/sh\necho 24\n");
         let path = format!(
             "{}:{}",
             bin.display(),
@@ -1010,8 +988,8 @@ mod tests {
                 .env_remove("HEAVY_HELD")
                 .env_remove("TMUX")
                 .env_remove("TMUX_PANE")
-                // 判据自己可能由编译调度派到远端跑（那边设着它）：被测的快检照本机那一趟判
-                .env_remove("BUILDSCHED_TAG")
+                // 判据自己可能由开发调度的编译节点派到远端跑（那边设着它）：被测的快检照本机那一趟判
+                .env_remove("DEVSCHED_SKIPPED")
                 .output()
                 .unwrap()
         };
@@ -1104,17 +1082,11 @@ mod tests {
         git(&d, &["checkout", "-q", "-b", "work"]);
         write(&d, "src/backend/lib.rs", "// changed\n");
         git(&d, &["commit", "-q", "-am", "work"]);
-        write(
+        exe(
             &d,
             "bin/cargo",
             "#!/bin/sh\necho \"$@\" > ../../cargo-args\nenv | grep '^CARGO_TARGET_.*_RUNNER=' > ../../cargo-runner\ncat <<'OUT'\n     Running unittests lib.rs (../../.build/backend/debug/deps/cc_monitor_backend-0123456789abcdef)\n\nrunning 4 tests\ntest a::quick ... ok <0.002s>\ntest a::slow ... ok <3.250s>\ntest b::mid ... ok <0.400s>\ntest b::slower ... ok <12.000s>\n\ntest result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.01s\n\n     Running unittests main.rs (../../.build/backend/debug/deps/ccm-89abcdef01234567)\n\nrunning 1 test\ntest cli::one ... ok <1.500s>\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.50s\nOUT\n",
         );
-        assert!(Command::new("chmod")
-            .args(["+x", "bin/cargo"])
-            .current_dir(&d)
-            .status()
-            .unwrap()
-            .success());
         let path = format!(
             "{}:{}",
             d.join("bin").display(),
@@ -1164,28 +1136,27 @@ mod tests {
         assert!(said.trim_end().contains("QUICK: OK"), "{said}");
     }
 
+    /// 写一份可执行的替身（缺的上层目录先建）：经 `write_exe` —— 本进程里从没有它的写端，随后被起不撞 ETXTBSY。
     fn exe(dir: &Path, rel: &str, text: &str) {
-        write(dir, rel, text);
-        assert!(Command::new("chmod")
-            .args(["+x", rel])
-            .current_dir(dir)
-            .status()
-            .unwrap()
-            .success());
+        let p = dir.join(rel);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        test_home::write_exe(&p, text);
     }
 
     /// 一棵假仓：main 之上的工作分支改了后端 · 手机各一份；`bin/cargo`、`node_modules/.bin/{tsc,vitest}`、`src/mobile/gradlew`
-    /// 都是假的，每被调一次往 `calls` 记一行「谁 · 首个参数 · 在不在锁里」（锁里 = 假锁脚本设的 `FAKE_LOCK_HELD=1`）。
+    /// 都是假的，每被调一次往 `calls` 记一行「谁 · 首个参数」。
     fn fake_quick_repo(tag: &str) -> PathBuf {
         let d = test_home::scratch(tag);
         git(&d, &["init", "-q", "-b", "main"]);
         write(&d, "src/backend/lib.rs", "\n");
         // 壳那棵只要目录在（几步先 cd 进去）
         write(&d, "src/frontend/shell/.keep", "");
+        // 开发调度那棵同样只要目录在（fmt-devsched · devsched · clippy-devsched 先 cd 进去）
+        write(&d, "src/devsched/.keep", "");
         write(
             &d,
             ".gitignore",
-            ".build/\nbin/\nnode_modules/\ncalls\nlock-calls\ndirs\nhome/\n",
+            ".build/\nbin/\nnode_modules/\ncalls\nhome/\n",
         );
         git(&d, &["add", "-A"]);
         git(&d, &["commit", "-q", "-m", "base"]);
@@ -1195,19 +1166,13 @@ mod tests {
         git(&d, &["add", "-A"]);
         git(&d, &["commit", "-q", "-m", "work"]);
         let calls = d.join("calls");
-        let rec = |who: &str| {
-            format!(
-                "echo \"{who} $1 held=${{FAKE_LOCK_HELD:-0}}\" >> '{}'\n",
-                calls.display()
-            )
-        };
+        let rec = |who: &str| format!("echo \"{who} $1\" >> '{}'\n", calls.display());
         exe(
             &d,
             "bin/cargo",
             &format!(
-                "#!/bin/sh\n{}case \"$1\" in test|clippy) echo \"$HOME $TMUX_TMPDIR $TMPDIR|${{CCM_BUILD_REMOTE_OK-}}\" >> '{}' ;; esac\n[ \"$1\" = test ] && echo 'test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s'\n[ \"$1\" = metadata ] && echo '{{\"packages\":[{{\"name\":\"cc-monitor-backend\"}}]}}'\nexit 0\n",
-                rec("cargo"),
-                d.join("dirs").display()
+                "#!/bin/sh\n{}[ \"$1\" = test ] && echo 'test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s'\n[ \"$1\" = metadata ] && echo '{{\"packages\":[{{\"name\":\"cc-monitor-backend\"}}]}}'\nexit 0\n",
+                rec("cargo")
             ),
         );
         exe(
@@ -1238,30 +1203,16 @@ mod tests {
                 d.join("sysroot").display()
             ),
         );
-        // 假锁：记下起它的那个 HOME 与它看到的 `CCM_BUILD_REMOTE_OK`（没有 ⇒ 空），标上「在锁里」，原样起命令
-        exe(
-            &d,
-            "bin/fake-lock.sh",
-            &format!(
-                "#!/bin/sh\necho \"$HOME|${{CCM_BUILD_REMOTE_OK-}}\" >> '{}'\nFAKE_LOCK_HELD=1 exec \"$@\"\n",
-                d.join("lock-calls").display()
-            ),
-        );
         d
     }
 
-    /// 在假仓里跑一趟 quick-check（`args` 照给）；`lock` 给了 ⇒ 设 `CCM_BUILD_LOCK`，没给 ⇒ 摘掉。回整趟输出。
-    fn run_fake_quick(d: &Path, args: &[&str], lock: Option<&Path>) -> String {
-        run_fake_quick_with(d, args, lock, &[])
+    /// 在假仓里跑一趟 quick-check（`args` 照给）。回整趟输出。
+    fn run_fake_quick(d: &Path, args: &[&str]) -> String {
+        run_fake_quick_with(d, args, &[])
     }
 
     /// 同上，另设 `envs` 里那几个变量（外面会话带进来的）。
-    fn run_fake_quick_with(
-        d: &Path,
-        args: &[&str],
-        lock: Option<&Path>,
-        envs: &[(&str, &str)],
-    ) -> String {
+    fn run_fake_quick_with(d: &Path, args: &[&str], envs: &[(&str, &str)]) -> String {
         let path = format!(
             "{}:{}",
             d.join("bin").display(),
@@ -1279,15 +1230,10 @@ mod tests {
             .env_remove("HEAVY_HELD")
             .env_remove("TMUX")
             .env_remove("TMUX_PANE")
-            .env_remove("CCM_BUILD_REMOTE_OK")
-            // 判据自己可能由编译调度派到远端跑（那边设着它）：要远端那一趟的经 `envs` 另给
-            .env_remove("BUILDSCHED_TAG")
+            // 判据自己可能由开发调度的编译节点派到远端跑（那边设着它）：要远端那一趟的经 `envs` 另给
+            .env_remove("DEVSCHED_SKIPPED")
             .envs(envs.iter().copied())
             .current_dir(d);
-        match lock {
-            Some(l) => cmd.env("CCM_BUILD_LOCK", l),
-            None => cmd.env_remove("CCM_BUILD_LOCK"),
-        };
         let out = cmd.output().unwrap();
         format!(
             "{}{}",
@@ -1296,15 +1242,22 @@ mod tests {
         )
     }
 
-    /// ★ 整趟快检外派（编译调度在远端起命令时设 `BUILDSCHED_TAG`，本机没有）：带着它 ⇒ 手机 · win-check 两格不起 gradle · `cargo check`
+    /// ★ 整趟快检外派（开发调度的编译节点起作业时设 `DEVSCHED_SKIPPED`（指一份文件），本机那一支不设）：带着它 ⇒ 手机 · win-check 两格不起 gradle · `cargo check`
     /// （远端没装 Android 工具链与 Windows 目标），各印一行「远端跳过，本机单跑」，其余各格照跑；`--only` 那两格带着它也跳过。
-    /// 本机（没有它）`--only mobile` · `--only win-check` 只跑那一格。
+    /// 本机（没有它）`--only mobile` · `--only win-check` 只跑那一格。跳过的两格段名一行一个写进那份文件。
     #[test]
     fn quick_check_on_a_remote_skips_mobile_and_win_check_for_a_local_run() {
         let d = fake_quick_repo("qc-remote");
         let calls = || std::fs::read_to_string(d.join("calls")).unwrap_or_default();
-        let remote = [("BUILDSCHED_TAG", "t1")];
-        let said = run_fake_quick_with(&d, &[], None, &remote);
+        let skipped = d.join("skipped");
+        let skipped_s = skipped.to_string_lossy().into_owned();
+        let remote = [("DEVSCHED_SKIPPED", skipped_s.as_str())];
+        let said = run_fake_quick_with(&d, &[], &remote);
+        assert_eq!(
+            std::fs::read_to_string(&skipped).unwrap_or_default(),
+            "win-check\nmobile\n",
+            "跳过的两格要记进调度给的那份文件（调度据此报没跑、退 79）：{said}"
+        );
         let seen = calls();
         assert!(
             !guard_core::contains_word(&seen, "cargo check")
@@ -1327,129 +1280,55 @@ mod tests {
         }
         for only in ["mobile", "win-check"] {
             let _ = std::fs::remove_file(d.join("calls"));
-            let said = run_fake_quick_with(&d, &["--only", only], None, &remote);
+            let _ = std::fs::remove_file(&skipped);
+            let said = run_fake_quick_with(&d, &["--only", only], &remote);
             assert_eq!(calls(), "", "远端 --only {only} 起了东西：{said}");
             assert!(said.contains("远端跳过，本机单跑"), "{said}");
+            assert_eq!(
+                std::fs::read_to_string(&skipped).unwrap_or_default(),
+                format!("{only}\n"),
+                "远端 --only {only} 只记那一格：{said}"
+            );
         }
         // 本机补那两格：各只起自己那一样
         for (only, want) in [
-            ("mobile", vec!["gradle --no-daemon held=0"]),
-            (
-                "win-check",
-                vec!["cargo check held=0", "cargo check held=0"],
-            ),
+            ("mobile", vec!["gradle --no-daemon"]),
+            ("win-check", vec!["cargo check", "cargo check"]),
         ] {
             let _ = std::fs::remove_file(d.join("calls"));
-            let said = run_fake_quick(&d, &["--only", only], None);
+            let said = run_fake_quick(&d, &["--only", only]);
             assert_eq!(calls().lines().collect::<Vec<_>>(), want, "{said}");
             assert!(said.trim_end().contains("QUICK: OK"), "{said}");
         }
         let _ = std::fs::remove_dir_all(&d);
     }
 
-    /// ★ 全机编译锁（锁脚本在仓外，路径照 `CCM_BUILD_LOCK`）：给了 ⇒ 编译那几段（后端 · clippy · 壳 · creds-harden 的 cargo，
-    /// 手机那一段的 gradle）各经它起一次，cargo fmt · cargo metadata · tsc · vitest 不经它（不编译的不占锁）；锁脚本看到的是真家（它按 HOME 找锁文件），
-    /// 不是沙箱家。没给 ⇒ 不套锁、照跑。
+    /// 编译外派只经开发调度：快检里不认 bash 版编译锁那一支（`CCM_BUILD_LOCK` · `CCM_BUILD_REMOTE_OK` 一处都没有）。
     #[test]
-    fn quick_check_holds_the_build_lock_only_around_compiling_steps() {
-        let d = fake_quick_repo("qc-lock");
-        let said = run_fake_quick(&d, &[], Some(&d.join("bin/fake-lock.sh")));
-        let calls = std::fs::read_to_string(d.join("calls")).unwrap_or_default();
-        let lock_calls = std::fs::read_to_string(d.join("lock-calls")).unwrap_or_default();
-        let mut seen: Vec<&str> = calls.lines().collect();
-        seen.sort_unstable();
-        assert_eq!(
-            seen,
-            vec![
-                // win-check：后端那棵 · 壳那棵各一次 `cargo check --target …`
-                "cargo check held=1",
-                "cargo check held=1",
-                "cargo clippy held=1",
-                "cargo fmt held=0",
-                "cargo fmt held=0",
-                // 快检 fmt-backend 现取后端那棵的包名单（`cargo metadata --no-deps`）：不编译、不占锁。
-                "cargo metadata held=0",
-                "cargo test held=1",
-                "cargo test held=1",
-                "cargo test held=1",
-                "gradle --no-daemon held=1",
-                "tsc --noEmit held=0",
-                "vitest run held=0",
-            ],
-            "{said}"
-        );
-        let home = d.join("home").display().to_string();
-        let lock_calls: Vec<(&str, &str)> = lock_calls
-            .lines()
-            .map(|l| l.split_once('|').unwrap_or((l, "")))
-            .collect();
-        assert_eq!(
-            lock_calls.iter().map(|c| c.0).collect::<Vec<_>>(),
-            vec![home.as_str(); 6],
-            "锁脚本该在真家下起六次（后端 · clippy · 壳 · win-check · creds-harden · 手机）：{said}"
-        );
-        // 可去远端的只有 cargo 那四段：锁脚本拿到的是这一段写在同步的树以外的几个目录（沙箱家 · tmux 目录 · 临时目录），
-        // 正是被起的 cargo 看到的那三个；cargo 自己看不见这个变量（会话变量照摘）；win-check（别的机器没装 Windows 目标）与手机那一趟不带
-        let dirs = std::fs::read_to_string(d.join("dirs")).unwrap_or_default();
-        let seen_dirs: Vec<(&str, &str)> = dirs
-            .lines()
-            .map(|l| l.split_once('|').unwrap_or((l, "?")))
-            .collect();
-        assert_eq!(seen_dirs.len(), 4, "{dirs}\n{said}");
-        assert!(
-            seen_dirs.iter().all(|c| c.1.is_empty()),
-            "cargo 看见了 CCM_BUILD_REMOTE_OK：{dirs}"
-        );
-        let d4: Vec<&str> = seen_dirs.iter().map(|c| c.0).collect();
-        assert_eq!(
-            lock_calls.iter().map(|c| c.1).collect::<Vec<_>>(),
-            vec![d4[0], d4[1], d4[2], "", d4[3], ""],
-            "{said}"
-        );
-        // 没给锁 ⇒ 照跑，谁都不在锁里
-        let _ = std::fs::remove_file(d.join("calls"));
-        let _ = std::fs::remove_file(d.join("lock-calls"));
-        let _ = std::fs::remove_file(d.join("dirs"));
-        let said = run_fake_quick(&d, &[], None);
-        let calls = std::fs::read_to_string(d.join("calls")).unwrap_or_default();
-        let _ = std::fs::remove_dir_all(&d);
-        assert_eq!(calls.lines().count(), 12, "{said}");
-        assert!(
-            calls.lines().all(|l| l.ends_with("held=0")),
-            "{calls}\n{said}"
-        );
+    fn quick_check_names_no_bash_build_lock() {
+        let qc = std::fs::read_to_string(root().join("tests/scripts/quick-check.sh")).unwrap();
+        let hits: Vec<&str> = qc.lines().filter(|l| l.contains("CCM_BUILD")).collect();
+        assert!(hits.is_empty(), "快检还认 bash 版编译锁：{hits:#?}");
     }
 
-    /// ★ win-check（两棵树的库在 Windows 目标上 `cargo check`）：外面会话带着 `CCM_BUILD_REMOTE_OK` 也不交给锁脚本（别的机器没装这个目标）；
+    /// ★ win-check（两棵树的库在 Windows 目标上 `cargo check`）：
     /// 工具链没装这个目标 ⇒ 照实报没装、算红，不起 cargo。命令整行钉住：后端只主包的库、壳那棵整棵的库。
     #[test]
-    fn quick_check_win_check_stays_local_and_reports_a_missing_target_red() {
+    fn quick_check_win_check_reports_a_missing_target_red() {
         let d = fake_quick_repo("qc-win");
-        let lock = d.join("bin/fake-lock.sh");
-        let said = run_fake_quick_with(
-            &d,
-            &["--only", "win-check"],
-            Some(&lock),
-            &[("CCM_BUILD_REMOTE_OK", "/outer")],
-        );
+        let said = run_fake_quick(&d, &["--only", "win-check"]);
         let calls = std::fs::read_to_string(d.join("calls")).unwrap_or_default();
-        let lock_calls = std::fs::read_to_string(d.join("lock-calls")).unwrap_or_default();
         assert_eq!(
             calls.lines().collect::<Vec<_>>(),
-            vec!["cargo check held=1", "cargo check held=1"],
+            vec!["cargo check", "cargo check"],
             "{said}"
-        );
-        assert_eq!(lock_calls.lines().count(), 1, "{lock_calls}\n{said}");
-        assert!(
-            lock_calls.trim_end().ends_with('|'),
-            "win-check 把 CCM_BUILD_REMOTE_OK 交给了锁脚本：{lock_calls}"
         );
         assert!(said.contains("ok   win-check"), "{said}");
         assert!(said.trim_end().contains("QUICK: OK"), "{said}");
         // 目标没装
         std::fs::remove_dir_all(d.join("sysroot/lib/rustlib/x86_64-pc-windows-gnu")).unwrap();
         let _ = std::fs::remove_file(d.join("calls"));
-        let said = run_fake_quick(&d, &["--only", "win-check"], Some(&lock));
+        let said = run_fake_quick(&d, &["--only", "win-check"]);
         let calls = std::fs::read_to_string(d.join("calls")).unwrap_or_default();
         let _ = std::fs::remove_dir_all(&d);
         assert!(
@@ -1479,17 +1358,11 @@ mod tests {
             let p = d.join(rel);
             if dir {
                 std::fs::create_dir_all(p.join("s-1")).unwrap();
+            } else if !rel.rsplit('/').next().unwrap().contains('.') {
+                // 无扩展名的是测试二进制：可执行
+                exe(&d, rel, "x");
             } else {
                 write(&d, rel, "x");
-                // 无扩展名的是测试二进制：可执行
-                if !rel.rsplit('/').next().unwrap().contains('.') {
-                    assert!(Command::new("chmod")
-                        .arg("+x")
-                        .arg(&p)
-                        .status()
-                        .unwrap()
-                        .success());
-                }
             }
             assert!(Command::new("touch")
                 .arg("-d")
@@ -1571,7 +1444,7 @@ mod tests {
             true,
             "2 days ago",
         );
-        let said = run_fake_quick(&d, &["--only", "vitest"], None);
+        let said = run_fake_quick(&d, &["--only", "vitest"]);
         let left: Vec<&String> = gone.iter().filter(|p| d.join(p).exists()).collect();
         let lost: Vec<&String> = kept.iter().filter(|p| !d.join(p).exists()).collect();
         let _ = std::fs::remove_dir_all(&d);
@@ -1688,7 +1561,7 @@ mod tests {
         // 整行钉住：目标只 `--workspace --lib`，不带 `--bins` · `--benches` · `--all-targets` · `--tests`。
         guard_core::pin_line(
             body,
-            r#"out=$(buildcargo "${timed[@]}" bash -c 'cd src/backend && cargo test --workspace --lib --no-fail-fast -- -Z unstable-options --report-time' 2>&1); rc=$?"#,
+            r#"out=$(runcargo "${timed[@]}" bash -c 'cd src/backend && cargo test --workspace --lib --no-fail-fast -- -Z unstable-options --report-time' 2>&1); rc=$?"#,
         )
         .unwrap_or_else(|e| panic!("快检后端那一段不是只编测试库的那一行：{e}"));
     }
@@ -1918,13 +1791,10 @@ mod tests {
         )
         .unwrap();
         let adb = d.join("bin/adb");
-        std::fs::write(
+        test_home::write_exe(
             &adb,
-            format!("#!/bin/sh\necho \"adb $*\" >> '{}'\n", log.display()),
-        )
-        .unwrap();
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&adb, std::fs::Permissions::from_mode(0o755)).unwrap();
+            &format!("#!/bin/sh\necho \"adb $*\" >> '{}'\n", log.display()),
+        );
         let path = format!(
             "{}:{}",
             d.join("bin").display(),
@@ -2005,12 +1875,7 @@ mod tests {
             std::fs::create_dir_all(d.join("bin")).unwrap();
             std::fs::copy(&src, d.join("scripts/android-test.sh")).unwrap();
             let log = d.join("calls");
-            let fake = |name: &str, body: String| {
-                let p = d.join(name);
-                std::fs::write(&p, body).unwrap();
-                use std::os::unix::fs::PermissionsExt;
-                std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
-            };
+            let fake = |name: &str, body: String| test_home::write_exe(&d.join(name), &body);
             fake(
                 "gradlew",
                 format!("#!/bin/sh\necho \"gradlew $*\" >> '{}'\n", log.display()),
@@ -2190,14 +2055,14 @@ mod tests {
     }
 
     /// ★ 重打金样（`bless-golden.sh`）：金样判据落在 `.build/golden/` 下的现打那份逐份拷回仓里原处、删掉现打的那份、逐份印出；
-    /// 一份都没有 ⇒ 退 1。落点取判据那一侧的 [`crate::golden::FRESH_DIR`]：两边对不上这条就红。
+    /// 一份都没有 ⇒ 退 1。落点取判据那一侧的 [`guard_core::addr::FRESH_GOLDEN_DIR`]：两边对不上这条就红。
     #[test]
     fn bless_golden_copies_each_fresh_golden_back_and_clears_it() {
         let d = test_home::scratch("bless");
         git(&d, &["init", "-q", "-b", "main"]);
         let bless = |d: &Path| bash(&root().join("tests/scripts/bless-golden.sh"), &[], d);
         write(&d, "tests/g/a.json", "old\n");
-        let fresh = crate::golden::FRESH_DIR;
+        let fresh = guard_core::addr::FRESH_GOLDEN_DIR;
         write(&d, &format!("{fresh}/tests/g/a.json"), "new\n");
         write(&d, &format!("{fresh}/src/doc/X.md"), "doc\n");
         let o = bless(&d);
@@ -2377,7 +2242,6 @@ esac
         } = *o;
         const NAME: &str = "x";
         let br = format!("w8/{NAME}");
-        use std::os::unix::fs::PermissionsExt;
         let d = test_home::scratch(&format!(
             "push-{dep}-{next}-{main}-{}-{next_old}",
             note.is_some()
@@ -2453,9 +2317,7 @@ esac
         let bin = d.join("bin");
         std::fs::create_dir_all(&bin).unwrap();
         for (name, body) in [("gh", FAKE_GH), ("private-scan.sh", "exit 0\n")] {
-            std::fs::write(bin.join(name), body).unwrap();
-            std::fs::set_permissions(bin.join(name), std::fs::Permissions::from_mode(0o755))
-                .unwrap();
+            test_home::write_exe(&bin.join(name), body);
         }
         let path = format!(
             "{}:{}",

@@ -255,7 +255,7 @@ export function renderMessage(rec: LineRecord, ctx: RenderContext, seq?: number)
         case "compactSummary":
           return {
             kind: "card",
-            element: buildCompactSummaryCard(said.text, speaker.charsText, time),
+            element: buildCompactSummaryCard(said.text, speaker.titleText ?? ""),
           };
         case "agentMessage":
           return {
@@ -716,7 +716,7 @@ function injectOrBuildToolResult(
   const host = ctx.toolUseElements.get(block.for);
   // 派出子运行的那次调用：交回的结果 / 报错收进派出卡（可展开）。
   // 正文被省掉了 ⇒ 派出卡里先写核心给的预览（展开那张卡时它自己读那个子运行的记录）。
-  if (host && settleRunCard(host, text ?? preview, block.isError === true, facts.results[block.for]?.chars ?? 0, facts.results[block.for]?.kind)) return null;
+  if (host && settleRunCard(host, text ?? preview, block.isError === true, facts.results[block.for]?.resultText ?? "", facts.results[block.for]?.kind)) return null;
   // 提问 / 计划答了之后：后端读出了答了什么 ⇒ 卡上写结果，不印 Claude Code 的英文原句。
   const answered = facts.results[block.for];
   if (host && answered && (host.classList.contains("block-ask") || host.classList.contains("block-plan"))) {

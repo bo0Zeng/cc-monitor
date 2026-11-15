@@ -5,8 +5,8 @@
  *   每件一行：状态点 · 名字 · 类的小标签 · 下一行 文件位置小标签 ＋ 一句现状 · 主按钮。断开的那台：「{machine} 离线 · 未检查」。
  *   今天的件来自那台后端的 `data-report`（要装 / 要装 · 可选）；单件里每一格都照那份成品画，界面不判。
  * - cc-monitor 放了什么：机器 chip 切换；本机先「Claude 目录」（宿主交进来那一块），再「改过你的文件」（每处 改了什么 · 撤回在哪 ［前往］），
- *   再「cc-monitor 的文件」：那台后端家里那几样照那台 `data-report` 的 `own` 排（本机远端同一套行，`own-block.ts`）；
- *   本机后面再接宿主交进来的界面自己那几份（monitor 数据目录 · 网页引擎 · 本地存储）。
+ *   再「cc-monitor 的文件」：照那台 `data-report` 的 `own` 排（本机远端同一套行，`own-block.ts`；本机那一台由本机后端连 monitor 数据目录
+ *   里界面自己那几样与网页引擎目录一起答）；本机后面再接宿主交进来的本地存储与卸载说明。
  * - 一趟只问本机后端一次（`data-reads.ts::readChores`）：它问到各台的 `data-report`、件数合成一份；左栏角标与顶上那一行 ＝ 那一份合计
  *   （没问到的那台不计）；主窗口状态栏读同一个数。
  * 构造零 I/O：宿主在这一页第一次可见时调 [`loadNow`]；之后［全部重查］显式补一刀（切页不重读，不轮询）。
@@ -16,17 +16,18 @@ import { button } from "../kit/button";
 import { countBadge } from "../kit/badge";
 import { banner } from "../kit/banner";
 import { copyText } from "../copy-table";
+import { failSaid } from "../kit/detail";
 import { writeClipboard } from "../clipboard";
 import { isLocalOrigin, LOCAL, type Machine } from "../ipc/origin";
-import { machineName } from "../ipc/chan-caller";
+import { budgetWithin, callTyped, machineName } from "../ipc/chan-caller";
 import { markChore, readChores, recallDataReport, type Chore, type ChoreCounts, type ChoreState, type DataReport } from "./data-reads";
-import { ownBlock, remoteOpen } from "./own-block";
-import { localOpenButtons } from "./data-section";
+import { ownBlock, openCell } from "./own-block";
+import { systemOpenButton } from "./data-section";
 import { choreRow } from "./chore-row";
 import { countTags } from "./chore-tags";
 import { fold } from "../kit/fold";
 import { failToast } from "../kit/toast";
-import { openOnMachine } from "../file-window";
+import { openFileWindow } from "../file-window";
 import type { SettingsTarget } from "../open-settings";
 import { commands } from "../ipc/commands";
 
@@ -34,11 +35,13 @@ export type DataTab = "chores" | "placed";
 
 /** 从别处带进来时段头高亮多久（与设置窗跳锚点同值）。 */
 const FOCUS_HIGHLIGHT_MS = 1500;
+/** 撤回一份项目 MCP 配置：读一份 · 写回一份 · 摘一笔装记录，10 秒。 */
+const REVERT_BUDGET_MS = 10_000;
 
 export interface DataPageHost {
   /** 本机「Claude 目录」那一块（宿主建、宿主存）。 */
   claudeDir: HTMLElement;
-  /** 本机「cc-monitor 的文件」里界面自己那几份（宿主建；接在本机后端家里那一块后面）。 */
+  /** 本机「cc-monitor 的文件」后面接的界面这一侧那一块（本地存储 · 卸载说明；宿主建，接在那台 `own` 那一块后面）。 */
   ownFiles: HTMLElement;
   /** 跳到设置窗里那一页那一栏那一节。 */
   goTo: (t: SettingsTarget) => void;
@@ -72,7 +75,7 @@ export class DataPage {
   private readonly chips: HTMLElement;
   private readonly changedBox: HTMLElement;
   private readonly offlineBar: HTMLElement;
-  /** 只在本机 chip 上出现的两块（Claude 目录带段头 · 界面自己那几份）。 */
+  /** 只在本机 chip 上出现的两块（Claude 目录带段头 · 本地存储与卸载说明）。 */
   private readonly localClaude: HTMLElement;
   private readonly localOwn: HTMLElement;
   /** 「cc-monitor 的文件」段头 ＋ 那台后端家里那一块（照那台 `data-report` 的 `own` 排，本机远端都是）。 */
@@ -195,10 +198,11 @@ export class DataPage {
     let why = "";
     try {
       got = await readChores();
-      // 列哪几台照回包（本机后端照它的机器表问的那几台，照问的先后）；没问到 ⇒ 照上一趟列的。
+      // 列哪几台照回包（本机后端照它的机器表每台必列，没答上的带那台那一句）；整问失败 ⇒ 照上一趟列的。
       this.machines = got.machines.map((m) => machineOf(m.origin));
     } catch (e) {
-      why = e instanceof Error ? e.message : String(e);
+      // 整问失败：通道写好的那一句；JS 自己抛的原文不上屏（进控制台），摆「读不到」。
+      why = failSaid(copyText("acct.val.unreadable"), e);
     }
     if (gen !== this.generation) return;
     await Promise.all(
@@ -359,7 +363,7 @@ export class DataPage {
       },
       onCopied: (text, ids) => void this.copyFor(origin, text, ids),
       onGo: (x) => this.go(origin, x),
-      onOpenFile: (path) => void this.openFile(origin, path),
+      onOpenFile: (path) => void openFileWindow(origin, { revealFile: path }),
       onDecline: (x, yes) => void this.decline(origin, x, yes),
       onRecheck: () => void this.refresh(),
     });
@@ -386,12 +390,15 @@ export class DataPage {
     this.host.goTo(g.page === "machine" ? { machine: origin, tab: g.tab, anchor: g.anchor } : { page: g.page, anchor: g.anchor });
   }
 
-  private async openFile(origin: Machine, path: string): Promise<void> {
+  private async revert(origin: Machine, file: string): Promise<void> {
     try {
-      await openOnMachine(origin, { revealFile: path });
+      // 那台先摘记录、再写文件：成了就是两样都成了，没成整趟报错。
+      await callTyped(isLocalOrigin(origin) ? LOCAL : origin, "mcp-project-revert", { file }, budgetWithin(REVERT_BUDGET_MS));
     } catch (e) {
-      failToast(copyText("rot.fail.open"), e, { level: "error" });
+      failToast(copyText("kit.act.revert"), e, { level: "error" });
+      return;
     }
+    await this.refresh();
   }
 
   private async decline(origin: Machine, c: Chore, yes: boolean): Promise<void> {
@@ -424,7 +431,7 @@ export class DataPage {
     const local = isLocalOrigin(this.picked);
     this.localClaude.hidden = !local;
     this.localOwn.hidden = !local;
-    // 段头本机总在（界面自己那几份挂在它下面）；远端那台读回之前不出。
+    // 段头本机总在（本地存储那一块挂在它下面）；远端那台读回之前不出。
     this.ownFiles.hidden = !local;
     this.ownBody.replaceChildren();
     const r = this.readings.get(this.picked);
@@ -449,8 +456,13 @@ export class DataPage {
     }
     this.ownFiles.hidden = false;
     const origin = this.picked;
-    const actions = local ? (o: { exists: boolean }, abs: string) => localOpenButtons(abs, o.exists) : remoteOpen(r.ok ? (abs) => void this.openFile(origin, abs) : null);
-    this.ownBody.replaceChildren(ownBlock(report.own, report.home, actions, local ? copyText("data.card.backend") : undefined));
+    // 「在文件窗口里打开」本机远端同一颗（不在盘上 · 断开都置灰、提示照后端那一句）；本机那台前面多一颗系统打开。
+    const actions = openCell(
+      r.ok ? { open: (abs) => void openFileWindow(origin, { revealFile: abs }) } : { offline: r.why },
+      local ? systemOpenButton : undefined,
+    );
+    // 本机那一台的 `own` 连同界面自己那几样（本机后端一起答），本机远端同一块、不另起标题。
+    this.ownBody.replaceChildren(ownBlock(report.own, actions));
     if (report.changedFiles.length === 0) {
       this.changedBox.appendChild(note(copyText("hostKey.compare.none")));
       return;
@@ -470,7 +482,10 @@ export class DataPage {
       body.append(path, what);
       row.appendChild(body);
       const undo = c.undo;
-      if (undo) {
+      if (c.revert) {
+        // cc-monitor 改过的项目 MCP 配置：就地撤回到改之前的原文（那台判、写；之后被改过 ⇒ 那台拒，照它那一句报）。
+        row.appendChild(button({ label: copyText("kit.act.revert"), size: "compact", onClick: () => void this.revert(origin, c.path) }));
+      } else if (undo) {
         row.appendChild(
           button({
             label: copyText("dataPage.changed.go"),

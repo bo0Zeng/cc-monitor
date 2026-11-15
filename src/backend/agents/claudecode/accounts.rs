@@ -20,7 +20,7 @@ pub(crate) const CONFIG_FILE_NAME: &str = ".claude.json";
 /// 共用就会拿别的号补发）。判据拿一份号目录的结构（名字与类型）与本表两向相等。
 pub(crate) const NATIVE_IDENTITY: &[(&str, IdentityRoot, IdentityClass)] = &[
     (
-        acct_core::CREDENTIALS_NAME,
+        super::CREDENTIALS_NAME,
         IdentityRoot::ConfigDir,
         IdentityClass::Secret,
     ),
@@ -107,20 +107,79 @@ pub(crate) const FACE: AccountsFace = AccountsFace {
     shared: NATIVE_SHARED,
     shared_on_demand: SHARED_ON_DEMAND,
     config_file: CONFIG_FILE_NAME,
-    user_mcp_key: super::assets::SERVERS_KEY,
+    mcp: Some(MCP_CELLS),
+    mcp_logins: Some(super::mcp::LOGINS),
     shared_root: shared_root_in,
     email_in: |root| oauth_email_in(&config_path_in(root)),
     login: Some(super::LOGIN),
     sign_in: Some(super::sign_in::FACE),
     session_env: super::paths::SESSION_ENV_KEYS,
     trust: Some(TRUST_CELLS),
+    // 有会话在用也续：Claude Code 自己续期拿的是同一把锁（`LoginFace.lock_inside`），两边排队。
+    renew: crate::agents::Renew::Anytime,
 };
+
+/// 各号的用户级 MCP：`.claude.json` 顶层 `mcpServers` 那一个键（JSON 对象，名 → 定义）。改一个服务器只换那一个键的值，
+/// 别的键（登录 · 项目历史 · 本机状态）一个字节不动。
+pub(crate) const MCP_CELLS: crate::agents::McpCells = crate::agents::McpCells {
+    file: CONFIG_FILE_NAME,
+    read: mcp_servers_in,
+    edit: mcp_server_set,
+};
+
+/// `.claude.json` 原文 ⇒ 用户级 MCP 服务器表（那一键不在 ⇒ 空表）。
+fn mcp_servers_in(text: &str) -> Result<serde_json::Map<String, serde_json::Value>, String> {
+    use copy_core::copy_text;
+    use serde_json::Value;
+    let v: Value = serde_json::from_str(text.strip_prefix(BOM).unwrap_or(text)).map_err(|e| {
+        copy_text(
+            "beAcctMcpShare.read.unreadable",
+            &[("line", &e.line().to_string())],
+        )
+    })?;
+    match v.get(super::assets::SERVERS_KEY) {
+        _ if !v.is_object() => Err(copy_text("reason.content.unparsable", &[])),
+        None => Ok(serde_json::Map::new()),
+        Some(Value::Object(m)) => Ok(m.clone()),
+        Some(_) => Err(copy_text("beAcctMcpShare.read.serversNotObject", &[])),
+    }
+}
+
+/// 换一个服务器（`None` = 删）：在原文上就地换、末了核一次只换了这一格（[`crate::common::json_patch::set_checked`]，
+/// 别的键 · 键序 · 缩进 · BOM 原样；核不上就不交出去）—— 加 / 改只动 `mcpServers.<名>` 那一格；删换掉 `mcpServers`
+/// 那一格的值（那一格里别的服务器照新写法重排，值不变）；文件还不在 ⇒ 只有这一键的新文件（两格缩进、末尾换行）。
+fn mcp_server_set(
+    text: &str,
+    name: &str,
+    def: Option<&serde_json::Value>,
+) -> Result<String, String> {
+    let key = super::assets::SERVERS_KEY;
+    // 先照这一家的读法判一遍形状（读不懂的那几句与读时同一种）。
+    let mut servers = if text.trim().is_empty() {
+        serde_json::Map::new()
+    } else {
+        mcp_servers_in(text)?
+    };
+    let (path, v) = match def {
+        Some(v) => (vec![key, name], v.clone()),
+        None => {
+            servers.remove(name);
+            (vec![key], serde_json::Value::Object(servers))
+        }
+    };
+    crate::common::json_patch::set_checked(text, &[(&path, v)])
+        .ok_or_else(|| copy_core::copy_text("reason.content.unparsable", &[]))
+}
+
+/// 文件开头可能带的那个字节序标记（读时跳过、改时原样留着）。
+const BOM: char = '\u{feff}';
 
 /// `.claude.json` 里信任记在 `projects[<目录>].hasTrustDialogAccepted`。
 pub const TRUST_CELLS: TrustCells = TrustCells {
     table: "projects",
     flag: Some("hasTrustDialogAccepted"),
     dir_keys: trust_dir_keys,
+    edit: None,
 };
 
 /// Claude 查 / 存信任用的项目键：工作目录所在 git 仓的根（往上最近一个含 `.git` 的祖先，含自己；`.git` 是目录或文件

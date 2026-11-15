@@ -24,8 +24,8 @@ domains: Array<PlanDomain>, slices: Array<PlanSlice>, bySession: { [key in strin
 /**
  * 这一份输出的摘要：变了才算计划变了。
  */
-rev: string, readAt: number, readAtText?: string, 
+rev: string, readAt: number, 
 /**
- * 上次读数那一格（与 `readAtText` 同一把钟写）：那台离线时计划条照它说这一份是什么时候读到的。
+ * 上次读数那一格（与读到那一句同一把钟写）：那台离线时计划条照它说这一份是什么时候读到的。
  */
 seen?: SeenAt, stale: PlanStale | null, needCount: number, };

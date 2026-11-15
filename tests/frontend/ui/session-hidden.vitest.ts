@@ -60,7 +60,7 @@ const NOW = Date.parse("2026-10-14T12:00:00Z");
 const BG: SessionHidden = { by: "bg", said: "后端那一句·分身" };
 const SELF: SessionHidden = { by: "self", said: "后端那一句·单个" };
 const waiting = { face: liveFace("needs_you") };
-const approve = (): Needs => ({ kind: "approve", tool: "Bash", call: "toolu_b", what: "占位命令", text: copyText("beSession.needs.approve"), head: "核心·等批准", headCode: null, tone: "need", rank: 1, waitedMs: 60_000, ask: null, manualText: null, receivedAt: NOW });
+const approve = (): Needs => ({ kind: "approve", tool: "Bash", call: "toolu_b", what: "占位命令", text: copyText("beSession.needs.approve"), head: "核心·等批准", headCode: null, tone: "need", rank: 1, waitedMs: 60_000, ask: null, manualText: "核心·只能在终端里答", receivedAt: NOW });
 
 function tab(sid: string, over: Partial<Tab> = {}): Tab {
   return {
@@ -78,7 +78,7 @@ function tab(sid: string, over: Partial<Tab> = {}): Tab {
     origin: LOCAL,
     forkedFromSessionId: null,
     writers: [],
-    unread: 0,
+    unreadSaid: null,
     needs: null,
     autoAnswer: null,
     autoAnswerChoices: [],
@@ -183,17 +183,17 @@ describe("标签栏：栏底「已隐藏 N」那一行照 hidden 格画", () => 
     expect(rowSids(r, false).sort()).toEqual(["a", "b", "c"]);
   });
 
-  it("★ 隐藏的会话在等人：「需手动」照样数它、`Ctrl+J` 照样跳过去；收着的那一行不汇总（不是一组，没有后端数好的计数）", async () => {
+  it("★ 隐藏的会话在等人（答不了的那一种）：「需手动」照样数它、「下一个需手动」照样跳过去；收着的那一行不汇总（不是一组，没有后端数好的计数）", async () => {
     const r = bar([tab("a"), tab("b", { hidden: BG, ...waiting, needs: approve() })]);
     // 那台的整份里照样有它（隐藏不影响需手动：后端那一侧列它，`sessions-needs` 判据管）。
     const needs = fakeNeedsBook({ [LOCAL]: listOf([sessionItem("b", approve())]) });
     r.view.needs = { book: needs.book, login: vi.fn() };
     needs.book.subscribe(() => r.view.planNeedsChanged());
     await needs.book.again();
-    const strip = r.el.querySelector<HTMLElement>(".tab-needs")!;
+    const strip = r.el.querySelector<HTMLElement>(`.tab-needs[data-col="manual"]`)!;
     expect(strip.style.display).toBe("");
     expect(strip.querySelector(".tab-needs-count")?.textContent).toBe("1");
-    await r.view.nextNeeds();
+    await r.view.nextNeeds("manual");
     expect(r.host.answerAt).toHaveBeenCalledWith("b");
     expect(hiddenRow(r.el)!.querySelector(".tab-group-chip"), "界面不自己数").toBeNull();
   });

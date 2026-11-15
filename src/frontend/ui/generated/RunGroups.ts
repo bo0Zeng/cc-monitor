@@ -3,6 +3,7 @@ import type { Words } from "./Words";
 
 /**
  * 运行表分成的三组（[`SessionRuns::groups`]）：在跑的全列 · 最近结束的至多几个 · 其余（连状态不明的）。
+ * 三组只列第一层（主运行派的，或派它的那个已不在表里的）；更深的挂在上一层的 [`RunInfo::kids`] 底下。
  */
 export type RunGroups = { running: Array<string>, recent: Array<string>, older: Array<string>, 
 /**

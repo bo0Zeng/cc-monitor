@@ -1,12 +1,13 @@
 //! `rotation-facts`：每个号此刻的事实，逐字段对得上；入参多一格 ⇒ `bad_args`。临时家目录、假凭据、不起中转。
 
 use super::*;
-use crate::accounts::quota::facts::{FactBlocked, FactWhy, WinFact};
+use crate::accounts::quota::facts::{FactBlocked, FactWhy};
 use crate::accounts::quota::ledger::{self, Ledger};
 use crate::accounts::quota::rotation::{self, RotationStore};
 use crate::accounts::quota::show::LoginState;
 use crate::accounts::upstream_select::rotate::Hop;
 use crate::agents::{QuotaReading, QuotaStatus, QuotaWindow};
+use cmd_wire::rotation::WinFact;
 use std::sync::Arc;
 
 const NOW: u64 = 4_000_000_000;
@@ -91,7 +92,6 @@ fn closed() -> WinFact {
         open: false,
         used: 0.0,
         resets: None,
-        resets_text: None,
         rate: None,
         tokens_per_pct: None,
     }
@@ -128,19 +128,27 @@ fn each_account_comes_back_with_its_facts_field_for_field() {
     assert_eq!(names, ["b", "c", "api"]);
     let b = &got.accounts[0];
     assert_eq!(
-        (b.kind, b.login, b.seen_at, &b.blocked),
+        (b.kind, b.login, &b.blocked),
         (
             crate::accounts::quota::facts::Kind::Sub,
             LoginState::Ok,
-            Some(NOW),
             &None
         )
     );
     assert!(b.w5h.open);
     assert!((b.w5h.used - 42.0).abs() < 1e-9, "{}", b.w5h.used);
     assert_eq!(b.w5h.resets, Some(NOW + 3_600));
-    assert!(b.w5h.resets_text.is_some(), "重置时刻带写好的字");
     assert_eq!(b.w7d, closed());
+    // 只给后端看的重置的字在后端的行上（不上线）。
+    let row = |a: &str| (c.rows)("claude-code", a);
+    let rows = c.hop.facts(
+        "claude-code",
+        &row,
+        NOW,
+        &crate::common::time::Tz::default(),
+    );
+    assert_eq!(rows[0].account, "b");
+    assert!(rows[0].w5h.resets_text.is_some(), "重置时刻带写好的字");
     let cc = &got.accounts[1];
     assert_eq!(cc.login, LoginState::NeedsLogin);
     assert_eq!(

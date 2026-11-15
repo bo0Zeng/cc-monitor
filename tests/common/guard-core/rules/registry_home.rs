@@ -13,7 +13,7 @@ const SHELL_TESTS: &str = "tests/frontend/shell";
 /// 留在壳上的登记表（表头文件名）· 为什么留。
 const SHELL_STAYS: &[(&str, &str)] = &[(
     "command_home_registry.rs",
-    "读壳 crate 内部两样：`chan::host::HOST_OPS`（由文件窗口契约与 `transfer_relay` 的常数拼成）与 `parity_ledger` 的 `LEDGER` · `Own`（壳那边的测试模块）",
+    "读壳 crate 内部两样：`chan::host::HOST_OPS`（壳自己接的那几条通道命令名）与 `parity_ledger` 的 `LEDGER` · `Own`（壳那边的测试模块）",
 )];
 
 fn base(path: &str) -> &str {

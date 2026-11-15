@@ -67,7 +67,7 @@ pub(crate) use caps::until_of;
 // 协议参考逐条写总期限（生成器是判据，只在测试构建里）。
 #[cfg(test)]
 pub(crate) use caps::{cap_of, MARGIN_MS};
-pub(crate) use doors::LocalFiles;
+pub(crate) use doors::{AttachHere, LocalFiles};
 #[cfg(test)]
 use drain::{exit_after_drain_within, Drain};
 use sniff::sniff_id;
@@ -272,17 +272,7 @@ where
     tokio::spawn(async move {
         let running: Running = Arc::new(Mutex::new(HashMap::new()));
         let given = Given { watch, own };
-        // 本连接的传输票表：随本读循环一起死 ⇒ monitor 走了，它开的传输一律撤
-        // （`control::transfer::Desk` 的 `Drop`）。
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "文件管理写句柄只在分派那一层造：传输台那四条硬臂的票表在帧面这一处领一份"
-        )]
-        let xfers = crate::control::transfer::Desk::new(
-            replies.clone(),
-            crate::platform::fs::Face::issue(),
-        );
-        // 本连接的终端订阅票表：同上，随本读循环一起死 ⇒ monitor 走了，它订的终端画面一律退订
+        // 本连接的终端订阅票表：随本读循环一起死 ⇒ monitor 走了，它订的终端画面一律退订
         // （`control::terminal_follow::Desk` 的 `Drop`）。
         let follows = crate::control::terminal_follow::Desk::new(replies.clone());
         // 本连接挂的待答请求：同上，随本读循环一起死 ⇒ hook 那一头走了（终端先答了 · 被打断），它挂的那条一律撤
@@ -348,16 +338,7 @@ where
                 .await;
                 overflowed = false;
             } else {
-                handle_line(
-                    &buf,
-                    &replies,
-                    &running,
-                    &xfers,
-                    &follows,
-                    &given,
-                    asks.conn(),
-                )
-                .await;
+                handle_line(&buf, &replies, &running, &follows, &given, asks.conn()).await;
             }
             buf.clear();
         }
@@ -369,7 +350,6 @@ async fn handle_line(
     raw: &[u8],
     replies: &mpsc::Sender<Frame>,
     running: &Running,
-    xfers: &crate::control::transfer::Desk,
     follows: &crate::control::terminal_follow::Desk,
     given: &Given,
     asks: u64,
@@ -404,7 +384,7 @@ async fn handle_line(
                         replies.clone(),
                         running.clone(),
                         run,
-                        true,
+                        None,
                         views::Plan::default(),
                     )
                     .await;
@@ -417,7 +397,7 @@ async fn handle_line(
             replies.clone(),
             running.clone(),
             move |r| crate::control::feeds::forward(machine, r),
-            true,
+            None,
             views::Plan::default(),
         )
         .await;
@@ -431,11 +411,11 @@ async fn handle_line(
             return;
         }
     };
-    match dispatch(req, replies, running, xfers, follows, given, asks) {
+    match dispatch(req, replies, running, follows, given, asks) {
         Disposition::Done => {}
         Disposition::Reply(f) => send(replies, f).await,
         Disposition::SpawnData(req, run) => {
-            spawn_handler(req, replies.clone(), running.clone(), run, true, plan).await
+            spawn_handler(req, replies.clone(), running.clone(), run, None, plan).await
         }
         // ★ 同步阻塞处理器：进 `spawn_blocking` 的专用线程池，**不占 tokio worker**。
         //   `cancellable: false` —— `spawn_blocking` 起的活 abort 不了，说实话。
@@ -453,10 +433,13 @@ async fn handle_line(
                 .await;
                 return;
             };
+            // 票两份共持（`drain::Ticket` 头注）：一份跟着阻塞闭包走（闭包跑完才放，外层被 abort 也照样数着），
+            //   一份交给 `spawn_handler`，应答送进应答通道之后才放。
+            let ticket = Arc::new(ticket);
+            let held = ticket.clone();
             let fut = move |r: Request| async move {
-                // 票跟着阻塞闭包走：闭包跑完才落（外层被 abort 也照样数着）。
                 match tokio::task::spawn_blocking(move || {
-                    let _ticket = ticket;
+                    let _ticket = held;
                     let _total = caps::install(&r);
                     run(r)
                 })
@@ -471,7 +454,15 @@ async fn handle_line(
                     .and_raw(Some(&e.to_string()))),
                 }
             };
-            spawn_handler(req, replies.clone(), running.clone(), fut, false, plan).await
+            spawn_handler(
+                req,
+                replies.clone(),
+                running.clone(),
+                fut,
+                Some(ticket),
+                plan,
+            )
+            .await
         }
     }
 }
@@ -525,7 +516,6 @@ fn dispatch(
     req: Request,
     replies: &mpsc::Sender<Frame>,
     running: &Running,
-    xfers: &crate::control::transfer::Desk,
     follows: &crate::control::terminal_follow::Desk,
     given: &Given,
     asks: u64,
@@ -582,9 +572,7 @@ fn dispatch(
                 )
             }
         },
-        // 传输四条：要碰**本连接的票表**与应答通道（进度帧走应答通道）⇒ 同一档硬臂。
-        //   开单 / 起跑 / 撤都是就地做完的记账（起跑那一下 `spawn` 两个任务，不 await）。
-        // 测试连接：进度格走**本连接的应答通道**（不丢、与应答同序）⇒ 与传输四条同一档硬臂；
+        // 测试连接：进度格走**本连接的应答通道**（不丢、与应答同序）⇒ 硬臂；
         //   本体照旧是真异步、`cancel` 能在 await 点打断（交给通用的 spawn 那一路登记）。
         "remote-probe" => {
             let tx = replies.clone();
@@ -600,16 +588,6 @@ fn dispatch(
                     },
                 ),
             )
-        }
-        // 上传开单先去远端落点探整组同名（要等那台）⇒ 起一个异步任务；别的三条就地做完。
-        "transfer-upload" => {
-            let run = xfers.upload_wire_for();
-            Disposition::SpawnData(req, run)
-        }
-        "transfer-download" | "transfer-start" | "transfer-stop" => {
-            Disposition::Reply(crate::control::transfer::Desk::answer_wire(
-                xfers, &req.cmd, &req.id, &req.args, &req.tz,
-            ))
         }
         // 终端实时预览三条：要碰**本连接的订阅票表**与应答通道（画面帧走应答通道）⇒ 同一档硬臂。
         //   订上那一下要起几个 tmux（名单 · 版本 · 控制模式客户端）⇒ 异步档里挪进阻塞线程池、带一份票表过去；
@@ -722,13 +700,13 @@ fn by_registry(req: Request, given: &Given) -> Disposition {
             // `cancel` 在上面那条硬臂里处理完了，走不到这儿。
             None => Disposition::Reply(Frame::err(
                 &req.id,
-                "unknown_command",
+                cmd_wire::UNKNOWN_COMMAND,
                 &copy_text("beInbound.dispatch.unhandled", &[("other", other)]),
             )),
         },
         None => Disposition::Reply(Frame::err(
             &req.id,
-            "unknown_command",
+            cmd_wire::UNKNOWN_COMMAND,
             // 说这句的就是那台不认的后端，它不知道 monitor 怎么称呼它 ⇒「该机」。
             &copy_core::backend_old(&copy_core::peer_machine()),
         )),
@@ -858,17 +836,21 @@ fn lookup(name: &str) -> Option<&'static CommandSpec> {
 ///
 /// 登记与摘除都在这里，处理器本身不用管取消 —— 取消靠 `AbortHandle`，
 /// 处理器在任何 await 点被打断。
+///
+/// `ticket`：阻塞那一档（`SpawnBlocking`）的退出票 —— 有它 ⇔ 这条取消不了（`cancel` 回 `not_cancellable`）。
+/// 监督 task 握着它，等这条的最终应答（或 panic 那一条）送进应答通道之后才放。
 async fn spawn_handler<F, Fut>(
     req: Request,
     replies: mpsc::Sender<Frame>,
     running: Running,
     f: F,
-    cancellable: bool,
+    ticket: Option<Arc<drain::Ticket>>,
     plan: views::Plan,
 ) where
     F: FnOnce(Request) -> Fut + Send + 'static,
     Fut: std::future::Future<Output = Outcome> + Send,
 {
+    let cancellable = ticket.is_none();
     let id = req.id.clone();
     let cmd = req.cmd.clone();
 
@@ -954,6 +936,8 @@ async fn spawn_handler<F, Fut>(
                 .discard(Why::PeerGone);
         }
         // 被 abort（= cancel 生效）时什么都不补：`Cancelled` 已经发过了。
+        // 最终应答已送进应答通道（上面那个 task 送完才完成，或上一句补的那一条）⇒ 这才放票。
+        drop(ticket);
     });
 
     lock(&running).insert(id, InFlight { abort, cancellable });

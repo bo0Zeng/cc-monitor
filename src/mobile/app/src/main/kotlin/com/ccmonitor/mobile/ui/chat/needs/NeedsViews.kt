@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
@@ -70,6 +69,9 @@ import kotlinx.coroutines.delay
 /** 供冒烟与 UI 测试定位的 tag（与字解耦）。 */
 object NeedsTags {
     const val BAR = "needs-bar"
+
+    /** 钉条第一行前那一枚抬头（待答请求 · 需手动）。 */
+    const val TITLE = "needs-title"
     const val ANSWER = "needs-answer"
     const val ANSWERED = "needs-answered"
     const val SHEET = "needs-sheet"
@@ -116,7 +118,7 @@ private fun rememberTick(now: () -> Long): Long {
 private const val TICK_MS = 1_000L
 
 /**
- * 钉条（乙1）：输入框上方满宽，琥珀边 ＋ 淡底、琥珀点；第一行那台写的 `head` ＋ 已等，第二行等宽的那一段（答不了的那种是那台那一句）；
+ * 钉条（乙1）：输入框上方满宽，琥珀边 ＋ 淡底，左头一枚琥珀边抬头（[NeedsBar.title]：待答请求 · 需手动）；第一行那台写的 `head` ＋ 已等，第二行等宽的那一段（答不了的那种是那台那一句）；
  * 能答 ⇒ 右侧［答］主按钮升抽屉。永不打断：不闪、不弹、不抢焦点。
  */
 @Composable
@@ -139,7 +141,17 @@ fun NeedsBarView(
                 .testTag(NeedsTags.BAR),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(8.dp).background(amber, CircleShape))
+        Text(
+            bar.title,
+            style = MaterialTheme.typography.labelSmall,
+            color = amber,
+            maxLines = 1,
+            modifier =
+                Modifier
+                    .border(BorderStroke(1.dp, amber), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 6.dp, vertical = 1.dp)
+                    .testTag(NeedsTags.TITLE),
+        )
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text(bar.firstLine(tick), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -272,19 +284,8 @@ private fun SheetHead(
     tick: Long,
     onHide: () -> Unit,
 ) {
-    val title =
-        if (sheet.ask.questions.isEmpty()) {
-            sheet.head
-        } else {
-            copyText(
-                "mobAsk.head.page",
-                "head" to sheet.head,
-                "i" to (sheet.page + 1).toString(),
-                "n" to
-                    sheet.ask.questions.size
-                        .toString(),
-            )
-        }
+    // 那台写好的那一句，只填第几题那个空（翻到哪一页是这边的事）；不是提问那一种 ⇒ 抬头就是 head。
+    val title = sheet.pageHead?.replace("{i}", (sheet.page + 1).toString()) ?: sheet.head
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         sheet.ask.run?.let { run ->

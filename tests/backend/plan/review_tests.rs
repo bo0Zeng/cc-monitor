@@ -118,7 +118,10 @@ fn annotate_marks_acks_counts_and_return_states_on_the_product() {
     returned_at(&own_of(&f), "/w", "alpha", "A1", r).unwrap();
     current(Some(&f)).annotate(&mut doc);
     let sl = &doc.slices[0];
-    assert!(sl.needs.iter().find(|n| n.kind == "top").unwrap().acked);
+    assert!(
+        sl.needs.iter().all(|n| n.kind != "top"),
+        "认可过的那一条不出成品"
+    );
     // top 已认可 ⇒ 剩不通过那一条（问人那两条不算）。
     assert_eq!(sl.need_count, 1);
     // 整个工作区：alpha 那一条（beta 没有要看的）。

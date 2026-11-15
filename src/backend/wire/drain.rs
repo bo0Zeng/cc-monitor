@@ -13,6 +13,9 @@ use std::sync::Mutex;
 // 人群 = 在飞的 `Run::Blocking`，一条不多一条不少：那一档本来就是「开跑之后停不下来」的类型级声明（[`Disposition::SpawnBlocking`] 头注）；
 // `Run::Async` 那一档随时可能被 `cancel` 打断，每个 await 点上都得是安全的 ⇒ 不另立「哪条算写」的分类表。
 //
+// 等两样，次序只在 [`exit_after_drain_within`] 定：先等票（票在应答排进应答通道之后才落），再叫写者收尾、等写者都返回
+// （排着的应答写完、flush 了）—— 不然票一落就退，最后一条应答来不来得及写出去看运气。
+//
 // 有上限（`INVARIANTS §48.2`「脱离后不留僵尸」）：后端自己兜一个退出排空期限 [`DRAIN_DEADLINE`]（30 秒），到点仍没排空 ⇒
 // 记一行说哪几条没做完，然后退。这是后端零定时器让位的地方之一：远端后端在 SSH 断开那一刻没人叫它退、
 // 也没人给上限，阻塞在挂死文件系统上的那一条会把进程无限期留下。第二次停机信号 = 立刻退；机器页「停」等得比它久一点
@@ -29,12 +32,30 @@ use std::sync::Mutex;
 )]
 pub const DRAIN_DEADLINE: std::time::Duration = std::time::Duration::from_millis(30_000);
 
-/// 退出闸：在飞的阻塞命令（带名字）＋ 关没关。进程里只有一个（[`DRAIN`]）；判据另造实例。
+/// 退出闸：在飞的阻塞命令（带名字）＋ 关没关 ＋ 活着的写者几个、叫没叫它们收尾。进程里只有一个（[`DRAIN`]）；判据另造实例。
 pub struct Drain {
     /// 锁只在一句里活着，绝不跨 await。
     state: Mutex<DrainState>,
-    /// 在飞的归零那一刻叫醒等的人（[`Drain::drained`]）。
+    /// 在飞的归零、或写者归零那一刻叫醒等的人（[`Drain::drained`] · [`Drain::writers_done`]）。
     idle: tokio::sync::Notify,
+    /// 叫写者收尾那一刻叫醒写者（[`Drain::finishing`]）。
+    finish: tokio::sync::Notify,
+}
+
+/// 一个写者活着（`stream/writer.rs::writer_task` 起头取一个，返回时落）：收场等它们都落了才退。
+pub struct WriterSlot(&'static Drain);
+
+impl Drop for WriterSlot {
+    fn drop(&mut self) {
+        let now_none = {
+            let mut g = self.0.state.lock().unwrap_or_else(|e| e.into_inner());
+            g.writers -= 1;
+            g.writers == 0
+        };
+        if now_none {
+            self.0.idle.notify_waiters();
+        }
+    }
 }
 
 struct DrainState {
@@ -43,10 +64,15 @@ struct DrainState {
     /// 在飞的：票号 → 「命令名（id=…）」—— 到点没排空时要说出是哪几条。
     live: std::collections::BTreeMap<u64, String>,
     closed: bool,
+    /// 此刻活着的写者几个（[`Drain::writer`]）。
+    writers: usize,
+    /// 叫写者收尾了没有（[`Drain::finish_writers`]）。
+    finishing: bool,
 }
 
-/// 一张票：拿着它的阻塞命令还在跑。**票 move 进阻塞闭包**，闭包跑完（成功 / 失败 / panic 展开）才落 ——
-/// 外层 async 任务被 `abort` 不影响它（阻塞线程还在跑，票还在它手里）。
+/// 一张票：拿着它的阻塞命令还没交出应答。取票的那一处（`stream/inbound/mod.rs` 的 `SpawnBlocking` 那一支）把它包成两份共持：
+/// 一份 move 进阻塞闭包（闭包跑完 —— 成功 / 失败 / panic 展开 —— 才放；外层 async 任务被 `abort` 不影响它），
+/// 一份跟着外层任务、应答送进应答通道之后才放 ⇒ 两份都放了票才落：活做完了，**而且**应答已经排进写者那一路。
 pub struct Ticket(&'static Drain, u64);
 
 impl Drop for Ticket {
@@ -73,8 +99,11 @@ impl Drain {
                 next: 0,
                 live: std::collections::BTreeMap::new(),
                 closed: false,
+                writers: 0,
+                finishing: false,
             }),
             idle: tokio::sync::Notify::const_new(),
+            finish: tokio::sync::Notify::const_new(),
         }
     }
 
@@ -117,6 +146,57 @@ impl Drain {
             .collect()
     }
 
+    /// 登记一个写者（落 = 它返回了）。
+    pub fn writer(&'static self) -> WriterSlot {
+        self.state.lock().unwrap_or_else(|e| e.into_inner()).writers += 1;
+        WriterSlot(self)
+    }
+
+    /// 此刻活着几个写者。
+    pub fn writers(&self) -> usize {
+        self.state.lock().unwrap_or_else(|e| e.into_inner()).writers
+    }
+
+    /// 叫写者收尾：排着的应答写完、flush、返回（写者那一侧照 [`Drain::finishing`] 走「出方向关了」那条路）。
+    pub fn finish_writers(&self) {
+        self.state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .finishing = true;
+        self.finish.notify_waiters();
+    }
+
+    /// 写者等「叫收尾了」：叫过了 ⇒ 当场完成。先登记等待、再看旗子（同 [`Drain::drained`]）。
+    pub async fn finishing(&self) {
+        loop {
+            let woke = self.finish.notified();
+            tokio::pin!(woke);
+            woke.as_mut().enable();
+            if self
+                .state
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .finishing
+            {
+                return;
+            }
+            woke.await;
+        }
+    }
+
+    /// 等写者都返回。先登记等待、再看计数（同 [`Drain::drained`]）。
+    pub async fn writers_done(&self) {
+        loop {
+            let woke = self.idle.notified();
+            tokio::pin!(woke);
+            woke.as_mut().enable();
+            if self.writers() == 0 {
+                return;
+            }
+            woke.await;
+        }
+    }
+
     /// 等在飞的归零。先登记等待、再看计数 ⇒ 「看的那一刻还有、紧接着最后一张票落下」那一下不会漏醒。
     pub async fn drained(&self) {
         loop {
@@ -145,15 +225,35 @@ pub fn shutdown_listener() -> impl std::future::Future<Output = ()> + Send + 'st
 
 /// 🔴 **流模式后端的收场 —— 三个退出口都走这一个**（`stream/entry.rs`：stdio 那条 · 常驻收信号 · 最后一个客户走了且退出行为是「结束」）。
 ///
-/// 关闸 → 说一句在飞几条 → 等它们做完再 `exit(0)`；等的时候**再来一次停机信号 ⇒ 不等了**；
-/// **到 [`DRAIN_DEADLINE`] 仍没排空 ⇒ 说出哪几条没做完，退**。
-/// `writer`：还在往对端写的那一路（stdio 载体收信号那一形传进来）—— 排空期间照常跑，在飞命令的最终应答照样有机会写回去；
-/// 它先结束（对端走了）不影响排空。⚠ 不保证最后一条应答一定写出去了：排空完成那一刻就退（「对面可能已经做了」那一句兜）。
+/// 关闸 → 说一句在飞几条 → 等票都落（活做完了、应答已排进应答通道，[`Ticket`]）→ 叫写者收尾、等写者都返回
+/// （排着的应答写完、flush 了，`stream/writer.rs::writer_task`）→ `exit(0)`。次序只在这里定：先等票、再等写者。
+/// 等的时候**再来一次停机信号 ⇒ 不等了**；**到 [`DRAIN_DEADLINE`] 仍没等完 ⇒ 照实说还剩什么（没做完的命令 · 没写完的写者），退**。
+/// `writer`：stdio 载体收信号那一形传进来的写者 future —— 它由这里接着 poll（排空期间照常写、收到收尾照常写完）；
+/// 它先结束（对端走了）不影响排空。常驻那几条连接的写者是各自的任务，同样照收尾写完、返回。
+/// 保证：在飞的阻塞命令在期限内做完、写者没被对端断掉 ⇒ 它的最终应答写出去了、flush 了，进程才退（对端只关了写半边也一样：常驻那条读到 EOF 照样等应答写完，`stream/entry.rs::stream_ends`）。
 pub async fn exit_after_drain<W>(why: &str, writer: Option<W>) -> !
 where
     W: std::future::Future<Output = ()>,
 {
     exit_after_drain_within(why, writer, DRAIN_DEADLINE).await
+}
+
+/// 不等了那一刻：照实记一行此刻还剩什么 —— 还有没做完的命令 ⇒ 几条、哪几条；
+/// 命令都做完了 ⇒ 还有几个写者没写完（排着的应答没写出）。只进后端日志。
+fn gave_up() {
+    let n = DRAIN.in_flight();
+    if n > 0 {
+        tracing::warn!(
+            "还有 {n} 条没做完（{}），它们可能只做了一半",
+            DRAIN.in_flight_names().join("、")
+        );
+        return;
+    }
+    match DRAIN.writers() {
+        // 与「都等完了」同一拍到的：照实说没剩什么。
+        0 => tracing::warn!("命令都做完了，写者也都写完了"),
+        w => tracing::warn!("命令都做完了，还有 {w} 个写者没写完，排着的应答没写出"),
+    }
 }
 
 /// [`exit_after_drain`] 的本体，期限由参数给（生产恒 [`DRAIN_DEADLINE`]；判据给一个短的，量「到点就退」那一形）。
@@ -189,26 +289,25 @@ where
         reason = "流模式收场（`inbound::exit_after_drain_within`）等在飞的阻塞命令做完的上限：到点仍没排空 ⇒ 说出哪几条没做完、退出"
     )]
     let expired = tokio::time::sleep(deadline);
+    // 先等票、再等写者：票落 = 应答已排进写者那一路；写者返回 = 排着的写完、flush 了。
+    let settled = async {
+        DRAIN.drained().await;
+        DRAIN.finish_writers();
+        DRAIN.writers_done().await;
+    };
     tokio::select! {
-        _ = DRAIN.drained() => {
+        _ = settled => {
             if left > 0 {
-                tracing::info!("在跑的那几条都做完了 ⇒ 退出");
+                tracing::info!("在跑的那几条都做完了、应答都写出去了 ⇒ 退出");
             }
         }
         _ = again => {
-            tracing::warn!(
-                "排空时又收到一次停机信号 ⇒ 不等了：还有 {} 条没做完（{}），它们可能只做了一半",
-                DRAIN.in_flight(),
-                DRAIN.in_flight_names().join("、")
-            );
+            tracing::warn!("排空时又收到一次停机信号 ⇒ 不等了");
+            gave_up();
         }
         _ = expired => {
-            tracing::warn!(
-                "排空期限 {} 秒到了 ⇒ 不等了：还有 {} 条没做完（{}），它们可能只做了一半",
-                deadline.as_secs(),
-                DRAIN.in_flight(),
-                DRAIN.in_flight_names().join("、")
-            );
+            tracing::warn!("排空期限 {} 秒到了 ⇒ 不等了", deadline.as_secs());
+            gave_up();
         }
         _ = writing => {}
     }

@@ -20,6 +20,8 @@ import kotlinx.coroutines.launch
 internal class ChatQueue(
     private val link: CoreLink,
     private val scope: CoroutineScope,
+    /** 手上每一份名单（推来的 · 重问的 · 撤回包里的）的 `sent`：交给待发，有它那一句的同回执到了（[ChatOutbox.wentIn]）。 */
+    private val sent: (List<String>) -> Unit = {},
     private val publish: () -> Unit,
 ) {
     /** 那台此刻那一份（还没问到 ⇒ `null`）。 */
@@ -43,10 +45,14 @@ internal class ChatQueue(
         if (r is Reply.Ok) SessionQueueRead.of(r.data)?.let(::got)
     }
 
-    /** 撤名单里一条（照编号请那台撤），照回的整份名单画；撤成了 ⇒ 那一句的字交 [recalled]（回到输入框）。 */
+    /**
+     * 撤名单里一条（照编号请那台撤），照回的整份名单画；撤成了 ⇒ 那一句的字交 [recalled]（回到输入框）；
+     * 没撤成（在送 · 送过）⇒ 撤回包里那台写好的那一句交 [kept]（框下照它说）。
+     */
     fun cancel(
         id: String,
         sid: String,
+        kept: (String) -> Unit = {},
         recalled: (String) -> Unit = {},
     ) {
         val text = textOf(id)
@@ -54,15 +60,21 @@ internal class ChatQueue(
             val r = link.call(SessionQueueCancel.COMMAND, SessionQueueCancel.args(sid, id), CALL_MS)
             if (r is Reply.Ok) {
                 SessionQueueCancel.of(r.data)?.let {
-                    if (it.cancelled && text != null) recalled(text)
+                    if (!it.cancelled) {
+                        kept(it.said)
+                    } else if (text != null) {
+                        recalled(text)
+                    }
                     got(it.queue)
                 }
             }
         }
     }
 
-    private fun got(q: QueueList) {
+    /** 拿到那台的一份名单（推来的 · 重问的 · 撤回包里的，撤待发那一包也交进来）：照它画，`sent` 交给待发。 */
+    fun got(q: QueueList) {
         list = q
+        sent(q.sent)
         publish()
     }
 
@@ -82,7 +94,7 @@ internal class ChatQueue(
     }
 }
 
-/** 名单里的一条：会话那台写好的那一句（发送中 · 等确认 · 需手动 · 答完再送 · 未送进会话 …）· 那一句 · 没送进会话。 */
+/** 名单里的一条：会话那台写好的那一句（发送中 · 等确认 · 请求未答 · 答完再送 · 未送进会话 …）· 那一句 · 没送进会话。 */
 data class QueueLine(
     val id: String,
     val said: String,
@@ -92,7 +104,8 @@ data class QueueLine(
 
 /**
  * 输入框上方那一排的一行（名单与待发同一种，一条一行，同桌面 `queue-row.ts`）：那一句此刻的样子 · 开头（只取第一行）·［撤回］。
- * 不写第几、不写哪一端。错误色 ⇐ 没送进会话 · 那台拒了；[held] ⇒ 交了没回执（淡着）；[listed] ⇒［撤回］撤名单里那一条，否则撤待发。
+ * 不写第几、不写哪一端。错误色 ⇐ 没送进会话 · 那台拒了；[held] ⇒ 交了没回执（淡着）；[listed] ⇒［撤回］撤名单里那一条，否则撤待发；
+ * [withdrawable] 假 ⇒ 撤不回（新建会话随起交着的头一句），不摆［撤回］。
  */
 data class QueueRowFace(
     val id: String,
@@ -101,6 +114,7 @@ data class QueueRowFace(
     val error: Boolean,
     val held: Boolean,
     val listed: Boolean,
+    val withdrawable: Boolean = true,
 )
 
 /** 输入框上方那一排：每条一行 · [stale] ＝ 那台离线时排头那一行（「名单为上次所知」，整排淡着；连着 · 没有一行 ⇒ `null`）。 */
@@ -123,7 +137,7 @@ fun queueRows(
         queue.map { QueueRowFace(it.id, it.said, headOf(it.text), error = it.undelivered, held = false, listed = true) } +
             outbox
                 .filter { it.id !in listed }
-                .map { QueueRowFace(it.id, it.said, headOf(it.text), error = it.failed, held = it.held, listed = false) }
+                .map { QueueRowFace(it.id, it.said, headOf(it.text), error = it.failed, held = it.held, listed = false, withdrawable = it.withdrawable) }
     val stale = copyText("terminal.queue.stale").takeIf { offline && rows.isNotEmpty() }
     return QueueRows(rows, stale)
 }

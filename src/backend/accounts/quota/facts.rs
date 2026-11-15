@@ -11,8 +11,77 @@ use crate::agents::{QuotaReading, QuotaWindow};
 /// 号的种类（线上 `sub` · `api`）：线上形住 `cmd-wire`。
 pub use cmd_wire::quota::Kind;
 use cmd_wire::quota::{SLOT_5H, SLOT_7D};
-/// 每个号的事实（`rotation-view` · `rotation-facts` 带它）：线上形住 `cmd-wire`。
-pub use cmd_wire::rotation::{Fact, FactBlocked, FactWhy, WinFact};
+pub use cmd_wire::rotation::{FactBlocked, FactWhy};
+
+/// 一个窗口的事实（后端的行：线上 [`cmd_wire::rotation::WinFact`] 那几格 ＋ 只给后端看的 `resets_text`）。
+#[derive(Debug, Clone, PartialEq)]
+pub struct WinFact {
+    pub open: bool,
+    pub used: f64,
+    pub resets: Option<u64>,
+    /// `resets` 写给人看的样子（按看的那一台的时区；写号行那一句读它，不上线）。
+    pub resets_text: Option<String>,
+    pub rate: Option<f64>,
+    pub tokens_per_pct: Option<u64>,
+}
+
+/// 一个号此刻的事实（后端的行：线上 [`cmd_wire::rotation::Fact`] 那几格；窗口带只给后端看的重置的字）。
+/// `rotation-view` · `rotation-facts` 出口那一下 [`Fact::wire`] 造线上那一份。
+#[derive(Debug, Clone, PartialEq)]
+pub struct Fact {
+    pub account: String,
+    pub kind: Kind,
+    pub w5h: WinFact,
+    pub w7d: WinFact,
+    pub weekly: bool,
+    pub login: LoginState,
+    pub blocked: Option<FactBlocked>,
+}
+
+impl WinFact {
+    /// 出口那一下：造线上那一窗（只给后端看的那一格留下）。
+    pub fn wire(self) -> cmd_wire::rotation::WinFact {
+        let WinFact {
+            open,
+            used,
+            resets,
+            resets_text: _,
+            rate,
+            tokens_per_pct,
+        } = self;
+        cmd_wire::rotation::WinFact {
+            open,
+            used,
+            resets,
+            rate,
+            tokens_per_pct,
+        }
+    }
+}
+
+impl Fact {
+    /// 出口那一下：造线上的事实（两窗各经 [`WinFact::wire`]）。
+    pub fn wire(self) -> cmd_wire::rotation::Fact {
+        let Fact {
+            account,
+            kind,
+            w5h,
+            w7d,
+            weekly,
+            login,
+            blocked,
+        } = self;
+        cmd_wire::rotation::Fact {
+            account,
+            kind,
+            w5h: w5h.wire(),
+            w7d: w7d.wire(),
+            weekly,
+            login,
+            blocked,
+        }
+    }
+}
 
 fn live(t: Option<u64>, now: u64) -> bool {
     !super::reset_since_seen(t, now)
@@ -58,6 +127,31 @@ pub(crate) fn pick<'a>(
                 .cmp(&open(b, now))
                 .then(used_now(a, now).total_cmp(&used_now(b, now)))
         })
+}
+
+/// ★ 窗口的唯一取法（轮换事实 · 周额度号 · 显示 · 别的会话的用速 · 开窗回的重置都照它，不照整本账）：
+/// 账上这个号的窗口里，每个来源（回包头 · 报用量）最近那一次说到的那几格；那一份没带的格照同来源早先那一份留，
+/// 直到过了它自己的重置时刻（一份读数只带部分窗口不算那几格没了；说不出重置时刻的格不留）。过了之后同一来源再没说的那一格不出
+/// （比如别的号的回包头误记进来的周窗；账上留着它，只是历史，下一份读数合并时清掉）。
+/// 交回的那一条只留取到的窗口与它们的出处，别的几格照账上那一条。
+pub(crate) fn current(o: &super::ledger::Observed, now: u64) -> super::ledger::Observed {
+    let seen: Vec<_> = o
+        .reading
+        .windows
+        .iter()
+        .map(|w| o.window_seen(&w.name))
+        .collect();
+    let last = |from| seen.iter().filter(|m| m.from == from).map(|m| m.at).max();
+    let mut c = o.clone();
+    let mut at = seen.iter();
+    c.reading.windows.retain(|w| {
+        at.next()
+            .is_some_and(|m| Some(m.at) == last(m.from) || w.resets_at.is_some_and(|t| t > now))
+    });
+    let kept = &c.reading.windows;
+    c.windows_seen
+        .retain(|name, _| kept.iter().any(|w| w.name == *name));
+    c
 }
 
 /// 一个窗口在额度账上量出来的那两样（按窗口原名问；调用方交）：用速（点 / 分）· 1% ≈ 多少用量。
@@ -119,7 +213,7 @@ fn next_week_reset(t: u64, now: u64) -> u64 {
     }
 }
 
-/// 跟窗口无关的「用不了」：超额在兜（到卡着的窗口重置）· 缺 key · 要重新登录 · 续令牌一时没成（`retry` ＝ 几点再试）。
+/// 跟窗口无关的「用不了」：超额在兜（到卡着的窗口重置）· 缺 key · 要重新登录 · 账号 0 过期又不归我方续 · 续令牌一时没成（`retry` ＝ 几点再试）。
 fn barred_of(
     r: Option<&QuotaReading>,
     kind: Kind,
@@ -142,6 +236,10 @@ fn barred_of(
             why: FactWhy::Login,
             until: None,
         }),
+        LoginState::BaseUntouched => Some(Barred {
+            why: FactWhy::BaseUntouched,
+            until: None,
+        }),
         LoginState::Ok => retry.filter(|t| *t > now).map(|t| Barred {
             why: FactWhy::Login,
             until: Some(t),
@@ -149,7 +247,7 @@ fn barred_of(
     }
 }
 
-/// ★ 拼一个号的事实（唯一一处的纯函数部分）：额度账那一条 ＋ 种类 ＋ 登录（`retry` ＝ 续令牌一时没成、几点再试）。
+/// ★ 拼一个号的事实（唯一一处的纯函数部分）：额度账那一条此刻取到的窗口（`r`，[`current`] 的 `reading`）＋ 种类 ＋ 登录（`retry` ＝ 续令牌一时没成、几点再试）。
 /// 用不了的那一格照 [`standing::sendable`] / [`standing::sendable_again`] 出。`when` 把时刻写成给人看的样子。
 #[expect(
     clippy::too_many_arguments,
@@ -158,7 +256,6 @@ fn barred_of(
 pub fn fact_of(
     account: &str,
     r: Option<&QuotaReading>,
-    seen_at: Option<u64>,
     kind: Kind,
     login: LoginState,
     retry: Option<u64>,
@@ -169,7 +266,9 @@ pub fn fact_of(
 ) -> Fact {
     let w5h = win_of(r, SLOT_5H, now, slot_of, m, when);
     let w7d = win_of(r, SLOT_7D, now, slot_of, m, when);
+    // 只拿来判发不发得出去（不看是哪一家）。
     let a = Acct {
+        agent: String::new(),
         id: account.to_string(),
         api: kind == Kind::Api,
         used: [w5h.used, w7d.used],
@@ -178,6 +277,7 @@ pub fn fact_of(
         barred: barred_of(r, kind, login, retry, now),
         rate: [w5h.rate, w7d.rate],
         per_pct: [w5h.tokens_per_pct, w7d.tokens_per_pct],
+        // 周额度号：取到的窗口里有周窗（`r` 照 [`current`] 交，过了重置又没再见的旧窗不算）。
         weekly: r.is_some_and(|r| r.windows.iter().any(|x| slot_of(&x.name) == Some(SLOT_7D))),
         others: None,
         past: Default::default(),
@@ -204,7 +304,6 @@ pub fn fact_of(
         w7d,
         weekly: a.weekly,
         login,
-        seen_at,
         blocked,
     }
 }
@@ -221,6 +320,7 @@ fn blocked_text(why: FactWhy, at: Option<&str>) -> String {
         (FactWhy::Login, Some(at)) => copy_text("beRotation.fact.loginRetry", &[("at", at)]),
         (FactWhy::Login, None) => copy_text("beRotation.fact.login", &[]),
         (FactWhy::Key, _) => copy_text("beRotation.fact.key", &[]),
+        (FactWhy::BaseUntouched, _) => copy_text("beRotation.fact.baseUntouched", &[]),
     }
 }
 

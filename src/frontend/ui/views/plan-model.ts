@@ -55,14 +55,9 @@ export function cellIndex(slice: PlanSlice): Map<string, PlanCell> {
   return new Map(slice.cells.map((c) => [c.id, c]));
 }
 
-/** 格 ⇒ 以它为根节点的那个权力范围（`blocks[].cells` 列的是根节点）。`project` 不挂在格上。 */
-export function blockRoots(slice: PlanSlice): Map<string, PlanBlock> {
-  const m = new Map<string, PlanBlock>();
-  for (const b of slice.blocks) {
-    if (b.id === "project") continue;
-    for (const c of b.cells) m.set(c, b);
-  }
-  return m;
+/** 以这一格为根格的那一块（后端标的 `rootOf`）；不是根格 ⇒ `null`。 */
+export function rootBlock(slice: PlanSlice, cell: PlanCell): PlanBlock | null {
+  return cell.rootOf === null ? null : (slice.blocks.find((b) => b.id === cell.rootOf) ?? null);
 }
 
 /** 最上面那个权力范围（pb 里叫 `project`）。 */
@@ -92,7 +87,6 @@ export interface OutlineOpts {
  */
 export function outlineRows(slice: PlanSlice, opts: OutlineOpts): OutlineRow[] {
   const byId = cellIndex(slice);
-  const roots = blockRoots(slice);
   const standing = new Set(slice.blocks.map((b) => b.at).filter((x): x is string => x !== null));
   const narrowing = opts.filter !== "all" || opts.query !== "";
   const keep = (c: PlanCell): boolean => {
@@ -119,7 +113,7 @@ export function outlineRows(slice: PlanSlice, opts: OutlineOpts): OutlineRow[] {
     if (narrowing && !wanted(id)) return;
     const kids = c.children.filter((k) => byId.has(k));
     const folded = !narrowing && opts.folded.has(id);
-    out.push({ cell: c, depth, hasKids: kids.length > 0, folded, block: roots.get(id) ?? null, standing: standing.has(id) });
+    out.push({ cell: c, depth, hasKids: kids.length > 0, folded, block: rootBlock(slice, c), standing: standing.has(id) });
     if (folded) return;
     for (const k of kids) walk(k, depth + 1);
   };
@@ -150,11 +144,6 @@ export function kindSlot(slice: PlanSlice, kind: string | null): number | null {
 
 /** 类颜色有几档（令牌 `--plan-kind-0` … `--plan-kind-6`）。 */
 export const KIND_COLORS = 7;
-
-/** 认不出那一位的 id 只露前后几位。 */
-export function shortId(id: string): string {
-  return id.length <= 12 ? id : `${id.slice(0, 6)}…${id.slice(-4)}`;
-}
 
 /** 新登记的仓库还没有图：读好了（不是读不成那两种）、一个节点都没有（pb repo 建了 project，等某个会话认领它画图）。 */
 export function isFresh(slice: Pick<PlanSlice, "bare" | "error" | "cells">): boolean {

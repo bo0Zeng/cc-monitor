@@ -7,7 +7,6 @@ import { failToast } from "../kit/toast";
 import { saidOf } from "../kit/detail";
 import { readRemoteNames } from "../machine-feed";
 
-// `connCount`：累计连接数，按**累计连接数**量纲算 2^53-1 条（每秒 1000 连接要 28.5 万年）⇒ `number` 够用。
 import { listForwards, startForward, stopForward, type ForwardStatus } from "../port-forward-reads";
 import { copyText } from "../copy-table";
 import { dispatcher, type OverlayHandle } from "../keybindings/registry";
@@ -142,7 +141,7 @@ class PortForwardPanel {
       row.appendChild(dot);
       const desc = document.createElement("span");
       desc.className = "pf-desc";
-      desc.textContent = copyText("portForward.reload.row", { origin: f.origin, localPort: f.localPort, remoteHost: f.remoteHost, remotePort: f.remotePort, connCount: f.connCount });
+      desc.textContent = f.said;
       row.appendChild(desc);
       row.appendChild(mkBtn(copyText("composer.input.stop"), () => void this.onStop(f.id)));
       this.listEl.appendChild(row);

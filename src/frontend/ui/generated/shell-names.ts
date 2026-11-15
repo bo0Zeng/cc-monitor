@@ -10,9 +10,6 @@ export const PROBE_PROGRESS_KIND = "probe-progress";
 /** 终端订阅的画面流（`event_replay.rs::TERMINAL_SCREEN_KIND`）；后面跟 `/<票>`。 */
 export const TERMINAL_SCREEN_KIND = "terminal-screen";
 
-/** 数据路径里日志目录那一行的名字（`data_paths.rs::LOGS_DIR_LABEL`）。 */
-export const LOGS_DIR_LABEL = "logs/";
-
 /** 前端 emit、壳收的就绪事件（`ui_contract::events::FRONTEND_READY`）。 */
 export const FRONTEND_READY = "frontend-ready";
 

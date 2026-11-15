@@ -79,7 +79,7 @@ impl crate::wire::typed::Handle for SessionWindowCmd {
 
 /// 生产那一份「本机这个会话此刻由谁显示」：活会话表里持着它的交互进程（`history::live_table::now(..).writers`，最小的那个；没有 ⇒ `None`），再问 [`crate::observe::session_terminals::here_by`]。
 fn local_here(sid: String) -> Result<Option<Here>, SessionWindowErr> {
-    let home = crate::history::listing::agent_home();
+    let home = crate::agents::local_homes();
     let Some(pid) = crate::history::live_table::now(&home)
         .writers(&sid)
         .first()
@@ -287,7 +287,7 @@ fn remote_window(
 /// 别的（断开 · 常驻不在）⇒ 没问到，那一句照摆。
 fn not_asked(s: Said) -> Result<Unplaced, SessionWindowErr> {
     Ok(match s.code.as_deref() {
-        Some("unknown_command" | "backend_differs") => Unplaced::PeerOld,
+        Some(cmd_wire::UNKNOWN_COMMAND | cmd_wire::SHAPE_DIFFERS) => Unplaced::PeerOld,
         Some(crate::wire::listen::CALL_TIMED_OUT) => Unplaced::PeerTimedOut,
         Some("no_such_session") => Unplaced::NotLive,
         Some("failed") => return Err(SessionWindowErr::Failed(s.said)),

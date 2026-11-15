@@ -156,12 +156,12 @@ fn assignee_and_signer_are_resolved_to_sessions() {
     assert_eq!(owner["id"], SUB);
     assert_eq!(owner["face"]["life"]["activity"], "needs_you");
     assert_eq!(owner["needs"], "approve");
-    // 负责人是某个会话底下的 agent ⇒ 后端把「{父会话} 的 agent」写好交出去（界面照画，不按码取字）；会话本身 ⇒ 不写（界面写标签页的名字）。
+    // 名字后端写好交出去（界面照画，不按码取字、不截 id）：子 agent ⇒「{父会话} 的 agent」；会话本身 ⇒ 那条会话的标题。
     assert_eq!(
         owner["label"],
         copy_core::copy_text("plan.who.sub", &[("session", "甲会话")])
     );
-    assert_eq!(cell(&m.doc, "A1-2")["owner"]["label"], Value::Null);
+    assert_eq!(cell(&m.doc, "A1-2")["owner"]["label"], "甲会话");
     assert_eq!(cell(&m.doc, "A2-1")["signer"]["id"], SUB);
     // 划出的根节点：底下归它自己那个权力范围，元数据写在上一级 ⇒ signer 是上一级的负责人。
     assert_eq!(cell(&m.doc, "A2")["block"], "A2");
@@ -182,7 +182,6 @@ fn assignee_and_signer_are_resolved_to_sessions() {
 fn the_done_value_comes_from_the_table_and_only_its_kinds_count() {
     let m = made();
     let sl = &m.doc["slices"][0];
-    assert_eq!(sl["doneValue"], "已签收");
     assert_eq!(cell(&m.doc, "A1-1")["statusCode"], "done");
     assert_eq!(cell(&m.doc, "A1-2")["statusCode"], "open");
     assert_eq!(cell(&m.doc, "A1")["statusCode"], "open");
@@ -201,12 +200,10 @@ fn the_done_value_comes_from_the_table_and_only_its_kinds_count() {
         }
     }
     let m2 = make(&d, &who);
-    assert_eq!(m2.doc["slices"][0]["doneValue"], "decided");
     assert_eq!(cell(&m2.doc, "A6")["statusCode"], "done");
     assert_eq!(cell(&m2.doc, "A5")["statusCode"], "open");
     // 研究：表里没有加 · 去的值 ⇒ 没有进度，谁都不算活。
     let beta = &m.doc["slices"][1];
-    assert_eq!(beta["doneValue"], Value::Null);
     assert_eq!(beta["progress"], Value::Null);
     assert_eq!(beta["openCells"], 0);
     assert_eq!(cell_in(&m.doc, 1, "B1-1")["statusCode"], Value::Null);
@@ -254,42 +251,38 @@ fn state_values_come_with_counts_a_text_line_and_evidence_links() {
 fn short_words_say_why_a_node_is_not_signed() {
     let m = made();
     let short = |k: &str, a: &[(&str, &str)]| copy_core::copy_text(k, a);
-    assert_eq!(cell(&m.doc, "A1-2")["whyCode"], json!({"kind": "nosign"}));
     assert_eq!(
         cell(&m.doc, "A1-2")["whyShort"],
         json!({"text": short("plan.whyShort.nosign", &[]), "wait": false})
     );
     assert_eq!(
-        cell(&m.doc, "A1")["whyCode"],
-        json!({"kind": "inside", "done": 1, "of": 2})
+        cell(&m.doc, "A1")["whyShort"],
+        json!({"text": short("plan.whyShort.inside", &[("done", "1"), ("of", "2")]), "wait": false})
     );
     assert_eq!(
-        cell(&m.doc, "A1")["whyShort"]["text"],
-        short("plan.whyShort.inside", &[("done", "1"), ("of", "2")])
+        cell(&m.doc, "A2")["whyShort"],
+        json!({"text": short("plan.whyShort.upper", &[]), "wait": true})
     );
-    assert_eq!(cell(&m.doc, "A2")["whyCode"], json!({"kind": "upper"}));
-    assert_eq!(cell(&m.doc, "A2")["whyShort"]["wait"], true);
-    assert_eq!(cell(&m.doc, "A1-1")["whyCode"], Value::Null);
+    assert_eq!(cell(&m.doc, "A1-1")["whyShort"], Value::Null);
     assert_eq!(
-        cell(&m.doc, "A1-3")["whyCode"],
+        cell(&m.doc, "A1-3")["whyShort"],
         Value::Null,
         "不算活的没有原因"
     );
     // 待定：还没 decided ⇒ 标出来、短词「待人定」；定了的不标。
     assert_eq!(cell(&m.doc, "A5")["undecided"], true);
-    assert_eq!(cell(&m.doc, "A5")["whyCode"], json!({"kind": "undecided"}));
     assert_eq!(
-        cell(&m.doc, "A5")["whyShort"]["text"],
-        short("plan.whyShort.undecided", &[])
+        cell(&m.doc, "A5")["whyShort"],
+        json!({"text": short("plan.whyShort.undecided", &[]), "wait": false})
     );
     assert_eq!(cell(&m.doc, "A6")["undecided"], false);
-    assert_eq!(cell(&m.doc, "A6")["whyCode"], Value::Null);
+    assert_eq!(cell(&m.doc, "A6")["whyShort"], Value::Null);
     // 交回那一条执行不了的原因不是「等上一级」⇒ 不标等收下。
     let mut d = dump("/w");
     d["repos"][0]["pending_sets"][1]["blocked_code"] = json!("rule");
     assert_eq!(
-        cell(&make(&d, &who).doc, "A2")["whyCode"],
-        json!({"kind": "inside", "done": 1, "of": 1})
+        cell(&make(&d, &who).doc, "A2")["whyShort"],
+        json!({"text": short("plan.whyShort.inside", &[("done", "1"), ("of", "1")]), "wait": false})
     );
 }
 
@@ -344,7 +337,11 @@ fn each_scope_says_whether_a_new_session_may_take_it_over() {
     assert_eq!(takeover(&free, &who, 0, 1), "open");
     // 负责人那条会话停了（子 agent 看父会话）⇒ 出。
     let ended = |id: &str| match who(id) {
-        crate::plan::Whose::Session { sid, .. } => crate::plan::Whose::Session { sid, live: None },
+        crate::plan::Whose::Session { sid, title, .. } => crate::plan::Whose::Session {
+            sid,
+            title,
+            live: None,
+        },
         crate::plan::Whose::Subagent {
             parent,
             parent_title,
@@ -375,13 +372,7 @@ fn pending_sets_carry_op_reason_and_code() {
     assert_eq!(
         sl["pendingSets"][0],
         json!({"source": "A1-5", "target": "A1-2", "said": "已签收", "blockedReason": null}),
-        "上线的是写好的那一笔；pb 的值与加 · 去只留在后端判 whyCode"
-    );
-    let read = super::make(&dump("/w"), &who, "r0".into(), 0);
-    assert_eq!(
-        read.slices[0].pending_sets[1].blocked_code.as_deref(),
-        Some("source_delegated"),
-        "代号只留在后端里判 whyCode"
+        "上线的是写好的那一笔；pb 的值与加 · 去只留在后端判原因"
     );
     assert!(sl["pendingSets"][1]["blockedReason"]
         .as_str()
@@ -409,9 +400,9 @@ fn pending_sets_carry_op_reason_and_code() {
     );
 }
 
-/// 校验四样：读不成的几处（哪一份 · 第几行 · 为什么）· 判不了的节点 · 不通过（该哪个权力范围改）· 判不了的规则。
+/// 校验三样：读不成的几处（哪一份 · 第几行 · 为什么）· 判不了的节点 · 不通过（该哪个权力范围改）。
 #[test]
-fn the_check_carries_read_errors_unparsed_nodes_failures_and_unknowns() {
+fn the_check_carries_read_errors_unparsed_nodes_and_failures() {
     let m = made();
     let c = &m.doc["slices"][0]["check"];
     assert_eq!(c["unreadable"][0]["file"], ".planned-build/alpha/图.md");
@@ -423,10 +414,6 @@ fn the_check_carries_read_errors_unparsed_nodes_failures_and_unknowns() {
     assert_eq!(
         c["red"][0]["refs"],
         json!([{"start": 0, "end": 4, "ids": ["A1-2"]}])
-    );
-    assert_eq!(
-        c["undecidable"],
-        json!([{"rule": "无主文件", "why": "beta 的仓库不在"}])
     );
 }
 
@@ -444,21 +431,14 @@ fn unowned_files_and_why_they_cannot_be_told() {
     );
 }
 
-/// 领域与类：叫法从 `edge_labels` 取；阶段照 pb 给的那几个、照先后（软件是五个）。stored_in · tool · replaced_by 读了就丢。
+/// 领域与类：叫法从 `edge_labels` 取。stored_in · tool · replaced_by 读了就丢。
 #[test]
-fn kinds_and_phases_take_the_shape_seven_keys() {
+fn kinds_take_the_shape_seven_keys() {
     let m = made();
     let sl = &m.doc["slices"][0];
     assert_eq!(sl["kinds"][1]["name"], "模块");
     assert_eq!(sl["kinds"][1]["edgeWords"]["with"], "实现");
     assert_eq!(sl["kinds"][1]["values"], json!(["已签收", "decided"]));
-    let phases: Vec<&str> = sl["phases"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|p| p["name"].as_str().unwrap())
-        .collect();
-    assert_eq!(phases, ["定架构", "审架构", "开发", "审实现", "回看"]);
     let names: Vec<&str> = m.doc["domains"]
         .as_array()
         .unwrap()
@@ -647,10 +627,6 @@ fn every_slice_has_a_label_per_id_built_by_the_backend() {
         json!([{"id": "A9", "title": "旧的", "kind": "能力", "replaced_by": "A7"}]);
     let m = make(&d, &who);
     assert_eq!(m.doc["slices"][0]["labels"]["A9"], "A9 旧的");
-    assert_eq!(
-        m.doc["slices"][0]["archived"][0],
-        json!({"id": "A9", "title": "旧的", "kind": "能力"})
-    );
     let mut d = dump("/w");
     node_mut(&mut d, "A1")["title"] = json!("");
     assert_eq!(make(&d, &who).doc["slices"][0]["labels"]["A1"], "A1");
@@ -708,14 +684,14 @@ fn by_session_maps_each_owner_session_to_its_scope_preferring_its_own_claim() {
     };
     assert_eq!(
         m.doc["bySession"],
-        json!({MAIN: {"slice": "alpha", "block": "project", "cell": "project", "title": null, "top": true, "phase": "开发", "at": "A1-2", "atTitle": "甲的写出", "via": "session",
+        json!({MAIN: {"slice": "alpha", "block": "project", "cell": "project", "title": null, "top": true, "phase": "开发", "at": "A1-2", "via": "session",
                       "said": said(&top, "开发")}})
     );
     let mut d = dump("/w");
     d["repos"][0]["scopes"][0]["assignee"] = Value::Null;
     assert_eq!(
         make(&d, &who).doc["bySession"][MAIN],
-        json!({"slice": "alpha", "block": "A2", "cell": "A2", "title": "乙功能", "top": false, "phase": "回看", "at": "A2-1", "atTitle": "乙的一半", "via": "subagent",
+        json!({"slice": "alpha", "block": "A2", "cell": "A2", "title": "乙功能", "top": false, "phase": "回看", "at": "A2-1", "via": "subagent",
                "said": said("乙功能", "回看")})
     );
     let mut d = dump("/w");
@@ -735,7 +711,6 @@ fn time_fields_get_their_text_beside_them_and_cell_ids_do_not() {
         said: Some("x".into()),
         raw: None,
         since: ms(86_400_000),
-        since_text: None,
     });
     r.slices[0].cells[1].returned = Some(cmd_wire::plan::PlanReturned {
         at: ms(3_600_000),
@@ -748,10 +723,21 @@ fn time_fields_get_their_text_beside_them_and_cell_ids_do_not() {
     let mut shanghai = r.clone();
     with_time_texts(&mut r, now, &Default::default());
     let v = as_json(&r);
-    assert_eq!(v["readAtText"], "03:09");
+    let read_at = |t: &str| copy_core::copy_text("plan.overview.readAt", &[("time", t)]);
     assert_eq!(
-        r.stale.as_ref().unwrap().since_text.as_deref(),
-        Some("01-01 03:10")
+        r.slices[0].said.read_at.as_deref(),
+        Some(read_at("03:09").as_str()),
+        "读到的时刻只拼进那一句，不另成一格"
+    );
+    assert!(v.get("readAtText").is_none());
+    assert!(
+        r.slices[0]
+            .said
+            .strip
+            .as_deref()
+            .is_some_and(|s| s.contains("01-01 03:10")),
+        "读不成那一份的时刻写进那一句：{:?}",
+        r.slices[0].said.strip
     );
     assert!(
         v["stale"].get("sinceText").is_none(),
@@ -767,10 +753,13 @@ fn time_fields_get_their_text_beside_them_and_cell_ids_do_not() {
         now,
         &crate::common::time::Tz::named("Asia/Shanghai").unwrap(),
     );
-    assert_eq!(shanghai.read_at_text.as_deref(), Some("11:10"));
+    assert_eq!(
+        shanghai.slices[0].said.read_at.as_deref(),
+        Some(read_at("11:10").as_str())
+    );
 }
 
-/// 计划成品顶上也带上次读数那一格（同足迹「最近见到」那一格的形），与 `readAtText` 同一把钟写。
+/// 计划成品顶上也带上次读数那一格（同足迹「最近见到」那一格的形），与读到那一句同一把钟写。
 #[test]
 fn the_plan_product_carries_the_last_read_cell() {
     let at_ms = 1_767_232_980_000_u64;
@@ -820,4 +809,106 @@ fn a_reason_that_is_not_text_still_comes_through_as_its_raw_words() {
     assert!(m.slices[0].bare);
     assert_eq!(m.slices[1].name, "beta");
     assert_eq!(m.domains[0].error.as_deref(), Some("7"));
+}
+
+/// ★ 块的根格由后端标出（`rootOf` ＝ 那一块的编号），块根那一行写成整句「块根那句 · 负责人名字 · 阶段」：两端照摆，不自己找块、不拼。
+/// `project` 的根格与不是根格的 ⇒ 两样都 `null`。
+#[test]
+fn a_block_root_cell_names_its_block_and_carries_the_whole_line() {
+    let m = super::make(&dump("/w"), &who, "r0".into(), 0);
+    let sl = &m.slices[0];
+    let c = |id: &str| sl.cells.iter().find(|c| c.id == id).expect("那一格");
+    let sep = copy_text("kit.text.sep", &[]);
+    assert_eq!(c("A2").root_of.as_deref(), Some("A2"));
+    let want = [
+        copy_text("plan.cell.blockRoot", &[("block", &sl.labels["A2"])]),
+        copy_text("plan.who.sub", &[("session", "甲会话")]),
+        "回看".to_string(),
+    ]
+    .join(&sep);
+    assert_eq!(c("A2").said.block_root.as_deref(), Some(want.as_str()));
+    let kid = c("A2").children.first().cloned().expect("A2 底下一格");
+    for id in ["A1", kid.as_str()] {
+        assert_eq!(c(id).root_of, None, "{id} 不是根格");
+        assert_eq!(c(id).said.block_root, None, "{id} 不是根格");
+    }
+    // 那一块没有负责人 ⇒ 整句里没有那一段。
+    let mut d = dump("/w");
+    d["repos"][0]["scopes"][1]["assignee"] = serde_json::Value::Null;
+    let m = super::make(&d, &who, "r0".into(), 0);
+    let sl = &m.slices[0];
+    let a2 = sl.cells.iter().find(|c| c.id == "A2").unwrap();
+    let want = [
+        copy_text("plan.cell.blockRoot", &[("block", &sl.labels["A2"])]),
+        "回看".to_string(),
+    ]
+    .join(&sep);
+    assert_eq!(a2.said.block_root.as_deref(), Some(want.as_str()));
+}
+
+/// ★ 「谁」那张脸的终端几格照它住的那一处判：与历史清单同一个口（`SessionFace::listed`），不写死「住哪判不出」。
+/// 住在 tmux 里 ⇒ 接得进、看得了，句柄跟着走；名单里不挂它 ⇒ 照实说说不清；子 agent 照父会话住的那一处。
+#[test]
+fn the_who_face_says_where_the_session_lives() {
+    use crate::plan::{Live, Whose};
+    use crate::wire::{Allow, CanView, SessionContainer, TermOpen};
+    let tmux = SessionContainer::Tmux {
+        terminal: Some("t1".into()),
+    };
+    let at = |housed: Option<SessionContainer>| {
+        move |id: &str| {
+            let live = Some(Live {
+                activity: Some(crate::agents::SessionActivity::Idle),
+                needs: None,
+                housed: housed.clone(),
+            });
+            match id {
+                MAIN => Whose::Session {
+                    sid: MAIN.into(),
+                    title: "甲会话".into(),
+                    live,
+                },
+                SUB => Whose::Subagent {
+                    parent: MAIN.into(),
+                    parent_title: "甲会话".into(),
+                    live,
+                },
+                _ => Whose::Unknown,
+            }
+        }
+    };
+    let housed = at(Some(tmux.clone()));
+    for id in [MAIN, SUB] {
+        let w = super::who_of(Some(id), &housed).unwrap();
+        assert_eq!(w.face.can.attach, Allow::Yes, "{id}");
+        assert_eq!(
+            w.face.can.view,
+            CanView::Yes {
+                said: crate::common::cells::Words(copy_core::copy_text("beTerminal.go.here", &[])),
+                open: TermOpen::Attach {
+                    terminal: Some("t1".into())
+                },
+            },
+            "{id}"
+        );
+        // 与清单那一路同一个口造的同一张脸。
+        assert_eq!(
+            w.face,
+            <crate::wire::SessionFace as crate::wire::SessionFaceExt>::listed(
+                &crate::wire::WireLife::Live {
+                    activity: Some(crate::agents::SessionActivity::Idle)
+                },
+                Some(&tmux)
+            ),
+            "{id}"
+        );
+    }
+    let unknown = at(None);
+    let w = super::who_of(Some(MAIN), &unknown).unwrap();
+    assert_eq!(
+        w.face.can.attach,
+        Allow::No {
+            why: crate::common::cells::Words(copy_core::copy_text("beTerminal.why.unclear", &[]))
+        }
+    );
 }

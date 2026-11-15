@@ -16,6 +16,7 @@
  * 8. 鼠标停着的人说的那一句：「编辑」看得见、整颗不伸出任何会裁它的祖先（绘制隔离 `content-visibility: auto` · 溢出裁切）、中心点命中它自己。
  * 9. 输入框上方那一排输入队：多于三条时那一排最多三行高（头上那一行另算），多的在框里滚，不往上顶消息流。
  * 10. 答题块：最高约会话区四成（下限 160px）；收着只剩头一行；消息流贴着底时最后一条露在块上面。
+ * 12. 正文里的任务项（`- [ ]` / `- [x]`）：勾选框与它那一项的头一行字同一行（框的竖直中线落在头一行字的框里）、字在框右边。
  *
  * 回一串「哪里不对」；空 ＝ 都对。
  */
@@ -361,8 +362,29 @@ export function planSlices(): string[] {
   return out;
 }
 
+/** 12. 任务项：勾选框与头一行字同一行、字在框右边。 */
+export function taskItems(): string[] {
+  const out: string[] = [];
+  // 只量「框后面紧跟一段」的那一形（正文排版器出的任务项：头一块是段落）；头一块是代码块 · 标题的另起一行是对的。
+  for (const box of document.querySelectorAll<HTMLInputElement>('li > input[type="checkbox"]:first-child')) {
+    if (!visible(box)) continue;
+    const next = box.nextElementSibling;
+    if (next?.tagName !== "P") continue;
+    const range = document.createRange();
+    range.selectNodeContents(next);
+    const line = [...range.getClientRects()].find((r) => r.width > 0 && r.height > 0);
+    if (!line) continue;
+    const br = box.getBoundingClientRect();
+    const mid = (br.top + br.bottom) / 2;
+    if (mid < line.top - EPS || mid > line.bottom + EPS || line.left < br.right - EPS) {
+      out.push(`任务项的勾选框 ${fmt(br)} 与头一行字 ${fmt(line)} 不在同一行`);
+    }
+  }
+  return out;
+}
+
 export function layoutProblems(): string[] {
-  const out = [...floats(), ...singleLines(), ...foldHeads(), ...acctRows(), ...ruleEditor(), ...chartRows(), ...messageRows(), ...overStream(), ...hoveredEdit(), ...queueRows(), ...answerBlock(), ...planSlices()];
+  const out = [...floats(), ...singleLines(), ...foldHeads(), ...acctRows(), ...ruleEditor(), ...chartRows(), ...messageRows(), ...overStream(), ...hoveredEdit(), ...queueRows(), ...answerBlock(), ...planSlices(), ...taskItems()];
   // 也写进页里的控制台（截图工具每张存一份），整趟被打断时还查得到。
   for (const p of out) console.warn(`[layout] ${p}`);
   return out;

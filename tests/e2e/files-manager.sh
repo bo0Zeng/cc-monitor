@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # 文件管理面的**真进程端到端**：起沙箱后端（家目录在本趟临时目录里、私有 tmux），经真的帧路径
 # （`--stream` 的入方向读循环 → 命令表 → `Run::BlockingFace` → 写面）把文件管理那几条写命令各走一遍，
-# 再在两个沙箱后端之间跑一趟传输（本机回环上一台私有 sshd 当远端：只给 sftp，起始目录钉在远端那台的沙箱家里）。
+# 再跑一组寻址本机的 `transfer-copy`（本机两个目录之间：本机那一端两头都是它自己）。
 #
 # 验三样：
-#   ① 落盘结果对（建 · 建目录 · 改名 · 删 · 存 · 复制 · 解压 · 分块提交 · 上传提交 · 下载落点）；
+#   ① 落盘结果对（建 · 建目录 · 改名 · 删 · 存 · 复制 · 解压 · 分块提交 · 上传提交 · 一组 `transfer-copy`）；
 #   ② 越界路径被拒、盘上一个字节不多（上跳段 · 绝对路径 · 根里一条指向根外的链接 · 改名顶掉已在的目标）；
 #   ③ 只有文件管理那一族写得出来：同一棵树上跑一遍只读的 `files-*`（列 · 看 · 读 · 窥），树前后逐字节相同；
 #      「写句柄只递给文件管理那一族」的类型那一半由 `readonly_guard` 的判据钉（本套件判的是行为那一半）。
@@ -28,66 +28,22 @@ export RUSTUP_HOME="${RUSTUP_HOME:-$HOME/.rustup}"
 REAL_HOME="$HOME"
 export HOME="$WORK/home"
 mkdir -p "$HOME/.cc-monitor" "$WORK/claude/projects"
-SSHD_PID=""
 cleanup() {
   set +e
-  [ -n "$SSHD_PID" ] && kill "$SSHD_PID" 2>/dev/null
   rm -rf -- "$WORK"
   tmux_shim_cleanup
 }
 trap cleanup EXIT
-
-# ── 远端那一台：本机回环上的私有 sshd（只认本趟的钥匙、只给 sftp、起始目录在远端那台的沙箱家里）──────
-# 起不起得来：要 `sshd` 与 `ssh-keygen`。没有 ⇒ 传输那一段记 SKIP 并说原因，套件收尾按「未登记的 SKIP 判红」。
-REMOTE_HOME="$WORK/remote-home"
-mkdir -p "$REMOTE_HOME/.cc-monitor" "$WORK/remote-files"
-SSH_PORT=""
-SSHD_WHY=""
-SSHD_BIN="$(command -v sshd || true)"
-[ -z "$SSHD_BIN" ] && [ -x /usr/sbin/sshd ] && SSHD_BIN=/usr/sbin/sshd
-if [ -z "$SSHD_BIN" ] || ! command -v ssh-keygen >/dev/null 2>&1; then
-  SSHD_WHY="这台没有 sshd / ssh-keygen"
-else
-  ssh-keygen -q -t ed25519 -N '' -f "$WORK/hostkey" >/dev/null
-  ssh-keygen -q -t ed25519 -N '' -f "$WORK/id" >/dev/null
-  cp "$WORK/id.pub" "$WORK/authorized_keys"
-  SSH_PORT="$(python3 -I -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
-  cat >"$WORK/sshd_config" <<EOF
-Port $SSH_PORT
-ListenAddress 127.0.0.1
-HostKey $WORK/hostkey
-PidFile $WORK/sshd.pid
-AuthorizedKeysFile $WORK/authorized_keys
-PasswordAuthentication no
-KbdInteractiveAuthentication no
-PubkeyAuthentication yes
-UsePAM no
-StrictModes no
-AllowTcpForwarding no
-X11Forwarding no
-Subsystem sftp internal-sftp -d $REMOTE_HOME
-ForceCommand internal-sftp -d $REMOTE_HOME
-EOF
-  "$SSHD_BIN" -D -e -f "$WORK/sshd_config" 2>"$WORK/sshd.log" &
-  SSHD_PID=$!
-  if ! wall_until 'python3 -I -c "import socket,sys; socket.create_connection((\"127.0.0.1\", int(sys.argv[1])), 1)" "$SSH_PORT" 2>/dev/null || ! kill -0 "$SSHD_PID" 2>/dev/null'; then
-    SSHD_WHY="sshd 没起来：$(tail -3 "$WORK/sshd.log" | tr '\n' ' ')"
-  elif ! kill -0 "$SSHD_PID" 2>/dev/null; then
-    SSHD_WHY="sshd 起来就退了：$(tail -3 "$WORK/sshd.log" | tr '\n' ' ')"
-    SSHD_PID=""
-  fi
-fi
 : "$REAL_HOME"
 
 echo "== 文件管理面 · 真进程端到端 =="
 echo "backend: $BACKEND"
 set +e
-CLAUDE_CONFIG_DIR="$WORK/claude" python3 -I - "$BACKEND" "$WORK" "${SSH_PORT:-}" "$SSHD_WHY" "$(id -un)" <<'PY'
+CLAUDE_CONFIG_DIR="$WORK/claude" python3 -I - "$BACKEND" "$WORK" <<'PY'
 import atexit, hashlib, io, json, os, subprocess, sys, tarfile, threading, time, queue
 
-backend, work, ssh_port, sshd_why, user = sys.argv[1:6]
+backend, work = sys.argv[1:3]
 home = os.environ["HOME"]
-remote_home = os.path.join(work, "remote-home")
 root = os.path.join(work, "root")
 outside = os.path.join(work, "outside")
 os.makedirs(root); os.makedirs(outside)
@@ -102,13 +58,13 @@ def check(cond, m, d=""):
     ok(m) if cond else bad(m, d)
 
 class Backend:
-    """一个 `--stream` 的沙箱后端：往 stdin 写帧、按 id 收应答帧，传输帧按票号另收。"""
+    """一个 `--stream` 的沙箱后端：往 stdin 写帧、按 id 收应答帧。"""
     def __init__(self, env_home, tag):
         env = dict(os.environ, HOME=env_home)
         self.err = open(os.path.join(work, f"{tag}.stderr"), "wb")
         self.p = subprocess.Popen([backend, "--", "--stream"], stdin=subprocess.PIPE,
-                                  stdout=subprocess.PIPE, stderr=self.err, env=env)
-        self.replies, self.transfers, self.n = {}, {}, 0
+                                  stdout=subprocess.PIPE, stderr=self.err, env=env, cwd=work)
+        self.replies, self.n = {}, 0
         self.cv = threading.Condition()
         self.hello = None
         threading.Thread(target=self._read, daemon=True).start()
@@ -127,8 +83,6 @@ class Backend:
                     self.hello = f
                 elif k == "reply":
                     self.replies[f.get("id")] = f
-                elif k == "transfer":
-                    self.transfers.setdefault(f.get("id"), []).append(f)
                 self.cv.notify_all()
     def ask(self, cmd, args):
         self.n += 1
@@ -139,13 +93,6 @@ class Backend:
             if not self.cv.wait_for(lambda: rid in self.replies, timeout=ceiling):
                 return {"ok": False, "code": "e2e_timeout", "message": f"{cmd} 没有应答"}
             return self.replies.pop(rid)
-    def transfer_end(self, tid):
-        def done():
-            return any(f.get("end") for f in self.transfers.get(tid, []))
-        with self.cv:
-            self.cv.wait_for(done, timeout=ceiling)
-            ends = [f["end"] for f in self.transfers.get(tid, []) if f.get("end")]
-            return ends[0] if ends else None
     def close(self):
         try:
             self.p.stdin.close()
@@ -182,10 +129,6 @@ def outcomes(r):
 
 def all_done(r):
     return r.get("ok") and outcomes(r) and all(st == "done" for st, _ in outcomes(r))
-
-def opened_items(r):
-    """开单那两条（上传 · 下载）的逐项：`[{key, state, id, staged, path, code…}]`。"""
-    return (r.get("data") or {}).get("items") or []
 
 A = Backend(home, "local")
 if A.hello is None:
@@ -286,62 +229,36 @@ for cmd, args in [("files-ls", {"path": root}), ("files-stat", {"path": os.path.
     A.ask(cmd, args)
 check(tree(root) == snap, "只读那几条（ls · stat · read）跑完，树逐字节没变")
 
-# ── 传输：两个沙箱后端之间（本机后端经 sftp 连远端那台的沙箱家）────────────────────
-if sshd_why:
-    SKIP += 1
-    print(f"  SKIP 传输那一段：{sshd_why}")
-else:
-    # 传输只按机器名寻址（怎么拨照本机后端的机器表）⇒ 先经本机后端的写口把远端那台登进它自己的表，再只交名字。
-    peer = "e2e-peer"
-    r = A.ask("machines-set", {"edits": [{"op": "insertin", "where": [{"fields": ["label", "host"], "equals": peer}],
-                                          "value": {"label": peer, "host": "127.0.0.1", "port": int(ssh_port),
-                                                    "user": user, "keyPath": os.path.join(work, "id")}}]})
-    check(r.get("ok"), "machines-set 把远端那台登进本机后端的机器表", r)
-    src = os.path.join(work, "remote-files", "src.bin")
-    payload = os.urandom(300 * 1024)
-    open(src, "wb").write(payload)
-    dl_root = os.path.join(root, "dl"); os.makedirs(dl_root)
-    r = A.ask("transfer-download", {"machine": peer, "local_dir": dl_root, "items": [{"remote_path": src, "name": "got.bin"}]})
-    it = (opened_items(r) or [{}])[0]
-    tid = it.get("id") if it.get("state") == "opened" else None
-    s = A.ask("transfer-start", {"id": tid}) if tid else {}
-    end = A.transfer_end(tid) if tid and s.get("ok") else None
-    check(end and end.get("state") == "done" and open(os.path.join(dl_root, "got.bin"), "rb").read() == payload
-          and not [n for n in os.listdir(dl_root) if n.endswith(".part")],
-          "transfer-download：落点逐字节对、.part 不留", (r, s, end))
-    # 本机落点那一侧先探同名：已在、又没答 ⇒ 一单不开、回 exists 带同名清单（本机那一侧，这里测得到）。
-    r = A.ask("transfer-download", {"machine": peer, "local_dir": dl_root, "items": [{"remote_path": src, "name": "got.bin"}]})
-    names = [c.get("name") for c in ((r.get("data") or {}).get("conflicts") or [])]
-    check(not r.get("ok") and code_of(r) == "exists" and names == ["got.bin"],
-          "transfer-download 落点已有同名、没答 ⇒ exists 带那一项、一单不开", r)
-    # 落点不收相对的目录、不收以 `..` 收尾的落名：整组被拒或那一项没开成，都不许开出单来。
-    for args, what in [({"local_dir": "rel", "items": [{"remote_path": src}]}, "目录是相对路径"),
-                       ({"local_dir": dl_root, "items": [{"remote_path": src, "name": ".."}]}, "落名是 .."),]:
-        r = A.ask("transfer-download", dict(args, machine=peer))
-        items = opened_items(r)
-        refused = not r.get("ok") or (items and all(i.get("state") != "opened" and not i.get("id") for i in items))
-        check(refused, f"transfer-download {what} ⇒ 不开单（{code_of(r) or [i.get('code') for i in items]}）", r)
-    check(sorted(os.listdir(dl_root)) == ["got.bin"], "被拒的那几单一个字节没落")
-    # 上传：本机一份 → 远端暂存区 → 远端那台沙箱后端提交上位
-    local_up = os.path.join(work, "local-up.bin")
-    upbody = os.urandom(200 * 1024)
-    open(local_up, "wb").write(upbody)
-    # 上传先在远端落点探同名（问远端那台的后端 `files-stat`）。本套件的远端只给 sftp、没有后端可问 ⇒ 探不到就当没有同名、照开单；
-    # 「远端已有同名 ⇒ exists 带清单」那一半在这里测不到，由 `control/transfer` 的判据（替身落点）判。这里判开单 · 传 · 提交那一半。
-    rroot = os.path.join(remote_home, "target"); os.makedirs(rroot)
-    r = A.ask("transfer-upload", {"machine": peer, "remote_dir": rroot, "items": [{"local_path": local_up}]})
-    it = (opened_items(r) or [{}])[0]
-    tid = it.get("id") if it.get("state") == "opened" else None
-    s = A.ask("transfer-start", {"id": tid}) if tid else {}
-    end = A.transfer_end(tid) if tid and s.get("ok") else None
-    check(end and end.get("state") == "done" and end.get("sha256") == hashlib.sha256(upbody).hexdigest(),
-          "transfer-upload：传完、摘要对", (r, s, end))
-    B = Backend(remote_home, "remote")
-    rr = B.ask("files-commit-upload", {"root": rroot, "rel": "landed.bin", "key": it.get("staged"),
-                                       "expect": {"sha256": (end or {}).get("sha256")}})
-    check(rr.get("ok") and open(os.path.join(rroot, "landed.bin"), "rb").read() == upbody,
-          "远端那台沙箱后端把暂存件提交上位，逐字节对", rr)
-    B.close()
+# ── 传输：一组寻址本机的 `transfer-copy`（本机两个目录之间；两台之间那一维由读数脚本 `tests/evidence/sftp-loopback.py` 判）──
+src_dir = os.path.join(work, "xfer-src"); os.makedirs(src_dir)
+dst_dir = os.path.join(work, "xfer-dst"); os.makedirs(dst_dir)
+payload = os.urandom(300 * 1024)
+open(os.path.join(src_dir, "src.bin"), "wb").write(payload)
+def copy_local(to_dir, name, **more):
+    return A.ask("transfer-copy", dict({"from": "<local>", "to": "<local>", "to_dir": to_dir,
+                                        "items": [{"path": os.path.join(src_dir, "src.bin"), "name": name}]}, **more))
+r = copy_local(dst_dir, "got.bin")
+check(all_done(r) and open(os.path.join(dst_dir, "got.bin"), "rb").read() == payload
+      and not [n for n in os.listdir(dst_dir) if n.endswith(".part")],
+      "transfer-copy 本机 → 本机：落点逐字节对、.part 不留", r)
+# 落点已有同名、没答 ⇒ 整组不做、回 exists 带同名清单，已有那一份一个字节不动。
+open(os.path.join(dst_dir, "got.bin"), "wb").write(b"mine\n")
+r = copy_local(dst_dir, "got.bin")
+names = [c.get("name") for c in ((r.get("data") or {}).get("conflicts") or [])]
+check(not r.get("ok") and code_of(r) == "exists" and names == ["got.bin"]
+      and open(os.path.join(dst_dir, "got.bin"), "rb").read() == b"mine\n",
+      "transfer-copy 落点已有同名、没答 ⇒ exists 带那一项、已有那一份不动", r)
+# 答了覆盖 ⇒ 盖成源的字节。
+r = copy_local(dst_dir, "got.bin", decide={"0": "overwrite"})
+check(all_done(r) and open(os.path.join(dst_dir, "got.bin"), "rb").read() == payload,
+      "transfer-copy 答了覆盖 ⇒ 落点盖成源的字节", r)
+# 落点目录是相对路径 ⇒ 整组 bad_args、一个字节不落（后端进程的工作目录钉在 `work`，那里先建好 `rel`：照相对路径解就会落进去）。
+os.makedirs(os.path.join(work, "rel"))
+r = copy_local("rel", "x.bin")
+check(not r.get("ok") and code_of(r) == "bad_args",
+      f"transfer-copy 落点目录是相对路径 ⇒ bad_args（{code_of(r) or outcomes(r)}）", r)
+check(sorted(os.listdir(dst_dir)) == ["got.bin"] and os.listdir(os.path.join(work, "rel")) == [],
+      "被拒的那一组一个字节没落")
 
 A.close()
 print(f"===== 合计 PASS={PASS} FAIL={FAIL} SKIP={SKIP} =====")
@@ -349,7 +266,7 @@ sys.exit(0 if FAIL == 0 and SKIP == 0 else 1)  # SKIP 没有登记过的豁免 �
 PY
 rc=$?
 set -e
-left="$(e2e_leftovers "$HOME"; e2e_leftovers "$WORK/remote-home")"
+left="$(e2e_leftovers "$HOME")"
 if [ -n "$left" ]; then
   echo "  FAIL 本趟起的后端没走干净："; echo "$left"; exit 1
 fi

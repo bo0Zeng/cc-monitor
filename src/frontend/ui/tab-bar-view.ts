@@ -1,5 +1,5 @@
 /**
- * 标签页栏视图：栏顶一排（新建 · 历史 · 设置 · ⋯，宿主交进来）· 「需手动 N」· 机器离线条 · 列表（分组 ＋ 每个会话一行）。
+ * 标签页栏视图：栏顶一排（新建 · 历史 · 设置 · ⋯，宿主交进来）· 「待答请求 N」·「需手动 N」两颗 · 机器离线条 · 列表（分组 ＋ 每个会话一行）。
  *
  * 一行：状态点 · 窄窗两字母 · 机器徽标（远端）· 项目名 ＋ 标题（后台多一个齿轮）· 行尾（等批准 / 未读数 · 停发 ·
  * 与默认不同的账号头像 · 图钉）· 悬停时盖在行尾的动作（⋯ · 关闭）。悬停卡（kit 悬停提示的卡式）锚在行右侧。
@@ -19,24 +19,28 @@ import type { GroupCount } from "./generated/GroupCount";
 import { barRows, type BarRow, type RowRect } from "./tab-drop";
 import { lightOf } from "./session-status";
 import { isRemoteOrigin } from "./ipc/origin";
+import { machineName } from "./ipc/chan-caller";
 import { canReattach, closesQuietly, frontBlocked, isEnded } from "./face-can";
 import type { Tab } from "./tab-model";
 import type { TabStore } from "./tab-store";
 import type { TabBarPrefs } from "./tab-bar-prefs";
 import { dispatcher, KeybindingDispatcher, type OverlayHandle } from "./keybindings/registry";
+import type { ActionId } from "./keybindings/actions";
 import rs from "./tab-group-rename.module.css";
 import { copyText } from "./copy-table";
 import { place } from "./kit/morph";
 import { icon } from "./kit/icon";
 import { paintDot, statusDot } from "./kit/status-dot";
-import { countBadge, cappedCount, tag, kbd } from "./kit/badge";
+import { countBadge, tag, kbd } from "./kit/badge";
 import { attachTooltip, delegateTooltip } from "./kit/tooltip";
 import { openMenu, type MenuAnchor, type MenuItem } from "./kit/menu";
 import { closePopover, openPopover, popoverOpenOn, swapPopoverContent } from "./kit/popover";
 import { planRows, renderNeedsPanel, waitingNow, type PanelFacts } from "./needs-panel";
-import type { NeedsBook } from "./needs-book";
+import { columnFace, type NeedsBook, type NeedsCol } from "./needs-book";
 import type { ManualItem } from "./login-reads";
 import type { Machine } from "./ipc/origin";
+import { openSettingsWindow } from "./open-settings";
+import { accountOf } from "./settings-dest";
 import { foldCaret } from "./kit/fold";
 import { commitRename, editOver, mountInline, renameTab } from "./tab-rename";
 import { abbrOf, dotOf, needsOf, nextNeedsStep, peekLine, stateLine, stateWord } from "./session-face";
@@ -94,7 +98,7 @@ export interface TabBarViewHost {
   closeTab(sid: string): void;
   /** 点按钮：手动切 tab。 */
   switchTo(sid: string): void;
-  /** 从「需手动」的入口（Ctrl+J · 栏顶那一条与它的菜单 · 标签上那颗需手动的点）跳过去：切 tab、焦点进答题块。 */
+  /** 从在等人的入口（两个「下一个」· 栏顶两颗的浮层 · 标签上那颗在等人的点）跳过去：切 tab、焦点进答题块。 */
   answerAt(sid: string): void;
   /**
    * 点按钮时的多选（`tab-selection.ts`）：`plain` 单击（清多选、随后切 tab）· `toggle` Ctrl 单击 · `range` Shift 单击 ·
@@ -144,6 +148,41 @@ export interface PlanNeeds {
   open: (i: number) => void;
 }
 
+/** 栏顶两颗的先后：待答请求在前（此刻就能动手的先说）。 */
+const NEEDS_COLS: readonly NeedsCol[] = ["answerable", "manual"];
+
+/** 栏顶一颗（一列）：按钮 · 数 · 键帽（按当前键位现拼，出现时才拼）· 名字 · 那一列「下一个」的动作。 */
+interface NeedsButton {
+  el: HTMLButtonElement;
+  count: HTMLSpanElement;
+  kbd: HTMLSpanElement;
+  name: string;
+  next: ActionId;
+}
+
+/** 建一颗：点（两颗同一个琥珀）· 名字 · 数 · 键帽；先藏着，有才出。 */
+function needsButton(col: NeedsCol, next: ActionId): NeedsButton {
+  const { dot, name } = columnFace(col);
+  const el = document.createElement("button");
+  el.type = "button";
+  el.className = "tab-needs";
+  el.dataset.col = col;
+  el.style.display = "none";
+  const text = document.createElement("span");
+  text.className = "tab-needs-text";
+  text.textContent = name;
+  const count = document.createElement("span");
+  count.className = "tab-needs-count";
+  const sp = document.createElement("span");
+  sp.className = "tab-bar-head-sp";
+  const k = document.createElement("span");
+  k.className = "tab-needs-kbd";
+  el.append(statusDot(dot, name, "compact"), text, count, sp, k);
+  el.setAttribute("aria-haspopup", "dialog");
+  el.setAttribute("aria-expanded", "false");
+  return { el, count, kbd: k, name, next };
+}
+
 /** 栏里的一行（键盘焦点落在哪）：标签页 · 组头。 */
 export type FocusRow = { kind: "tab"; sid: string } | { kind: "head"; gid: string };
 
@@ -176,11 +215,8 @@ export class TabBarView {
   private readonly headEl: HTMLDivElement;
   private readonly headActs: HTMLSpanElement;
   private readonly headEnd: HTMLSpanElement;
-  /** 「需手动 N」：有人在等你才出。 */
-  private readonly needsEl: HTMLButtonElement;
-  private readonly needsCount: HTMLSpanElement;
-  /** 「需手动」那一条右端的键帽（按当前键位现拼，出现时才拼）。 */
-  private readonly needsKbd: HTMLSpanElement;
+  /** 「待答请求 N」·「需手动 N」两颗，各管核心合好的一列：有才出（待答请求在前）。 */
+  private readonly needsBtns: Record<NeedsCol, NeedsButton>;
   /** 栏底机器条（一行一台没连上的，`machine-strip.ts`）：钉在列表下面、往上长，标签页不跳位。 */
   private readonly strip: MachineStrip;
   /** 列表：分组 ＋ 每个会话一行（滚动的是它）。 */
@@ -218,37 +254,24 @@ export class TabBarView {
     this.headEnd.className = "tab-bar-head-acts";
     this.headEl.append(this.headActs, sp, this.headEnd);
 
-    this.needsEl = document.createElement("button");
-    this.needsEl.type = "button";
-    this.needsEl.className = "tab-needs";
-    this.needsEl.style.display = "none";
-    const needsDot = statusDot("needs-you", copyText("beSession.needs.unknown"), "compact");
-    const needsText = document.createElement("span");
-    needsText.className = "tab-needs-text";
-    needsText.textContent = copyText("beSession.needs.unknown");
-    this.needsCount = document.createElement("span");
-    this.needsCount.className = "tab-needs-count";
-    const needsSp = document.createElement("span");
-    needsSp.className = "tab-bar-head-sp";
-    this.needsKbd = document.createElement("span");
-    this.needsKbd.className = "tab-needs-kbd";
-    this.needsEl.append(needsDot, needsText, this.needsCount, needsSp, this.needsKbd);
-    this.needsEl.setAttribute("aria-haspopup", "dialog");
-    this.needsEl.setAttribute("aria-expanded", "false");
-
+    this.needsBtns = {
+      answerable: needsButton("answerable", "asks.next"),
+      manual: needsButton("manual", "manual.next"),
+    };
     this.strip = new MachineStrip({ fix: (origin, fix) => this.host.fixMachine(origin, fix) });
 
     this.listEl = document.createElement("div");
     this.listEl.className = "tab-list";
     this.slotTail = document.createElement("div");
     this.listEl.appendChild(this.slotTail);
-    barEl.prepend(this.headEl, this.needsEl, this.listEl, this.strip.el);
+    barEl.prepend(this.headEl, this.needsBtns.answerable.el, this.needsBtns.manual.el, this.listEl, this.strip.el);
     // 悬停卡与行尾动作的悬停提示都委托在列表上：一行零个监听器（与点击 / 拖拽同一条规矩）。
     delegateTooltip(this.listEl, ".tab", (el) => {
       const sid = this.sidOf.get(el);
       return sid === undefined ? null : this.hoverCard(sid);
     }, { placement: "right", hold: true, width: () => (folded() ? 260 : 300) });
-    delegateTooltip(this.listEl, ".tab-focus, .tab-more, .tab-close", (el) => actHint(el));
+    // 短提示一组委托在整条栏上：行尾动作 · 栏顶两颗（按 `data-col` 分那一列；窄栏只剩点和数时靠它）。
+    delegateTooltip(barEl, ".tab-focus, .tab-more, .tab-close, .tab-needs", (el) => (el.dataset.col !== undefined ? this.needsHint(el.dataset.col as NeedsCol) : actHint(el)));
   }
 
   /** 栏顶那几颗全局入口（左：新建 · 历史 · 设置；右端：更多去处 ⋯）：宿主建好交进来，这里只摆。 */
@@ -273,72 +296,74 @@ export class TabBarView {
   plan: PlanNeeds = { at: () => null, open: () => {} };
 
   /**
-   * 「需手动」的账（宿主挂进来，`needs-book.ts`：各台整份、本机合好）· 点会话外那一行开登录抽屉。数进「需手动 N」与窗口标题；会话外那几项不进 `Ctrl+J`。
+   * 「待答请求 · 需手动」的账（宿主挂进来，`needs-book.ts`：各台整份、本机合好两列）· 点会话外那一行开登录抽屉。两颗各读一列；会话外那几项不进「下一个」。
    */
   needs: { book: NeedsBook | null; login: (origin: Machine, item: ManualItem) => void } = { book: null, login: () => {} };
 
-  /** 「需手动」的下一站（`Ctrl+J` · 点「需手动」那一条）：照合好的那一份走，会话在前、计划项在后（先问一回各台）。没有 ⇒ 什么都不做。 */
-  async nextNeeds(): Promise<void> {
+  /**
+   * 那一列的下一站（`asks.next` 默认 `Ctrl+J` · `manual.next` 默认不绑）：照核心合好的那一列走（先问一回各台）。
+   * 待答请求只绕会话；需手动答不了的会话在前、计划项在后。没有 ⇒ 什么都不做。
+   */
+  async nextNeeds(col: NeedsCol): Promise<void> {
     const book = this.needs.book;
     if (!book) return;
     await book.again();
-    const order = book.sessions().map((x) => x.session.sid);
-    const at = this.plan.at();
-    const step = nextNeedsStep(order, at === null ? this.store.activeId : null, at, book.plans().length);
+    const f = book.facts(col);
+    // 站在计划项上只在这一列有计划项时算（待答请求那一列没有）。
+    const at = f.plans.length > 0 ? this.plan.at() : null;
+    const step = nextNeedsStep(f.sessions.map((x) => x.session.sid), at === null ? this.store.activeId : null, at, f.plans.length);
     if (step === null) return;
     if ("sid" in step) this.host.answerAt(step.sid);
     else this.plan.open(step.plan);
   }
 
-  /** 此刻「需手动」的数：后端合好的总数（会话 ＋ 计划项 ＋ 会话外的每一项；窗口标题用，与入口同一个数）。 */
-  needsCountNow(): number {
-    return this.needs.book?.total() ?? 0;
-  }
-
-  /** 计划那一侧 · 会话外那一份的数变了 ⇒ 重画「需手动 N」（浮层开着 ⇒ 原地换内容）。 */
+  /** 账 · 计划那一侧变了 ⇒ 重画两颗（浮层开着 ⇒ 原地换内容）。 */
   planNeedsChanged(): void {
     this.updateNeedsStrip();
     this.repaintNeedsPanel();
   }
 
-  /** 点「需手动」：开 / 关浮层。开的那一下各台的会话外清单重问一次（问回来之前照上一份画）。 */
-  toggleNeedsPanel(): void {
-    if (popoverOpenOn(this.needsEl)) {
+  /** 点那一颗：开 / 关它那一列的浮层。开的那一下各台重问一次（问回来之前照上一份画）。 */
+  toggleNeedsPanel(col: NeedsCol): void {
+    const b = this.needsBtns[col];
+    if (popoverOpenOn(b.el)) {
       closePopover();
       return;
     }
-    const content = this.needsPanel(0);
-    openPopover(this.needsEl, content, {
-      label: copyText("beSession.needs.unknown"),
+    const content = this.needsPanel(col, 0);
+    openPopover(b.el, content, {
+      label: b.name,
       align: "start",
       onClose: () => {
-        this.needsEl.classList.remove("is-open");
+        b.el.classList.remove("is-open");
         this.updateNeedsStrip();
       },
     });
-    this.needsEl.classList.add("is-open");
+    b.el.classList.add("is-open");
     content.focus();
     void this.needs.book?.again();
   }
 
   /** 浮层那一份内容（`at` ＝ 键盘选着第几行）。 */
-  private needsPanel(at: number): HTMLElement {
-    const facts = this.needsFacts();
+  private needsPanel(col: NeedsCol, at: number): HTMLElement {
+    const facts = this.needsFacts(col);
     this.needsDrawn = JSON.stringify(facts);
     const root = this.buildNeedsPanel(facts, at);
     this.needsContent = root;
     return root;
   }
 
-  /** 浮层此刻那一份内容（原地换时从它取选着的那一行）· 画它用的那一份事实（一字不差 ⇒ 不重画）。 */
+  /** 浮层此刻那一份内容（原地换时从它取选着的那一行）· 画它用的那一份事实（一字不差 ⇒ 不重画）。同一时刻只开一个浮层。 */
   private needsContent: HTMLElement | null = null;
   private needsDrawn = "";
 
-  private needsFacts(): PanelFacts {
+  /** 那一列交给浮层的事实：那一列有什么照账（`NeedsBook.facts`）；没问到的那几台两列都摆（两列都因它说不准）。 */
+  private needsFacts(col: NeedsCol): PanelFacts {
     const now = Date.now();
     const book = this.needs.book;
     // 状态那一句照那台写好的会走的那一句（在不在条上一样，`waitingNow`）；标题：条上有它 ⇒ 条上那一份，没有 ⇒ 那台写好的。
-    const sessions = (book?.sessions() ?? []).map((b) => {
+    const f = book?.facts(col) ?? { sessions: [], plans: [], manual: [], unreadable: [] };
+    const sessions = f.sessions.map((b) => {
       const { origin, session } = b;
       const t = this.store.tabs.get(session.sid);
       return {
@@ -348,15 +373,10 @@ export class TabBarView {
         state: waitingNow(b, now),
         what: session.needs.what,
         by: session.needs.ask?.run?.text ?? null,
+        manualText: session.needs.manualText ?? null,
       };
     });
-    return {
-      sessions,
-      plans: planRows(book?.plans() ?? []),
-      manual: book?.manual() ?? [],
-      offline: book?.offline() ?? [],
-      unreadable: book?.unreadable() ?? [],
-    };
+    return { col, sessions, plans: planRows(f.plans), manual: f.manual, offline: book?.offline() ?? [], unreadable: f.unreadable, sure: book?.sure(col) ?? true };
   }
 
   private buildNeedsPanel(facts: PanelFacts, at: number): HTMLElement {
@@ -376,18 +396,28 @@ export class TabBarView {
           close();
           this.needs.login(origin, item);
         },
+        toAccount: (origin, account) => {
+          close();
+          void openSettingsWindow(undefined, accountOf(origin, account));
+        },
       },
       at,
     ).root;
   }
 
+  /** 哪一颗的浮层开着；都没开 ⇒ `null`。 */
+  private openCol(): NeedsCol | null {
+    return NEEDS_COLS.find((c) => popoverOpenOn(this.needsBtns[c].el)) ?? null;
+  }
+
   /** 浮层开着、数据变了 ⇒ 原地换内容（选着的那一行下标照留；焦点留在浮层里）。 */
   private repaintNeedsPanel(): void {
-    if (!popoverOpenOn(this.needsEl)) return;
-    if (JSON.stringify(this.needsFacts()) === this.needsDrawn) return;
+    const col = this.openCol();
+    if (col === null) return;
+    if (JSON.stringify(this.needsFacts(col)) === this.needsDrawn) return;
     const old = this.needsContent;
     const at = Number(old?.dataset.at ?? 0);
-    swapPopoverContent(this.needsEl, this.needsPanel(Number.isFinite(at) && at >= 0 ? at : 0));
+    swapPopoverContent(this.needsBtns[col].el, this.needsPanel(col, Number.isFinite(at) && at >= 0 ? at : 0));
   }
 
   /** 这个事件落在哪颗 tab 按钮上、是不是落在它行尾的子按钮（⋯ / ×）上。不是 tab 按钮 ⇒ `null`。 */
@@ -403,11 +433,12 @@ export class TabBarView {
   }
 
   private onBarClick(e: MouseEvent): void {
-    if (e.target instanceof Node && this.needsEl.contains(e.target)) {
-      this.toggleNeedsPanel();
+    const hitCol = e.target instanceof Node ? NEEDS_COLS.find((c) => this.needsBtns[c].el.contains(e.target as Node)) : undefined;
+    if (hitCol !== undefined) {
+      this.toggleNeedsPanel(hitCol);
       return;
     }
-    // 栏顶那一排、需手动、栏底机器条之外的才算「条上」：点在列表外不清多选。
+    // 栏顶那一排、栏顶两颗、栏底机器条之外的才算「条上」：点在列表外不清多选。
     if (!(e.target instanceof Node && this.listEl.contains(e.target))) return;
     const hit = this.hitOf(e);
     if (!hit) {
@@ -741,29 +772,45 @@ export class TabBarView {
     return refs;
   }
 
-  /**
-   * 「需手动 N」：N ≥ 1 才出（浮层开着时照留：最后一项刚解决 ⇒ 去掉数字，关了才消失）。
-   * 有哪台回了话、清单却无法读取 ⇒ 不带数字、虚线框（数说不准）。
-   */
+  /** 那一颗的悬停：核心写好的那一列头那一句 ＋ 那一列「下一个」此刻的键（没绑 ⇒ 只那一句）。 */
+  private needsHint(col: NeedsCol): string {
+    const b = this.needsBtns[col];
+    const chord = dispatcher.effectiveChord(b.next);
+    const head = this.needs.book?.head(col) ?? b.name;
+    return chord ? [head, KeybindingDispatcher.prettyChord(chord)].join(copyText("kit.text.sep")) : head;
+  }
+
+  /** 两颗各照自己那一列画。 */
   private updateNeedsStrip(): void {
-    const n = this.needsCountNow();
-    const open = popoverOpenOn(this.needsEl);
-    const unreadable = (this.needs.book?.unreadable().length ?? 0) > 0;
-    this.needsEl.style.display = n === 0 && !open && !unreadable ? "none" : "";
-    if (this.needsEl.classList.contains("is-unknown") !== unreadable) this.needsEl.classList.toggle("is-unknown", unreadable);
-    if (n === 0 && !open && !unreadable) return;
-    const chord = dispatcher.effectiveChord("needs.next");
+    for (const col of NEEDS_COLS) this.updateNeedsButton(col);
+  }
+
+  /**
+   * 一颗（「待答请求 N」/「需手动 N」）：那一列 N ≥ 1 或说不准才出（浮层开着时照留：最后一项刚解决 ⇒ 去掉数字，关了才消失）。
+   * 核心说那一列说不准 ⇒ 不带数字、虚线框。读屏名是核心写好的那一列头那一句；右端键帽是那一列「下一个」此刻的键（没绑 ⇒ 不画）。
+   */
+  private updateNeedsButton(col: NeedsCol): void {
+    const b = this.needsBtns[col];
+    const book = this.needs.book;
+    const n = book?.total(col) ?? 0;
+    const unsure = book ? !book.sure(col) : false;
+    const open = popoverOpenOn(b.el);
+    const hide = n === 0 && !open && !unsure;
+    b.el.style.display = hide ? "none" : "";
+    if (b.el.classList.contains("is-unknown") !== unsure) b.el.classList.toggle("is-unknown", unsure);
+    if (hide) return;
+    const chord = dispatcher.effectiveChord(b.next);
     const pretty = chord ? KeybindingDispatcher.prettyChord(chord) : "";
-    if (this.needsKbd.dataset.chord !== pretty) {
-      this.needsKbd.dataset.chord = pretty;
-      this.needsKbd.replaceChildren(...(pretty ? [kbd(pretty)] : []));
+    if (b.kbd.dataset.chord !== pretty) {
+      b.kbd.dataset.chord = pretty;
+      b.kbd.replaceChildren(...(pretty ? [kbd(pretty)] : []));
     }
-    const shown = unreadable ? "" : String(n);
-    if (this.needsCount.dataset.n !== shown) {
-      this.needsCount.dataset.n = shown;
-      this.needsCount.replaceChildren(...[unreadable ? null : countBadge(n, "warn")].filter((b): b is HTMLSpanElement => b !== null));
+    const shown = unsure ? "" : String(n);
+    if (b.count.dataset.n !== shown) {
+      b.count.dataset.n = shown;
+      b.count.replaceChildren(...[unsure ? null : countBadge(n, "warn")].filter((x): x is HTMLSpanElement => x !== null));
     }
-    this.needsEl.setAttribute("aria-label", copyText("tabBar.needs.aria", { n }));
+    b.el.setAttribute("aria-label", book?.head(col) ?? "");
   }
 
   /**
@@ -1188,9 +1235,9 @@ export class TabBarView {
     const reconnectable = canReattach(tab.face);
     const n = needsOf(tab);
     const needsText = n ? n.text : "";
-    const unread = tab.unread > 0 && !active;
-    // 未读数只在有未读、又不在等你时出（等你 ＞ 未读数）。
-    const unreadText = unread && !n ? cappedCount(tab.unread) : "";
+    const unread = tab.unreadSaid !== null && !active;
+    // 未读只在有未读、又不在等你时出（等你 ＞ 未读）；字是后端写好的（含「99+」），照摆。
+    const unreadText = unread && !n ? (tab.unreadSaid ?? "") : "";
     // 空闲、跑完你还没看 ⇒ 标题 600 字重（点开即恢复）。
     const unseenDone = unread && dot === "idle";
     const titleText = tab.title;
@@ -1200,7 +1247,9 @@ export class TabBarView {
       .map((b) => (b ? "1" : "0"))
       .join("");
     const held = holdOf(appStore.sessionRotation.get().get(sid)?.read) !== null;
-    const drawn = [flags, lightClass, dot, titleText, unreadText, needsText, held ? "1" : "", abbr, remote ? tab.origin : ""].join("\u0000");
+    // 点的读屏名是状态词：同一颗点可以换词（状态不明 → 空闲都是空闲点），所以词也进比对串。
+    const dotName = stateWord(tab);
+    const drawn = [flags, lightClass, dot, dotName ?? "", titleText, unreadText, needsText, held ? "1" : "", abbr, remote ? machineName(tab.origin) : ""].join("\u0000");
     if (refs.drawn !== drawn) {
       refs.drawn = drawn;
       refs.root.classList.toggle("active", active);
@@ -1218,12 +1267,11 @@ export class TabBarView {
       refs.root.classList.toggle("unseen-done", unseenDone);
       refs.root.classList.toggle("waiting-you", n !== null);
       // 只写真变了的那几格（一个状态变了 ⇒ 这颗按钮上恰好：类 · 点的样子 · 点的读屏名）。
-      const dotName = stateWord(tab);
       paintDot(refs.dot, dot, dotName);
       if (refs.label.textContent !== titleText) refs.label.textContent = titleText;
       setText(refs.abbr, abbr);
       setShown(refs.machine, remote);
-      if (remote) setText(refs.machine, tab.origin);
+      if (remote) setText(refs.machine, machineName(tab.origin));
       setText(refs.needs, needsText);
       setShown(refs.needs, n !== null);
       setShown(refs.holdBadge, held);

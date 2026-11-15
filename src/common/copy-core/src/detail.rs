@@ -19,7 +19,7 @@ pub const RAW_CAP: cap_core::Cap = cap_core::Cap {
 pub enum Label {
     /// 出错那一端的本地时刻（[`stamp`]）。
     At,
-    /// 出错的那台：系统 架构 · 版本 (构建)；没连上 ⇒ 名 ＋「（未连上）」。
+    /// 出错的那台：系统 架构 · 版本 (构建)；没够着那台 ⇒ 名 ＋「（未连接）」。
     Machine,
     /// 本机：远端失败经本机转交时由本机壳补一行（出错的就是本机时不出）。
     Local,
@@ -275,18 +275,18 @@ pub fn failure(
         .render()
 }
 
-/// 通道这一跳断了的那一份（monitor 壳与文件窗口进程同一份）：时刻 · 机器（`not_sent` ⇒ 名 ＋「（未连上）」）·
+/// 通道这一跳断了的那一份（monitor 壳与文件窗口进程同一份）：时刻 · 机器（`unreached` ⇒ 名 ＋「（未连接）」，没够着那台才写）·
 /// 本机（远端时给；出错的就是本机时不给）· 命令 · 断在（可缺）· 码。那几项的取法住通信层 `HopFacts`。
 pub fn channel(
     at: &str,
     machine: &str,
-    not_sent: bool,
+    unreached: bool,
     local: Option<&str>,
     command: &str,
     hop: Option<&str>,
     code: &str,
 ) -> Detail {
-    let machine = if not_sent {
+    let machine = if unreached {
         format!(
             "{machine}（{}）",
             copy_text("detail.value.notConnected", &[])

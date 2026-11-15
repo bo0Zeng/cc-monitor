@@ -18,15 +18,17 @@
 //! # 变换逻辑不在这里
 //!
 //! 记录变换住适配层 `agents/claudecode/branch.rs`，经注册表那一格够它（`agents::build_branch_records`）。
+//! 自己叉的那一家（`BranchFace::Own`）不经这里写：起会话那一条（[`fork_for_launch`]）把叉交给它，本模块一个文件都不写。
 //!
 //! # ★**「找文件」也不在这里**
 //!
-//! 定位源文件只有一份，入参是 sid：住适配层、经注册表那一格够（`agents::find_session`）。
+//! 定位源文件只有一份，入参是 sid：住适配层、经注册表那一格够（`agents::find_session_in`）。
 //!
 //! ⇒ 本模块只做：**读 → 调变换 → `O_EXCL` 落盘**。
 //! 🔴 **写那一半刻意留在这里**（「找」归适配层，「写」不归）——
 //! 写经分叉那只只会新建的手（`NewFile`）。
 
+use crate::common::said::Said;
 use crate::platform::fs::{NewFile, NewFileFail};
 use cap_core::{Cap, Over};
 use std::path::Path;
@@ -36,8 +38,8 @@ use std::path::Path;
 struct ForkResult {
     session_id: String,
     jsonl_path: String,
-    /// 源会话那份记录（帧面拿它收「分叉之后起」的事实）。
-    source: std::path::PathBuf,
+    /// 按 sid 找到的源会话（帧面拿它收「分叉之后起」的事实）。
+    source: crate::agents::SessionAt,
 }
 
 /// `session-fork` 的入参：从 `sid` 那条会话的 `uuid` 那条消息处分叉。
@@ -85,10 +87,9 @@ const MAX_SESSION_JSONL_BYTES: Cap = Cap {
 };
 
 /// 读一个 jsonl 为逐行 `Value`（剥 BOM、跳空行、坏行忽略——口径同 monitor 侧）。
-fn read_jsonl(path: &Path) -> Result<Vec<serde_json::Value>, String> {
+fn read_jsonl(path: &Path) -> Result<Vec<serde_json::Value>, Said> {
     // 共享的带上限整读：只认普通文件（挡掉 FIFO/设备），超上限一个字节不交出来。
-    let bytes = crate::platform::fs::Ro::read_capped(path, MAX_SESSION_JSONL_BYTES)
-        .map_err(|e| format!("refuse fork: read {}: {e}", path.display()))?;
+    let bytes = crate::platform::fs::Ro::read_capped(path, MAX_SESSION_JSONL_BYTES)?;
     let text = String::from_utf8_lossy(&bytes);
     Ok(text
         .lines()
@@ -130,13 +131,15 @@ fn new_session_id(source_sid: &str) -> String {
 /// 帧面 `session-fork` 的本体：两个 id 过放行判定 → [`run_inner`]（读 → 适配层变换 → `O_EXCL` 落盘）。
 ///
 /// 本机远端都经那台机器常驻后端的长连接说这一条。家目录由顶层壳 `fork_face` 交进来（本层自己找就得问 `observe::`，反向边）；
-/// 判据直接喂夹具家目录。回包比本体多一格 `launch`：由入口按「源会话那份记录 ＋ 源 sid」收齐交回，本层不读观测层。
+/// 判据直接喂夹具家目录。回包比本体多一格 `launch`：由入口按「按 sid 找到的源会话 ＋ 源 sid」收齐交回，本层不读观测层。
 pub fn fork_at(
     nf: &NewFile,
-    agent_home: &Path,
+    agent_home: impl crate::agents::IntoHomes,
     req: &ForkReq,
-    launch: &dyn Fn(&Path, &str) -> super::fork_launch::Launch,
+    launch: &dyn Fn(&crate::agents::SessionAt, &str) -> super::fork_launch::Launch,
 ) -> Result<Forked, ForkErr> {
+    let agent_home_v = crate::agents::IntoHomes::into_homes(agent_home);
+    let agent_home: &[crate::agents::AgentHome] = &agent_home_v;
     let res = fork_checked(nf, agent_home, &req.sid, &req.uuid)
         .map_err(crate::wire::typed::of_fail_with(ForkErr::ForkFailed))?;
     Ok(Forked {
@@ -146,23 +149,101 @@ pub fn fork_at(
     })
 }
 
-/// 起新会话那一条（`session-open` 新起带 `fork`）写分支记录：同 [`fork_at`] 那一份本体，回新会话的 sid。
+/// 源会话起在哪个目录：问按 sid 找到它的那一家（`at.kind`）的记录面，不照路径另认。那一家记录里没有这件事 ⇒ `None`。
+pub fn source_cwd_among(
+    registry: &[crate::agents::Adapter],
+    at: &crate::agents::SessionAt,
+) -> Option<String> {
+    crate::agents::adapter_among(registry, at.kind)
+        .and_then(|a| a.records)
+        .and_then(|r| r.project_dir)
+        .and_then(|f| f(&at.file))
+}
+
+/// [`source_cwd_among`] 照这个后端的注册表。
+pub fn source_cwd(at: &crate::agents::SessionAt) -> Option<String> {
+    source_cwd_among(crate::agents::REGISTRY, at)
+}
+
+/// 起新会话那一条（`session-open` 新起带 `fork`）叉：照源会话那一家的分叉面（[`crate::agents::BranchFace`]），回新会话的 sid。
 pub fn fork_for_launch(
     nf: &NewFile,
-    agent_home: &Path,
+    agent_home: impl crate::agents::IntoHomes,
     sid: &str,
     uuid: &str,
 ) -> Result<String, crate::common::said::Said> {
-    fork_checked(nf, agent_home, sid, uuid).map(|r| r.session_id)
+    let agent_home_v = crate::agents::IntoHomes::into_homes(agent_home);
+    let agent_home: &[crate::agents::AgentHome] = &agent_home_v;
+    fork_for_launch_among(crate::agents::REGISTRY, nf, agent_home, sid, uuid)
+}
+
+/// [`fork_for_launch`] 的可喂夹具那一半。两个 id 先过放行判定，再按 sid 找源会话、问它归的那一家怎么叉：
+/// 自己叉 ⇒ 交给它（入参是家目录 · 源 sid · 那条消息），回它交回的 sid，本层一个文件都不写；改写 ⇒ 同 [`fork_at`] 那一份本体。
+pub fn fork_for_launch_among(
+    registry: &[crate::agents::Adapter],
+    nf: &NewFile,
+    agent_home: impl crate::agents::IntoHomes,
+    sid: &str,
+    uuid: &str,
+) -> Result<String, crate::common::said::Said> {
+    use crate::agents::{BranchFace, OwnFork};
+    let agent_home = agent_home.into_homes_among(registry);
+    let agent_home: &[crate::agents::AgentHome] = &agent_home;
+    ids_ok(sid, uuid)?;
+    let failed = |m: String| crate::common::said::Said::new("fork_failed", m);
+    let at = crate::agents::find_session_in_among(registry, agent_home, sid)
+        .map_err(|m| not_found(sid, m).coded("fork_failed"))?;
+    // 认家只照按 sid 找到的那一家（`SessionAt::kind`），不照路径另认。
+    let branch = crate::agents::adapter_among(registry, at.kind)
+        .and_then(|a| a.records)
+        .and_then(|r| r.branch);
+    match branch {
+        Some(BranchFace::Own(own)) => own(&OwnFork {
+            home: &at.home,
+            sid,
+            message: uuid,
+        })
+        // 〔`INVARIANTS §47` ①〕交回的 sid 要进恢复那一行与轮换的键：用它的这一侧在这里判，不像会话 id ⇒ 当没叉成。
+        .and_then(|new| {
+            if shell_quote_core::session_id_ok(&new) {
+                Ok(new)
+            } else {
+                Err(crate::agents::ForkFail::Failed)
+            }
+        })
+        .map_err(|f| failed(fork_fail_said(&f, sid))),
+        _ => rewrite(registry, nf, at, sid, uuid)
+            .map(|r| r.session_id)
+            .map_err(|s| s.coded("fork_failed")),
+    }
+}
+
+/// 那一家自己叉不成的码 ⇒ 文案表那一句。
+fn fork_fail_said(f: &crate::agents::ForkFail, sid: &str) -> String {
+    use crate::agents::ForkFail;
+    match f {
+        ForkFail::NoTurn { message } => {
+            copy_core::copy_text("beSessionNew.fork.noTurn", &[("msgId", message)])
+        }
+        ForkFail::Failed => copy_core::copy_text("beSessionNew.fork.failed", &[("sid", sid)]),
+    }
 }
 
 /// 两个 id 先过放行判定，再交 [`run_inner`]。
 fn fork_checked(
     nf: &NewFile,
-    agent_home: &Path,
+    agent_home: impl crate::agents::IntoHomes,
     sid: &str,
     uuid: &str,
 ) -> Result<ForkResult, crate::common::said::Said> {
+    let agent_home_v = crate::agents::IntoHomes::into_homes(agent_home);
+    let agent_home: &[crate::agents::AgentHome] = &agent_home_v;
+    ids_ok(sid, uuid)?;
+    run_inner(nf, agent_home, sid, uuid).map_err(|s| s.coded("fork_failed"))
+}
+
+/// 源 sid 与消息 id 过放行判定；不过 ⇒ `bad_args` 与那一句。
+fn ids_ok(sid: &str, uuid: &str) -> Result<(), crate::common::said::Said> {
     // 〔`INVARIANTS §47` ①〕两个 id 在这里先过放行判定（界面经通道直说、不再判；本侧 = 真去用它的这一侧）：
     //   判定只有共享那一份 `session_id_ok`，这里只把「长度不对」与「形状不对」分成两句话。
     for (what, id) in [
@@ -184,38 +265,95 @@ fn fork_checked(
             return Err(crate::common::said::Said::new("bad_args", said));
         }
     }
-    run_inner(nf, agent_home, sid, uuid)
-        .map_err(|m| crate::common::said::Said::new("fork_failed", m))
+    Ok(())
 }
 
 fn run_inner(
     nf: &NewFile,
-    agent_home: &Path,
+    agent_home: impl crate::agents::IntoHomes,
     source_sid: &str,
     message_uuid: &str,
-) -> Result<ForkResult, String> {
+) -> Result<ForkResult, Said> {
+    let agent_home_v = crate::agents::IntoHomes::into_homes(agent_home);
+    let agent_home: &[crate::agents::AgentHome] = &agent_home_v;
     // 🔴 「找文件」**这一句就是全部** —— 本模块只交家目录，每一家在自己的记录根下找（适配层的知识）。
-    let source = crate::agents::find_session(agent_home, source_sid)?.file;
-    let lines = read_jsonl(&source)?;
+    let at = crate::agents::find_session_in(agent_home, source_sid)
+        .map_err(|m| not_found(source_sid, m))?;
+    rewrite(crate::agents::REGISTRY, nf, at, source_sid, message_uuid)
+}
+
+/// 按 sid 找不到源会话 ⇒ 文案表那一句，适配层说的进原话。
+fn not_found(sid: &str, m: String) -> Said {
+    Said::with_raw(
+        copy_core::copy_text("beSessionNew.fork.notFound", &[("sid", sid)]),
+        m,
+    )
+}
+
+/// 改写那一形：读源记录 → 找到它的那一家（`at.kind`，不照路径另认）改写（自己叉的那一家照实拒）→ `O_EXCL` 落一份新记录。
+/// 每种拒法上屏只出文案表那一句。
+fn rewrite(
+    registry: &[crate::agents::Adapter],
+    nf: &NewFile,
+    at: crate::agents::SessionAt,
+    source_sid: &str,
+    message_uuid: &str,
+) -> Result<ForkResult, Said> {
+    let kind = at.kind;
+    let source = &at.file;
+    // 每种拒法：文案表那一句（带源 sid），下层说的进原话（不上句子）。
+    let lines = read_jsonl(&source).map_err(|e| {
+        Said::with_raw(
+            copy_core::copy_text("beSessionNew.fork.readSource", &[("sid", source_sid)]),
+            source.display(),
+        )
+        .and_raw(Some(&e.said))
+        .and_raw(e.raw.as_deref())
+    })?;
     let new_sid = new_session_id(source_sid);
-    // 分叉变换问这份记录归的那一家。
-    let kind = crate::agents::record_kind_of(&source).unwrap_or_default();
-    let records =
-        crate::agents::build_branch_records(kind, &lines, message_uuid, source_sid, &new_sid)?;
+    let records = crate::agents::build_branch_records(
+        registry,
+        kind,
+        &lines,
+        message_uuid,
+        source_sid,
+        &new_sid,
+    )
+    .map_err(|m| {
+        Said::with_raw(
+            copy_core::copy_text("beSessionNew.fork.noBranch", &[("sid", source_sid)]),
+            m,
+        )
+    })?;
 
     // 落点 = 源文件同目录（那已是 projects 下某个项目目录），文件名 = 新 sid。
-    let dir = source
-        .parent()
-        .ok_or("refuse fork: source has no parent dir")?;
-    let file_name = crate::agents::session_file_name(kind, &new_sid)
-        .ok_or("refuse fork: this agent has no session file naming")?;
-    let out_path = dir.join(file_name);
-    write_new_file(nf, &out_path, &records)?;
+    let file_name = crate::agents::record_tree_among(registry, kind)
+        .map(|t| (t.file_name)(&new_sid))
+        .ok_or_else(|| {
+            Said::with_raw(
+                copy_core::copy_text("beSessionNew.fork.noFileName", &[("sid", source_sid)]),
+                kind,
+            )
+        })?;
+    let out_path = source.with_file_name(file_name);
+    write_new_file(nf, &out_path, &records).map_err(|f| {
+        let (said, e) = match f {
+            NewFileFail::Create(e) => (
+                copy_core::copy_text("beSessionNew.fork.create", &[("sid", source_sid)]),
+                e,
+            ),
+            NewFileFail::Write(e) => (
+                copy_core::copy_text("beSessionNew.fork.write", &[("sid", source_sid)]),
+                e,
+            ),
+        };
+        Said::with_raw(said, format!("{}: {e}", out_path.display()))
+    })?;
 
     Ok(ForkResult {
         session_id: new_sid,
         jsonl_path: out_path.to_string_lossy().into_owned(),
-        source,
+        source: at,
     })
 }
 
@@ -227,17 +365,14 @@ fn write_new_file(
     nf: &NewFile,
     out_path: &Path,
     records: &[serde_json::Value],
-) -> Result<(), String> {
+) -> Result<(), NewFileFail> {
     let mut body = String::new();
     for rec in records {
-        body.push_str(&serde_json::to_string(rec).map_err(|e| format!("serialize: {e}"))?);
+        body.push_str(&rec.to_string());
         body.push('\n');
     }
-    // 写失败（磁盘满等）也要把原因带回 UI —— 静默半截文件比报错糟得多。
-    nf.create(out_path, body.as_bytes()).map_err(|f| match f {
-        NewFileFail::Create(e) => format!("refuse fork: create {}: {e}", out_path.display()),
-        NewFileFail::Write(e) => format!("refuse fork: write {}: {e}", out_path.display()),
-    })
+    // 写失败（磁盘满等）也要把原因带回 UI —— 静默半截文件比报错糟得多（那一句由调用方照哪一步失败说）。
+    nf.create(out_path, body.as_bytes())
 }
 
 #[cfg(test)]

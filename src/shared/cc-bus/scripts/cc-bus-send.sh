@@ -38,7 +38,7 @@ req=$(jq -cn --arg from "$from" --arg to "$to" --arg act "$act" --arg title "$ti
    + (if $tier == "" then {} else {tier: ($tier | tonumber? // $tier)} end)
    + (if $re == "" then {} else {re:$re} end)' "${refs[@]+"${refs[@]}"}")
 
-if ! ccbus_ask send "$req"; then
+if ! ccbus_ask bus-send "$req"; then
   echo "cc-bus send: not sent (${CCBUS_CODE:-failed}) -> $to" >&2
   case "$CCBUS_CODE" in
     bad_*|need_re|too_long) exit 2 ;;

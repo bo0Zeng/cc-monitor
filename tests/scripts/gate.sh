@@ -12,6 +12,17 @@
 # 私有目录里先放一台假的缺省 server（一个会话 ＋ 几格已知钩子，`-v` 记下每个客户端），`tmux-default` 那一格判它没人碰。
 # CI（`GITHUB_ACTIONS=true`）上不换：runner 上没有用户的 tmux。
 gate_tmux_q() { env -i PATH="$PATH" tmux -S "$1" "${@:2}"; }
+# 私有 tmux 目录 `$1` 里 `default` 之外还活着的 server：逐台印「名字（pid）」，按它的 socket 关掉（`-S <路径>`，绝不裸 `kill-server`）。
+# 两处用：`tmux-default` 那一格判「各格收尾一台不留」；收场删目录之前兜一遍（目录一删 socket 就没了，那几台再也关不掉）。
+gate_tmux_reap_left() {
+  local t pid
+  for t in "$1"/*; do
+    [ -S "$t" ] && [ "${t##*/}" != default ] || continue
+    pid="$(gate_tmux_q "$t" display -p '#{pid}' 2>/dev/null)" || continue
+    printf '  · %s（pid %s）\n' "${t##*/}" "${pid:-?}"
+    gate_tmux_q "$t" kill-server 2>/dev/null
+  done
+}
 # 假 server 的快照：pid ＋ 全局钩子 ＋ 会话 ＋ 那个会话自己的选项与钩子（一个客户端连一次）。
 gate_tmux_snap() {
   gate_tmux_q "$1" display -p '#{pid}' \; show-hooks -g \; list-sessions -F '#{session_name}' \
@@ -41,7 +52,7 @@ if [ -z "${GATE_TMUX_HOME:-}" ] && [ "${GITHUB_ACTIONS:-}" != true ]; then
     sh -c 'echo $$ > "$1"; exec sleep infinity' _ "$gate_tmux_home.log/hold" </dev/null >/dev/null 2>&1 &
   for _ in $(seq 1 50); do [ -s "$gate_tmux_home.log/hold" ] && break; sleep 0.1; done
   gate_tmux_hold="$(cat "$gate_tmux_home.log/hold" 2>/dev/null)"
-  trap 'kill ${gate_tmux_hold:+"$gate_tmux_hold"} "$gate_tmux_pid" 2>/dev/null; rm -rf -- "$gate_tmux_home" "$gate_tmux_home.log"' EXIT
+  trap 'gate_tmux_reap_left "$gate_tmux_home" >/dev/null; kill ${gate_tmux_hold:+"$gate_tmux_hold"} "$gate_tmux_pid" 2>/dev/null; rm -rf -- "$gate_tmux_home" "$gate_tmux_home.log"' EXIT
   [ -n "$gate_tmux_hold" ] || { echo "GATE: FAIL —— 撑挂载那一层的占位进程起不来（bwrap）"; exit 2; }
   nsenter -t "$gate_tmux_hold" -U -m --preserve-credentials -- env GATE_TMUX_HOME="$gate_tmux_home" \
     bash -c 'cd -- "$1" && shift && exec bash "$@"' _ "$PWD" "$0" "$@"
@@ -188,8 +199,8 @@ gate_vitest_share() { ( export GATE_VITEST_WORKERS="$GATE_VITEST_EACH"; "$@" ); 
 #      读文本类 `worktree-clean` · `shellcheck` · `e2e-smoke` · `release-gate` · `platform`
 #      · `fmt` · `fmt-backend` · `audit` · `generated` · `tmux-default`。
 #    两张表与盘上的格两向相等（同一个判据文件钉）：新加一格就得在这里归一边。
-GATE_WALL_CELLS=" npm coverage cargo creds-harden backend rotation-500 comm-boundary test-tiers ccbus-twophase e2e env-sandbox weak-net mobile android-device "
-GATE_YIELD_CELLS=" deadcode deadcode-backend clippy clippy-backend appbuild shotsshell winchk winchk-backend winlink muslbuild androidbuild tsc e2e-prep worktree-clean shellcheck e2e-smoke release-gate platform fmt fmt-backend audit generated tmux-default "
+GATE_WALL_CELLS=" npm coverage cargo creds-harden backend devsched rotation-500 comm-boundary test-tiers ccbus-twophase e2e env-sandbox weak-net mobile android-device "
+GATE_YIELD_CELLS=" deadcode deadcode-backend clippy clippy-backend clippy-devsched appbuild shotsshell winchk winchk-backend winlink muslbuild androidbuild tsc e2e-prep worktree-clean shellcheck e2e-smoke release-gate platform fmt fmt-backend fmt-devsched audit generated tmux-default "
 gate_yields() { case "$GATE_YIELD_CELLS" in *" $1 "*) return 0 ;; esac; return 1; }
 # 只降调它所在的那个子 shell（`$BASHPID`）及其往后起的子进程；调用方负责把它放进子 shell 里。
 gate_yield() { renice -n 10 -p "$BASHPID" >/dev/null 2>&1 || true; "$@"; }
@@ -426,10 +437,12 @@ gate_judge_gate() {
 
 # 多包求和的那一格（`--workspace`）：取最大值只得到最大那个包的数，所以逐行求和；
 # 一个成员静默掉出 `--workspace` 时合计只会变小，与「有测试没跑」看不出差别 ⇒ 另判包的集合。
-# 跑到的包：每个被测 lib 一行 `Running unittests src/lib.rs (…/deps/<lib 名>-<hash>)`；先剥颜色码（CI 上 cargo 带色）。
+# 跑到的包：每个被测 lib 一行 `Running unittests src/lib.rs (…/<lib 名>-<hash>)`；只认括号里路径的最后一段（文件名），
+# 不认上一级目录：cargo 1.100 起测试二进制落在 `debug/build/<包名>/<hash>/out/` 下，之前在 `debug/deps/`（目录用包名、文件名才是 lib 名）。
+# 先剥颜色码（CI 上 cargo 带色）。
 gate_ran_libs() {
   sed -E $'s/\x1b\\[[0-9;]*m//g' |
-    sed -nE 's#^[[:space:]]*Running unittests .*[/\\]deps[/\\]([A-Za-z0-9_]+)-[0-9a-f]+(\.exe)?\)[[:space:]]*$#\1#p' | sort -u
+    sed -nE 's#^[[:space:]]*Running unittests .*[/\\]([A-Za-z0-9_]+)-[0-9a-f]+(\.exe)?\)[[:space:]]*$#\1#p' | sort -u
 }
 # 一个 workspace 的成员里**该被 `cargo test --lib` 跑到**的 lib 名（`cargo metadata` 现取，不抄成员数）。
 # ⚠ 不看 `[lib] test = false`：有人把一个成员的单测关掉，它就该在这里红，而不是悄悄从「该跑到」里出列。
@@ -580,6 +593,9 @@ vitest 在非 TTY 下照样上色，ESC 不是 [[:space:]]，\
   # 探针⑩ · 采集面认得带颜色的 cargo 输出（CI 上就是这一形）。
   [ "$(printf '\033[1m\033[92m     Running\033[0m unittests src/lib.rs (/x/deps/a-0a1b)\n' | gate_ran_libs)" = a ] ||
     fails+=("gate 自检⑩（带颜色的 cargo 输出里认不出跑到的包 ⇒ CI 上 cargo 格必红）")
+  # 探针⑩b · cargo 1.100 起的落点：`debug/build/<包名>/<hash>/out/<lib 名>-<hash>`，认的是文件名里的 lib 名、不是目录里的包名。
+  [ "$(printf '     Running unittests src/lib.rs (/x/.build/shell/debug/build/monitor/0a1b/out/monitor_lib-0a1b)\n' | gate_ran_libs)" = monitor_lib ] ||
+    fails+=("gate 自检⑩b（cargo 1.100 起测试二进制在 build/<包名>/<hash>/out/ 下，认不出 ⇒ cargo · backend 格必红）")
   # 探针⑪ · Gradle 那一形：原因只在 `--stacktrace` 印出的 `Caused by:` 里，前后都是无关行，
   # 垫的条数现算，保证②尾部 / ③全印都够不着它（同探针④）。
   probe="$(run_gate 自检⑪ - bash -c '
@@ -731,6 +747,12 @@ run_gate fmt '不是数出来的数：`cargo fmt --all --check` 只有绿/红两
 run_gate fmt-backend '不是数出来的数：`cargo fmt --check -p …` 只有绿/红两态（rc=0 / rc=1），本格的「分母」是 `src/backend` 那个 workspace 的成员（`cargo metadata --no-deps` 现取，`mobcore` 除外）；`src/frontend/shell` 由上面 fmt 那一格管，本行盖不到（刻意不加 --all，理由见上方注释）' \
          bash -c 'cd src/backend && pkgs=$(cargo metadata --no-deps --offline --format-version 1 | python3 -c "import json, sys; print(\" \".join(\"-p \" + p[\"name\"] for p in json.load(sys.stdin)[\"packages\"] if p[\"name\"] != \"mobcore\"))") && [ -n "$pkgs" ] || { echo "fmt-backend: cargo metadata 一个包都没取到"; exit 1; }; cargo fmt --check $pkgs 2>&1 && echo "fmt-backend: 1 passed"'
 
+# ── `fmt-devsched` · `clippy-devsched`：开发调度那一棵的排版与 lint ──
+run_gate fmt-devsched '不是数出来的数：`cargo fmt --all --check` 只有绿/红两态，射程 = `src/devsched` 那个 workspace 的全部成员' \
+         bash -c 'cd src/devsched && cargo fmt --all --check 2>&1 && echo "fmt-devsched: 1 passed"'
+run_gate clippy-devsched '不是数出来的数：`cargo clippy --workspace --all-targets -- -D warnings` 只有绿/红两态，射程 = `src/devsched` 那个 workspace 的全部 target' \
+         bash -c 'cd src/devsched && out=$(cargo clippy --workspace --all-targets --offline -- -D warnings 2>&1); rc=$?; if [ "$rc" -ne 0 ]; then printf "%s\n" "$out"; exit "$rc"; fi; printf "%s\n" "$out" | tail -2; echo "clippy-devsched: 1 passed"'
+
 # ── `audit`：`ci.yml` 的 `frontend` job 里那一步 `npm audit` ──
 # ⚠ 要联网：它问的是 npm registry **当下**的漏洞库 —— 断网时退出码非零、本格红（不静默跳过）；
 #   同一棵树也可能因为库里新登了一条 high 而隔夜变红，那与 CI 上同一步的行为一致。
@@ -753,6 +775,13 @@ fi
 # 壳那棵不开 `harden`（monitor 不写那份文件），后端那棵只把共享 crate 当依赖、不跑它的测试 ⇒ 建文件即只给本人那几条只在这一格跑。
 run_gate creds-harden '`creds-core` 开 `harden` 那一档的 lib 单测（写那一半只在这一档编进来）' \
          gate_cargo_test_nonet src/frontend/shell -p creds-core --features harden --lib
+
+# ── `devsched`：开发调度那一棵（`src/devsched`，自己一个 workspace）的全部测试 ──
+# 调度端 · 编译节点 · 帧 · 排除清单与端到端；测试只在私有临时目录里起节点（假连接 · 直接起节点二进制），ssh localhost 那一档要显式 --ignored 才跑。
+run_gate devsched '`src/devsched` 那个 workspace 全部成员的单测与集成测（`cargo test --workspace`）合计，线程上限那两条除外（见 GATE_BLIND `devsched-thread-line`）' \
+         gate_cargo_test_nonet src/devsched --workspace --offline --no-fail-fast -- \
+           --skip thread_cap_refuses_or_stops_a_forking_job_and_we_can_still_spawn \
+           --skip command_that_hit_the_line_reports_threads_even_if_the_account_dropped_back
 
 # ── `comm-boundary` · `test-tiers`：两族判据还在不在 ─────────────────────────────────────
 # 两族各挂在一个模块上，那一行 `mod` 被摘掉时整族消失，而 `cargo` 那格只会合计小一点。
@@ -831,7 +860,7 @@ run_gate deadcode '不是数出来的数：`cargo check -p monitor -p cc-monitor
 # ── `clippy` / `appbuild`：`ci.yml` 里 `rust` job 的 `cargo clippy --workspace --all-targets` 与 `linux-app-build` job 的 `cargo build` ──
 # clippy 不带 `-D warnings`（deny 档的 lint 与编译错照样红）；appbuild 真编真链 Linux 上的两个二进制（`cargo` 那格带 `--lib`、`deadcode` 只 check）。
 # 成功时只印输出尾部两行：警告片段会带出源码散文里的数字，而 `run_gate` 取最大的那个数。红的时候整份照印。
-run_gate clippy '不是数出来的数：`cargo clippy --workspace --all-targets` 只有绿/红两态，分母是 `src/frontend/shell` 那个 workspace 的全部成员与全部 target（含 test 档）。⚠ 与 CI 那一步同一条命令、不加 `-D warnings` ⇒ 警告不红，只有 deny 档的 lint 与编译错红；CI 那一步跑在 windows-latest 上，本格跑在 Linux 上（Windows 那一维由 `winchk` 盖）' \
+run_gate clippy '不是数出来的数：`cargo clippy --workspace --all-targets` 只有绿/红两态，分母是 `src/frontend/shell` 那个 workspace 的全部成员与全部 target（含 test 档）。⚠ 与 CI 那一步同一条命令、不加 `-D warnings` ⇒ 警告不红，只有 deny 档的 lint 与编译错红；CI 里 windows-latest 那一步与 rust-linux 那个 job（GATE_ONLY 点了本格）都跑它；本格跑在 Linux 上（Windows 那一维由 `winchk` 盖）' \
          bash -c 'cd src/frontend/shell && out=$(cargo clippy --workspace --all-targets 2>&1); rc=$?; if [ "$rc" -ne 0 ]; then printf "%s\n" "$out"; exit "$rc"; fi; printf "%s\n" "$out" | tail -2; echo "clippy: 1 passed"'
 run_gate appbuild '不是数出来的数：`cargo build`（dev）只有绿/红两态，射程 = `src/frontend/shell` 根包 `monitor` 的 lib 与主二进制 `cc-monitor` 在 Linux 上真编真链一趟（文件窗口程序住文件窗口包，本格不编它），与 `ci.yml` 的 `linux-app-build` 那一步同一条命令。⚠ 只链不跑；release 档不编；前端产物（`dist/`）由 `npm` 那格里的真 vite 构建与 `tsc` 那格盖' \
          bash -c 'cd src/frontend/shell && out=$(cargo build 2>&1); rc=$?; if [ "$rc" -ne 0 ]; then printf "%s\n" "$out"; exit "$rc"; fi; printf "%s\n" "$out" | tail -2; echo "appbuild: 1 passed"'
@@ -1315,7 +1344,7 @@ gate_lane 手机端
 # 工具链：外面给了 `JAVA_HOME` 与 `ANDROID_HOME` 就用（CI 的 setup-java / setup-android）；没给就 source
 #   `src/mobile/scripts/env.sh`（探 `$HOME/android-dev`，Gradle 缓存也隔离在那里），找不到按红记。
 # 跑：ktlint · detekt（带类型解析）· Android Lint（`:app:lintDebug`，error 一条就红；warning 不拦）·
-#   各模块 JVM 单测（`:core-claude` · `:core-wire` · `:core-copy` 是纯 JVM 模块，要显式点）·
+#   各模块 JVM 单测（`:core-claude` · `:core-wire` 是纯 JVM 模块，要显式点）·
 #   release 构建（R8 不许误删反射 / 原生库要的类；没有签名配置就产未签名的包）· debug 构建（模拟器那一份）。
 #   两趟各编手机嵌的 Rust 核心那一个 ABI（release = arm64-v8a · debug = x86_64），打完核包里恰好那一个 ABI（`:app:verify<变体>Abis`）。
 #   要 cargo ＋ 两个 android target ＋ NDK（版本住 `src/mobile/gradle.properties` 的 `ccm.ndkVersion`）。
@@ -1332,7 +1361,7 @@ gate_mobile() {
     fi
     rm -rf "$out"/*/test-results
     ./gradlew --no-daemon --console=plain --stacktrace ktlintCheck detektDebug :app:lintDebug testDebugUnitTest \
-      :core-claude:test :core-claude:detektMain :core-wire:test :core-wire:detektMain :core-copy:test :core-copy:detektMain :detekt-rules:test :app:assembleRelease :app:assembleDebug || {
+      :core-claude:test :core-claude:detektMain :core-wire:test :core-wire:detektMain :detekt-rules:test :app:assembleRelease :app:assembleDebug || {
       rc=$?
       # 打包那几步红而只有一句「A failure occurred …」时，盘满是头一个嫌疑：顺手印一行剩多少
       df -h . | tail -1 | sed 's/^/mobile: 盘 /'
@@ -1388,9 +1417,11 @@ gate_lanes_run
 # 谁裸调 `tmux`（不带 `-L` / `-S`）就连到这台上。判：① 默认位置上的 socket 仍是它（同一个 inode，隔离还在）；
 # ② 它的 `-v` 日志里，起跑那两个客户端之外一个新客户端都没有；③ 快照（pid · 全局钩子 · 会话 · 会话选项与钩子）
 # 与起跑时逐字相同 —— 后端装钩子、清死槽、给会话打标都会改它。外来连接按「落在哪一格 · 发的什么命令」归并印出来。
-# 只读假的那台；用户真那台在挂载外面，本格碰不到也不去读。放在最后一格：前面各格都跑完了再判。
+# ④ 私有目录里除了 `default` 再没有还活着的 server：各格起的私有 server（e2e 套件经 shim 钉的、命令自己带
+# `-L` / `-S` 盖掉钉的名字起的）都该在那一格收尾时关掉；跑到这里还连得上的就是收尾漏关的 —— 逐台印名字与 pid、关掉、判红。
+# 只读假的那台与私有目录；用户真那台在挂载外面，本格碰不到也不去读。放在最后一格：前面各格都跑完了再判。
 gate_tmux_default() {
-  local s n now base t at cwd w g a b nm
+  local s n now base t at cwd w g a b nm left
   [ -n "${GATE_TMUX_HOME:-}" ] || { printf 'tmux-default: 没换 tmux 目录（CI 上不换）—— 没有假的缺省 server，判不了\n'; return 1; }
   s="$GATE_TMUX_HOME/default"
   if [ "$(stat -c %d:%i "/tmp/tmux-$(id -u)/default" 2>/dev/null)" != "$(stat -c %d:%i "$s" 2>/dev/null)" ]; then
@@ -1420,7 +1451,12 @@ gate_tmux_default() {
     diff <(printf '%s\n' "$base") <(printf '%s\n' "$now") | head -30
     printf 'tmux-default: 缺省 server 的钩子 / 会话 / 会话选项与起跑时不同（上面的 diff）\n'; return 1
   fi
-  printf 'tmux-default: 1 passed（缺省 server 上零外来连接，钩子 %s 格、会话、会话选项与起跑时逐字相同）\n' \
+  left="$(gate_tmux_reap_left "$GATE_TMUX_HOME")"
+  if [ -n "$left" ]; then
+    printf 'tmux-default: 各格跑完，私有 tmux 目录里还有这几台 server 活着（收尾漏关；已按 socket 关掉）：\n%s\n' "$left"
+    return 1
+  fi
+  printf 'tmux-default: 1 passed（缺省 server 上零外来连接，钩子 %s 格、会话、会话选项与起跑时逐字相同；各格起的私有 server 一台不留）\n' \
     "$(printf '%s\n' "$base" | grep -c '^session-')"
 }
 run_gate tmux-default '不是数出来的数：整趟门禁跑完，挂载换进来的那台假的缺省 tmux server 零外来连接、钩子与会话原样不动才绿。⚠ 只盖门禁里跑的东西；单跑的 cargo test / e2e 不经门禁就没有这层挂载' \
@@ -1433,6 +1469,7 @@ GATE_BLIND=(
   "ci-job-shape|.github/workflows/*.yml 里那些 job 自己的形状 —— 装了哪条工具链、runner 是谁、缓存与 needs 怎么连、每一步的 if 条件。Linux 那几个 job 的命令就是调本脚本（GATE_ONLY），命令只住这里；但 job 的环境（apt 装了什么、runner 是谁）本门禁不判。release-gate 割走了 release.yml 的一部分（触发器、发布闸、产字节那条路、BUILD_ID 的抠法、工具链版本），上传清单与校验和算哪几份也对上了资产登记表；其余每一步（打包 · artifact 传递）仍然没人看；那些切片买的也只是「盘上这份文本满足这几条」"
   "msvc-abi|MSVC ABI 专属的那一类跨平台编译问题 —— 两格 Windows 交叉检查用的都是 -gnu（沙箱里没有 zig，ring 的 build script 缺 lib.exe）。只在 msvc 上才犯的毛病本门禁盖不到"
   "did-ci-actually-run|云端那条流水线到底跑没跑、绿没绿 —— 本门禁一次 gh run view 都不做。GATE: OK 说的是这棵树在本机这几格上的样子，不是它在云端的样子。ci.yml 的触发器是 push(main · 候选分支 next · v*) 与 pull_request；「先推候选分支、CI 全绿了才快进 main」那一步在推送时做，不在本门禁里"
+  "devsched-thread-line|开发调度线程上限那两条（thread_cap · thread_cap_drop）：门禁跑在用户命名空间里（bwrap），内核按命名空间记账号线程数、跟 /proc 数出来的整台的数不是一回事，判不了 ⇒ devsched 格 --skip 它们；只由快检（命名空间外）判"
 )
 gate_print_blind() {
   printf 'GATE: 射程 —— 上面那行只对它自己那几格负责；下面这 %s 件事**本门禁不看**：\n' "${#GATE_BLIND[@]}"

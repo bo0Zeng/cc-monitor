@@ -36,12 +36,11 @@ impl Home {
         let bin = root.join("bin");
         std::fs::create_dir_all(&bin).expect("mkdir");
         let fake = bin.join("claude");
-        std::fs::write(&fake, FAKE).expect("fake");
+        // 马上被起 ⇒ 经 `write_exe` 写（本进程写的写端会漏进别的判据线程 fork 出来的子进程 ⇒ ETXTBSY）。
         #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt as _;
-            std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).expect("chmod");
-        }
+        test_home::write_exe(&fake, FAKE);
+        #[cfg(not(unix))]
+        std::fs::write(&fake, FAKE).expect("fake");
         std::fs::write(bin.join("usage.txt"), FIXTURE).expect("fixture");
         for id in ["b", "c", "bad"] {
             std::fs::create_dir_all(root.join("accts").join(id)).expect("mkdir");
@@ -229,10 +228,6 @@ fn bad_args_unknown_accounts_and_api_keys_never_start_anything() {
         "bad_args"
     );
     assert_eq!(
-        code(json!({"agent": "codex", "account": "b"})),
-        "unsupported"
-    );
-    assert_eq!(
         code(json!({"agent": "claude", "account": "api"})),
         "unsupported"
     );
@@ -289,9 +284,9 @@ fn the_probe_and_quota_read_replies_keep_their_wire_bytes() {
     let want: [&str; 5] = [
         r##"{"account":"b","agent":"claude","from":"usage","now":1772712000,"path":"<root>/quota.json","reason":null,"state":"read","windows":[{"name":"five_hour","resetsAt":1772899200,"used":0.03},{"name":"seven_day","resetsAt":1773041400,"used":0.21},{"name":"seven_day_fable","used":0.0}]}"##,
         r##"{"account":"bad","agent":"claude","from":"usage","now":1772712000,"path":"<root>/quota.json","reason":"no usage line","state":"unreadable","windows":[]}"##,
-        r##"{"accounts":[{"account":"b","agent":"claude","kind":"sub","login":"needsLogin","rows":[[{"text":"b","tone":"plain"},{"text":"订阅","tone":"plain"},{"text":"需登录","tone":"warn"}],[{"text":"5h","tone":"plain"},{"text":"3%","tone":"plain"},{"text":"↻03-07 16:00","tone":"plain"},{"text":"+2d","tone":"plain"}],[{"text":"7d","tone":"plain"},{"text":"21%","tone":"plain"},{"text":"↻03-09 07:30","tone":"plain"},{"text":"+3d","tone":"plain"}],[{"text":"7d fable","tone":"plain"},{"text":"0%","tone":"plain"}],[{"text":"超额","tone":"plain"},{"text":"—","tone":"plain"}],[{"text":"采样","tone":"plain"},{"text":"12:00","tone":"plain"}]],"slots":[{"pct":3,"resetText":"↻03-07 16:00","resetsAt":1772899200,"resetsAtRelText":"+2d","slot":"5h","text":"3%","tone":"plain"},{"pct":21,"resetText":"↻03-09 07:30","resetsAt":1773041400,"resetsAtRelText":"+3d","slot":"7d","text":"21%","tone":"plain"}],"stale":false,"state":"ok","usage":{"slot":"7d","text":"7d 21%","tone":"plain","value":"21%","window":"7d"},"warm":{"act":"wait","at":1772715600,"atText":"13:00","text":"需登录"},"windows":[{"from":"usage","key":"5h","name":"five_hour","pct":3,"resetsAt":1772899200,"resetsAtRelText":"+2d","tone":"plain"},{"from":"usage","key":"7d","name":"seven_day","pct":21,"resetsAt":1773041400,"resetsAtRelText":"+3d","tone":"plain"},{"from":"usage","key":"7d:fable","name":"seven_day_fable","pct":0,"tone":"plain"}]}],"candidates":[{"account":"b","agent":"claude","kind":"sub"},{"account":"0","agent":"claude","kind":"sub"},{"account":"c","agent":"claude","kind":"sub"},{"account":"bad","agent":"claude","kind":"sub"},{"account":"api","agent":"claude","kind":"api"}],"detail":null,"names":{"slots":{"5h":"5h","7d":"7d"}},"now":1772712000,"path":"<root>/quota.json","reason":null,"state":"present","text":null,"unseen":[{"account":"0","agent":"claude","kind":"sub","login":"needsLogin","rows":[[{"text":"~/.claude","tone":"plain"},{"text":"订阅","tone":"plain"},{"text":"需登录","tone":"warn"}],[{"text":"5h","tone":"plain"},{"text":"—","tone":"plain"},{"text":"无采样","tone":"plain"}],[{"text":"7d","tone":"plain"},{"text":"—","tone":"plain"}]],"usage":{"slot":"5h","text":"5h —","tone":"plain","value":"—","window":"5h"},"warm":{"act":"wait","at":1772715600,"atText":"13:00","text":"需登录"}},{"account":"c","agent":"claude","kind":"sub","login":"needsLogin","rows":[[{"text":"c","tone":"plain"},{"text":"订阅","tone":"plain"},{"text":"需登录","tone":"warn"}],[{"text":"5h","tone":"plain"},{"text":"—","tone":"plain"},{"text":"无采样","tone":"plain"}],[{"text":"7d","tone":"plain"},{"text":"—","tone":"plain"}]],"usage":{"slot":"5h","text":"5h —","tone":"plain","value":"—","window":"5h"},"warm":{"act":"wait","at":1772715600,"atText":"13:00","text":"需登录"}},{"account":"bad","agent":"claude","kind":"sub","login":"needsLogin","rows":[[{"text":"bad","tone":"plain"},{"text":"订阅","tone":"plain"},{"text":"需登录","tone":"warn"}],[{"text":"5h","tone":"plain"},{"text":"—","tone":"plain"},{"text":"无采样","tone":"plain"}],[{"text":"7d","tone":"plain"},{"text":"—","tone":"plain"}]],"usage":{"slot":"5h","text":"5h —","tone":"plain","value":"—","window":"5h"},"warm":{"act":"wait","at":1772715600,"atText":"13:00","text":"需登录"}},{"account":"api","agent":"claude","kind":"api","login":"ok","rows":[[{"text":"api","tone":"plain"},{"text":"按量","tone":"plain"}],[{"text":"5h/7d","tone":"plain"},{"text":"—","tone":"plain"},{"text":"无采样","tone":"plain"}]],"usage":{"text":"按量","tone":"plain","value":"按量"},"warm":{"act":"wait","at":1772715600,"atText":"13:00","text":"无限额"}}],"verdict":{"sub":"api","text":"可发的号 1","tone":"plain"}}"##,
-        r##"{"accounts":[],"candidates":[{"account":"0","agent":"claude","kind":"sub"},{"account":"b","agent":"claude","kind":"sub"},{"account":"c","agent":"claude","kind":"sub"},{"account":"bad","agent":"claude","kind":"sub"},{"account":"api","agent":"claude","kind":"api"}],"detail":null,"names":{"slots":{"5h":"5h","7d":"7d"}},"now":1772712000,"path":"<root>/quota.json","reason":null,"state":"absent","text":null,"unseen":[{"account":"0","agent":"claude","kind":"sub","login":"needsLogin","rows":[[{"text":"~/.claude","tone":"plain"},{"text":"订阅","tone":"plain"},{"text":"需登录","tone":"warn"}],[{"text":"5h","tone":"plain"},{"text":"—","tone":"plain"},{"text":"无采样","tone":"plain"}],[{"text":"7d","tone":"plain"},{"text":"—","tone":"plain"}]],"usage":{"slot":"5h","text":"5h —","tone":"plain","value":"—","window":"5h"},"warm":{"act":"wait","at":1772715600,"atText":"13:00","text":"需登录"}},{"account":"b","agent":"claude","kind":"sub","login":"needsLogin","rows":[[{"text":"b","tone":"plain"},{"text":"订阅","tone":"plain"},{"text":"需登录","tone":"warn"}],[{"text":"5h","tone":"plain"},{"text":"—","tone":"plain"},{"text":"无采样","tone":"plain"}],[{"text":"7d","tone":"plain"},{"text":"—","tone":"plain"}]],"usage":{"slot":"5h","text":"5h —","tone":"plain","value":"—","window":"5h"},"warm":{"act":"wait","at":1772715600,"atText":"13:00","text":"需登录"}},{"account":"c","agent":"claude","kind":"sub","login":"needsLogin","rows":[[{"text":"c","tone":"plain"},{"text":"订阅","tone":"plain"},{"text":"需登录","tone":"warn"}],[{"text":"5h","tone":"plain"},{"text":"—","tone":"plain"},{"text":"无采样","tone":"plain"}],[{"text":"7d","tone":"plain"},{"text":"—","tone":"plain"}]],"usage":{"slot":"5h","text":"5h —","tone":"plain","value":"—","window":"5h"},"warm":{"act":"wait","at":1772715600,"atText":"13:00","text":"需登录"}},{"account":"bad","agent":"claude","kind":"sub","login":"needsLogin","rows":[[{"text":"bad","tone":"plain"},{"text":"订阅","tone":"plain"},{"text":"需登录","tone":"warn"}],[{"text":"5h","tone":"plain"},{"text":"—","tone":"plain"},{"text":"无采样","tone":"plain"}],[{"text":"7d","tone":"plain"},{"text":"—","tone":"plain"}]],"usage":{"slot":"5h","text":"5h —","tone":"plain","value":"—","window":"5h"},"warm":{"act":"wait","at":1772715600,"atText":"13:00","text":"需登录"}},{"account":"api","agent":"claude","kind":"api","login":"ok","rows":[[{"text":"api","tone":"plain"},{"text":"按量","tone":"plain"}],[{"text":"5h/7d","tone":"plain"},{"text":"—","tone":"plain"},{"text":"无采样","tone":"plain"}]],"usage":{"text":"按量","tone":"plain","value":"按量"},"warm":{"act":"wait","at":1772715600,"atText":"13:00","text":"无限额"}}],"verdict":null}"##,
-        r##"{"accounts":[],"candidates":[{"account":"0","agent":"claude","kind":"sub"},{"account":"b","agent":"claude","kind":"sub"},{"account":"c","agent":"claude","kind":"sub"},{"account":"bad","agent":"claude","kind":"sub"},{"account":"api","agent":"claude","kind":"api"}],"detail":"<detail>","names":{"slots":{"5h":"5h","7d":"7d"}},"now":1772712000,"path":"<root>/quota.json","reason":"读取 <root>/quota.json 失败 · 内容无法解析","state":"unreadable","text":"读取 <root>/quota.json 失败 · 内容无法解析","unseen":[{"account":"0","agent":"claude","kind":"sub","login":"needsLogin","rows":[[{"text":"~/.claude","tone":"plain"},{"text":"订阅","tone":"plain"},{"text":"需登录","tone":"warn"}],[{"text":"5h","tone":"plain"},{"text":"—","tone":"plain"},{"text":"无采样","tone":"plain"}],[{"text":"7d","tone":"plain"},{"text":"—","tone":"plain"}]],"usage":{"slot":"5h","text":"5h —","tone":"plain","value":"—","window":"5h"},"warm":{"act":"wait","at":1772712900,"atText":"12:15","text":"读取 <root>/quota.json 失败 · 内容无法解析 · 不发"}},{"account":"b","agent":"claude","kind":"sub","login":"needsLogin","rows":[[{"text":"b","tone":"plain"},{"text":"订阅","tone":"plain"},{"text":"需登录","tone":"warn"}],[{"text":"5h","tone":"plain"},{"text":"—","tone":"plain"},{"text":"无采样","tone":"plain"}],[{"text":"7d","tone":"plain"},{"text":"—","tone":"plain"}]],"usage":{"slot":"5h","text":"5h —","tone":"plain","value":"—","window":"5h"},"warm":{"act":"wait","at":1772712900,"atText":"12:15","text":"读取 <root>/quota.json 失败 · 内容无法解析 · 不发"}},{"account":"c","agent":"claude","kind":"sub","login":"needsLogin","rows":[[{"text":"c","tone":"plain"},{"text":"订阅","tone":"plain"},{"text":"需登录","tone":"warn"}],[{"text":"5h","tone":"plain"},{"text":"—","tone":"plain"},{"text":"无采样","tone":"plain"}],[{"text":"7d","tone":"plain"},{"text":"—","tone":"plain"}]],"usage":{"slot":"5h","text":"5h —","tone":"plain","value":"—","window":"5h"},"warm":{"act":"wait","at":1772712900,"atText":"12:15","text":"读取 <root>/quota.json 失败 · 内容无法解析 · 不发"}},{"account":"bad","agent":"claude","kind":"sub","login":"needsLogin","rows":[[{"text":"bad","tone":"plain"},{"text":"订阅","tone":"plain"},{"text":"需登录","tone":"warn"}],[{"text":"5h","tone":"plain"},{"text":"—","tone":"plain"},{"text":"无采样","tone":"plain"}],[{"text":"7d","tone":"plain"},{"text":"—","tone":"plain"}]],"usage":{"slot":"5h","text":"5h —","tone":"plain","value":"—","window":"5h"},"warm":{"act":"wait","at":1772712900,"atText":"12:15","text":"读取 <root>/quota.json 失败 · 内容无法解析 · 不发"}},{"account":"api","agent":"claude","kind":"api","login":"ok","rows":[[{"text":"api","tone":"plain"},{"text":"按量","tone":"plain"}],[{"text":"5h/7d","tone":"plain"},{"text":"—","tone":"plain"},{"text":"无采样","tone":"plain"}]],"usage":{"text":"按量","tone":"plain","value":"按量"},"warm":{"act":"wait","at":1772712900,"atText":"12:15","text":"读取 <root>/quota.json 失败 · 内容无法解析 · 不发"}}],"verdict":null}"##,
+        r##"{"accounts":[{"account":"b","agent":"claude","kind":"sub","login":"needsLogin","rows":[[{"text":"b","tone":"plain"},{"text":"订阅","tone":"plain"},{"text":"需登录","tone":"warn"}],[{"text":"5h","tone":"plain"},{"text":"3%","tone":"plain"},{"text":"↻03-07 16:00","tone":"plain"},{"text":"+2d","tone":"plain"}],[{"text":"7d","tone":"plain"},{"text":"21%","tone":"plain"},{"text":"↻03-09 07:30","tone":"plain"},{"text":"+3d","tone":"plain"}],[{"text":"7d fable","tone":"plain"},{"text":"0%","tone":"plain"}]],"sampled":"采样于 12:00","slots":[{"pct":3,"resetsAt":1772899200,"slot":"5h","text":"3%","tone":"plain"},{"pct":21,"resetsAt":1773041400,"slot":"7d","text":"21%","tone":"plain"}],"stale":false,"state":"ok","usage":{"slot":"7d","text":"7d 21%","tone":"plain","value":"21%","window":"7d"},"warm":{"act":"wait","at":1772715600,"atText":"13:00","text":"需登录"},"windows":[{"from":"usage","key":"5h","name":"five_hour","pct":3,"resetsAt":1772899200,"row":1,"tone":"plain"},{"from":"usage","key":"7d","name":"seven_day","pct":21,"resetsAt":1773041400,"row":2,"tone":"plain"},{"from":"usage","key":"7d:fable","name":"seven_day_fable","pct":0,"row":3,"tone":"plain"}]}],"candidates":[{"account":"b","agent":"claude","kind":"sub"},{"account":"0","agent":"claude","kind":"sub"},{"account":"c","agent":"claude","kind":"sub"},{"account":"bad","agent":"claude","kind":"sub"},{"account":"api","agent":"claude","kind":"api"}],"detail":null,"names":{"slots":{"5h":"5h","7d":"7d"}},"now":1772712000,"path":"<root>/quota.json","reason":null,"state":"present","text":null,"unseen":[{"account":"0","agent":"claude","kind":"sub","login":"needsLogin","rows":[[{"text":"~/.claude","tone":"plain"},{"text":"订阅","tone":"plain"},{"text":"需登录","tone":"warn"}]],"usage":{"slot":"5h","text":"5h —","tone":"plain","value":"—","window":"5h"},"warm":{"act":"wait","at":1772715600,"atText":"13:00","text":"需登录"}},{"account":"c","agent":"claude","kind":"sub","login":"needsLogin","rows":[[{"text":"c","tone":"plain"},{"text":"订阅","tone":"plain"},{"text":"需登录","tone":"warn"}]],"usage":{"slot":"5h","text":"5h —","tone":"plain","value":"—","window":"5h"},"warm":{"act":"wait","at":1772715600,"atText":"13:00","text":"需登录"}},{"account":"bad","agent":"claude","kind":"sub","login":"needsLogin","rows":[[{"text":"bad","tone":"plain"},{"text":"订阅","tone":"plain"},{"text":"需登录","tone":"warn"}]],"usage":{"slot":"5h","text":"5h —","tone":"plain","value":"—","window":"5h"},"warm":{"act":"wait","at":1772715600,"atText":"13:00","text":"需登录"}},{"account":"api","agent":"claude","kind":"api","login":"ok","rows":[[{"text":"api","tone":"plain"},{"text":"按量","tone":"plain"},{"text":"无采样","tone":"plain"}]],"usage":{"text":"按量","tone":"plain","value":"按量"},"warm":{"act":"wait","at":1772715600,"atText":"13:00","text":"无限额"}}],"verdict":{"sub":"api","text":"可发的号 1","tone":"plain"}}"##,
+        r##"{"accounts":[],"candidates":[{"account":"0","agent":"claude","kind":"sub"},{"account":"b","agent":"claude","kind":"sub"},{"account":"c","agent":"claude","kind":"sub"},{"account":"bad","agent":"claude","kind":"sub"},{"account":"api","agent":"claude","kind":"api"}],"detail":null,"names":{"slots":{"5h":"5h","7d":"7d"}},"now":1772712000,"path":"<root>/quota.json","reason":null,"state":"absent","text":null,"unseen":[{"account":"0","agent":"claude","kind":"sub","login":"needsLogin","rows":[[{"text":"~/.claude","tone":"plain"},{"text":"订阅","tone":"plain"},{"text":"需登录","tone":"warn"}]],"usage":{"slot":"5h","text":"5h —","tone":"plain","value":"—","window":"5h"},"warm":{"act":"wait","at":1772715600,"atText":"13:00","text":"需登录"}},{"account":"b","agent":"claude","kind":"sub","login":"needsLogin","rows":[[{"text":"b","tone":"plain"},{"text":"订阅","tone":"plain"},{"text":"需登录","tone":"warn"}]],"usage":{"slot":"5h","text":"5h —","tone":"plain","value":"—","window":"5h"},"warm":{"act":"wait","at":1772715600,"atText":"13:00","text":"需登录"}},{"account":"c","agent":"claude","kind":"sub","login":"needsLogin","rows":[[{"text":"c","tone":"plain"},{"text":"订阅","tone":"plain"},{"text":"需登录","tone":"warn"}]],"usage":{"slot":"5h","text":"5h —","tone":"plain","value":"—","window":"5h"},"warm":{"act":"wait","at":1772715600,"atText":"13:00","text":"需登录"}},{"account":"bad","agent":"claude","kind":"sub","login":"needsLogin","rows":[[{"text":"bad","tone":"plain"},{"text":"订阅","tone":"plain"},{"text":"需登录","tone":"warn"}]],"usage":{"slot":"5h","text":"5h —","tone":"plain","value":"—","window":"5h"},"warm":{"act":"wait","at":1772715600,"atText":"13:00","text":"需登录"}},{"account":"api","agent":"claude","kind":"api","login":"ok","rows":[[{"text":"api","tone":"plain"},{"text":"按量","tone":"plain"},{"text":"无采样","tone":"plain"}]],"usage":{"text":"按量","tone":"plain","value":"按量"},"warm":{"act":"wait","at":1772715600,"atText":"13:00","text":"无限额"}}],"verdict":null}"##,
+        r##"{"accounts":[],"candidates":[{"account":"0","agent":"claude","kind":"sub"},{"account":"b","agent":"claude","kind":"sub"},{"account":"c","agent":"claude","kind":"sub"},{"account":"bad","agent":"claude","kind":"sub"},{"account":"api","agent":"claude","kind":"api"}],"detail":"<detail>","names":{"slots":{"5h":"5h","7d":"7d"}},"now":1772712000,"path":"<root>/quota.json","reason":"读取 <root>/quota.json 失败 · 内容无法解析","state":"unreadable","text":"读取 <root>/quota.json 失败 · 内容无法解析","unseen":[{"account":"0","agent":"claude","kind":"sub","login":"needsLogin","rows":[[{"text":"~/.claude","tone":"plain"},{"text":"订阅","tone":"plain"},{"text":"需登录","tone":"warn"}]],"usage":{"slot":"5h","text":"5h —","tone":"plain","value":"—","window":"5h"},"warm":{"act":"wait","at":1772712900,"atText":"12:15","text":"读取 <root>/quota.json 失败 · 内容无法解析 · 不发"}},{"account":"b","agent":"claude","kind":"sub","login":"needsLogin","rows":[[{"text":"b","tone":"plain"},{"text":"订阅","tone":"plain"},{"text":"需登录","tone":"warn"}]],"usage":{"slot":"5h","text":"5h —","tone":"plain","value":"—","window":"5h"},"warm":{"act":"wait","at":1772712900,"atText":"12:15","text":"读取 <root>/quota.json 失败 · 内容无法解析 · 不发"}},{"account":"c","agent":"claude","kind":"sub","login":"needsLogin","rows":[[{"text":"c","tone":"plain"},{"text":"订阅","tone":"plain"},{"text":"需登录","tone":"warn"}]],"usage":{"slot":"5h","text":"5h —","tone":"plain","value":"—","window":"5h"},"warm":{"act":"wait","at":1772712900,"atText":"12:15","text":"读取 <root>/quota.json 失败 · 内容无法解析 · 不发"}},{"account":"bad","agent":"claude","kind":"sub","login":"needsLogin","rows":[[{"text":"bad","tone":"plain"},{"text":"订阅","tone":"plain"},{"text":"需登录","tone":"warn"}]],"usage":{"slot":"5h","text":"5h —","tone":"plain","value":"—","window":"5h"},"warm":{"act":"wait","at":1772712900,"atText":"12:15","text":"读取 <root>/quota.json 失败 · 内容无法解析 · 不发"}},{"account":"api","agent":"claude","kind":"api","login":"ok","rows":[[{"text":"api","tone":"plain"},{"text":"按量","tone":"plain"},{"text":"无采样","tone":"plain"}]],"usage":{"text":"按量","tone":"plain","value":"按量"},"warm":{"act":"wait","at":1772712900,"atText":"12:15","text":"读取 <root>/quota.json 失败 · 内容无法解析 · 不发"}}],"verdict":null}"##,
     ];
     for (g, w) in got.iter().zip(want) {
         assert_eq!(g, w, "线上字节变了。现打：\n{}", got.join("\n----\n"));
@@ -354,10 +349,71 @@ fn a_window_used_up_but_not_yet_refused_is_not_counted_as_sendable() {
     // 「可发」只剩 api 那一个：结论那一行说可发一个，下面那一行只点它的名。
     let can = copy_core::copy_text("acct.verdict.can", &[("n", "1")]);
     assert_eq!(q["verdict"]["text"], json!(can), "{}", q["verdict"]);
+    assert_eq!(q["verdict"]["sub"], json!("api"), "{}", q["verdict"]);
+}
+
+/// ★ 号按（家, 号名）认：两家替身各有一个可发的 `b` ⇒「可发」下面那一行两个 `b` 各带是哪一家；只一家有的 `c` 只写号名。
+#[test]
+fn same_named_accounts_of_two_families_each_say_their_family() {
+    use crate::accounts::quota::ledger::ReadState;
+    use crate::agents::fake::{family_row, said_of};
+    use crate::faces::quota_read::{family_tag, reply_of_among, Base};
+    let (mine, other) = ("stand-in", "other");
+    let reg = [
+        family_row(mine, "CCM_A_DIR", "a", true, || None),
+        family_row(other, "CCM_B_DIR", "b", false, || None),
+    ];
+    let usable: Vec<(String, String)> = [(mine, "b"), (other, "b"), (mine, "c")]
+        .iter()
+        .map(|(a, x)| (a.to_string(), x.to_string()))
+        .collect();
+    let tags: Vec<Option<String>> = usable
+        .iter()
+        .map(|(a, x)| family_tag(&reg, a, x, &usable))
+        .collect();
     assert_eq!(
-        q["verdict"]["sub"],
-        json!(crate::accounts::quota::name_words::account_text("api")),
-        "{}",
-        q["verdict"]
+        tags,
+        [
+            Some(said_of(mine).to_string()),
+            Some(said_of(other).to_string()),
+            None
+        ],
+        "同名的各带它自己那一家的叫法（传进来的注册表上的）"
+    );
+    let clock = crate::common::time::TextClock::new(NOW, &crate::common::time::Tz::default());
+    let base = Base {
+        state: ReadState::Present,
+        reason: None,
+        detail: None,
+        path: None,
+        now: NOW,
+        usable,
+        earliest: None,
+    };
+    let unseen = crate::faces::quota_read::Unseen {
+        head: crate::faces::quota_read::UnseenHead {
+            agent: crate::agents::AgentKind::new(mine),
+            account: "b".into(),
+            kind: crate::accounts::quota::facts::Kind::Sub,
+            login: crate::accounts::quota::show::LoginState::Ok,
+            usage: crate::faces::quota_rows::unseen_usage(crate::accounts::quota::facts::Kind::Sub),
+        },
+        warm: crate::accounts::quota::rules::decide::WarmVerdict::Send(
+            crate::accounts::quota::rules::decide::WarmWhy::NoWindow,
+        ),
+    };
+    let v = reply_of_among(&reg, base, Vec::new(), vec![unseen], &clock)
+        .verdict
+        .expect("有号");
+    let sep = copy_core::copy_text("kit.text.sep", &[]);
+    let of = |agent: &str| {
+        copy_core::copy_text(
+            "acct.verdict.ofAgent",
+            &[("account", "b"), ("agent", agent)],
+        )
+    };
+    assert_eq!(
+        v.sub.map(|w| w.0),
+        Some([of(said_of(mine)), of(said_of(other)), "c".to_string()].join(&sep))
     );
 }

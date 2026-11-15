@@ -25,7 +25,7 @@ case "$maxlines" in ''|*[!0-9]*|0) [ -z "$maxlines" ] || { echo "cc-bus peek: --
 [ -n "$id" ] || id=$("$SELFDIR/cc-bus-whoami.sh") || exit 1
 
 req=$(jq -cn --arg id "$id" --arg m "$maxlines" '{id:$id} + (if $m == "" then {} else {max_lines:($m | tonumber)} end)')
-ccbus_ask peek "$req" || { case "$CCBUS_CODE" in bad_*) exit 2 ;; *) exit 1 ;; esac; }
+ccbus_ask bus-peek "$req" || { case "$CCBUS_CODE" in bad_*) exit 2 ;; *) exit 1 ;; esac; }
 token=$(printf '%s' "$CCBUS_OUT" | jq -r '.token // empty')
 [ -n "$token" ] || exit 0                      # 没有新信:不出正文、不出令牌
 printf '%s' "$CCBUS_OUT" | jq -j '.text'

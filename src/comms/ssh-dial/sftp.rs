@@ -11,7 +11,7 @@
 //! # 🔴 本文件是后端里**唯一**一份能改远端文件系统的代码（红线 `I7`，`INVARIANTS §41.6`）
 //!
 //! `readonly_guard::remote_write_layer` 钉三件：① 生产段里命中远端写能力网 / 动词网的文件 == `{ssh-dial/sftp.rs}`；
-//! ② 本文件声明的写根（[`STAGING_ROOT`]）== `~/.cc-monitor/staging`；
+//! ② 本文件声明的写根（[`STAGING_ROOT`]）取自契约 `relay_route_core::STAGING_DIR_REL`，那一份 == `~/.cc-monitor/staging`；
 //! ③ 本文件里每个含远端改动动词的函数，第一个改动之前先有一次 [`fenced_remote`] 调用。
 //! ⇒ **写原语只许住这里、只许从这里的函数进**；别的文件（`deploy/install.rs` · `control/transfer.rs`）只调它们。
 //!
@@ -47,11 +47,13 @@ use crate::{pool, DialRequest, StageSink};
 /// 🔴 **远端写根：恰好暂存区这一处**（home 相对）。`readonly_guard::remote_write_layer` 现读本行源码逐字比。
 ///
 /// 上传只写这里，落进用户目录由远端后端 `files-commit-upload` 做；自部署也只把后端字节放进这里，换进 `~/.cc-monitor/bin/` · 卸载都由
-/// 传上去的那一份自己在那台上做（`--place-self` · `--unplace-self`）。与 `files/commit.rs::STAGING_DIR` 相等（主 crate 的判据直接比）。
-pub const STAGING_ROOT: &str = ".cc-monitor/staging";
+/// 传上去的那一份自己在那台上做（`--place-self` · `--unplace-self`）。值只住契约（家目录相对路径那一张表），后端提交那一侧读同一份。
+pub const STAGING_ROOT: &str = relay_route_core::STAGING_DIR_REL;
 
-/// 写根的祖先：后端的家。只在「建目录」那一形里放行（首次部署要建它）。
-const ROOTS_HOME: &str = ".cc-monitor";
+/// 写根的祖先：后端的家（写根的父目录）。只在「建目录」那一形里放行（首次部署要建它）。
+fn roots_home() -> &'static str {
+    parent_of(STAGING_ROOT)
+}
 
 /// **远端写的规矩**（宿主装进 [`crate::env::Env::files`]，一个进程一种；线上交来的请求改不动它）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -199,7 +201,7 @@ async fn take_parked(req: &DialRequest) -> Option<Session> {
     None
 }
 
-/// 一份拨号请求（传输台开单时读进来、起跑时拿它开会话）。包一层是为了让传输台**只经本文件**够到拨号：
+/// 一份拨号请求（两台之间复制起那一腿时拿它开会话）。包一层是为了让 SFTP 腿**只经本文件**够到拨号：
 /// 它手里不必有 `DialRequest` 这个类型（文件管理那一块只依赖纯工具与平台两层，由它的 `Cargo.toml` 管）。
 #[derive(Clone)]
 pub struct Dial(DialRequest);
@@ -364,7 +366,7 @@ fn why_of(e: &(dyn std::error::Error + 'static)) -> String {
 
 /// SFTP 文件句柄读写那一形的原因词。`russh_sftp` 把失败包进 `io::Error` 有两种包法，种类多是 Other：
 /// ① 整个 SFTP 错包在里面（取出来按 [`why_of_sftp`]）；② 只剩服务端那句话（状态码丢了 —— 认 SFTP v3 标准码的那几句标准话）。
-/// 都不是 ⇒ 按 IO 种类（`copy_core::io_reason`）。传输台写 / 读 / 挪远端那份时经这里。
+/// 都不是 ⇒ 按 IO 种类（`copy_core::io_reason`）。SFTP 腿写 / 读 / 挪远端那份时经这里。
 pub fn why_of_io(e: &std::io::Error) -> String {
     use std::io::ErrorKind as K;
     match e.kind() {
@@ -452,7 +454,7 @@ pub fn fence_lexical(
         return Err(copy_text("beSftp.fence.irregular", &[("path", p)]));
     }
     let rel = rel.to_string();
-    if intent == Intent::Dir && rel == ROOTS_HOME {
+    if intent == Intent::Dir && rel == roots_home() {
         return Ok((rel, None));
     }
     let under = rel
@@ -490,7 +492,7 @@ async fn own_root(s: &Session, root: &str) -> Result<Option<String>, Refusal> {
             &[("root", root), ("real", real)],
         ))
     };
-    for dir in [ROOTS_HOME, root] {
+    for dir in [roots_home(), root] {
         match s.sftp().symlink_metadata(dir).await {
             Ok(m) if m.is_symlink() => {
                 let real = s.sftp().canonicalize(dir).await.unwrap_or_default();

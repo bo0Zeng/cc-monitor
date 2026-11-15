@@ -42,7 +42,7 @@ use test_meters::alloc_probe; // 线程级内存量具（`VmHWM` 是进程级的
 #[cfg(test)]
 #[path = "../../tests/backend/allocator_guard.rs"]
 mod allocator_guard; // 远端 musl 版的全局分配器是 mimalloc，本机 glibc 版与 Windows 版不换（整体 #[cfg(test)]）
-use backend_assets as assets; // 后端代管的用户资产（别名 · MCP · skill）：D 组的计算与判定，写经本进程的文件管理面（独立的包 `backend-assets`：只引账号域 · agents · 拨号 · 历史清单 · 帧面零件 · 纯工具 · 平台七层）
+use backend_assets as assets; // 后端代管的用户资产（别名 · MCP · skill）：D 组的计算与判定，写经本进程的文件管理面（独立的包 `backend-assets`：只引账号域 · agents · 拨号 · 历史清单 · 文件管理 · 帧面零件 · 纯工具 · 平台八层）
 #[cfg(test)]
 #[path = "../../tests/backend/build_features_tests.rs"]
 mod build_features; // 判据构建与发布构建的 serde_json 特性集相同（`cargo tree --frozen` 现取）
@@ -60,7 +60,7 @@ use backend_wire::ccm_line; // ccm 这一行的词与解析（旗标 · 解析 �
 #[cfg(test)]
 #[path = "../../tests/backend/common/cross_tests.rs"]
 mod common_cross_tests; // 纯工具那一层判据里引到上层的那几条（那一层是独立的包、够不到上层）
-use backend_control as control; // U3：控制面 —— 会改变世界（写盘 / 改 tmux server / 发信号），或产出改变世界的计划（独立的包 `backend-control`：只引资产 · 账号域 · agents · 拨号 · 历史清单 · 宿主口 · 诊断文件 · 帧面零件 · 纯工具 · 平台十层）
+use backend_control as control; // U3：控制面 —— 会改变世界（写盘 / 改 tmux server / 发信号），或产出改变世界的计划（独立的包 `backend-control`：只引资产 · 账号域 · agents · 拨号 · 历史清单 · 宿主口 · 帧面零件 · 纯工具 · 平台九层）
 #[cfg(test)]
 #[path = "../../tests/backend/cross/control.rs"]
 mod cross_control; // 控制面判据里引到上层的那几条（那一层是独立的包、够不到上层）
@@ -70,11 +70,17 @@ mod cross_dial; // 拨号那一侧判据里引到上层的那几条（那一层�
 #[cfg(test)]
 #[path = "../../tests/backend/cross/host.rs"]
 mod cross_host; // 宿主口与 ccm 行判据里引到上层的那几条（那一层是独立的包、够不到上层）
-use backend_dial as dial; // SSH 拨号的后端那一侧 —— 钥匙 · known_hosts · 转发的账 · 问远端后端 · 开终端（独立的包 `backend-dial`：只引帧面零件 · 纯工具 · 平台三层）
+use backend_dial as dial; // SSH 拨号的后端那一侧 —— 钥匙 · known_hosts · 转发的账 · 问远端后端 · 开终端（独立的包 `backend-dial`：只引帧面零件 · 中转宿主 · 纯工具 · 平台四层）
 use backend_faces as faces; // 帧面宿主：每条帧命令的薄壳 · 格目录 · 通用投影（本体在下面各层；独立的包 `backend-faces`：引除文件管理 · 插件 · 诊断文件外的全部十四层）
+#[cfg(test)]
+#[path = "../../tests/backend/adapter_among_guard.rs"]
+mod adapter_among_guard; // 拿 kind 跟家名比只在 `agents::adapter_among`：别处比 kind 的逐处带理由登表、只许减（整体 #[cfg(test)]）
 #[cfg(test)]
 #[path = "../../tests/backend/cross/faces.rs"]
 mod cross_faces; // 帧面宿主判据里引到上层（命令表 · 进后端的口）的那几条（那一层是独立的包、够不到上层）
+#[cfg(test)]
+#[path = "../../tests/backend/family_said_guard.rs"]
+mod family_said_guard; // 一家对人的叫法只住 `agents::family_said_among`：别处读 `display_name` 的处数只许减（整体 #[cfg(test)]）
 use backend_files as files; // 文件管理那一块：只读族（常驻文件名索引 ＋ 列 · 读 · 找 · grep）＋ 写面（独立的包 `backend-files`：只引纯工具与平台两层）
 #[cfg(test)]
 #[path = "../../tests/backend/cross/files.rs"]
@@ -82,7 +88,7 @@ mod cross_files; // 文件管理那一块的判据里引到上层的那几条（
 #[path = "../../tests/backend/flow_scripts_guard.rs"]
 mod flow_scripts_guard; // flow3：流程工具（门禁入口 · 挑格 · 重活隔离 · 推候选分支）在仓里、能跑、不写家目录（整体 #[cfg(test)]）
 #[cfg(test)]
-use backend_footprint as footprint; // 「足迹」：申报表 ＋ 判定 ＋ 这台的 stat，出整份成品（只读；独立的包 `backend-footprint`：只引控制面 · 观测面 · 资产 · 账号域 · agents · 历史清单 · 帧面零件 · 纯工具 · 平台九层；生产段经帧面宿主答，本包只剩判据读它）
+use backend_footprint as footprint; // 「足迹」：申报表 ＋ 判定 ＋ 这台的 stat，出整份成品（只读；独立的包 `backend-footprint`：只引资产 · 账号域 · agents · 历史清单 · 宿主口 · 帧面零件 · 纯工具 · 平台八层；生产段经帧面宿主答，本包只剩判据读它）
 #[cfg(test)]
 #[path = "../../tests/backend/cross/footprint.rs"]
 mod cross_footprint; // 足迹判据里引到上层的那几条（那一层是独立的包、够不到上层）
@@ -95,11 +101,11 @@ use test_meters::golden; // 金样判据只比不写；现打的落 `.build/gold
 #[cfg(test)]
 #[path = "../../tests/backend/no_timer_guard.rs"]
 mod no_timer_guard; // 零定时器护栏两面：代码里没有会自己醒来的构件 · 散文不许许诺定时 / 轮询兜底（内部整体 #[cfg(test)]，生产构建为空）
-use backend_observe as observe; // U3：观测面 —— 读，不改变世界（独立的包 `backend-observe`：只引资产 · 账号域 · agents · 历史清单 · 宿主口 · 帧面零件 · 纯工具 · 平台八层）
+use backend_observe as observe; // U3：观测面 —— 读，不改变世界（独立的包 `backend-observe`：只引 agents · 历史清单 · 宿主口 · 中转宿主 · 帧面零件 · 纯工具 · 平台七层）
 #[cfg(test)]
 #[path = "../../tests/backend/cross/observe.rs"]
 mod cross_observe; // 观测面判据里引到上层的那几条（那一层是独立的包、够不到上层）
-use backend_plan as plan; // 计划（planned-build）的读面：找 pb、跑 `pb dump`、加工成界面排版的成品、盯计划仓推 `changed {plan}`（只读，一个字节都不写；独立的包 `backend-plan`：只引足迹 · 观测面 · 历史清单 · agents · 插件 · 帧面零件 · 纯工具 · 平台八层）
+use backend_plan as plan; // 计划（planned-build）的读面：找 pb、跑 `pb dump`、加工成界面排版的成品、盯计划仓推 `changed {plan}`（只读，一个字节都不写；独立的包 `backend-plan`：只引历史清单 · agents · 插件 · 帧面零件 · 纯工具 · 平台六层）
 use backend_platform as platform; // U2：唯一允许平台原语与平台 cfg 的层（§1.1 第一条解耦线；独立的包 `backend-platform`）
 #[cfg(test)]
 #[path = "../../tests/backend/platform/cross_tests.rs"]
@@ -122,6 +128,9 @@ mod protocol_doc_guard; // U6a：IPC-PROTOCOL.md 与真实协议面的对拍
 #[path = "../../tests/backend/readonly_guard.rs"]
 mod readonly_guard;
 #[cfg(test)]
+#[path = "../../tests/backend/serde_rename_guard.rs"]
+mod serde_rename_guard; // R2：字段 / 变体级的 serde(rename) 只许线上名是 Rust 关键字，别的交给容器级 rename_all（整体 #[cfg(test)]）
+#[cfg(test)]
 #[path = "../../tests/backend/ts_export_guard.rs"]
 mod ts_export_guard; // ts-rs 生成物只落在登记的目录、同名只许一个出处（内部整体 #[cfg(test)]，生产构建为空）
 use backend_relay as relay; // 中转的宿主：绑口 · 钥匙 · 起中转（中转本身是通信层 crate `comms_outward`；独立的包 `backend-relay`：只引纯工具与平台两层）
@@ -134,7 +143,7 @@ mod runs_guard; // 子运行：通用层只认「运行」（扫描 ＋ 假适�
 #[cfg(test)]
 #[path = "../../tests/backend/single_stream_guard.rs"]
 mod single_stream_guard; // 多客户按连接各一份 —— 「源码里恰好一份、按连接实例化」那几处的触发器（整体 #[cfg(test)]）
-use backend_stderr_log as stderr_log; // 脱离常驻那条载体的 stderr 落进一份有上限、滚动的文件（宿主交 `CCM_BACKEND_STDERR_LOG` 才接；后端自有状态，经 `Own`，写口只从 main.rs 进）
+use backend_stderr_log as stderr_log; // 脱离常驻那条载体的 stderr 落进一份有上限、滚动的文件（宿主交 `CCM_BACKEND_STDERR_LOG` 才接；写口只从 `stream/entry.rs` 进；独立的包 `backend-stderr-log`：只引纯工具与平台两层）
 mod stream; // 进后端的口（最上层）：进程入口 · 命令表 · 帧面与 CLI 面的分派 · 门 · 期限 · 出口声明 · tap（谁都不引它，只 lib 接）
 pub use stream::entry::run; // 二进制那一行（`main.rs`）：进程的整个身子
 pub use wire::b64_encode; // bench `s7_history_read` 读它（crate 外读者）

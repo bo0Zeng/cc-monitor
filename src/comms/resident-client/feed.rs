@@ -246,8 +246,8 @@ pub struct Config {
     pub machine: String,
     /// 手上这一版的身份（版本门的对照物；没有 ⇒ 不比）。
     pub mine: Option<String>,
-    /// 看的这一台的时区（IANA 名）。
-    pub tz: Option<String>,
+    /// 看的这一台的时区（IANA 名）：那台照它写推送帧的钟面（`timeText` 那几格）。必交：不交那台就按 UTC 写，错到看的人眼里。
+    pub tz: String,
     /// 握手每一行等多久（冷启要起常驻、读盘，给足）。
     pub handshake: Duration,
 }
@@ -467,10 +467,7 @@ impl<T: Transport> Feed<T> {
     }
 
     fn offline(&self) -> Problem {
-        Problem::new(
-            comms_inward::chan::said::offline(&self.cfg.machine),
-            String::new(),
-        )
+        Problem::new(copy_core::offline(&self.cfg.machine), String::new())
     }
 
     async fn run(self: Arc<Self>) {
@@ -673,7 +670,7 @@ impl<T: Transport> Feed<T> {
         } = attached;
         let client = writer.into_client(hello.witness());
         client.name_machine(&self.cfg.machine);
-        client.set_viewer_tz(self.cfg.tz.clone());
+        client.set_viewer_tz(Some(self.cfg.tz.clone()));
         let differs = client.offer().frames_differ().to_vec();
         if !differs.is_empty() {
             tracing::warn!(
@@ -759,7 +756,7 @@ impl<T: Transport> Feed<T> {
         self.set_ssh(true).await;
         attach::handshake(
             stream,
-            self.cfg.tz.as_deref(),
+            Some(&self.cfg.tz),
             self.cfg.mine.as_deref(),
             Some(self.desk.ask_for_attach()),
             deflate && t.far(),

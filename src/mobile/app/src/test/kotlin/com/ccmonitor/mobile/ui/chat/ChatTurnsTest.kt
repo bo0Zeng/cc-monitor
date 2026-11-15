@@ -149,7 +149,7 @@ class ChatTurnsTest {
             runCurrent()
             assertEquals(listOf("u1", "a1#0", "a2#0", "a3#0"), s.shape())
             assertNull(s.state.value.historyError)
-            assertNull(s.state.value.failedWhy)
+            assertNull(s.state.value.failure)
             assertTrue(
                 s.state.value.units
                     .isNotEmpty(),

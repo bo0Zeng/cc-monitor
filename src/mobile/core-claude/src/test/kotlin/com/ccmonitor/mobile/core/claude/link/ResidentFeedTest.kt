@@ -113,8 +113,6 @@ class ResidentFeedTest {
 
         val picks = mutableListOf<Pair<Long, String>>()
 
-        override fun searchMerge(data: String): String = ""
-
         override fun transferStop(id: Long) {
             transfers += listOf("stop", id)
         }
@@ -129,16 +127,6 @@ class ResidentFeedTest {
 
         override fun batchStop(id: Long) {
             answers += id to "stop"
-        }
-
-        override fun stage(
-            handle: Long,
-            fd: Int,
-            name: String,
-            withinMs: Long,
-        ): Long {
-            transfers += listOf("stage", fd, name, withinMs)
-            return 40L + transfers.size
         }
 
         override fun read(
@@ -368,17 +356,17 @@ class ResidentFeedTest {
             val f = feed(core)
             f.deploy { """[{"os":"Linux","arch":"x86_64","id":"p10g-mine","path":"/d/x"}]""" }
             assertEquals(listOf("""[{"os":"Linux","arch":"x86_64","id":"p10g-mine","path":"/d/x"}]"""), core.deploys)
-            core.emit("deploy", """{"end":"done","act":"deploy","text":"已安装后端 p10g-mine"}""")
+            core.emit("deploy", """{"end":"done","text":"已安装后端 p10g-mine"}""")
             assertEquals(Deploying.Done("已安装后端 p10g-mine"), f.deploying.value)
             core.emit("state", line("连着"))
             assertEquals(Deploying.Done("已安装后端 p10g-mine"), f.deploying.value)
             core.emit("state", line("那台旧"))
             assertEquals("又说要更新 ⇒ 装好那一句收起", null, f.deploying.value)
-            core.emit("deploy", """{"end":"done","act":"deploy","text":"已安装后端 p10g-mine"}""")
+            core.emit("deploy", """{"end":"done","text":"已安装后端 p10g-mine"}""")
             core.emit("deploy", """{"end":"failed","code":"io_failed","said":"上传后校验失败","detail":"d"}""")
             assertEquals("没做成 ⇒ 上一趟那一句收起", null, f.deploying.value)
             // 缺一格（详情）· 认不出的结局 ⇒ 不补默认、不动，报契约对不上。
-            core.emit("deploy", """{"end":"done","act":"deploy","text":"已安装后端 p10g-mine"}""")
+            core.emit("deploy", """{"end":"done","text":"已安装后端 p10g-mine"}""")
             core.emit("deploy", """{"end":"failed","code":"io_failed","said":"别的"}""")
             core.emit("deploy", """{"what":1}""")
             assertEquals(Deploying.Done("已安装后端 p10g-mine"), f.deploying.value)
@@ -395,9 +383,9 @@ class ResidentFeedTest {
             core.emit("reply", """{"call":1,"end":"ok","data":{"rows":[],"later":{"x":1}}}""")
             assertEquals(Reply.Ok(mapOf("rows" to emptyList<Any>(), "later" to mapOf("x" to 1.0))), ok.await())
             val failed = async { f.call("session-open") }
-            core.emit("reply", """{"call":2,"end":"failed","code":"differs","said":"box 后端版本不同","detail":"d","data":{"want":"5.1"}}""")
+            core.emit("reply", """{"call":2,"end":"failed","code":"backend_differs","said":"box 后端版本不同","detail":"d","data":{"want":"5.1"}}""")
             val said = (failed.await() as Reply.Failed).failure
-            assertEquals(listOf("differs", "box 后端版本不同", "d"), listOf(said.code, said.said, said.detail))
+            assertEquals(listOf("backend_differs", "box 后端版本不同", "d"), listOf(said.code, said.said, said.detail))
             assertEquals(mapOf("want" to "5.1"), said.data?.value)
             // 期限到 · 撤了：核心写好的那一句与详情原样带上（手机不另取字）。
             val ends =
@@ -414,18 +402,17 @@ class ResidentFeedTest {
         }
 
     @Test
-    fun `分块传：描述符交给核心、走到哪按编号交给那一趟、结局同一问一答那一行`() =
+    fun `分块传：走到哪按编号交给那一趟、结局同一问一答那一行`() =
         runTest(UnconfinedTestDispatcher()) {
             val core = FakeCore()
             val f = feed(core)
             val seen = mutableListOf<Pair<Long, Long>>()
-            val up = async { f.transfer(Transfer.Stage("up.bin"), { 17 }, 20_000) { d, t -> seen += d to t } }
-            assertEquals(listOf<Any>("stage", 17, "up.bin", 20_000L), core.transfers.single())
+            val up = async { f.transfer(Transfer.Pull(RemotePath.of("/w"), 100), 20_000) { d, t -> seen += d to t } }
             core.emit("moved", """{"call":41,"done":5,"total":10}""")
             core.emit("moved", """{"call":99,"done":1,"total":1}""")
             core.emit("moved", """{"call":41,"done":10,"total":null}""")
-            core.emit("reply", """{"call":41,"end":"ok","data":{"key":"k"}}""")
-            assertEquals(Reply.Ok(mapOf("key" to "k")), up.await())
+            core.emit("reply", """{"call":41,"end":"ok","data":{"undecodable":"x"}}""")
+            assertEquals(Reply.Ok(mapOf("undecodable" to "x")), up.await())
             assertEquals("别的那一趟的不算；总数不知道 ⇒ -1", listOf(5L to 10L, 10L to -1L), seen)
         }
 
@@ -435,7 +422,7 @@ class ResidentFeedTest {
             val core = FakeCore()
             val f = feed(core)
             val odd = RemotePath(byteArrayOf(0x2f, 0xff.toByte()))
-            val got = async { f.transfer(Transfer.Pull(odd, 100), { error("拉进内存不开本机那一份") }, 9_000) { _, _ -> } }
+            val got = async { f.transfer(Transfer.Pull(odd, 100), 9_000) { _, _ -> } }
             assertEquals(listOf<Any>("read", """{"b16":"2fff"}""", 100L, 9_000L), core.transfers.single())
             core.emit("reply", """{"call":41,"end":"ok","data":{"bytes":2,"content":{"b16":"89ff"},"undecodable":"解不开"}}""")
             val read = Transfer.Pull.of((got.await() as Reply.Ok).data)
@@ -448,7 +435,7 @@ class ResidentFeedTest {
         runTest(UnconfinedTestDispatcher()) {
             val core = FakeCore()
             val f = feed(core)
-            val down = async { f.transfer(Transfer.Stage("up.bin"), { 18 }, 9_000) { _, _ -> } }
+            val down = async { f.transfer(Transfer.Pull(RemotePath.of("/w"), 100), 9_000) { _, _ -> } }
             down.cancel()
             assertEquals(listOf<Any>("stop", 41L), core.transfers.last())
             assertEquals(2, core.transfers.size)
@@ -521,7 +508,7 @@ class ResidentFeedTest {
             val reply =
                 """{"held":"h1","whole":true,"same":false,"order":["docs"],"up":{"docs":{"path":"/h/docs","shown":"~/docs","name":"docs","kind":"dir",""" +
                     """"class":"folder","type_text":"","mtime_secs":1700000000,"size":12}},""" +
-                    """"head":{"total":1,"info":{"shown":"~","up":null,"crumbs":[],"truncated":false,"total":1,"unreadable":0}}}"""
+                    """"head":{"total":1,"info":{"shown":"~","at_home":false,"by":"name","descending":false,"up":null,"crumbs":[],"truncated":false,"total":1,"unreadable":0}}}"""
             val listing = FilesLs.of(Json.obj(reply))!!
             val menu = f.picks(listing.entries.map { it.row })
             assertEquals(

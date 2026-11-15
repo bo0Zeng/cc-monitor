@@ -9,16 +9,16 @@ import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.wire.gen.AskEnd
 import com.ccmonitor.mobile.core.wire.gen.Needs
 import com.ccmonitor.mobile.core.wire.gen.NeedsAsk
+import com.ccmonitor.mobile.core.wire.gen.NeedsAt
 import com.ccmonitor.mobile.core.wire.gen.NeedsChoice
 import com.ccmonitor.mobile.core.wire.gen.NeedsChoiceRow
 import com.ccmonitor.mobile.core.wire.gen.NeedsItem
-import com.ccmonitor.mobile.core.wire.gen.NeedsList
+import com.ccmonitor.mobile.core.wire.gen.NeedsMerged
 import com.ccmonitor.mobile.core.wire.gen.NeedsNote
 import com.ccmonitor.mobile.core.wire.gen.NeedsQuestion
 import com.ccmonitor.mobile.link.Problem
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
-import com.ccmonitor.mobile.ui.needs.MachineNeeds
 import com.ccmonitor.mobile.ui.needs.waitingNow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
@@ -28,10 +28,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
-/** 聊天屏上需手动那一块此刻的样子：钉条 ＋ 答题抽屉（都可能没有）。 */
+/** 聊天屏上那一块此刻的样子：钉条（待答请求 · 需手动）＋ 答题抽屉（都可能没有）。 */
 data class NeedsUi(
     val bar: NeedsBar? = null,
     val sheet: AskSheet? = null,
@@ -47,13 +46,15 @@ data class AwaitingStep(
     val text: String,
 )
 
-/** 钉条（输入框上方）：第一行那台写好的 [head] ＋ 已等，第二行等宽的 [line2]（答不了的那种是那台那一句，[code] 为假）。 */
+/** 钉条（输入框上方）：第一行那台写好的 [head] ＋ 已等，第二行等宽的 [line2]（需手动那一列是那台那一句 `manualText`，[code] 为假）。 */
 data class NeedsBar(
+    /** 抬头照它在核心分好的哪一列：待答请求那一列 ⇒「待答请求」；需手动那一列 ⇒「需手动」（不另看 `ask`）。 */
+    val title: String,
     val head: String,
     val line2: String?,
     /** 第二行是命令 / 主参数（等宽）；`false` ＝ 那台写的一句话（界面字体）。 */
     val code: Boolean,
-    /** 挂着请求、这里还没答过 ⇒ 右侧［答］。答不了的（`ask: null`）不画按钮：终端只当逃生口、只在 ⋯ 里。 */
+    /** 在待答请求那一列、这里还没答过 ⇒ 右侧［答］。需手动那一列不画按钮：终端只当逃生口、只在 ⋯ 里。 */
     val canAnswer: Boolean,
     val waitedMs: Long?,
     val receivedAt: Long,
@@ -68,6 +69,8 @@ data class NeedsBar(
 data class AskSheet(
     val ask: NeedsAsk,
     val head: String,
+    /** 一屏一题时的抬头：那台写好的「{head} · {i}/n」，`{i}` 那个空由这边填（翻到哪一页是这边的事）；不是提问那一种 ⇒ `null`，照 [head]。 */
+    val pageHead: String?,
     val waitedMs: Long?,
     val receivedAt: Long,
     /** 送出中那一颗的选项 id。 */
@@ -123,8 +126,8 @@ fun choiceGroups(ask: NeedsAsk): List<List<ChoiceRow>> {
 }
 
 /**
- * 一条会话的需手动（聊天屏那一块）：读跨会话需手动板上那台那一份（[NeedsBoard]，这里不另问 `sessions-needs`）里这一条；
- * 什么时候重问归板管，这里答完叫它重问一次。答走 `needs-answer`（同桌面那一条，不送键）：
+ * 一条会话的待答请求与需手动（聊天屏那一块：叫哪一个照核心把它分进哪一列，待答请求那一列 · 需手动那一列）：读跨会话需手动板上核心合好的那一份（[NeedsBoard]，这里不另问 `sessions-needs`）里本台这一条；
+ * 什么时候重问归板管，这里答完叫它重问一次。答走 `needs-answer`（同桌面那一条；手机不送键 · 挡着终端的那一种由后端读屏认准了往终端里按）：
  * - 答上了 ⇒ 抽屉收起，那一份不再给［答］，钉条等重问里没了才消失；
  * - 回包是「别处已答」那一种结局（`result: gone`）⇒ 抽屉里按钮全灰、那台那一句、只留［关闭］，随后重问；
  * - 抽屉开着、重问里那条请求没了（终端 / 桌面先答了 · 没人答、那台替人答了）⇒ 同一态，那一句照那台 `sessions-needs.ended`（同桌面，不在这里兜底）；
@@ -134,9 +137,11 @@ fun choiceGroups(ask: NeedsAsk): List<List<ChoiceRow>> {
  */
 class NeedsDesk(
     private val link: CoreLink,
-    /** 板上那台此刻那一份（[NeedsBoard.state] 里那一台）。 */
-    board: Flow<MachineNeeds?>,
-    /** 叫板重问那一台。 */
+    /** 板上核心合好的那一份（[NeedsBoard.state] 的 `merged`；还没问完过一圈 ⇒ `null`）。 */
+    board: Flow<NeedsMerged?>,
+    /** 这一台（hostId）：合好的那一份里照它认本台那几项。 */
+    private val origin: String,
+    /** 叫板再问一圈。 */
     private val reask: () -> Unit,
     sid: Flow<String?>,
     private val machine: String,
@@ -152,6 +157,9 @@ class NeedsDesk(
     @Volatile private var current: String? = null
     private var needs: Needs? = null
 
+    /** 那一项在核心分好的哪一列：待答请求 ⇒ `true`，需手动 ⇒ `false`（抬头 · 第二行 · 有没有［答］只照它）。 */
+    private var answerable = false
+
     /** 那一项上那台写好的钉条第一行（[NeedsBar.clock]）。 */
     private var clock: String? = null
 
@@ -164,20 +172,21 @@ class NeedsDesk(
 
     init {
         scope.launch {
-            combine(sid.filterNotNull().distinctUntilChanged(), board.map { it?.list }.filterNotNull().distinctUntilChanged()) { s, list -> s to list }
-                .collect { (s, list) ->
+            combine(sid.filterNotNull().distinctUntilChanged(), board.filterNotNull().distinctUntilChanged()) { s, merged -> s to merged }
+                .collect { (s, merged) ->
                     current = s
-                    take(s, list)
+                    take(s, merged)
                 }
         }
     }
 
-    /** ［答］：升起抽屉（答不了的不升）。 */
+    /** ［答］：升起抽屉（需手动那一列的不升）。 */
     fun open() {
         val n = needs ?: return
+        if (!answerable) return
         val ask = n.ask ?: return
         if (ask.id == settled) return
-        update { it.copy(sheet = AskSheet(ask, n.head, n.waitedMs, receivedAt)) }
+        update { it.copy(sheet = AskSheet(ask, n.head, n.askPage, n.waitedMs, receivedAt)) }
     }
 
     /** 抽屉外点一下 · 下滑 · ［关闭］：收起、不算答。 */
@@ -275,12 +284,18 @@ class NeedsDesk(
 
     private fun take(
         s: String,
-        list: NeedsList,
+        merged: NeedsMerged,
     ) {
-        val item = list.items.firstNotNullOfOrNull { (it as? NeedsItem.Session)?.takeIf { i -> i.session.sid == s } }
+        // 本会话那一项在核心分好的两列里找（待答请求 · 需手动，哪一列都可能）；在哪一列记下，抬头照它。
+        val mine = { items: List<NeedsAt> ->
+            items.firstNotNullOfOrNull { x -> (x.item as? NeedsItem.Session)?.takeIf { x.origin == origin && it.session.sid == s } }
+        }
+        val asked = mine(merged.asks.items)
+        val item = asked ?: mine(merged.manual.items)
+        answerable = asked != null
         needs = item?.session?.needs
         clock = item?.clock?.head
-        ended = list.ended.firstOrNull { it.sid == s }?.end
+        ended = merged.ended.firstOrNull { it.origin == origin && it.sid == s }?.end
         receivedAt = now()
         val ask = needs?.ask
         // 答过的那一份不在了 ⇒ 忘掉它（下一份照常给［答］）。
@@ -301,10 +316,11 @@ class NeedsDesk(
                 bar =
                     n?.let {
                         NeedsBar(
+                            title = if (answerable) copyText("needs.asks.title") else copyText("beSession.needs.unknown"),
                             head = it.head,
-                            line2 = if (it.ask != null) it.headCode else it.manualText,
-                            code = it.ask != null,
-                            canAnswer = it.ask != null && it.ask?.id != settled,
+                            line2 = if (answerable) it.headCode else it.manualText,
+                            code = answerable,
+                            canAnswer = answerable && it.ask?.id != settled,
                             waitedMs = it.waitedMs,
                             receivedAt = receivedAt,
                             clock = clock,

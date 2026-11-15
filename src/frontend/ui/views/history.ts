@@ -28,6 +28,7 @@ import { dispatcher } from "../keybindings/registry";
 import { copyText } from "../copy-table";
 import { isLive } from "../face-can";
 import { commands } from "../ipc/commands";
+import { machineName } from "../ipc/chan-caller";
 import { isLocalOrigin, isRemoteOrigin, LOCAL, type Machine } from "../ipc/origin";
 import { LS_KEYS, safeGetJson, safeSetJson } from "../local-storage";
 import { annotate } from "../history-reads";
@@ -39,8 +40,8 @@ import type { HistoryBrowseReq } from "../generated/HistoryBrowseReq";
 import type { HistorySection } from "../generated/HistorySection";
 import { searchAllMachines, type SearchResult, type SessionHits } from "./history-search";
 import { SessionViewer, viewerPath, type ViewerHead } from "./session-viewer";
-import { defaultPick, pickAsk, resumeAccounts, resumeHint, resumeMenuItems, type ResumeAccounts, type ResumePick } from "../resume-menu";
-import { deleteSession } from "../session-writes";
+import { defaultPick, pickAsk, resumeAccounts, resumeHint, resumeMenuItems, resumeOff, type ResumeAccounts, type ResumePick } from "../resume-menu";
+import { archiveSession, deleteSession, unarchiveSession } from "../session-writes";
 import { revealInFolder } from "../reveal-in-folder";
 import { openSession } from "../session-open";
 import { standingOf } from "../sessions-where";
@@ -48,6 +49,7 @@ import { openNewSession } from "../new-session";
 import { groupHead, hitsBlock, labelOf, machineTag, rowBadges, rowKey, sectionHead, sessionRow, strip, type RowHooks } from "./history-rows";
 import s from "./history.module.css";
 import { saidOf } from "../kit/detail";
+import { displayNameOf } from "../agent-profile";
 
 type ViewMode = "time" | "project";
 type Scope = "all" | "user" | "assistant" | "report";
@@ -111,6 +113,8 @@ export class HistoryView {
   /** 发问的先后号：比已画的那一问早发的答不画。开一次页换一个号（关了再开，上一回的答不画）。 */
   private issued = 0;
   private shownIssued = 0;
+  /** 各台已画的那份副本的代号（回包里远端那几台带的 `seen`）：同一台只认不比它小的那一包。 */
+  private shownSeen = new Map<string, number>();
   private opens = 0;
   /** 没答回来的问几问（> 0 ⇒ 刷新转圈）· 正在同步的远端那几台。 */
   private inFlight = 0;
@@ -285,7 +289,7 @@ export class HistoryView {
   }
 
   /** 发一问。`scroll` ＝ 滚出来的那一窗（答回来就画，鼠标在列表上也画）；`data` ＝ 数据变了（鼠标在列表上先不重排）。 */
-  private ask(fresh: string[], why: "data" | "scroll"): void {
+  private ask(fresh: string[], why: "data" | "scroll", again = false): void {
     const req = this.askOf(fresh);
     const gen = this.genOf(req);
     const n = ++this.issued;
@@ -298,7 +302,11 @@ export class HistoryView {
       // 同步那一问被后来的问顶掉了 · 自己没答上：副本已在本机后端换好（或记下了没成的那一句）⇒ 照现在的样子再问一次手上的。
       if (fresh.length > 0 && (!current || w === null)) return this.ask([], why);
       if (!current) return this.renderChrome();
+      // 发得晚、那台后端读副本却早（有一台的代号比已画的小）⇒ 不盖新的，照现在的样子再问一次手上的；再问一次还旧（那台重起 · 钟回拨）⇒ 照它画。
+      const behind = w !== null && w.head.machines.some((m) => m.seen !== undefined && m.seen < (this.shownSeen.get(m.origin) ?? m.seen));
+      if (behind && !again) return this.ask([], why, true);
       this.shownIssued = n;
+      if (w) for (const m of w.head.machines) if (m.seen !== undefined) this.shownSeen.set(m.origin, m.seen);
       if (w) this.win = w;
       this.failed = failed;
       if (why === "scroll") this.renderNow();
@@ -343,7 +351,7 @@ export class HistoryView {
         query: q,
         includeTools: this.prefs.tools,
         scope: this.prefs.scope === "all" ? null : this.prefs.scope,
-        afterMs: this.prefs.withinDays ? Date.now() - this.prefs.withinDays * 86_400_000 : null,
+        withinDays: this.prefs.withinDays || null,
         limit: null,
       });
       if (seq !== this.contentSeq) return;
@@ -538,7 +546,7 @@ export class HistoryView {
 
   /** 筛选里一台机器那一格：勾掉 / 勾回 ⇒ 重问这一列（勾回的远端那台先同步一次）。那台没读到由列表顶上那条提示说（`machineStrips`），这一格不另标。 */
   private machineCheck(m: Machine, changed: (refetch: boolean) => void): HTMLElement {
-    return checkbox(machineWord(m), !this.prefs.off.includes(m), (on) => {
+    return checkbox(machineName(m), !this.prefs.off.includes(m), (on) => {
       this.prefs.off = on ? this.prefs.off.filter((x) => x !== m) : [...this.prefs.off, m];
       changed(false);
       this.restart();
@@ -596,7 +604,7 @@ export class HistoryView {
         );
       } else if (st?.is === "stale") {
         // 读不到、行照那台上一次的副本出：说清是几时读到的，不冒充读到。
-        strips.push(strip("warn", copyText("history.list.machineStale", { machine: machineWord(m), at: st.at }), { label: copyText("history.list.reconnect"), run: again }));
+        strips.push(strip("warn", copyText("history.list.machineStale", { machine: machineName(m), at: st.at }), { label: copyText("history.list.reconnect"), run: again }));
       } else if (st?.is === "ok" && st.notice) {
         strips.push(strip("warn", copyText("history.list.notice"), { label: copyText("front.act.retry"), run: again }));
       }
@@ -650,7 +658,7 @@ export class HistoryView {
   /** 一行都没有：还在读 ⇒ 骨架；带着字或筛选 ⇒「没有匹配」＋［清除筛选］；否则说还没有会话。 */
   private emptyList(loading: boolean): HTMLElement {
     if (loading) {
-      this.listHead.replaceChildren(copyText("history.list.reading", { machines: this.wanted().map(machineWord).join(` ${copyText("cssMarks.sep.dot")} `) }));
+      this.listHead.replaceChildren(copyText("history.list.reading", { machines: this.wanted().map(machineName).join(` ${copyText("cssMarks.sep.dot")} `) }));
       return skeletonRows(6);
     }
     this.listHead.replaceChildren();
@@ -663,11 +671,11 @@ export class HistoryView {
   /** 列表头：按时间 ⇒ 几个会话（各台几行之和）；按项目 ⇒ 几个项目 · 几个会话 ＋ 全部展开 / 全部收起。 */
   private renderHead(w: BrowseWindow): void {
     if (this.prefs.view === "time") {
-      this.listHead.replaceChildren(copyText("history.group.count", { n: w.head.machines.reduce((n, m) => n + m.total, 0) }));
+      this.listHead.replaceChildren(w.head.said);
       return;
     }
     const head = document.createElement("span");
-    head.textContent = copyText("history.list.countProjects", { p: w.head.projects, n: w.head.grouped });
+    head.textContent = w.head.said;
     const end = document.createElement("span");
     end.className = s.hvHeadEnd;
     const all = (open: boolean): void => {
@@ -700,7 +708,7 @@ export class HistoryView {
         block.appendChild(this.groupLine(line.group, line.open));
         return;
       }
-      block.appendChild(sessionRow(line.row, hooks, { compact, forks: line.forks, forksOpen: line.forksOpen, child: line.child, orphan: line.orphan }));
+      block.appendChild(sessionRow(line.row, hooks, { compact, forksOpen: line.forksOpen, child: line.child, orphan: line.orphan, forksText: line.forksText }));
       this.order.push(rowKey(line.row));
     });
     spacer.appendChild(block);
@@ -766,14 +774,16 @@ export class HistoryView {
       return;
     }
     const r = c.r;
-    this.listHead.replaceChildren(r.summary);
-    if (r.sessions.length === 0) {
-      body.push(this.noHits(c.q));
+    // 结果头那一句只照核心那一格：一台都没答上 ⇒ 核心不写，这里不出。
+    this.listHead.replaceChildren(...(r.summary ? [r.summary] : []));
+    // 空态那一句也只照核心那一格（没答上一台 ⇒ 搜不了；答了没中 ⇒ 没有匹配）；核心没写 ⇒ 有行。
+    if (r.empty !== undefined) {
+      body.push(this.noHits(r.empty, r.summary !== undefined));
       return;
     }
     for (const sh of r.sessions) {
       const row = rowFromHits(sh);
-      const el = sessionRow(row, hooks, { compact: false, forks: 0, forksOpen: false, child: false, orphan: false });
+      const el = sessionRow(row, hooks, { compact: false, forksOpen: false, child: false, orphan: false, forksText: null });
       this.order.push(rowKey(row));
       body.push(hitsBlock(el, sh, (hit) => this.show(row, hit ?? undefined)));
     }
@@ -790,12 +800,12 @@ export class HistoryView {
     return skeletonRows(4);
   }
 
-  /** 没搜到：没含工具输出与思考时给那颗（点了带上它再搜）。 */
-  private noHits(q: string): HTMLElement {
+  /** 没搜到：那一句照核心写好的摆；答了（有结果头）又没含工具输出与思考时给那颗（点了带上它再搜）。 */
+  private noHits(text: string, answered: boolean): HTMLElement {
     return emptyState({
       icon: "search",
-      text: copyText("kit.menu.noMatch", { q }),
-      action: this.prefs.tools
+      text,
+      action: this.prefs.tools || !answered
         ? undefined
         : button({
             label: copyText("history.filter.tools"),
@@ -927,6 +937,7 @@ export class HistoryView {
     this.contentEl.replaceChildren(this.viewer.element);
     void this.viewer.load({
       jsonlPath: r.jsonlPath,
+      sessionId: r.sessionId,
       displayTitle: labelOf(r),
       head: this.headOf(r),
       origin: r.origin,
@@ -954,7 +965,7 @@ export class HistoryView {
     acts.appendChild(more);
     const project = document.createElement("span");
     project.textContent = r.projectName || copyText("history.row.noDir");
-    const machine = machineTag(r.origin) ?? Object.assign(document.createElement("span"), { textContent: copyText("detail.label.local") });
+    const machine = machineTag(r.origin) ?? Object.assign(document.createElement("span"), { textContent: machineName(r.origin) });
     const span = document.createElement("span");
     span.textContent = r.spanText;
     const toList = button({ label: copyText("history.content.toList"), kind: "ghost", icon: "back", size: "compact", onClick: () => this.toList() });
@@ -969,24 +980,26 @@ export class HistoryView {
 
   /**
    * 「恢复 ▾」：主按钮按勾着的那一组起（默认：上次的号 · 不用 tmux；悬停说清用哪个号、进不进 tmux）；
-   * ▾ ＝ 与标签页「恢复 ▸」同一个组件（`resume-menu.ts`）＋ 在此目录新建会话。在跑的 ⇒［切过去］；分身会话 ⇒ 灰着说为什么。
+   * ▾ ＝ 与标签页「恢复 ▸」同一个组件（`resume-menu.ts`）＋ 在此目录新建会话。在跑的 ⇒［切过去］；分身会话 ⇒ 灰着说为什么；
+   * 认不出是哪一家的 ⇒ 一颗灰着的［恢复］说那一句（没有那一家可问号）。
    */
   private resumeControl(r: HistoryRow): HTMLElement {
     if (r.can.resume === "switch") {
       return button({ label: copyText("history.row.switch"), kind: "primary", hint: copyText("history.row.switchHint"), onClick: () => void this.resume(r) });
     }
+    const agent = r.agent;
+    if (agent === undefined) return resumeOff(r.can.resumeWhy ?? null);
     const sb = splitButton({
       label: copyText("history.row.resume"),
-      hint: resumeHint(this.hintAccounts(r), this.pickOf(r)),
+      hint: resumeHint(this.hintAccounts(r, agent), this.pickOf(r)),
       onClick: () => void this.resume(r),
       moreLabel: copyText("history.resume.more"),
-      items: () => this.resumeItems(r, sb.main),
+      items: () => this.resumeItems(r, agent, sb.main),
     });
     sb.root.dataset.role = "resume";
-    if (r.can.resume === "bg") {
-      setDisabled(sb.main, copyText("history.row.bgHint"));
-      setDisabled(sb.more, copyText("history.row.bgHint"));
-    }
+    const blocked = r.can.resumeWhy ?? null;
+    setDisabled(sb.main, blocked);
+    setDisabled(sb.more, blocked);
     return sb.root;
   }
 
@@ -999,17 +1012,17 @@ export class HistoryView {
   }
 
   /** 菜单还没开过时悬停用的账号事实：这一家没有账号这一维 ⇒ 那一家的名字；有上次的号 ⇒ 它。 */
-  private hintAccounts(r: HistoryRow): ResumeAccounts {
-    if (!r.can.accounts) return { kind: "none", agentName: r.agentTag ?? r.agent };
+  private hintAccounts(r: HistoryRow, agent: string): ResumeAccounts {
+    if (!r.can.accounts) return { kind: "none", agentName: r.agentTag ?? displayNameOf(agent) };
     if (!r.lastAccount) return { kind: "off" };
     return { kind: "list", items: [{ name: r.lastAccount, label: r.lastAccount, quota: null, last: true }] };
   }
 
   /** ▾ 的项：账号（能选号的那一家才问那台）· 运行于（勾画在那台答的默认上）· 在此目录新建会话；勾一挪，主按钮的悬停跟着改。 */
-  private async resumeItems(r: HistoryRow, main: HTMLButtonElement): Promise<MenuItem[]> {
+  private async resumeItems(r: HistoryRow, agent: string, main: HTMLButtonElement): Promise<MenuItem[]> {
     const origin = r.origin;
     const [accounts, where] = await Promise.all([
-      resumeAccounts(origin, r.agent, { hasAccounts: r.can.accounts, agentName: r.agentTag ?? r.agent, last: r.lastAccount }),
+      resumeAccounts(origin, { agent, hasAccounts: r.can.accounts, agentName: r.agentTag ?? displayNameOf(agent), last: r.lastAccount }),
       standingOf(origin, r.sessionId),
     ]);
     const pick = this.pickOf(r);
@@ -1022,7 +1035,7 @@ export class HistoryView {
       onChange: (p) => {
         if (main.getAttribute("aria-disabled") !== "true") main.title = resumeHint(accounts, p, machineRun);
       },
-      newInDir: () => void openNewSession({ origin: r.origin, cwd: r.projectPath, agent: r.agent }),
+      newInDir: () => void openNewSession({ origin: r.origin, cwd: r.projectPath, agent }),
     });
   }
 
@@ -1059,7 +1072,7 @@ export class HistoryView {
    * 起了 ⇒ 关历史页（主窗口等它出现再切过去）；没起 ⇒ 那一句已经说过、页面留着。
    */
   private async resume(r: HistoryRow): Promise<void> {
-    if (r.can.resume === "bg") return;
+    if (r.can.resumeWhy !== undefined) return;
     if (r.can.resume === "switch") {
       this.switchTo(r.sessionId);
       this.close();
@@ -1085,7 +1098,7 @@ export class HistoryView {
   private menu(r: HistoryRow, at: HTMLElement | { x: number; y: number }): void {
     const live = r.can.resume === "switch";
     const items: MenuItem[] = [
-      { label: live ? copyText("history.row.switch") : copyText("history.row.resume"), enabled: r.can.resume !== "bg", title: r.can.resume === "bg" ? copyText("history.row.bgHint") : undefined, onClick: () => void this.resume(r) },
+      { label: live ? copyText("history.row.switch") : copyText("history.row.resume"), enabled: r.can.resumeWhy === undefined, title: r.can.resumeWhy, onClick: () => void this.resume(r) },
       { label: copyText("history.menu.openWindow"), icon: "front", onClick: () => this.openWindow(r) },
       { label: "", divider: true },
       { label: r.starred ? copyText("history.menu.unstar") : copyText("history.menu.star"), onClick: () => void this.star(r) },
@@ -1094,6 +1107,8 @@ export class HistoryView {
       { label: "", divider: true },
       ...(r.reveal ? [{ label: copyText("history.menu.openDir"), icon: "folder" as const, onClick: () => void revealInFolder(r.projectPath) }] : []),
       { label: copyText("history.menu.newInDir"), onClick: () => void openNewSession({ origin: r.origin, cwd: r.projectPath, agent: r.agent }) },
+      // 归档那一项只照行上那一格（那台照那一家的归档面写好字）：没有 ⇒ 不出。
+      ...(r.archive ? [{ label: r.archive.label, onClick: () => void this.archive(r) }] : []),
       { label: "", divider: true },
       {
         label: copyText("history.menu.delete"),
@@ -1126,6 +1141,17 @@ export class HistoryView {
       if (to) undoToast(copyText("history.hide.done", { label: labelOf(r) }), () => void setHide(origin, r.sessionId, undoHide(prev)), () => {});
     } catch (e) {
       failToast(copyText("history.hide.failed"), e);
+    }
+  }
+
+  /** 归档 · 取消归档交那台（照行上那一格的 `archived` 选哪一条）；没成照那一格写好的那一句。列表跟着那台的推送重问。 */
+  private async archive(r: HistoryRow): Promise<void> {
+    const a = r.archive;
+    if (!a) return;
+    try {
+      await (a.archived ? unarchiveSession : archiveSession)(r.origin, r.sessionId);
+    } catch (e) {
+      failToast(a.failed, e);
     }
   }
 
@@ -1320,11 +1346,6 @@ function listSizer(root: HTMLElement, initial: number, leftEdge: () => number, s
   return el;
 }
 
-/** 筛选 · 提示条里称呼一台：本机叫「本机」，远端照名字。 */
-function machineWord(m: Machine): string {
-  return isLocalOrigin(m) ? copyText("detail.label.local") : m;
-}
-
 function groupKey(g: HistoryGroup): string {
   return `${g.origin}\u0000${g.key}`;
 }
@@ -1358,6 +1379,8 @@ function rowFromHits(sh: SessionHits): HistoryRow {
     hidden: sh.hidden,
     face: sh.face,
     can: sh.can,
+    // 搜索命中不带归档那一格（只有历史清单的行照归档面填）⇒ 不出那一项。
+    archive: null,
     origin: sh.origin,
     reveal: sh.reveal,
     deleteAsk: sh.deleteAsk,

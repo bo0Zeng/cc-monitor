@@ -8,6 +8,7 @@ use crate::wire::typed::{self, codes, Command};
 
 /// `ext-list`：这台现扫一次、记下（资产目录的写口从这里递进去），各台目录合成「条目 × 机器」；表里有 MCP 行 ⇒
 /// 各台那一格 `mcp` 由这台问到再交（[`with_mcp`]：本机就地读，别的台经常驻流问 `mcp-read`），界面只问这一条。
+/// 那一格是逐家合成的一份（每条带家，默认那一家不写），界面照名字与行上的家（`ExtRow.agent`）一起挑同一家那一条；表里不止一家时每行另带那一家的叫法（`ExtRow.agentSaid`）。
 /// 异步档：扫目录与本机那一份 `mcp-read` 进阻塞池，问各台在异步那一侧等。
 pub struct ExtListCmd;
 
@@ -103,6 +104,8 @@ where
             list.machines[i].mcp = Some(v);
         }
     }
+    // 同名各号配置不一致 ⇒ 照份数拆成几行（判在各台的 `mcp-read`，这里只照它拆）。
+    ext::split_mismatch(&mut list);
     list
 }
 
@@ -146,7 +149,8 @@ impl crate::wire::typed::Handle for ExtUninstallPreviewCmd {
         async move {
             let files = needs;
 
-            ext::answer_uninstall_preview(files, &ext::Env::here(), &req)
+            ext::Env::here(req.agent.as_ref())
+                .and_then(|env| ext::answer_uninstall_preview(files, &env, &req))
                 .map_err(|f| typed::of_fail(f, UninstallPreviewErr::IoFailed))
         }
     }
@@ -195,13 +199,16 @@ impl crate::wire::typed::Handle for ExtUninstallApplyCmd {
         async move {
             let (files, own) = (needs.0, &needs.1);
 
-            ext::answer_uninstall_apply(
-                files,
-                &ext::Env::here(),
-                &|a| crate::assets::skill_ledger::answer_record(a, own),
-                &req,
-            )
-            .map_err(|f| typed::of_fail(f, UninstallApplyErr::IoFailed))
+            ext::Env::here(req.agent.as_ref())
+                .and_then(|env| {
+                    ext::answer_uninstall_apply(
+                        files,
+                        &env,
+                        &|a| crate::assets::skill_ledger::answer_record(a, own),
+                        &req,
+                    )
+                })
+                .map_err(|f| typed::of_fail(f, UninstallApplyErr::IoFailed))
         }
     }
 }

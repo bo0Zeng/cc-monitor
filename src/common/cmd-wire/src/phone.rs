@@ -4,7 +4,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::batch::Decide;
+use crate::attachment::{AttachCardPhase, AttachFaceNote, AttachLocal};
+use crate::batch::{ClashChoice, Decide};
 use crate::machine::MachineState;
 
 /// `state` 那一件：那条流通没通（`connecting` · `up` 带第几条流 · `down`）＋ 那台的状态成品。
@@ -28,8 +29,11 @@ pub enum LinkLine {
     Down { machine: MachineState },
 }
 
+/// 那台答「这台没有常驻在听」的码（`--resident-call` 照实失败，不起冷进程顶上；那一句已叫出那台）。
+pub const CALL_ABSENT: &str = "resident_absent";
+
 /// `reply` 那一件：一问一答的结局（`call` ＝ 问的时候领的那个号）。成了的 `data` 是那台回包原样（Kotlin 照那条命令的回包类型解那一次；
-/// 记录那一格核心先判过认不认得，`face_core::record::mend_records`）。
+/// 记录那一格核心先判过认不认得，手机核心 `record::mend_records`）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -98,23 +102,6 @@ pub struct Moved {
     pub total: Option<u64>,
 }
 
-/// 装 / 换后端那一趟做的是哪一样（[`DeployEnd::Done`]）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(
-    any(test, feature = "ts"),
-    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
-)]
-#[serde(rename_all = "snake_case")]
-pub enum DeployAct {
-    /// 那台已是这一版，不用装。
-    Skip,
-    /// 装了。
-    Deploy,
-    /// 留着那台的（新于这一版）。
-    Keep,
-}
-
 /// `deploy` 那一件：装 / 换后端那一趟的结局（那一句由部署那一份写好）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -124,8 +111,8 @@ pub enum DeployAct {
 )]
 #[serde(tag = "end", rename_all = "snake_case")]
 pub enum DeployEnd {
-    /// 做完了。
-    Done { act: DeployAct, text: String },
+    /// 做完了：那一句写着做了哪一样（已是这一版 · 装上了 · 留着那台的）。
+    Done { text: String },
     /// 没做成：交出去的那一形失败（码 · 那一句 · 复制详情）。
     Failed(crate::failed::Failed),
 }
@@ -144,19 +131,6 @@ pub struct ClashRow {
     /// 这一项能怎么答，先后由核心排好（`batch_core::choices`）。
     pub choices: Vec<ClashChoice>,
     pub there: Option<String>,
-}
-
-/// 同名那一问的一种答：答法 · 整组按钮那一句（`跳过同名`）· 逐项那一格的字（`跳过`）。字由核心写好，两端照摆。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(
-    any(test, feature = "ts"),
-    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
-)]
-pub struct ClashChoice {
-    pub decide: Decide,
-    pub label: String,
-    pub pick: String,
 }
 
 /// `batch` 那一件：一组走到哪（删 · 改权限 · 复制 · 下到本机同一形）。字全由核心写好；`kept` ＝ 落过盘、进程没了再开时接回来的那一组。
@@ -185,6 +159,8 @@ pub enum BatchLine {
         title: String,
         kept: bool,
         conflicts: Vec<ClashRow>,
+        /// 整组那几颗（各行给了的答并起来，先后由核心排好：`batch_core::whole`）。
+        whole: Vec<ClashChoice>,
         go: String,
     },
     /// 断开：那一行（连回来核心同一张票接着做）。
@@ -387,6 +363,20 @@ pub enum DialPlan {
     Refused { said: String },
 }
 
+/// `Core.chmodAsk` 的回值：改权限那一框的标题 · 底下那一行 · 预填（没有 ⇒ 不预填）。字由核心写（`batch_core::chmod_title` ·
+/// `batch_core::mode_line`，桌面那一框同一份），Kotlin 照画。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct ChmodAsk {
+    pub title: String,
+    pub line: String,
+    pub prefill: Option<String>,
+}
+
 /// `Core.machineCheck` 的回值：手机编辑页上那张表（连正在编的那一台）判得怎样 ＋ 那一台展开的拨号地址（预览）。
 /// 毛病的判法 · 说法与桌面 `machines-try` 同一处（`ssh_dial::machine::table_fault`）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -400,4 +390,127 @@ pub struct MachineCheck {
     pub endpoints: Vec<crate::dial::Endpoint>,
     /// 每个地址给人看的那一串（与 `endpoints` 一一对应；拨号核心写，v6 带方括号）。
     pub shown: Vec<String>,
+}
+
+// ───── 手机核心与 Kotlin 之间那一口（`mobcore` 的 `attach`）：Kotlin 交要做的那一下，核心每变一次交整排 ─────
+
+/// 一份本机副本：键（这一排里不重）· 名 · 字节 · 核心交过的编号（摆回时带上）· 现开、交出的描述符（交了就归核心；落好了的可以不给）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct AttachKept {
+    pub key: String,
+    pub name: String,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub bytes: u64,
+    #[serde(default)]
+    pub id: Option<String>,
+    #[serde(default)]
+    pub fd: Option<i32>,
+}
+
+/// Kotlin 交核心的那一下（`tray` ＝ `open` 回的那一排的号）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
+pub enum AttachDo {
+    /// 开一条会话那一排，照本机记着的摆回（已落的不重传）。
+    Open {
+        sid: crate::Sid,
+        cards: Vec<AttachKept>,
+    },
+    /// 加一份（排队）。
+    Add {
+        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+        tray: i64,
+        card: AttachKept,
+    },
+    /// ✕ 一份。
+    Remove {
+        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+        tray: i64,
+        key: String,
+    },
+    /// ［重试］：失败 · 本机副本开不了的回排队；没落好的那几份连新开的描述符一起交（开不了的那份照旧落「本机副本开不了」）。
+    Retry {
+        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+        tray: i64,
+        cards: Vec<AttachKept>,
+    },
+    /// 连上了（流通了 · 换了一条流）。
+    Up {
+        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+        tray: i64,
+    },
+    /// 手机这边的错（`null` ⇒ 收掉）。
+    Local {
+        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+        tray: i64,
+        why: Option<AttachLocal>,
+    },
+    /// 发出去那一下：全落好了 ⇒ 编号、那一排清空。
+    Take {
+        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+        tray: i64,
+    },
+    /// 不看这一排了（屏关了）：在传的撤掉，本机副本的描述符关掉。
+    Close {
+        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+        tray: i64,
+    },
+}
+
+/// 核心回那一下：`open` ⇒ 那一排的号（这台不在 ⇒ 0）；`take` ⇒ 编号（还有没落好的 ⇒ `null`）；别的 ⇒ 号照回、编号 `null`。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct AttachDone {
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub tray: i64,
+    pub ids: Option<Vec<String>>,
+}
+
+/// 核心交 Kotlin 的那一排（`attach` 那一种事件）：每张卡 ＋ 卡下那一条 ＋ 断着没有 ＋ 全落好没有（➤ 才亮）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct AttachShown {
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub tray: i64,
+    pub cards: Vec<AttachShownCard>,
+    pub note: Option<AttachFaceNote>,
+    /// 断着、有排队的在等连上（排队的卡画虚线）。
+    pub offline: bool,
+    pub ready: bool,
+}
+
+/// 一张卡：键 · 走到哪 · 已送字节 · 落好的编号 ＋ 写好的字（第二行 · ✕ 的读屏名）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct AttachShownCard {
+    pub key: String,
+    pub phase: AttachCardPhase,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub done: u64,
+    pub id: Option<String>,
+    pub line: Option<String>,
+    pub remove: String,
 }

@@ -36,6 +36,11 @@ prompt?: string,
  */
 model?: string, 
 /**
+ * 这一趟用的推理档（`model` 那个模型在 `AgentPick.efforts` 里列着的一档的原值）；只跟 `model`；缺 ＝ 那一家照它自己的缺省。
+ * 交给那一家的参数照它的 `model_args` 出。
+ */
+effort?: string, 
+/**
  * 起在哪一个权限档（那一家声明的档之一）；缺 ＝ 这台偏好里那一家的那一档，没设 ⇒ 那一家自己的默认。
  */
 permissionMode?: string, 

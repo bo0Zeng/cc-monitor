@@ -33,6 +33,8 @@
     }
   }
 
+  /* 在等人的两颗（待答请求 · 需手动）同一个琥珀：都是在等人，只是能不能在这里答。 */
+  .dot[data-state="asks"],
   .dot[data-state="needs-you"] {
     background: var(--warn);
   }

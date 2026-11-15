@@ -32,8 +32,8 @@ fn the_bus_backend_starts_no_cc_bus_script() {
             include_str!("../../../src/backend/control/cc_bus/store.rs"),
         ),
         (
-            "control/cc_bus_wire.rs",
-            include_str!("../../../src/backend/control/cc_bus_wire.rs"),
+            "control/cc_bus/wire.rs",
+            include_str!("../../../src/backend/control/cc_bus/wire.rs"),
         ),
     ] {
         let prod = guard_core::production_code(src);
@@ -306,4 +306,34 @@ fn the_peeked_text_is_one_block_per_letter_with_wire_codes_only() {
         "末行说跳过了一条：{text}"
     );
     assert_eq!(render(&[]), (String::new(), 0, 0));
+}
+
+/// ★ cc-bus 一族住 `control/cc_bus/` 一处（控制面目录下不再有 `cc_bus_*.rs` 平铺）；`groups_via_resident` 那一跳
+/// `session-self` 也用，定义只住 `resident.rs`。
+#[test]
+fn the_bus_family_lives_under_cc_bus_and_the_resident_hop_in_resident() {
+    let control = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    assert!(
+        control.join("cc_bus/store.rs").is_file(),
+        "控制面住址不对：{}",
+        control.display()
+    );
+    let root = guard_core::lexically_normalized(control);
+    let mut flat = Vec::new();
+    let mut homes = Vec::new();
+    for (p, src) in guard_core::scan_tree!(&root, &["rs"]) {
+        let p = guard_core::lexically_normalized(&p);
+        let Ok(rel) = p.strip_prefix(&root) else {
+            continue;
+        };
+        let rel = rel.display().to_string();
+        if rel.starts_with("cc_bus_") {
+            flat.push(rel.clone());
+        }
+        if guard_core::contains_word(&guard_core::production_code(&src), "fn groups_via_resident") {
+            homes.push(rel);
+        }
+    }
+    assert!(flat.is_empty(), "控制面目录下还平铺着：{flat:?}");
+    assert_eq!(homes, vec!["resident.rs".to_string()]);
 }

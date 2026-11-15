@@ -28,7 +28,7 @@ class ChatSessionDownTest {
             val ui = s.state.value
             assertEquals("字回到输入框", "你好", ui.recall?.text)
             assertTrue("待发那一排里没有它", ui.outbox.isEmpty())
-            assertEquals("照核心那一句说", link.offline.value, ui.failedWhy)
+            assertEquals("照核心那一句说", SessionFailure(null, link.offline.value), ui.failure)
             assertTrue("还是新建会话的草稿（选项在）", ui.drafting)
 
             link.state.value = LinkLine.Up(1, machineOf(MachineStateKind.UP))

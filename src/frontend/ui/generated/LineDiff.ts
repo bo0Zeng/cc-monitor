@@ -24,4 +24,8 @@ stat: string,
 /**
  * 降级了的那一句：改前改后行数太多、没逐行比，只画整删 ＋ 整增（两端照摆）；逐行比了 ⇒ 缺。
  */
-notice?: string, };
+notice?: string, 
+/**
+ * 收着时那一颗「显示全部改动 +N −M」：`rows` 比 `shown` 多 ⇒ 写好的那一句；都画得下 ⇒ 缺（出口不画那一颗）。
+ */
+showAllText?: string, };

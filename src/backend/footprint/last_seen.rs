@@ -150,17 +150,23 @@ pub(crate) fn read_at(
     })
 }
 
-/// 读回的账号清单是缓存 ⇒ 每号每一格额度写成「… · 上次所知」（`beQuota.cell.stale`），出口照摆。
+/// 读回的账号清单是缓存 ⇒ 每号紧凑那一格与额度几行每行末一格写成「… · 上次所知」（`beQuota.cell.stale`），出口照摆。
 fn stale_quota(
     s: Seen<cmd_wire::accounts::AccountsList>,
 ) -> Seen<cmd_wire::accounts::AccountsList> {
     match s {
         Seen::Kept { seen, mut value } => {
-            for s in value.accounts.iter_mut().flat_map(|r| r.slots.iter_mut()) {
-                s.text = crate::common::cells::Words(copy_text(
-                    "beQuota.cell.stale",
-                    &[("cell", &s.text.0)],
-                ));
+            let stale = |t: &mut crate::common::cells::Words| {
+                *t =
+                    crate::common::cells::Words(copy_text("beQuota.cell.stale", &[("cell", &t.0)]));
+            };
+            for r in &mut value.accounts {
+                r.slots.iter_mut().for_each(|s| stale(&mut s.text));
+                // 额度几行：每行末一格跟上「上次所知」。
+                r.quota
+                    .iter_mut()
+                    .filter_map(|row| row.last_mut())
+                    .for_each(|c| stale(&mut c.text));
             }
             Seen::Kept { seen, value }
         }

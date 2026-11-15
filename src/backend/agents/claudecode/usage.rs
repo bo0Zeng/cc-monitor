@@ -29,6 +29,9 @@ pub(crate) const FACE: UsageFace = UsageFace {
         "CLAUDE_CODE_OAUTH_TOKEN",
     ],
     env_set: &[("TZ", "UTC")],
+    // 起来就吐、不读 stdin：一行不喂，等它自己退。
+    stdin: &[],
+    enough: None,
     read,
 };
 

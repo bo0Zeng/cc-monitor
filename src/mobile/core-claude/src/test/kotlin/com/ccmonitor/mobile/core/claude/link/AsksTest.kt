@@ -5,7 +5,10 @@ import com.ccmonitor.mobile.core.wire.gen.AskEnd
 import com.ccmonitor.mobile.core.wire.gen.AskEndRow
 import com.ccmonitor.mobile.core.wire.gen.AskKind
 import com.ccmonitor.mobile.core.wire.gen.NeedsAsk
+import com.ccmonitor.mobile.core.wire.gen.NeedsItem
+import com.ccmonitor.mobile.core.wire.gen.NeedsList
 import com.ccmonitor.mobile.core.wire.gen.NeedsNote
+import com.ccmonitor.mobile.core.wire.gen.NeedsRow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -46,7 +49,11 @@ class AsksTest {
 
         val sub = ask("subAgent")
         assertTrue("子 agent 那一趟带 run", sub.run != null)
-        assertEquals("release", sub.choices.last().id)
+        assertEquals(
+            "挡着终端、认得出框的那一条只给允许 · 拒绝（后端读屏认准了往终端里按）",
+            listOf("allow", "deny"),
+            sub.choices.map { it.id },
+        )
     }
 
     @Test
@@ -105,8 +112,8 @@ class AsksTest {
                         ),
                     ),
             )
-        val rows = SessionsNeeds.of(data)!!
-        assertEquals(listOf(AskEndRow("s9", AskEnd("10m 无人答 · 已自动答：继续", stays = true))), SessionsNeeds.list(data)!!.ended)
+        val rows = sessionRows(data)!!
+        assertEquals(listOf(AskEndRow("s9", AskEnd("10m 无人答 · 已自动答：继续", stays = true))), Wire.bind<NeedsList>(data)!!.ended)
         assertEquals("等批准 · Bash", rows[0].needs.head)
         assertEquals("touch a.txt", rows[0].needs.headCode)
         assertEquals("ask-1", rows[0].needs.ask?.id)
@@ -166,6 +173,9 @@ class AsksTest {
             listOf("NeedsRow", "Needs", "NeedsAsk", "NeedsAskRun", "NeedsChoice", "NeedsNote", "NeedsQuestion", "NeedsQuestionOption", "AnswerReq", "AskPick", "Answered")
     }
 }
+
+/** `sessions-needs` 那一份照线上类型解（解是核心那一侧的事，这里钉生成的类收得下那一形）：会话那几项；解不开 ⇒ `null`。 */
+internal fun sessionRows(data: Any?): List<NeedsRow>? = Wire.bind<NeedsList>(data)?.items?.mapNotNull { (it as? NeedsItem.Session)?.session }
 
 /** `sessions-needs` 会话那几项（夹具：照先后包成会话那一臂）。 */
 internal fun sessionItems(rows: List<Map<String, Any?>?>): List<Map<String, Any?>> = rows.filterNotNull().map { mapOf("kind" to "session", "rank" to 0.0, "session" to it) }

@@ -14,7 +14,7 @@ const READ_BUDGET_MS = 15_000;
 
 /**
  * 收下一份成品（问回来的 · 推来的同一处）。
- * 有一格的语义位不在同一份的 `names.slots` 里 ⇒ 两端契约对不上：整份照「回包读不出」抛（不拿码当名字；同手机 `usageView`）。
+ * 有一格的语义位不在同一份的 `names.slots` 里 ⇒ 两端契约对不上：整份照「回包读不出」抛（不拿码当名字）。
  */
 export function tookQuota(origin: Machine, r: QuotaRead): QuotaRead {
   const lacking = r.accounts.flatMap((a) => a.slots).find((s) => !(s.slot in r.names.slots));

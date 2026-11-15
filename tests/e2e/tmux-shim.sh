@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # e2e 私有名字的**唯一来源** ＋ `C7i` 的**唯一**隔离原语（把 `$BIN/tmux` shim 放进 PATH 最前，
-# 它 `exec` 真 tmux 并强插 `-L <私有名>`）。
+# 它强插 `-L <私有名>`，经记账那一层 `exec` 真 tmux；命令自己带 `-L` / `-S` 盖掉钉的名字的，记账、收尾照记的关）。
 #
 # ## 用法
 #
@@ -137,8 +137,42 @@ else
   TMUX_SHIM_BIN="$(mktemp -d /tmp/e2e-tmuxshim.XXXXXX)"
   TMUX_SHIM_SOCKS="$TMUX_SHIM_SOCK"
   export PATH="$TMUX_SHIM_BIN:$PATH"
+  # 记账那一层（不在 PATH 上）：shim 强插的 `-L` 在最前，命令自己再带 `-L` / `-S` 的 tmux 照后者走
+  # （`-S` 盖过 `-L`，同一个选项后一个盖前一个）⇒ server 起在那个 socket 上，只按钉的名字收就收不到。
+  # 它收 `-L <钉的名字> <命令原样>`，照 tmux 的规矩算出这一下真连的 socket，跟钉的不同就记进 `used`，收尾照记的关。
+  mkdir -p "$TMUX_SHIM_BIN/note"
+  cat > "$TMUX_SHIM_BIN/note/tmux" <<EOF
+#!/bin/sh
+p=\$2
+l= s= w=
+for a do
+  case \$w in
+    L) l=\$a; w=; continue ;;
+    S) s=\$a; w=; continue ;;
+    x) w=; continue ;;
+  esac
+  case \$a in
+    --) break ;;
+    -L) w=L ;;
+    -S) w=S ;;
+    -L?*) l=\${a#-L} ;;
+    -S?*) s=\${a#-S} ;;
+    -c|-f|-T) w=x ;;
+    -[!-]*L) w=L ;;
+    -[!-]*S) w=S ;;
+    -[!-]*[cfT]) w=x ;;
+    -*) ;;
+    *) break ;;
+  esac
+done
+if [ -n "\$s" ]; then printf 'S %s\n' "\$s" 2>/dev/null >> '$TMUX_SHIM_BIN/used'
+elif [ -n "\$l" ] && [ "\$l" != "\$p" ]; then printf 'L %s\n' "\$l" 2>/dev/null >> '$TMUX_SHIM_BIN/used'
 fi
-printf '#!/bin/sh\nexec %s -L %s "$@"\n' "$TMUX_SHIM_REAL" "$TMUX_SHIM_SOCK" > "$TMUX_SHIM_BIN/tmux.new"
+exec '$TMUX_SHIM_REAL' "\$@"
+EOF
+  chmod +x "$TMUX_SHIM_BIN/note/tmux"
+fi
+printf '#!/bin/sh\nexec %s -L %s "$@"\n' "$TMUX_SHIM_BIN/note/tmux" "$TMUX_SHIM_SOCK" > "$TMUX_SHIM_BIN/tmux.new"
 chmod +x "$TMUX_SHIM_BIN/tmux.new"
 mv -f -- "$TMUX_SHIM_BIN/tmux.new" "$TMUX_SHIM_BIN/tmux"
 
@@ -157,13 +191,25 @@ if [ "$_e2e_shim_default" != 1 ] && [ "${E2E_SKIP_SHIM_PROBE:-0}" != "1" ]; then
 fi
 unset _e2e_shim_default
 
-# 收尾：只收这一趟钉过的那几台（`-L` 选择器在，**绝不裸 `kill-server`**），连同 shim 目录。
+# 收尾：只收这一趟的那几台（选择器在，**绝不裸 `kill-server`**），连同 shim 目录 ——
+# 钉过的那几个名字，加上记账那一层记下的、命令自己带 `-L` / `-S` 盖掉钉的名字连上的那几台。
+# 记下的只收**本趟**的名字（`<前缀>-<树哈希>-<本趟 pid>`，与钉的名字同一个尾巴）：别棵树、同树别的趟、
+# 名字不是 `e2e_run_name` 拼的（用户的、产品默认的）一概不碰。
 tmux_shim_cleanup() {
   set +e
-  local TMUX_SHIM_SOCK
+  local TMUX_SHIM_SOCK kind val run="-$_E2E_TREE_TAG-$$"   # 本趟的尾巴（`e2e_run_name` 拼名字用的同一个 `$$`）
   for TMUX_SHIM_SOCK in ${TMUX_SHIM_SOCKS:-}; do
     [ -n "${TMUX_SHIM_REAL:-}" ] && "$TMUX_SHIM_REAL" -L "$TMUX_SHIM_SOCK" kill-server 2>/dev/null
     rm -f -- "$(e2e_tmux_socket_file "$TMUX_SHIM_SOCK")"
   done
+  if [ -n "${TMUX_SHIM_REAL:-}" ] && [ -s "${TMUX_SHIM_BIN:-}/used" ]; then
+    while read -r kind val; do
+      case "${val##*/}" in *[!A-Za-z0-9-]*) continue ;; ?*"$run") ;; *) continue ;; esac
+      case "$kind" in
+        L) e2e_tmux_reap "$TMUX_SHIM_REAL" "$val" ;;
+        S) "$TMUX_SHIM_REAL" -S "$val" kill-server 2>/dev/null; rm -f -- "$val" ;;
+      esac
+    done < <(sort -u -- "$TMUX_SHIM_BIN/used")
+  fi
   [ -n "${TMUX_SHIM_BIN:-}" ] && rm -rf -- "$TMUX_SHIM_BIN"
 }

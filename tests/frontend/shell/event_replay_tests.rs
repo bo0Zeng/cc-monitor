@@ -256,23 +256,25 @@ fn total_retention_stays_under_the_cap_however_many_sessions() {
 /// C2：满了先丢已经不活的会话（成品缓存说已结束 / 可重连），活的哪怕更久没进过行也后丢。
 #[test]
 fn when_full_sessions_that_are_not_live_go_first() {
-    use crate::session_book::In;
+    let mut peer = face_core::book::SessionBook::default();
     let book: &'static parking_lot::RwLock<crate::session_book::Book> =
         Box::leak(Box::new(parking_lot::RwLock::new(Default::default())));
     let mut r = EventReplay::new();
     r.book = book;
     r.inner.lock().held_cap = 3_000;
-    book.write().step(In::Told {
-        origin: "<local>".into(),
-        frame: cmd_wire::frame::Frame::SessionAdded(crate::frame_fixtures::session_added(
+    told_local(
+        book,
+        &mut peer,
+        cmd_wire::frame::Frame::SessionAdded(crate::frame_fixtures::session_added(
             "live",
             serde_json::json!({}),
         )),
-    });
-    book.write().step(In::Told {
-        origin: "<local>".into(),
-        frame: cmd_wire::frame::Frame::SessionLeft(ended_state("done", "T")),
-    });
+    );
+    told_local(
+        book,
+        &mut peer,
+        cmd_wire::frame::Frame::SessionLeft(ended_state("done", "T")),
+    );
     let rows = |sid: &str| -> Vec<JsonlLinePayload> {
         (0..10).map(|i| sized(&local(), sid, i, 100)).collect()
     };
@@ -853,6 +855,19 @@ async fn the_changed_accounts_stream_carries_only_reachability_and_account_notic
 // 不进留存（`history`）、不混进会话行那条流。设计住仓外。期望手写。
 // ═══════════════════════════════════════════════════════════════════════
 
+/// 本机后端那一侧的替身：要成品的那条连接发件箱之后那一块板（与生产同一个 `Board`，`src/backend/stream/tap.rs`），
+/// 折出来的那一处交 [`EventReplay::on_live_now`]（本机那一台分派第一层交的那一下）。
+#[derive(Default)]
+struct LocalTap(face_core::live::Board);
+
+impl LocalTap {
+    fn send(&mut self, r: &EventReplay, o: &crate::origin::Origin, card: cmd_wire::live::LiveCard) {
+        if let Some(live) = self.0.step(&card) {
+            r.on_live_now(o, live);
+        }
+    }
+}
+
 /// 那张卡的第 `n` 帧：0 ＝ 整卡（一块空正文），之后每帧那一块的一段里多一个 `x`（尾巴就是那一段，折好的正文长度就是 `n`）。
 fn tap(n: u64) -> cmd_wire::live::LiveCard {
     let v = if n == 0 {
@@ -886,15 +901,16 @@ fn tap_what(i: &WItem) -> (&'static str, u64, u64) {
     }
 }
 
-/// 开卡交整份、一段字只交那张卡的尾巴；那台看不见了 ⇒ 板清空，接回来之前的增量不再接到旧卡上；关 tab ⇒ 那个会话的卡不留。
+/// 本机的活卡成品（本机后端那条连接发件箱之后那块板折好的，`live_now`）原样交：开卡交整份、一段字只交那张卡的尾巴。
 #[tokio::test]
-async fn live_cards_go_out_folded_whole_and_a_lost_machine_starts_from_an_empty_board() {
+async fn local_live_cards_go_out_as_the_backend_folded_them_whole_then_tail() {
     let (r, rec) = hub();
+    let mut lt = LocalTap::default();
     r.origin_seen(&local(), true);
     r.subscribe("w", 7, &local(), "session-live-card", None, 100);
     rec.clear();
     for n in 0..3 {
-        r.on_live_card(&local(), tap(n));
+        lt.send(&r, &local(), tap(n));
     }
     let got = rec.all();
     let WItem::Frame { body, .. } = &got[0] else {
@@ -917,19 +933,108 @@ async fn live_cards_go_out_folded_whole_and_a_lost_machine_starts_from_an_empty_
         serde_json::json!({"origin":"<local>","live":{"t":"tail","tail":{"sid":"sid-t","card":0,"keep":0,
             "blocks":[{"t":"p","k":["xx"]}],"last":copy_core::copy_text("runs.last.say", &[])}}})
     );
-    r.origin_seen(&local(), false);
+}
+
+/// 本机后端替别台折好的一格（[`cmd_wire::frame::LiveNow`]，手写）：0 ＝ 开卡（整份、正文空）；之后那一段 `n` 个 `x`（变的是尾巴，整份带上那一段）。
+fn folded(n: u64) -> cmd_wire::frame::LiveNow {
+    folded_at("sid-t", n)
+}
+
+/// 同 [`folded`]，那一处是会话 `sid` 的主运行。
+fn folded_at(sid: &str, n: u64) -> cmd_wire::frame::LiveNow {
+    let body = if n == 0 {
+        serde_json::json!([])
+    } else {
+        serde_json::json!([{"t":"p","k":["x".repeat(n as usize)]}])
+    };
+    let whole = serde_json::json!({"sid":sid,"cards":[{"card":0,"rid":"m","phase":"streaming","clipped":false,
+        "head":"头一行","body":body,"last":"最近一句"}]});
+    let change = if n == 0 {
+        serde_json::json!({"t":"whole","whole":whole})
+    } else {
+        serde_json::json!({"t":"tail","tail":{"sid":sid,"card":0,"keep":0,"blocks":body,"last":"最近一句"}})
+    };
+    serde_json::from_value(serde_json::json!({"change": change, "whole": whole})).unwrap()
+}
+
+/// ★ 先红的那一条：别台的活卡是本机后端折好的成品 ⇒ 壳原样交订了那台的订阅（尾巴就是尾巴）；丢过一格 ⇒ 那一处下一格交它带来的整份；
+/// 别台的不交给订了本机的。
+#[tokio::test]
+async fn a_machines_folded_live_cards_go_out_as_is_and_a_dropped_spot_gets_the_whole() {
+    let (r, rec) = hub();
+    let pi = crate::origin::Origin::named("pi");
+    r.origin_seen(&pi, true);
+    r.subscribe("w", 7, &pi, "session-live-card", None, 2);
+    r.subscribe("w", 8, &local(), "session-live-card", None, 100);
     rec.clear();
-    r.on_live_card(&local(), tap(3));
+    let first = folded(0);
+    r.on_live_now(&pi, first.clone());
+    for n in 1..3 {
+        r.on_live_now(&pi, folded(n));
+    }
+    let got = rec.0.lock().unwrap().clone();
     assert!(
-        rec.all().iter().all(|i| tap_what(i).0 != "tap"),
-        "看不见之后的增量接到了旧卡上"
+        got.iter().all(|(_, sub, _)| *sub == 7),
+        "别台的交给了订本机的：{got:?}"
     );
-    r.origin_seen(&local(), true);
-    r.on_live_card(&local(), tap(0));
-    r.forget("sid-t");
+    let WItem::Frame { body, .. } = &got[0].2[0] else {
+        panic!("{got:?}")
+    };
+    let v: serde_json::Value = serde_json::from_slice(&body.0).unwrap();
+    assert_eq!(
+        v,
+        serde_json::json!({"origin": "pi", "live": serde_json::to_value(&first.change).unwrap()}),
+        "原样交那一格"
+    );
+    assert_eq!(
+        rec.all().iter().map(tap_what).collect::<Vec<_>>(),
+        vec![("tap", 0, 0), ("tail", 1, 1)]
+    );
     rec.clear();
-    r.on_live_card(&local(), tap(1));
-    assert!(rec.all().is_empty(), "关了 tab 的卡还在板上");
+    r.want("w", 7, 4);
+    r.on_live_now(&pi, folded(3));
+    r.on_live_now(&pi, folded(4));
+    assert_eq!(
+        rec.all().iter().map(tap_what).collect::<Vec<_>>(),
+        vec![("gap", 2, 3), ("tap", 3, 3), ("tail", 4, 4)],
+        "丢过一格 ⇒ 那一处下一格交带来的整份，之后照旧交尾巴"
+    );
+}
+
+/// 那台流上丢过一格（本机后端转来的 `gap`，说不准丢的是不是一格活卡、是哪一处）⇒ 每一处下一格先交带来的整份，之后照旧交尾巴。
+#[tokio::test]
+async fn a_gap_on_a_machines_stream_makes_each_spot_go_out_whole_once() {
+    let (r, rec) = hub();
+    let pi = crate::origin::Origin::named("pi");
+    r.origin_seen(&pi, true);
+    r.subscribe("w", 7, &pi, "session-live-card", None, 100);
+    rec.clear();
+    r.on_live_now(&pi, folded_at("sid-t", 0));
+    r.on_live_now(&pi, folded_at("sid-u", 0));
+    r.on_live_now(&pi, folded_at("sid-t", 1));
+    r.live_gap(&pi);
+    // 两处各先交一次整份（开卡那一格本身就是整份，不再多交），之后照旧交尾巴。
+    r.on_live_now(&pi, folded_at("sid-u", 2));
+    r.on_live_now(&pi, folded_at("sid-t", 3));
+    r.on_live_now(&pi, folded_at("sid-t", 4));
+    r.on_live_now(&pi, folded_at("sid-u", 5));
+    r.on_live_now(&pi, folded_at("sid-v", 0));
+    r.on_live_now(&pi, folded_at("sid-v", 1));
+    assert_eq!(
+        rec.all().iter().map(tap_what).collect::<Vec<_>>(),
+        vec![
+            ("tap", 0, 0),
+            ("tap", 1, 0),
+            ("tail", 2, 1),
+            ("tap", 3, 2),
+            ("tap", 4, 3),
+            ("tail", 5, 4),
+            ("tail", 6, 5),
+            ("tap", 7, 0),
+            ("tail", 8, 1),
+        ],
+        "丢过一格之后每一处先交整份、只交一次"
+    );
 }
 
 /// T5b：订了 `session-live-card` ⇒ 当场就是实时的（没有就绪点、没有重放）；有 credit 交、没 credit 丢且位置照占、`want` 回来原位 `Gap`；
@@ -937,13 +1042,14 @@ async fn live_cards_go_out_folded_whole_and_a_lost_machine_starts_from_an_empty_
 #[tokio::test]
 async fn tap_frames_ride_the_same_subscription_table_with_credit_and_in_place_gaps() {
     let (r, rec) = hub();
+    let mut lt = LocalTap::default();
     r.origin_seen(&local(), true);
     r.subscribe("w", 7, &local(), "session-live-card", None, 2);
     rec.clear();
     for n in 0..3 {
-        r.on_live_card(&local(), tap(n));
+        lt.send(&r, &local(), tap(n));
     }
-    r.on_live_card(&crate::origin::Origin::named("pi"), tap(9)); // 别的机器
+    LocalTap::default().send(&r, &crate::origin::Origin::named("pi"), tap(9)); // 别的机器
     assert_eq!(
         rec.all().iter().map(tap_what).collect::<Vec<_>>(),
         vec![("tap", 0, 0), ("tail", 1, 1)]
@@ -955,8 +1061,8 @@ async fn tap_frames_ride_the_same_subscription_table_with_credit_and_in_place_ga
         vec![("gap", 2, 3)]
     );
     rec.clear();
-    r.on_live_card(&local(), tap(3));
-    r.on_live_card(&local(), tap(4));
+    lt.send(&r, &local(), tap(3));
+    lt.send(&r, &local(), tap(4));
     assert_eq!(
         rec.all().iter().map(tap_what).collect::<Vec<_>>(),
         vec![("tap", 3, 3), ("tail", 4, 4)],
@@ -971,10 +1077,11 @@ async fn tap_frames_ride_the_same_subscription_table_with_credit_and_in_place_ga
 #[tokio::test]
 async fn live_card_bytes_to_the_page_follow_the_tail_not_the_whole_card() {
     let (r, rec) = hub();
+    let mut lt = LocalTap::default();
     r.origin_seen(&local(), true);
     r.subscribe("w", 7, &local(), "session-live-card", None, 100_000);
     rec.clear();
-    r.on_live_card(&local(), tap(0));
+    lt.send(&r, &local(), tap(0));
     let piece = "游标分页调用点要跟着改测试也补一条红的".repeat(2);
     let piece: String = piece.chars().take(40).collect();
     let mut para = String::new();
@@ -985,7 +1092,7 @@ async fn live_card_bytes_to_the_page_follow_the_tail_not_the_whole_card() {
         para.push_str(&piece);
         let v = serde_json::json!({"sid":"sid-t","card":0,"n":k + 1,"op":"text","i":0,"keep":k / 10,
             "tail":[{"t":"p","k":[para.clone()]}]});
-        r.on_live_card(&local(), serde_json::from_value(v).unwrap());
+        lt.send(&r, &local(), serde_json::from_value(v).unwrap());
     }
     let (mut frames, mut bytes) = (0usize, 0usize);
     for i in rec.all() {
@@ -1003,13 +1110,14 @@ async fn live_card_bytes_to_the_page_follow_the_tail_not_the_whole_card() {
 #[tokio::test]
 async fn tap_and_lines_never_cross_into_each_others_subscriptions() {
     let (r, rec) = hub();
+    let mut lt = LocalTap::default();
     r.origin_seen(&local(), true);
     r.subscribe("w", 1, &local(), "session-lines", None, 100);
     r.subscribe("w", 2, &local(), "session-live-card", None, 100);
     r.ready_point(None).await;
     rec.clear();
     r.on_line_batch_awaited(lines("s", 0..2)).await;
-    r.on_live_card(&local(), tap(0));
+    lt.send(&r, &local(), tap(0));
     let got = rec.0.lock().unwrap().clone();
     let to = |sub: u64| -> Vec<(&'static str, u64, u64)> {
         got.iter()
@@ -1148,20 +1256,22 @@ fn ended(sid: &str) -> crate::ui_contract::SessionStreamFrame {
 /// ★ 就绪点把起停按成品缓存原位重放 —— 骨架在留存行之前、终局在之后；手里有没说的丢失时，起停那一格之前原位先给 `Gap`。
 #[tokio::test]
 async fn the_ready_point_puts_lifecycle_frames_around_the_lines() {
-    use crate::session_book::In;
+    let mut peer = face_core::book::SessionBook::default();
     let ((r, rec), book) = hub_with_book();
     r.origin_seen(&local(), true);
-    book.write().step(In::Told {
-        origin: "<local>".into(),
-        frame: cmd_wire::frame::Frame::SessionAdded(crate::frame_fixtures::session_added(
+    told_local(
+        book,
+        &mut peer,
+        cmd_wire::frame::Frame::SessionAdded(crate::frame_fixtures::session_added(
             "a",
             serde_json::json!({}),
         )),
-    });
-    book.write().step(In::Told {
-        origin: "<local>".into(),
-        frame: cmd_wire::frame::Frame::SessionLeft(ended_state("b", "T")),
-    });
+    );
+    told_local(
+        book,
+        &mut peer,
+        cmd_wire::frame::Frame::SessionLeft(ended_state("b", "T")),
+    );
     r.on_line_batch_awaited(lines("b", 0..2)).await; // 就绪点之前：只进留存
     r.subscribe("w", 1, &local(), "session-lines", None, 10);
     r.ready_point(None).await;
@@ -1218,17 +1328,19 @@ async fn the_main_window_tabs_are_kept_too() {
 /// 主窗口手上一个没行的 tab、那台答过它已结束 ⇒ F5 重放里照样有那一格（不只留存有行的那几条）。
 #[tokio::test]
 async fn a_tab_without_lines_gets_its_answered_end_replayed() {
-    use crate::session_book::In;
+    let mut peer = face_core::book::SessionBook::default();
     let ((r, rec), book) = hub_with_book();
     r.origin_seen(&local(), true);
-    book.write().step(In::Told {
-        origin: "<local>".into(),
-        frame: cmd_wire::frame::Frame::SessionsReplayed(cmd_wire::frame::SessionsReplayed {}),
-    });
-    book.write().step(In::Told {
-        origin: "<local>".into(),
-        frame: cmd_wire::frame::Frame::SessionLeft(ended_state("p", "那台写的")),
-    });
+    told_local(
+        book,
+        &mut peer,
+        cmd_wire::frame::Frame::SessionsReplayed(cmd_wire::frame::SessionsReplayed {}),
+    );
+    told_local(
+        book,
+        &mut peer,
+        cmd_wire::frame::Frame::SessionLeft(ended_state("p", "那台写的")),
+    );
     r.set_main_kept([("<local>".to_string(), "p".to_string())]);
     r.subscribe("w", 1, &local(), "session-lines", None, 100);
     r.ready_point(None).await;
@@ -1251,12 +1363,14 @@ async fn a_tab_without_lines_gets_its_answered_end_replayed() {
 #[tokio::test]
 async fn an_ended_cell_carries_the_words_of_the_backend_that_answered_it() {
     use crate::session_book::In;
+    let mut peer = face_core::book::SessionBook::default();
     let ((r, rec), book) = hub_with_book();
     r.origin_seen(&local(), true);
-    book.write().step(In::Told {
-        origin: "<local>".into(),
-        frame: cmd_wire::frame::Frame::SessionsReplayed(cmd_wire::frame::SessionsReplayed {}),
-    });
+    told_local(
+        book,
+        &mut peer,
+        cmd_wire::frame::Frame::SessionsReplayed(cmd_wire::frame::SessionsReplayed {}),
+    );
     r.on_line_batch_awaited(lines("x", 0..1)).await;
     r.subscribe("w", 1, &local(), "session-lines", None, 100);
     r.ready_point(None).await;
@@ -1778,4 +1892,25 @@ async fn a_stream_subscription_refuses_in_place() {
             "{kind}：{got:?}"
         );
     }
+}
+
+/// 本机后端那一侧的替身：本机的一帧会话帧原样进账，紧跟它折好的那一格（与生产同一个 `SessionBook::step`，`observe/watcher.rs`）。
+fn told_local(
+    book: &parking_lot::RwLock<crate::session_book::Book>,
+    peer: &mut face_core::book::SessionBook,
+    frame: crate::stream_source::Frame,
+) -> Vec<crate::session_book::Out> {
+    use crate::session_book::In;
+    let seats = peer.step(&frame);
+    let out = book.write().step(In::Told {
+        origin: "<local>".into(),
+        frame,
+    });
+    if let Some(seats) = seats {
+        book.write().step(In::Seats {
+            origin: "<local>".into(),
+            seats,
+        });
+    }
+    out
 }

@@ -259,6 +259,11 @@ describe("C04a 命令名钉死", () => {
     expect(unwrapped, "这些 Rust 命令在包装层里没有条目 ⇒ 界面只能裸 invoke 它们").toEqual([]);
   });
 
+  it("★ 数据位置那几行由本机后端 `data-report` 答：壳没有 `get_data_paths`，包装层也没有", () => {
+    expect(rustCommands().has("get_data_paths")).toBe(false);
+    expect(Object.keys(commands)).not.toContain("get_data_paths");
+  });
+
   it("TS 侧字面量命令名 ⊆ Rust 集，动态名盲区逐字钉死（合起来就是两向相等）", () => {
     const rust = rustCommands();
     const used = tsLiteralCommands();
@@ -859,7 +864,7 @@ describe("Tauri 插件与 api/path 只在包装层", () => {
     expect(
       [...perFile.keys()].sort(),
       "包装层之外又有人直接引 Tauri 插件了 —— 这台电脑上的系统窗口与路径只经 `ipc/commands.ts` 转出；\n" +
-        "用系统程序打开 / 在文件夹中显示走壳命令 `commands.os_open`（`reveal-in-folder.ts` · `file-window.ts::openOnMachine`）。",
+        "用系统程序打开 / 在文件夹中显示走壳命令 `commands.os_open`（`reveal-in-folder.ts`）；看那台上的文件走文件窗口（`file-window.ts::openFileWindow`）。",
     ).toEqual([WRAPPER_FILE]);
     expect(perFile.get(WRAPPER_FILE)?.sort()).toEqual(["@tauri-apps/api/path", "@tauri-apps/plugin-dialog"]);
   });

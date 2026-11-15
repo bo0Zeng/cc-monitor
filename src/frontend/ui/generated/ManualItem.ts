@@ -13,4 +13,4 @@ account: string | null, server: string, scope: string, said: string, fix: Manual
 /**
  * `fix` 为 `null` 时必有：为什么没有解法（写好的那一句）；有 `fix` ⇒ 缺。
  */
-why?: string, } | { "kind": "secretFile", said: string, fix: ManualFix | null, why?: string, };
+why?: string, } | { "kind": "accountNoAgent", agent: string, account: string, said: string, go: string, fix: ManualFix | null, } | { "kind": "secretFile", said: string, fix: ManualFix | null, why?: string, } | { "kind": "ownFile", said: string, fix: ManualFix | null, why?: string, };

@@ -12,8 +12,8 @@
 //! 3. **各台那一格**：读到了 ⇒ 几行 ＋ 注解那一句；读不到、手上有旧副本 ⇒ 行照副本出、头里标旧（为什么 ＋ 副本落下那一刻）；
 //!    从没读到过 ⇒ 为什么、没有行；远端没同步过、也没带它的 `fresh` ⇒ 没读过（不去问）。
 //! 4. **帧面**：`fresh` 只认 `remotes` 里的、要带期限；同步没成的那台下一问照样说读不到（不拿旧副本充数）；窗口 1–2000。
-//! 5. **手机那一列同一份**：共享核心并的段 · 行 · 分叉挂父 · 孤儿 · 组的先后与这里摊出的逐条相同（分叉树只住 `face_core::column::nest`）。
-//! 6. **手机那一列的分叉树**：父收着 ⇒ 子不出；展开 ⇒ 子紧跟父；父不在这一列（含摆进别处）⇒ 孤儿。
+//!
+//! 手机会话屏那一列照同一份金样对拍（手机核心 `column.rs` 的判据；并法 · 分叉树同住 `face_core::column`）。
 //!
 //! # 买不到
 //!
@@ -68,11 +68,23 @@ fn tokens(laid: &Laid, by: By) -> Vec<String> {
                 forks,
                 forks_open,
                 orphan,
+                forks_text,
             } => {
                 let mut t = format!("r:{}|{}", o(&row.origin), row.session_id);
                 if *child {
                     t += ":child";
                 }
+                // 「分叉 N」那颗的字由后端写好：有分叉才有，数照 `forks`。
+                assert_eq!(
+                    forks_text.as_deref(),
+                    (*forks > 0)
+                        .then(|| copy_core::copy_text(
+                            "history.row.forks",
+                            &[("n", &forks.to_string())]
+                        ))
+                        .as_deref(),
+                    "分叉那颗的字"
+                );
                 if *forks > 0 {
                     t += &format!(":forks={forks}{}", if *forks_open { "(open)" } else { "" });
                 }
@@ -109,6 +121,7 @@ fn machines_ok(g: &Value) -> Vec<MachineHead> {
             origin: serde_json::from_value(m["origin"].clone()).expect("那台的名字"),
             total: m["rows"].as_array().unwrap().len() as u32,
             read: Read::Ok { notice: None },
+            seen: None,
         })
         .collect()
 }
@@ -139,6 +152,28 @@ fn a_range_answers_only_that_window() {
     let head = p.head.expect("整份带头");
     assert_eq!(head.total as usize, all, "总数得是整列的");
     assert_eq!(head.info.sections, laid.sections, "段头得是整列的");
+    // 列表头那一句由后端写好（界面照抄）：按这一形看 ⇒ 那一形的说法。
+    let want = match shape.by {
+        By::Time => copy_core::copy_text(
+            "history.group.count",
+            &[(
+                "n",
+                &machines_ok(&g)
+                    .iter()
+                    .map(|m| m.total)
+                    .sum::<u32>()
+                    .to_string(),
+            )],
+        ),
+        By::Project => copy_core::copy_text(
+            "history.list.countProjects",
+            &[
+                ("p", &laid.projects.to_string()),
+                ("n", &laid.grouped.to_string()),
+            ],
+        ),
+    };
+    assert_eq!(head.info.said, want, "列表头那一句");
     // 窗口在尾巴上 ⇒ 有几项回几项。
     let p = patch_from(
         &views,
@@ -276,197 +311,4 @@ async fn the_frame_arm_reads_what_is_held_and_syncs_only_fresh_ones() {
             "{bad} 应是 bad_args：{e:?}"
         );
     }
-}
-
-/// 金样那几台交给端核心的那一问：每行带 `sid` · 父（那台写的 `forkedFromSessionId`）；`forks` 照这一形展开了的那几个。
-fn phone_ask(
-    a: &[Answered],
-    shape: &Shape,
-    placed: &dyn Fn(&HistoryRow) -> bool,
-) -> face_core::column::ChatsColumnAsk {
-    use face_core::column::{ChatsColumnAsk, ColumnFork, ColumnHost, ColumnRow};
-    let host_of = |o: &cmd_wire::Machine| {
-        a.iter()
-            .position(|m| m.rows.first().is_some_and(|r| &r.origin == o))
-            .map(|h| h as u32)
-    };
-    ChatsColumnAsk {
-        hosts: a
-            .iter()
-            .map(|m| ColumnHost {
-                rows: m
-                    .rows
-                    .iter()
-                    .map(|r| ColumnRow {
-                        at: r.at,
-                        section: Some(r.section_text.0.clone()),
-                        placed: placed(r),
-                        sid: r.session_id.clone(),
-                        parent: r.forked_from_session_id.clone(),
-                    })
-                    .collect(),
-                groups: m.head.groups.iter().map(|g| g.order).collect(),
-            })
-            .collect(),
-        forks: shape
-            .forks
-            .iter()
-            .filter_map(|(o, sid)| {
-                host_of(o).map(|host| ColumnFork {
-                    host,
-                    sid: sid.clone(),
-                })
-            })
-            .collect(),
-    }
-}
-
-/// 端核心交回的那一列照 [`tokens`] 那一形写成一条一条（段头 ＋ 行；孤儿那一句照按时间那一形）。
-fn phone_tokens(a: &[Answered], c: &face_core::column::ChatsColumn) -> Vec<String> {
-    let o = |m: &cmd_wire::Machine| m.to_string();
-    c.sections
-        .iter()
-        .flat_map(|s| {
-            let head = format!("sec:{}", s.title.clone().unwrap_or_default());
-            std::iter::once(head).chain(s.rows.iter().map(|l| {
-                let r = &a[l.host as usize].rows[l.at as usize];
-                let mut t = format!("r:{}|{}", o(&r.origin), r.session_id);
-                if l.child {
-                    t += ":child";
-                }
-                if l.forks > 0 {
-                    t += &format!(
-                        ":forks={}{}",
-                        l.forks,
-                        if l.forks_open { "(open)" } else { "" }
-                    );
-                }
-                if l.orphan {
-                    t += ":orphan";
-                }
-                t
-            }))
-        })
-        .collect()
-}
-
-/// ★ 判据 5：手机会话屏那一列与本机后端并的同一份 —— 金样那三台（同一刻的行跨台都有 · 分叉挂父 · 孙辈 · 孤儿）交端核心 ⇒
-/// 段与行的先后、分叉挂父（`child · forks · forksOpen · orphan`）、组的先后与这里摊出的逐条相同；按时间那几形各一遍。
-#[test]
-fn the_phone_column_merges_like_the_backend() {
-    use face_core::column::column;
-    let g = golden();
-    let a = answered(&g);
-    let o = |m: &cmd_wire::Machine| m.to_string();
-    let folded = Shape {
-        by: By::Project,
-        all_open: false,
-        fold: Fold::default(),
-        forks: BTreeSet::new(),
-    };
-    let mut times = 0;
-    for c in g["cases"].as_array().unwrap() {
-        let shape = shape_of(c);
-        if shape.by != By::Time {
-            continue;
-        }
-        times += 1;
-        let want = tokens(&lay(&a, &shape), By::Time);
-        assert!(want.len() > 10, "金样那几台的行少了：{want:?}");
-        let got = column(&phone_ask(&a, &shape, &|_| false));
-        assert_eq!(phone_tokens(&a, &got), want, "{}", c["name"]);
-        let groups: Vec<String> = got
-            .groups
-            .iter()
-            .map(|p| {
-                let g = &a[p.host as usize].head.groups[p.at as usize];
-                format!("g:{}|{}:false", o(&g.origin), g.key)
-            })
-            .collect();
-        assert_eq!(groups, tokens(&lay(&a, &folded), By::Project), "组的先后");
-    }
-    assert!(times >= 2, "金样里按时间那几形少了");
-}
-
-/// ★ 判据 6：手机那一列的分叉树 —— 父收着 ⇒ 子不在任何一段里；父展开 ⇒ 子紧跟父、不另起段；
-/// 父不在这一列（没读到 · 摆进固定或组那几段）⇒ 子自成一行、记孤儿。摆进别处的那几行等于不在这一列：与后端去掉它们摊出的相同。
-#[test]
-fn the_phone_column_nests_forks_under_their_parent() {
-    use face_core::column::column;
-    let g = golden();
-    let a = answered(&g);
-    let shape_with = |forks: &[&str]| Shape {
-        by: By::Time,
-        all_open: false,
-        fold: Fold::default(),
-        forks: forks
-            .iter()
-            .map(|s| (cmd_wire::Machine::local(), s.to_string()))
-            .collect(),
-    };
-    // 这台那几行的记法（[`tokens`]）。
-    let here = |t: &str| format!("r:{}|{t}", cmd_wire::LOCAL);
-    // 父收着：k1（a1 的分叉）· g1（k1 的分叉）· k2（cx 的分叉）都不出。
-    let shut = phone_tokens(&a, &column(&phone_ask(&a, &shape_with(&[]), &|_| false)));
-    for sid in ["k1", "g1", "k2"] {
-        let me = here(sid);
-        assert!(
-            !shut
-                .iter()
-                .any(|t| t == &me || t.starts_with(&format!("{me}:"))),
-            "父收着、{sid} 还出：{shut:?}"
-        );
-    }
-    assert!(shut.contains(&here("a1:forks=1")), "{shut:?}");
-    // 父不在这一列（o1 的父 nowhere 没有、x1 的父 d1 在另一台）⇒ 自成一行、记孤儿。
-    for t in [here("o1:orphan"), here("x1:orphan")] {
-        assert!(shut.contains(&t), "{t}：{shut:?}");
-    }
-    // 展开 a1 · k1：k1 · g1 紧跟 a1，在同一段里。
-    let open = phone_tokens(
-        &a,
-        &column(&phone_ask(&a, &shape_with(&["a1", "k1"]), &|_| false)),
-    );
-    let at = open
-        .iter()
-        .position(|t| *t == here("a1:forks=1(open)"))
-        .expect("a1 展开那一行");
-    assert_eq!(
-        open[at + 1..at + 3],
-        [here("k1:child:forks=1(open)"), here("g1:child")],
-        "{open:?}"
-    );
-    // 摆进别处的 k1 · b1：g1 没了父 ⇒ 孤儿；a1 底下没有分叉。与后端去掉那两行摊出的相同。
-    let away = |r: &HistoryRow| r.session_id == "k1" || r.session_id == "b1";
-    let got = phone_tokens(&a, &column(&phone_ask(&a, &shape_with(&["a1"]), &away)));
-    let rest: Vec<Answered> = a
-        .iter()
-        .map(|m| Answered {
-            head: m.head.clone(),
-            rows: m.rows.iter().filter(|r| !away(r)).cloned().collect(),
-        })
-        .collect();
-    assert_eq!(
-        got,
-        tokens(&lay(&rest, &shape_with(&["a1"])), By::Time),
-        "去掉摆进别处的"
-    );
-    assert!(got.contains(&here("g1:orphan")), "{got:?}");
-    assert!(got.contains(&here("a1")), "{got:?}");
-    // 分叉落在另一天（段头字不同）：展开了也跟着父，不另起段。
-    let mut later = answered(&g);
-    for r in later.iter_mut().flat_map(|m| m.rows.iter_mut()) {
-        if r.session_id == "g1" {
-            r.section_text = cmd_wire::cells::Words("九月".into());
-        }
-    }
-    let shape = shape_with(&["a1", "k1"]);
-    let got = phone_tokens(&later, &column(&phone_ask(&later, &shape, &|_| false)));
-    let want = tokens(&lay(&later, &shape), By::Time);
-    assert_eq!(got, want, "分叉落在另一天");
-    let at = want
-        .iter()
-        .position(|t| *t == here("g1:child"))
-        .expect("g1");
-    assert_eq!(want[at - 1], here("k1:child:forks=1(open)"), "{want:?}");
 }

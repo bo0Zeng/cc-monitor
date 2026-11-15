@@ -6,6 +6,7 @@
           "agent": "claude",
           "atText": "00:00",
           "count": 1,
+          "countText": "会话 1",
           "failed": null,
           "hasLive": true,
           "key": "claude:/w/alpha",
@@ -20,6 +21,7 @@
           "agent": "codex",
           "atText": "00:00",
           "count": 1,
+          "countText": "会话 1",
           "failed": null,
           "hasLive": null,
           "key": "codex:/w/delta",
@@ -34,6 +36,7 @@
           "agent": "claude",
           "atText": "00:00",
           "count": 1,
+          "countText": "会话 1",
           "failed": null,
           "hasLive": false,
           "key": "claude:/w/beta",
@@ -48,6 +51,7 @@
           "agent": "claude",
           "atText": "00:00",
           "count": 1,
+          "countText": "会话 1",
           "failed": null,
           "hasLive": false,
           "key": "claude:/w/alpha-二",
@@ -62,9 +66,10 @@
           "agent": "claude",
           "atText": null,
           "count": 0,
+          "countText": "",
           "failed": "读不了 /h/.claude/projects/-w-gamma",
           "hasLive": null,
-          "key": "dir:-w-gamma",
+          "key": "dir:claude:-w-gamma",
           "order": 0,
           "origin": "dev",
           "projectDir": "-w-gamma",
@@ -91,6 +96,7 @@
       "agent": "claude",
       "agentTag": null,
       "aiTitle": "支付回调验签",
+      "archive": null,
       "at": 900,
       "atText": "00:00",
       "can": {
@@ -104,7 +110,8 @@
       "face": {
         "can": {
           "attach": {
-            "can": "yes"
+            "can": "no",
+            "why": "无法确定所在终端"
           },
           "close": {
             "can": "no",
@@ -139,11 +146,8 @@
             "can": "yes"
           },
           "view": {
-            "can": "yes",
-            "open": {
-              "kind": "attach"
-            },
-            "said": "在 cc-monitor 里打开它的终端"
+            "can": "no",
+            "why": "无法确定所在终端"
           }
         },
         "dot": "running",
@@ -184,6 +188,7 @@
       "agent": "claude",
       "agentTag": null,
       "aiTitle": null,
+      "archive": null,
       "at": 700,
       "atText": "00:00",
       "can": {
@@ -277,6 +282,7 @@
       "agent": "claude",
       "agentTag": null,
       "aiTitle": "分叉的父会话",
+      "archive": null,
       "at": 600,
       "atText": "00:00",
       "can": {
@@ -373,13 +379,15 @@
       "agent": "claude",
       "agentTag": null,
       "aiTitle": "从父会话分出来的",
+      "archive": null,
       "at": 1000,
       "atText": "00:00",
       "can": {
         "accounts": true,
         "delete": "yes",
         "fork": false,
-        "resume": "bg"
+        "resume": "bg",
+        "resumeWhy": "分身会话 · 继续须恢复主会话"
       },
       "customTitle": null,
       "deleteAsk": "删除：dev 上的会话记录 · 不可恢复",
@@ -466,12 +474,13 @@
       "agent": "codex",
       "agentTag": "Codex",
       "aiTitle": null,
+      "archive": null,
       "at": 650,
       "atText": "00:00",
       "can": {
-        "accounts": false,
+        "accounts": true,
         "delete": "unsure",
-        "fork": false,
+        "fork": true,
         "resume": "yes"
       },
       "customTitle": null,

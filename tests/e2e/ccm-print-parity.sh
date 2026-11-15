@@ -1,6 +1,6 @@
 #!/bin/bash
 # 「--print 平价预言机」：验证**生产渲染器**产出的 `ccm …` 调用行，被真 ccm 解析后，
-# 展开结果里确实含有渲染器想表达的每个意图（sid / tmux 名 / cwd / launcher / ccm-sid）。
+# 展开结果里确实含有渲染器想表达的每个意图（sid / tmux 名 / cwd / launcher），且不写身份标。
 # 那几行从 `session-open` 本体取（`open-line-emit.sh`：起会话时交出去的那一行，渲染器是 `ccm_invocation`）。
 #
 # 这是唯一能在没有真远端机器的场景下验证「CLI 渲染器真的会让 ccm 干对事」的手段——
@@ -44,7 +44,7 @@ echo "===== 生产命令行（session-open 交出去的那四行，不手搓）=
 # 打头那个词（这台装好的入口）换成 `ccm`：下面经 PATH 叫本树这一份。
 emit() { local l; l="$(bash "$HERE/open-line-emit.sh" "$@")" || { echo "取不到 $*" >&2; exit 2; }; printf 'ccm %s' "${l#* }"; }
 TSV="$(
-  printf 'resumeTmuxWithIdentity\t%s\n' "$(emit shape=resume-tmux sid=p1 cwd=/tmp name=cc-p1 launcher=claude account=base)"
+  printf 'resumeTmux\t%s\n' "$(emit shape=resume-tmux sid=p1 cwd=/tmp name=cc-p1 launcher=claude account=base)"
   printf 'newTmuxCustomLauncher\t%s\n' "$(emit shape=new-tmux cwd='/home/pi/my proj' name=cc-proj launcher=CCMPROBE account=base)"
   printf 'attach\t%s\n' "$(emit shape=attach name=cc-p1 launcher=claude)"
   printf 'resumeTmuxWithModel\t%s\n' "$(emit shape=resume-tmux sid=p1 cwd=/tmp name=cc-p1 launcher=claude account=base model=opus)"
@@ -63,19 +63,18 @@ run_print() {
 }
 
 echo
-echo "===== 场景 resumeTmuxWithIdentity ====="
-LINE="$(get_line resumeTmuxWithIdentity)"
+echo "===== 场景 resumeTmux ====="
+LINE="$(get_line resumeTmux)"
 OUT="$(run_print "$LINE")"
-NEEDLE_TMUX_NAME="-s 'cc-p1'"
-NEEDLE_CWD="-c '/tmp'"
-NEEDLE_SID_TAG="@ccm_sid_expect 'p1'"
+NEEDLE_TMUX_NAME="-s cc-p1"
+NEEDLE_CWD="-c /tmp"
 NEEDLE_BASE="'--base'"
 # `--resume` 是交给 claude 的词，内层放在 `--` 后面原样带进去。
 ck "--resume 被内层 ccm 原样带进去（交给 claude 的词）" yes "$(contains "--resume" "$OUT")"
 ck "sid p1 出现在内层调用里" yes "$(contains "p1" "$OUT")"
 ck "tmux 名 cc-p1 出现在 new-session" yes "$(contains "$NEEDLE_TMUX_NAME" "$OUT")"
 ck "cwd /tmp 出现在 -c" yes "$(contains "$NEEDLE_CWD" "$OUT")"
-ck "@ccm_sid_expect 打标用了 p1（通道A写意图，非事实 @ccm_sid）" yes "$(contains "$NEEDLE_SID_TAG" "$OUT")"
+ck "建会话那一串不写身份标（@ccm_sid 只由后端认过会话文件才打）" no "$(contains "@ccm_sid" "$OUT")"
 # 账号维度恒显式表态——base 态真的把 --base 传进内层调用：base 态走 CLI，
 # 真 ccm 得收到 --base，不许被悄悄吞掉/漏传。
 ck "--base 真的传进了内层调用（账号维度恒显式表态）" yes "$(contains "$NEEDLE_BASE" "$OUT")"
@@ -85,7 +84,7 @@ echo "===== 场景 newTmuxCustomLauncher ====="
 LINE="$(get_line newTmuxCustomLauncher)"
 OUT="$(run_print "$LINE")"
 NEEDLE_CWD2="-c '/home/pi/my proj'"
-NEEDLE_NAME2="-s 'cc-proj'"
+NEEDLE_NAME2="-s cc-proj"
 ck "自定义 launcher CCMPROBE 传给了内层调用" yes "$(contains "CCMPROBE" "$OUT")"
 ck "含空格 cwd 正确带引号" yes "$(contains "$NEEDLE_CWD2" "$OUT")"
 ck "会话名 cc-proj 正确出现" yes "$(contains "$NEEDLE_NAME2" "$OUT")"

@@ -5,7 +5,7 @@
  * 底栏一句单键规则 ＋［改快捷键…］（直达设置那一节）［关闭］。Esc / Enter 关。键位一律按当前键位现拼。
  */
 import { dispatcher, KeybindingDispatcher } from "../keybindings/registry";
-import { findAction, type ActionId, type Scope } from "../keybindings/actions";
+import { findAction, SCOPE_LABEL, type ActionId, type Scope } from "../keybindings/actions";
 import { panelDialog, type PanelHandle } from "../kit/dialog";
 import { button } from "../kit/button";
 import { icon } from "../kit/icon";
@@ -28,7 +28,7 @@ function groups(): { title: string; rows: Row[] }[] {
       rows: [
         { label: copyText("keys.row.jump"), ids: ["tab.jump-1", "tab.jump-9"], range: true },
         { label: copyText("keys.row.nextPrev"), ids: ["tab.next", "tab.prev"] },
-        { ids: ["needs.next"] },
+        { ids: ["asks.next"] },
         { ids: ["app.new-session"] },
         { ids: ["app.open-command-bar"] },
       ],
@@ -80,27 +80,14 @@ function groups(): { title: string; rows: Row[] }[] {
         { ids: ["behavior.toggle-bring-monitor"] },
         { ids: ["app.open-cc-bus"] },
         { ids: ["app.toggle-tab-bar"] },
+        { ids: ["manual.next"] },
       ],
     },
   ];
 }
 
 function scopeText(scope: Scope, chord: string | null): string {
-  const modified = chord !== null && chord.split("+").some((p) => p === "Ctrl" || p === "Alt" || p === "Meta");
-  switch (scope === "bare" && modified ? "any" : scope) {
-    case "any":
-      return copyText("keys.scope.any");
-    case "idle":
-      return copyText("keys.scope.idle");
-    case "main":
-      return copyText("keys.scope.main");
-    case "nav":
-      return copyText("keys.scope.nav");
-    case "bare":
-      return copyText("keys.scope.bare");
-    case "bar":
-      return copyText("keys.group.bar");
-  }
+  return SCOPE_LABEL[KeybindingDispatcher.effectiveScope(scope, chord)];
 }
 
 /** 一行此刻的键（现拼）：`[[键…]…]`，每个动作一组；没绑 ⇒ 空组。 */

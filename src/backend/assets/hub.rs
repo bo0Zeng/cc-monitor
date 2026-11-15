@@ -41,9 +41,9 @@ use super::ext::{
 use super::hub_wire::{
     CcBusInstallCmd, CcBusState, CcBusStateCmd, Fill, HubApplied, HubApplyReq, HubMachineCard,
     HubMachineDone, HubPreview, HubReq, HubSlot, McpApplyCmd, McpApplyReq, McpPreview,
-    McpPreviewCmd, McpPreviewReq, McpSource, McpSourceCmd, McpSourceReq, NoReq, SkillApplyCmd,
-    SkillApplyReq, SkillPlan, SkillPlanCmd, SkillPlanReq, SkillRead, SkillReadCmd, SkillReadReq,
-    SkillSourceFile,
+    McpPreviewCmd, McpPreviewReq, McpSource, McpSourceCmd, McpSourceReq, NoReq, PluginInstallCmd,
+    PluginInstallReq, SkillApplyCmd, SkillApplyReq, SkillPlan, SkillPlanCmd, SkillPlanReq,
+    SkillRead, SkillReadCmd, SkillReadReq, SkillSourceFile,
 };
 use crate::common::said::Said;
 use crate::dial::remote_ask::{Remote, Table};
@@ -115,10 +115,9 @@ where
         .map_err(said)
 }
 
-/// 给人看的那台的名字（`null` = 本机后端这一台）。
+/// 给人看的那台的名字（`null` = 本机后端这一台）：只经 `copy_core::machine_word`。
 fn machine_name(m: Option<&str>) -> String {
-    m.map(str::to_string)
-        .unwrap_or_else(|| copy_text("detail.label.local", &[]))
+    copy_core::machine_word(&m.map_or_else(cmd_wire::Machine::local, cmd_wire::Machine::named))
 }
 
 /// `scope` 的两头：只认形状。项目目录是不是绝对路径由它所属的那台判（来源 / 被写那台的内层命令各判各的），
@@ -150,25 +149,50 @@ fn source_files(read: &SkillRead) -> Vec<SkillSourceFile> {
 struct Ask<'a> {
     kind: ExtKind,
     name: &'a str,
+    /// 经那一家插件命令装的插件：表那一行的来源键（那一家的写法，装那一行交它）；
+    /// 缺（旧对端 · 没取到）⇒ 那一跳不发。别的种类不看它。
+    key: Option<&'a str>,
+    /// 哪一家的（规整后的：默认那一家 ⇒ 缺）：skill · MCP 那几跳都照它问两头。
+    agent: Option<cmd_wire::AgentKind>,
     from: Option<String>,
     to: Option<String>,
     at_from: ExtLoc,
     at_to: ExtLoc,
 }
 
-fn ask_of(args: &Value) -> Result<Ask<'_>, Said> {
+/// 入参 ⇒ 一趟「装」：家先规整（认不出 ⇒ `bad_args`），之后照带家的那一样判（自带的 · 自己发版的只属默认那一家；
+/// 别家的 MCP 来源或落点在全局那一级 ⇒ 拒，不悄悄读写默认那一家那一份）。不行就拒、一跳都不发。
+fn ask_of<'v>(reg: &[crate::agents::Adapter], args: &'v Value) -> Result<Ask<'v>, Said> {
     let kind = super::ext::kind_from_arg(args)?;
     let name = str_arg(args, "name")?;
-    // 自己发版的插件（planned-build）照 skill 那条路装：整个目录拷进用户级 skills 目录；别的插件只读（整种只读 ⇒ 拒）。
-    if super::ext::read_only(kind).is_some() && !super::ext::is_release(kind, name) {
-        return Err(super::ext::read_only_refused(kind));
-    }
+    let agent: Option<cmd_wire::AgentKind> =
+        serde_json::from_value(args.get("agent").cloned().unwrap_or(Value::Null))
+            .map_err(|_| bad("`agent` must be an agent kind or null"))?;
+    let agent = super::skill_install::family_of(reg, agent.as_ref())?;
     let (from, to) = (machine_of(args, "from")?, machine_of(args, "to")?);
     let (at_from, at_to) = scope_of(args)?;
-    if let Some(why) = builtin_refused(kind, name, &at_to) {
+    // 别家的 MCP：项目级照那一家走（各跳带家）；全局那一份（来源 · 落点）只认默认那一家 ⇒ 拒。
+    if let Some(why) = [&at_from, &at_to]
+        .into_iter()
+        .find_map(|at| super::ext::family_refused(kind, agent.as_ref(), at))
+    {
         return Err(Said::new("refused", why));
     }
-    if !is_builtin(kind, name) && same_place(from.as_deref(), &at_from, to.as_deref(), &at_to) {
+    if let Some(why) = builtin_refused(kind, name, agent.as_ref(), &at_to) {
+        return Err(Said::new("refused", why));
+    }
+    // 插件照表上同一处判（[`super::ext::target_refused_among`]）：自己发版的照 skill 那条路拷进用户级 skills 目录；
+    // 别的插件经那一家自己的命令装、只到用户级，那一家没声明插件那一格 ⇒ 只读、拒。
+    if kind == ExtKind::Plugin {
+        if let Some(why) =
+            super::ext::target_refused_among(reg, kind, name, agent.as_ref(), &at_to, true)
+        {
+            return Err(Said::new("refused", why));
+        }
+    }
+    if !is_builtin(kind, name, agent.as_ref())
+        && same_place(from.as_deref(), &at_from, to.as_deref(), &at_to)
+    {
         return Err(Said::new(
             "refused",
             copy_text("beExt.card.sameMachine", &[]),
@@ -177,6 +201,8 @@ fn ask_of(args: &Value) -> Result<Ask<'_>, Said> {
     Ok(Ask {
         kind,
         name,
+        key: args.get("key").and_then(Value::as_str),
+        agent,
         from,
         to,
         at_from,
@@ -201,6 +227,7 @@ async fn skill_look(
         &SkillReadReq {
             name: a.name.to_string(),
             project: project_arg(&a.at_from),
+            agent: a.agent.clone(),
         },
         table,
         remote,
@@ -216,6 +243,7 @@ async fn skill_look(
             project: project_arg(&a.at_to),
             take: None,
             overwrite: None,
+            agent: a.agent.clone(),
         },
         table,
         remote,
@@ -237,6 +265,7 @@ async fn mcp_look(
         &McpSourceReq {
             name: a.name.to_string(),
             at: a.at_from.clone(),
+            agent: a.agent.clone(),
         },
         table,
         remote,
@@ -249,6 +278,7 @@ async fn mcp_look(
             name: a.name.to_string(),
             at: a.at_to.clone(),
             def: src.def.clone(),
+            agent: a.agent.clone(),
         },
         table,
         remote,
@@ -370,18 +400,23 @@ fn builtin_card(a: &Ask<'_>, st: &CcBusState) -> ExtCard {
 
 /// `ext-hub-preview {kind, name, from, to, scope}` → 确认卡（[`ExtCard`]）。只读。
 pub(crate) async fn ext_preview(
+    reg: &[crate::agents::Adapter],
     here: &Arc<dyn Here>,
     args: &Value,
     table: &Table,
     remote: &dyn Remote,
 ) -> Result<ExtCard, Said> {
-    let a = ask_of(args)?;
-    if is_builtin(a.kind, a.name) {
+    let a = ask_of(reg, args)?;
+    if is_builtin(a.kind, a.name, a.agent.as_ref()) {
         let st = builtin_look(here, &a, table, remote).await?;
         return Ok(builtin_card(&a, &st));
     }
     Ok(match a.kind {
-        // 走到这里的插件只有自己发版的那一样（[`ask_of`] 已拒掉别的）：整个目录照 skill 拷。
+        // 别的插件经那一家自己的命令装（[`ask_of`] 已拒掉没声明插件那一格的家）：卡上说被写那台跑哪一行。
+        ExtKind::Plugin if !super::ext::is_release(a.kind, a.name, a.agent.as_ref()) => {
+            plugin_card(reg, &a)?
+        }
+        // 自己发版的插件：整个目录照 skill 拷。
         ExtKind::Skill | ExtKind::Plugin => {
             let (source, plan) = skill_look(here, &a, table, remote).await?;
             skill_card(&a, &source, &plan)
@@ -393,6 +428,31 @@ pub(crate) async fn ext_preview(
     })
 }
 
+/// 来源那一条上那一家的写法；没有（旧对端）⇒ 拒、照实说列不出（同表上那一句）。
+fn plugin_key<'a>(a: &Ask<'a>) -> Result<&'a str, Said> {
+    a.key
+        .ok_or_else(|| Said::new("refused", copy_text("beExt.plugin.unlisted", &[])))
+}
+
+/// 经那一家自己的命令装的插件那张卡：落点写被写那台要跑的那一行（交那一家的写法），记号只认名字（装前那台有没有它由那台的命令自己判）。
+fn plugin_card(reg: &[crate::agents::Adapter], a: &Ask<'_>) -> Result<ExtCard, Said> {
+    Ok(ExtCard {
+        kind: a.kind,
+        name: a.name.to_string(),
+        path: super::plugin_exec::install_line(reg, a.agent.as_ref(), plugin_key(a)?)?,
+        writes: vec![a.name.to_string()],
+        unchanged: false,
+        suspects: Vec::new(),
+        stop: None,
+        config: None,
+        slots: Vec::new(),
+        tokens: ExtTokens {
+            source: token_of(&json!({ "plugin": a.name })),
+            target: None,
+        },
+    })
+}
+
 fn changed_since() -> Said {
     Said::new("stale", copy_text("beExt.apply.changed", &[]))
 }
@@ -400,6 +460,7 @@ fn changed_since() -> Said {
 /// 装一台：`{kind, name, from, to, scope}` ＋ 那张卡上的记号 ＋ 用户填的值（`{field: {key: 值}}`；`None` ⇒ 没填）→ [`ExtDone`]。
 /// 两头都再看一次：记号对不上 ⇒ `stale`、一个字节不写。
 pub(crate) async fn ext_apply(
+    reg: &[crate::agents::Adapter],
     here: &Arc<dyn Here>,
     args: &Value,
     tokens: &ExtTokens,
@@ -407,9 +468,9 @@ pub(crate) async fn ext_apply(
     table: &Table,
     remote: &dyn Remote,
 ) -> Result<ExtDone, Said> {
-    let a = ask_of(args)?;
+    let a = ask_of(reg, args)?;
     let done = match a.kind {
-        _ if is_builtin(a.kind, a.name) => {
+        _ if is_builtin(a.kind, a.name, a.agent.as_ref()) => {
             let st = builtin_look(here, &a, table, remote).await?;
             if builtin_card(&a, &st).tokens != *tokens {
                 return Err(changed_since());
@@ -430,6 +491,20 @@ pub(crate) async fn ext_apply(
                 changed: out.written,
                 note: (!note.is_empty()).then(|| note.join(" ")),
             }
+        }
+        // 卡上的记号只认名字（装前那台有没有它由那台的命令判）⇒ 不比记号，照问被写那台一跳（交那一家的写法）。
+        ExtKind::Plugin if !super::ext::is_release(a.kind, a.name, a.agent.as_ref()) => {
+            ask_one::<PluginInstallCmd>(
+                here,
+                a.to.as_deref(),
+                &PluginInstallReq {
+                    name: plugin_key(&a)?.to_string(),
+                    agent: a.agent.clone(),
+                },
+                table,
+                remote,
+            )
+            .await?
         }
         ExtKind::Skill | ExtKind::Plugin => {
             let (source, plan) = skill_look(here, &a, table, remote).await?;
@@ -456,6 +531,7 @@ pub(crate) async fn ext_apply(
                     target: plan.target,
                     take: Some(card.writes),
                     overwrite: Some(overwrite),
+                    agent: a.agent.clone(),
                 },
                 table,
                 remote,
@@ -490,6 +566,7 @@ pub(crate) async fn ext_apply(
                     def: pre.def,
                     fill: fill.cloned(),
                     target: pre.target,
+                    agent: a.agent.clone(),
                 },
                 table,
                 remote,
@@ -529,23 +606,37 @@ pub(crate) struct Plan {
     /// 共用的那一处：要的那一处对每台都行就用它；否则第一台建议的那一处（对每台都行时）；再否则第一处对每台都行的；都没有 ⇒ `None`。
     pub place: Option<ExtLoc>,
     pub picks: Vec<Pick>,
+    /// 规整后的家（默认那一家 ⇒ 缺）：各台那一跳照它带。
+    pub agent: Option<cmd_wire::AgentKind>,
+    /// 那一行的来源键（插件：那一家的写法，装那一跳交它）；行上没有 ⇒ 缺。
+    pub source: Option<String>,
 }
 
 /// 那张表（`ext-list` 同一份）⇒ 那一组的落点与各台。**纯函数**，判定只在这里。
 pub(crate) fn plan_many(
+    reg: &[crate::agents::Adapter],
     list: &ExtList,
+    agent: Option<&cmd_wire::AgentKind>,
     kind: ExtKind,
     name: &str,
+    source: Option<&str>,
     to: &[Option<String>],
     want: Option<ExtLoc>,
 ) -> Result<Plan, Said> {
     if to.is_empty() {
         return Err(bad("`to` must list at least one machine"));
     }
+    // 家先规整（行上默认那一家记成缺；认不出 ⇒ `bad_args`），再照（种类, 名字, 家, 来源键）找那一行。
+    let agent = super::skill_install::family_of(reg, agent)?;
     let row = list
         .rows
         .iter()
-        .find(|r| r.kind == kind && r.name == name)
+        .find(|r| {
+            r.kind == kind
+                && r.name == name
+                && r.agent == agent
+                && r.source.as_ref().map(|s| s.key.as_str()) == source
+        })
         .ok_or_else(|| Said::new("missing", copy_text("beExt.many.noRow", &[("name", name)])))?;
     let picks: Vec<Pick> = to
         .iter()
@@ -554,16 +645,10 @@ pub(crate) fn plan_many(
                 None => m.here,
                 Some(k) => m.key.as_deref() == Some(k.as_str()),
             });
+            // 表里那一台的 `name` 已是成品（本机经 `machine_word`，`ext.rs::columns`）。
             let name = col
-                .map(|i| {
-                    let m = &list.machines[i];
-                    if m.here {
-                        copy_text("detail.label.local", &[])
-                    } else {
-                        m.name.clone()
-                    }
-                })
-                .unwrap_or_else(|| t.clone().unwrap_or_default());
+                .map(|i| list.machines[i].name.clone())
+                .unwrap_or_else(|| machine_name(t.as_deref()));
             Pick {
                 to: t.clone(),
                 name,
@@ -619,6 +704,8 @@ pub(crate) fn plan_many(
         places,
         place,
         picks,
+        agent,
+        source: source.map(str::to_string),
     })
 }
 
@@ -659,11 +746,22 @@ pub(crate) fn files_of(c: &ExtCard) -> Vec<String> {
     }
 }
 
-/// 一台那一跳的参数（与单台那一对同形）。
-fn ask_for(kind: ExtKind, name: &str, p: &Pick, b: &ExtBring, place: &ExtLoc) -> Value {
+/// 一台那一跳的参数（与单台那一对同形）。插件另带表那一行的来源键（[`Plan::source`]：那一家的写法，装那一行交它）；
+/// 行上没有（旧对端 · 别的种类）⇒ `null`（插件那一跳不发）。
+fn ask_for(
+    key: Option<&str>,
+    kind: ExtKind,
+    name: &str,
+    agent: Option<&cmd_wire::AgentKind>,
+    p: &Pick,
+    b: &ExtBring,
+    place: &ExtLoc,
+) -> Value {
     json!({
         "kind": kind,
         "name": name,
+        "key": key,
+        "agent": agent,
         "from": b.from,
         "to": p.to,
         "scope": {"from": b.scope.from, "to": place},
@@ -703,10 +801,14 @@ pub async fn ext_preview_many(
 ) -> Result<HubPreview, Said> {
     let (kind, name) = (req.kind, req.name.as_str());
     picked(&req.to)?;
+    let list = current_list(table, current)?;
     let plan = plan_many(
-        &current_list(table, current)?,
+        crate::agents::REGISTRY,
+        &list,
+        req.agent.as_ref(),
         kind,
         name,
+        req.source.as_deref(),
         &req.to,
         req.place.clone(),
     )?;
@@ -720,7 +822,16 @@ pub async fn ext_preview_many(
             )),
             (Some(_), None) => Err(Said::new("refused", copy_text("beExt.many.noPlace", &[]))),
             (Some(b), Some(place)) => {
-                ext_preview(here, &ask_for(kind, name, p, b, place), table, remote).await
+                let ask = ask_for(
+                    plan.source.as_deref(),
+                    kind,
+                    name,
+                    plan.agent.as_ref(),
+                    p,
+                    b,
+                    place,
+                );
+                ext_preview(crate::agents::REGISTRY, here, &ask, table, remote).await
             }
         };
         match got {
@@ -786,10 +897,14 @@ pub async fn ext_apply_many(
 ) -> Result<HubApplied, Said> {
     let (kind, name, want) = (req.kind, req.name.as_str(), req.place.clone());
     picked(&req.to)?;
+    let list = current_list(table, current)?;
     let plan = plan_many(
-        &current_list(table, current)?,
+        crate::agents::REGISTRY,
+        &list,
+        req.agent.as_ref(),
         kind,
         name,
+        req.source.as_deref(),
         &req.to,
         want.clone(),
     )?;
@@ -802,11 +917,30 @@ pub async fn ext_apply_many(
                 match req.tokens.get(&key) {
                     None => Err(changed_since()),
                     Some(tokens) => {
-                        let ask = ask_for(kind, name, p, b, place);
                         async {
-                            let card = ext_preview(here, &ask, table, remote).await?;
+                            let ask = ask_for(
+                                plan.source.as_deref(),
+                                kind,
+                                name,
+                                plan.agent.as_ref(),
+                                p,
+                                b,
+                                place,
+                            );
+                            let card =
+                                ext_preview(crate::agents::REGISTRY, here, &ask, table, remote)
+                                    .await?;
                             let fill = fill_for(&card, &req.fill);
-                            ext_apply(here, &ask, tokens, Some(&fill), table, remote).await
+                            ext_apply(
+                                crate::agents::REGISTRY,
+                                here,
+                                &ask,
+                                tokens,
+                                Some(&fill),
+                                table,
+                                remote,
+                            )
+                            .await
                         }
                         .await
                     }

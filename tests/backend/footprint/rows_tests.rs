@@ -13,7 +13,7 @@ use guard_core::ScanReport;
 /// 受管工具 / 手写环境项的**全集**（本表 ＋ 注册表里各家足迹面带来的那一半）—— 判据按全集判。
 static TOOLS: std::sync::LazyLock<Vec<crate::agents::footprint_decl::ToolSpec>> =
     std::sync::LazyLock::new(|| {
-        crate::footprint::registry::tools()
+        crate::footprint::registry::tools_among(crate::agents::REGISTRY)
             .into_iter()
             .cloned()
             .collect()
@@ -38,13 +38,18 @@ fn empty_probe<'a>() -> FsProbe<'a> {
 fn env_with<'a>(home: &'a Path, fs: &'a FsProbe<'a>, path_env: Option<&'a str>) -> SurfaceEnv<'a> {
     SurfaceEnv {
         home,
-        agent_home: Box::leak(Box::new(home.join(".claude"))),
+        agent_homes: Box::leak(Box::new(crate::agents::IntoHomes::into_homes(
+            &home.join(".claude"),
+        )))
+        .as_slice(),
         fs,
         path_env,
         session_path: path_env,
         system_root: None,
         windows: false,
         vantage: Vantage::Monitor,
+        registry: crate::agents::REGISTRY,
+        accounts: &[],
     }
 }
 
@@ -84,7 +89,7 @@ fn the_ssh_row_uses_the_one_ssh_locator() {
         SurfaceState::Undetermined
     );
     // 登记表里 ssh 那一行用的就是这个查法。
-    let row = crate::footprint::registry::environment()
+    let row = crate::footprint::registry::environment_among(crate::agents::REGISTRY, cfg!(windows))
         .into_iter()
         .find(|e| e.id == "ssh")
         .expect("ssh 那一行");
@@ -108,6 +113,7 @@ fn resolves_local_home_paths() {
         HostScope::Client,
         &home(),
         &home().join(".claude"),
+        crate::agents::REGISTRY,
     )
     .unwrap();
     assert_eq!(r, PathResolution::Local(PathBuf::from("/h/.local/bin/ccm")));
@@ -127,6 +133,7 @@ fn claude_paths_are_based_on_the_agent_home() {
             HostScope::Client,
             &home(),
             &acct,
+            crate::agents::REGISTRY,
         )
         .unwrap()
     };
@@ -141,6 +148,36 @@ fn claude_paths_are_based_on_the_agent_home() {
     );
 }
 
+/// 各家的家逐家交：`~/…` 那几条照**认领它的那一家**的家解，不照交进来的头一个家（头一个是一家没有足迹面的家）。
+#[test]
+fn agent_home_paths_follow_the_family_that_claims_them() {
+    let claimant = crate::agents::default_kind();
+    let homes = [
+        crate::agents::AgentHome {
+            kind: "nobody",
+            home: PathBuf::from("/h/.nobody"),
+        },
+        crate::agents::AgentHome {
+            kind: claimant,
+            home: PathBuf::from("/h/.claude-alt/z"),
+        },
+    ];
+    let r = resolve_touched_path(
+        Vantage::Monitor,
+        "~/.claude/settings.json",
+        &ToolDestination::LocalHomeRelative("x"),
+        HostScope::Client,
+        &home(),
+        &homes[..],
+        crate::agents::REGISTRY,
+    )
+    .unwrap();
+    assert_eq!(
+        r,
+        PathResolution::Local(PathBuf::from("/h/.claude-alt/z/settings.json"))
+    );
+}
+
 #[test]
 fn resolves_one_level_glob() {
     let r = resolve_touched_path(
@@ -150,6 +187,7 @@ fn resolves_one_level_glob() {
         HostScope::Client,
         &home(),
         &home().join(".claude"),
+        crate::agents::REGISTRY,
     )
     .unwrap();
     assert_eq!(
@@ -171,7 +209,8 @@ fn remote_project_and_profile_are_not_local() {
             &ToolDestination::RemoteHomeRelative("x"),
             HostScope::Remote,
             &home(),
-            &home().join(".claude")
+            &home().join(".claude"),
+            crate::agents::REGISTRY
         )
         .unwrap(),
         PathResolution::Remote
@@ -183,7 +222,8 @@ fn remote_project_and_profile_are_not_local() {
             &ToolDestination::ProjectRelative("x"),
             HostScope::Either,
             &home(),
-            &home().join(".claude")
+            &home().join(".claude"),
+            crate::agents::REGISTRY
         )
         .unwrap(),
         PathResolution::NeedsProjectDir
@@ -195,7 +235,8 @@ fn remote_project_and_profile_are_not_local() {
             &ToolDestination::UserShellProfile(ShellProfile::PowerShell),
             HostScope::Client,
             &home(),
-            &home().join(".claude")
+            &home().join(".claude"),
+            crate::agents::REGISTRY
         )
         .unwrap(),
         PathResolution::WindowsProfile
@@ -235,7 +276,8 @@ fn declaration_inconsistency_is_an_error_not_a_guess() {
                 &dest,
                 HostScope::Client,
                 &home(),
-                &home().join(".claude")
+                &home().join(".claude"),
+                crate::agents::REGISTRY
             )
             .is_none(),
             "{declared:?} 配 {dest:?} 应判不自洽"
@@ -359,6 +401,7 @@ fn every_declared_path_resolves() -> ScanReport {
                 f.host,
                 &home(),
                 &home().join(".claude"),
+                crate::agents::REGISTRY,
             )
             .is_none()
             {
@@ -399,6 +442,7 @@ fn prose_paths_are_rejected() {
             HostScope::Client,
             &home(),
             &home().join(".claude"),
+            crate::agents::REGISTRY,
         );
         // **必须直接判不自洽（`None`）。** 第一版这里写的是"Err 或者解析出带括号的假路径都算抓到"，
         // 于是 `~/.local/bin/cc-*（12 条软链）` 溜了过去——它成功解析成
@@ -470,6 +514,7 @@ fn either_never_absent_with(probe: &FsProbe) {
                 f.host,
                 &home(),
                 &home().join(".claude"),
+                crate::agents::REGISTRY,
             )
             .unwrap()
         })
@@ -533,6 +578,7 @@ fn either_host_keeps_the_glob_match() {
         glob.host,
         &home(),
         &home().join(".claude"),
+        crate::agents::REGISTRY,
     )
     .unwrap();
     assert_eq!(
@@ -559,6 +605,7 @@ fn remote_host_never_resolves_to_a_local_path() {
                 f.host,
                 &home(),
                 &home().join(".claude"),
+                crate::agents::REGISTRY,
             )
             .unwrap();
             let local = matches!(
@@ -788,6 +835,7 @@ fn host_projection_preserves_the_richer_resolution() {
         HostScope::Remote,
         &home(),
         &home().join(".claude"),
+        crate::agents::REGISTRY,
     )
     .unwrap();
     assert_eq!(
@@ -813,6 +861,7 @@ fn destination_checks_still_run_under_every_host() {
                 host,
                 &home(),
                 &home().join(".claude"),
+                crate::agents::REGISTRY,
             );
             assert!(
                 e.is_none(),
@@ -887,7 +936,9 @@ fn declared_destinations_are_pinned_to_the_real_writers() {
     // ② 项目 MCP：写进了那台后端（`assets/mcp_edit.rs`），落点是资产面那一家的项目级 MCP 文件名
     let mcp = include_str!("../../../src/backend/assets/mcp_edit.rs");
     assert_eq!(
-        crate::assets::mcp_edit::mcp_json(),
+        crate::assets::mcp_edit::project_mcp_of(crate::agents::REGISTRY, None)
+            .expect("默认那一家没有项目级 MCP")
+            .0,
         ".mcp.json",
         "写面的项目级 MCP 落点与足迹申报的不是同一个文件名"
     );
@@ -897,7 +948,7 @@ fn declared_destinations_are_pinned_to_the_real_writers() {
             .iter()
             .map(|c| &c.destination)
             .collect::<Vec<_>>(),
-        // 一个载体（推 / 拉）。落点只问 `mcp_edit.rs::mcp_json` 一处（推 / 拉那一趟 `mcp_sync_flow.rs` 引它）。
+        // 一个载体（推 / 拉）。落点只问 `mcp_edit.rs::project_mcp_of` 一处（装 · 推 · 拉 · 卸都引它）。
         vec![&ToolDestination::ProjectRelative(".mcp.json")]
     );
 
@@ -943,6 +994,7 @@ fn shell_profile_destinations_declare_their_own_placeholder() {
         HostScope::Client,
         &home(),
         &home().join(".claude"),
+        crate::agents::REGISTRY,
     )
     .unwrap();
     assert_eq!(
@@ -960,22 +1012,25 @@ fn shell_profile_destinations_declare_their_own_placeholder() {
 /// **死值验**：往闭集里加一项而不动这个视图（或把建表退回 `TOOLS.iter()`）⇒ 本条红。
 #[test]
 fn the_view_population_is_exactly_the_closed_set() {
-    use crate::footprint::registry::environment;
+    use crate::footprint::registry::environment_among;
     use std::collections::BTreeSet;
     let h = home();
     let fs = empty_probe();
     let rows = build_rows(&env_with(&h, &fs, Some("/usr/bin")), None);
     let shown: BTreeSet<&str> = rows.iter().map(|r| r.tool_id).collect();
-    let want: BTreeSet<&str> = environment().iter().map(|e| e.id).collect();
+    let want: BTreeSet<&str> = environment_among(crate::agents::REGISTRY, cfg!(windows))
+        .iter()
+        .map(|e| e.id)
+        .collect();
     assert!(
         !want.is_empty(),
-        "闭集是空的 —— 先查 environment()，别改断言"
+        "闭集是空的 —— 先查 environment_among，别改断言"
     );
     assert_eq!(
         shown, want,
         "这一页的人群与环境清单的闭集对不上 —— 少掉的那几项，\n\
              用户在这一页上**看不见**，而这一页正是他问「齐了没有」时唯一能看的地方。\n\
-             （闭集住 `tool_registry::environment`，它是唯一一份；这里不许再抄一张名单。）"
+             （闭集住 `footprint::registry::environment_among`，它是唯一一份；这里不许再抄一张名单。）"
     );
 }
 
@@ -1016,7 +1071,7 @@ fn machine_with<'a>(
 /// 那正说明 ② 与 ③ 是分开的两格）。
 #[test]
 fn the_prompt_tier_really_looks_before_it_speaks() {
-    use crate::footprint::registry::{environment, EnvTier};
+    use crate::footprint::registry::{environment_among, EnvTier};
     let h = home();
     // `git` 装着、`tmux` 没装 —— 两条都在「你自己装」那一档里。
     let meta = machine_with(&["git"], &[]);
@@ -1035,7 +1090,10 @@ fn the_prompt_tier_really_looks_before_it_speaks() {
 
     // 反向自检：这两条**确实在那一档**（不然下面断的是别人）。
     for id in ["git", "tmux"] {
-        let e = environment().into_iter().find(|e| e.id == id).unwrap();
+        let e = environment_among(crate::agents::REGISTRY, cfg!(windows))
+            .into_iter()
+            .find(|e| e.id == id)
+            .unwrap();
         assert_eq!(
             e.tier,
             EnvTier::UserInstallsWePrompt,
@@ -1112,7 +1170,7 @@ fn the_same_name_under_three_probes_gives_three_different_cells() {
 /// **死值验**：把 `SurfaceRow::tier` 摘掉 ⇒ 编译不过。
 #[test]
 fn every_row_carries_its_tier() {
-    use crate::footprint::registry::{environment, EnvTier};
+    use crate::footprint::registry::{environment_among, EnvTier};
     use std::collections::BTreeSet;
     let h = home();
     let fs = empty_probe();
@@ -1120,7 +1178,10 @@ fn every_row_carries_its_tier() {
 
     // ① 每一行的档 = 闭集里那一项的档（不是这一页自己算的第二份）
     let want: std::collections::HashMap<&str, EnvTier> =
-        environment().iter().map(|e| (e.id, e.tier)).collect();
+        environment_among(crate::agents::REGISTRY, cfg!(windows))
+            .iter()
+            .map(|e| (e.id, e.tier))
+            .collect();
     for r in &rows {
         assert_eq!(
             Some(&r.tier),
@@ -1147,10 +1208,11 @@ fn rows_cover_every_touched_file() {
     let rows = build_rows(&env_with(&h, &f, Some("/usr/bin")), None);
     // 人群换成闭集之后，行数 = 有 ToolSpec 那一半的 touches 数
     //   + 手写那一半（这台平台上的那几条）每项一行。**两半都现算**，不写死一个数。
-    let named = crate::footprint::registry::environment()
-        .iter()
-        .filter(|e| matches!(e.backing, EnvBacking::Named { .. }))
-        .count();
+    let named =
+        crate::footprint::registry::environment_among(crate::agents::REGISTRY, cfg!(windows))
+            .iter()
+            .filter(|e| matches!(e.backing, EnvBacking::Named { .. }))
+            .count();
     let expected: usize = TOOLS.iter().map(|t| t.touches().count()).sum::<usize>() + named;
     assert_eq!(
         rows.len(),
@@ -1497,6 +1559,7 @@ fn the_user_path_row_is_answered_by_its_own_probe() {
             HostScope::Either,
             &h,
             &agent,
+            crate::agents::REGISTRY,
         )
         .expect("占位那一形解析得了");
         assert_eq!(observe(&res, &fs), want, "探针答 {asked:?}");
@@ -1512,8 +1575,224 @@ fn the_user_path_row_is_answered_by_its_own_probe() {
             HostScope::Either,
             &h,
             &agent,
+            crate::agents::REGISTRY,
         )
         .is_none(),
         "用户级 PATH 那一格写成文件路径 ⇒ 申报自相矛盾"
+    );
+}
+
+// ═══ 认多家 · 按号申报（两家替身，`agents::fake::footprint`）═══
+
+use std::collections::BTreeSet;
+
+/// 两家替身的一套基准：账号库里甲家两个号（一个清单里没写家 ⇒ 缺省那一家）· 乙家一个号 · 一个认不出家的号。
+fn two_family_rows(fs: &FsProbe) -> Vec<SurfaceRow> {
+    let h = home();
+    let accounts = vec![
+        AccountDir {
+            agent: Some("fake".into()),
+            name: "a1".into(),
+            dir: h.join(".cc-monitor/accounts/a1"),
+        },
+        AccountDir {
+            agent: None,
+            name: "a2".into(),
+            dir: PathBuf::from("/elsewhere/a2"),
+        },
+        AccountDir {
+            agent: Some("fake2".into()),
+            name: "b1".into(),
+            dir: h.join(".cc-monitor/accounts/b1"),
+        },
+        AccountDir {
+            agent: Some("nobody".into()),
+            name: "x".into(),
+            dir: h.join(".cc-monitor/accounts/x"),
+        },
+    ];
+    let mut env = env_with(&h, fs, Some("/usr/bin"));
+    env.registry = crate::agents::fake::footprint::two_footprint_families();
+    env.accounts = Box::leak(accounts.into_boxed_slice());
+    build_rows(&env, None)
+}
+
+/// 汇总照每一家的足迹面各收一份：两家各自的受管工具 · 环境项那几行都在。
+#[test]
+fn the_footprint_collects_every_familys_face() {
+    let rows = two_family_rows(&empty_probe());
+    let ids: BTreeSet<&str> = rows.iter().map(|r| r.tool_id).collect();
+    for id in [
+        "fake-a-records",
+        "fake-b-records",
+        "fake-a-cli",
+        "fake-b-cli",
+    ] {
+        assert!(ids.contains(id), "少了 {id} 那一行：{ids:?}");
+    }
+    let path_of = |id: &str| {
+        rows.iter()
+            .find(|r| r.tool_id == id)
+            .map(|r| r.path_declared.to_string())
+    };
+    assert_eq!(
+        path_of("fake-a-records").as_deref(),
+        Some("~/.fake-a/convos/")
+    );
+    assert_eq!(
+        path_of("fake-b-records").as_deref(),
+        Some("~/.fake-b/logs/")
+    );
+}
+
+/// 按号申报：每个号照它那一家的身份表，各号目录底下碰的那几份各一行；认不出家的号不出行；家目录外的号写绝对路径。
+#[test]
+fn every_account_lists_the_files_its_family_touches() {
+    let a1 = home().join(".cc-monitor/accounts/a1/fake-login.ndjson");
+    let meta = move |p: &Path| (p == a1.as_path()).then_some((false, 3u64));
+    let fs = FsProbe {
+        user_path: &|| None,
+        meta: &meta,
+        list: &|_| None,
+    };
+    let rows = two_family_rows(&fs);
+    let got: Vec<(String, SurfaceState)> = rows
+        .iter()
+        .filter(|r| r.tool_id == ACCOUNT_FILES_ID)
+        .map(|r| (r.path_declared.to_string(), r.state))
+        .collect();
+    let want: Vec<(String, SurfaceState)> = [
+        (
+            "~/.cc-monitor/accounts/a1/fake-login.ndjson",
+            SurfaceState::Present,
+        ),
+        (
+            "~/.cc-monitor/accounts/a1/fake-config.json",
+            SurfaceState::Absent,
+        ),
+        ("/elsewhere/a2/fake-login.ndjson", SurfaceState::Absent),
+        ("/elsewhere/a2/fake-config.json", SurfaceState::Absent),
+        ("~/.cc-monitor/accounts/b1/b-token", SurfaceState::Absent),
+        (
+            "~/.cc-monitor/accounts/b1/b-token.lock",
+            SurfaceState::Absent,
+        ),
+        ("~/.cc-monitor/accounts/b1/b.toml", SurfaceState::Absent),
+    ]
+    .into_iter()
+    .map(|(p, s)| (p.to_string(), s))
+    .collect();
+    assert_eq!(got, want);
+}
+
+// ═══ 足迹两处照注入的注册表═══
+// 替身家另声明一份与生产不同的「哪一段算那一家的家底下」与环境项：解出来的必须是替身这一份，不是生产注册表碰巧对上的缺省。
+
+/// 换过的那一家只认 `~/.fake-a/…` 为自己家底下（生产里没有一家认这一段）。
+fn swapped_under(rest: &str) -> Option<&str> {
+    rest.strip_prefix(".fake-a/")
+}
+
+/// 换过的那一家的环境项：一条必装、带怎么装；一条缺了也不劝装（生产里都没有这两个 id ⇒ 照生产查只得缺省）。
+const SWAPPED_ENV: &[crate::agents::footprint_decl::UnmanagedEnv] = &[
+    crate::agents::footprint_decl::UnmanagedEnv {
+        id: "fake-swap-must",
+        display_name: crate::agents::footprint_decl::Text(|| "替身必装".to_string()),
+        required: true,
+        how: Some("https://example.invalid/fake-swap"),
+        asks_install: true,
+        who: crate::agents::footprint_decl::Provisioning::UserProvides,
+        probe: EnvProbe::OnPath,
+        named: "fakeswapmust",
+        host: HostScope::Either,
+        site: "tests/backend/footprint/rows_tests.rs::SWAPPED_ENV",
+    },
+    crate::agents::footprint_decl::UnmanagedEnv {
+        id: "fake-swap-quiet",
+        display_name: crate::agents::footprint_decl::Text(|| "替身不劝装".to_string()),
+        required: false,
+        how: None,
+        asks_install: false,
+        who: crate::agents::footprint_decl::Provisioning::UserProvides,
+        probe: EnvProbe::OnPath,
+        named: "fakeswapquiet",
+        host: HostScope::Either,
+        site: "tests/backend/footprint/rows_tests.rs::SWAPPED_ENV",
+    },
+];
+
+/// 只有一家替身（`fake`）的注册表，足迹面照甲家、换掉家底下那一段与环境项。
+fn swapped_registry() -> &'static [crate::agents::Adapter] {
+    static ONE: std::sync::OnceLock<Vec<crate::agents::Adapter>> = std::sync::OnceLock::new();
+    ONE.get_or_init(|| {
+        let row = crate::agents::fake::family_row("fake", "CCM_FAKE_A", "fakea", true, || None);
+        vec![crate::agents::Adapter {
+            footprint: Some(crate::agents::FootprintFace {
+                env: SWAPPED_ENV,
+                under_agent_home: swapped_under,
+                ..crate::agents::fake::footprint::FACE_A
+            }),
+            ..row
+        }]
+    })
+}
+
+fn swapped_env<'a>(h: &'a Path, fs: &'a FsProbe<'a>) -> SurfaceEnv<'a> {
+    let mut env = env_with(h, fs, Some("/usr/bin"));
+    env.registry = swapped_registry();
+    env.agent_homes = Box::leak(Box::new([crate::agents::AgentHome {
+        kind: "fake",
+        home: PathBuf::from("/h/.fa"),
+    }]));
+    env
+}
+
+/// `~/.fake-a/convos/` 照替身声明的那一段落到替身的家（`/h/.fa/convos`）底下；照生产注册表查不到这一家 ⇒ 落回家目录、本机没有 ⇒ 未确定。
+#[test]
+fn the_agent_home_split_follows_the_injected_registry() {
+    let at = PathBuf::from("/h/.fa/convos");
+    let meta = move |p: &Path| (p == at.as_path()).then_some((true, 0u64));
+    let fs = FsProbe {
+        user_path: &|| None,
+        meta: &meta,
+        list: &|_| Some(vec![]),
+    };
+    let h = home();
+    let rows = build_rows(&swapped_env(&h, &fs), None);
+    let r = rows
+        .iter()
+        .find(|r| r.tool_id == "fake-a-records")
+        .expect("替身那一行");
+    assert_eq!(
+        r.state,
+        SurfaceState::Present,
+        "没照注入的那一家答家底下那一段"
+    );
+}
+
+/// 要装那一类照替身声明的环境项：必装 · 怎么装照它带，缺了不劝装的那一条不进。
+#[test]
+fn the_install_asks_follow_the_injected_registry() {
+    let fs = empty_probe();
+    let h = home();
+    let env = swapped_env(&h, &fs);
+    let report = ConfigSurfaceReport {
+        rows: build_rows(&env, None),
+        home: "/h".into(),
+    };
+    let got = crate::footprint::data::needs_install(&report, env.registry);
+    let mine: Vec<_> = got
+        .iter()
+        .filter(|m| m.id.starts_with("fake-swap"))
+        .map(|m| (m.id, m.required, m.how_url))
+        .collect();
+    assert_eq!(
+        mine,
+        vec![(
+            "fake-swap-must",
+            true,
+            Some("https://example.invalid/fake-swap")
+        )],
+        "环境项的必装 · 怎么装 · 劝不劝装没照注入的那一家"
     );
 }

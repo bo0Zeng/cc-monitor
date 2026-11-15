@@ -11,8 +11,8 @@
  * - 装：确认卡由本机后端当枢纽拼（`ext-hub-preview`，带用户在卡上选的那一处）；确认时交回卡上的记号（`ext-hub-apply`）；
  *   看过之后变了 ⇒ 后端答 `stale`，卡上说一句、给「重看」。卸：问被卸的那一台（`ext-uninstall-*`）。
  * - 备注：自带扩展的内置备注照画；用户写的经本机后端记进它的目录（`ext-note-set`），写完让本机后端同步一趟各台。
- * - 要加钩子的那一个（自带的 cc-bus）：抽屉里每台一行钩子状态与要加的内容，问那台后端（`hooks-diag`，抽屉打开时问一次），
- *   界面不读那份配置文件、也不写它。
+ * - 要加钩子的那一个（自带的 cc-bus）：抽屉里每台一行、行里每家一份钩子状态与要加的内容（声明了信任的那一家再带信任那一句与要加的那一段），问那台后端（`hooks-diag`，抽屉打开时问一次），
+ *   界面不读那几份文件、也不写它们。
  * - MCP 那几行每台的小标（需登录 · 断开）与抽屉里那一行：随 `ext-list` 一条来（各台那一格 `mcp`：本机后端问到那台的 `mcp-read` 成品，
  *   界面不逐台问），哪一种、那一句、悬停那一截、原话都是那台写好的；停用不画（按项目记的，一格一台说不清是哪个项目）。
  *   需登录那一条的［登录…］：那一格里写好的解法各一颗（解法 `fix` 是那台写好的 `login-start` 入参），开登录抽屉。
@@ -22,11 +22,12 @@ import { copyText } from "../copy-table";
 import { button } from "../kit/button";
 import { el } from "../kit/el";
 import { icon, type IconName } from "../kit/icon";
-import { isLocalOrigin, LOCAL, type Machine } from "../ipc/origin";
+import { LOCAL, type Machine } from "../ipc/origin";
 import { syncAssets } from "../assets-sync-reads";
-import { openOnMachine } from "../file-window";
+import { openFileWindow } from "../file-window";
 import { buildPasteBlock } from "../paste-block";
-import { describeState, fetchHooksReport, type HooksReport } from "../cc-bus-hooks-reads";
+import { fetchHooksReport, type FamilyHooks, type HooksReport } from "../cc-bus-hooks-reads";
+import type { HookTone } from "../generated/HookTone";
 import {
   extHubApply,
   extHubPreview,
@@ -63,7 +64,7 @@ const DOT_CLASS: Record<ExtCell["state"], string> = {
 };
 
 /** 钩子那一行的语气类（逐字写出，同上）。 */
-const TONE_CLASS: Record<"ok" | "bad" | "unknown", string> = {
+const TONE_CLASS: Record<HookTone, string> = {
   ok: "ext-hook-state is-ok",
   bad: "ext-hook-state is-bad",
   unknown: "ext-hook-state is-unknown",
@@ -104,13 +105,18 @@ function sameLoc(a: ExtLoc, b: ExtLoc): boolean {
   return a.level === "user" ? b.level === "user" : b.level === "project" && a.dir === b.dir;
 }
 
-function machineName(m: ExtMachine): string {
-  return m.here ? copyText("detail.label.local") : m.name;
-}
-
 /** 这台在通道上叫什么（本机后端那一台 = `LOCAL`）。 */
 function originOf(m: ExtMachine): Machine {
   return m.here || m.key === null ? LOCAL : m.key;
+}
+
+/** 界面自己的行键（只当 DOM 键与展开键，不往回发）：同名的两家各一行、同名插件几个来源各一行，所以带上行上的家与来源。 */
+function rowKey(r: ExtRow): string {
+  const named = r.agent === undefined ? `${r.kind}/${r.name}` : `${r.agent}/${r.kind}/${r.name}`;
+  // 分隔用 `|`：那一家的写法里常带 `@`（`名字@市场`），用它会与名字里带 `@` 的行撞键。
+  const base = r.source === undefined ? named : `${named}|${r.source.key}`;
+  // 同名不一致、后端拆成几行的：各带第几份。
+  return r.variant === undefined ? base : `${base}#${r.variant}`;
 }
 
 /** 抽屉里一台机器那一行的键（临时状态按它记）。 */
@@ -130,7 +136,7 @@ type ExtVerb = "install" | "uninstall";
 
 /** 一问没成 ⇒ 给人看的那一句：「装到 / 从…卸载 <那台> 失败：」＋ 那台后端说的那句本身（结局由统一写口判，`stale` 只决定给不给「重看」）。 */
 function failLine(why: string, verb: ExtVerb, m: ExtMachine): string {
-  const machine = machineName(m);
+  const machine = m.name;
   return verb === "install" ? copyText("extPage.error.install", { machine, said: why }) : copyText("extPage.error.uninstall", { machine, said: why });
 }
 
@@ -280,8 +286,16 @@ export class ExtSection {
   /** 那台的 MCP 列表（`ext-list` 回包里那台那一格 `mcp`）里这个名字的那一条（全局那一段）；没问到 ⇒ `null`。 */
   private mcpEntry(r: ExtRow, m: ExtMachine): McpEntry | null {
     if (r.kind !== "mcp" || !m.reachable) return null;
-    const own = this.list?.machines.find((x) => machineKey(x) === machineKey(m)) ?? m;
-    return mcpOf(own)?.entries.find((e) => e.name === r.name) ?? null;
+    const at = this.list?.machines.findIndex((x) => machineKey(x) === machineKey(m)) ?? -1;
+    const own = at < 0 ? m : this.list!.machines[at];
+    const entries = mcpOf(own)?.entries ?? [];
+    // 后端拆成几行的（同名不一致）：照行上那台的下标挑（后端照配置对好的），界面不再筛。
+    if (r.picks !== undefined) {
+      const i = at < 0 ? null : (r.picks[at] ?? null);
+      return i === null ? null : (entries[i] ?? null);
+    }
+    // 照名字与家一起挑：两家同名各取各家那一条（默认那一家两边都不写家）。
+    return entries.find((e) => e.name === r.name && e.agent === r.agent) ?? null;
   }
 
   /** 让本机后端对那台（`LOCAL` = 各台）同步一趟；没对上的那几台说出来（表照画手上那一份）。
@@ -312,11 +326,11 @@ export class ExtSection {
     head.append(el("span", "", copyText("machineForm.field.name")), el("span", "", copyText("rsFilewinSource.sort.type")), el("span", "", copyText("extPage.table.headAbout")));
     const cols = el("span", "ext-dots");
     for (const m of list.machines) {
-      const c = el("span", m.reachable ? "ext-col one-line" : "ext-col one-line is-offline", machineName(m));
+      const c = el("span", m.reachable ? "ext-col one-line" : "ext-col one-line is-offline", m.name);
       cols.appendChild(c);
     }
     head.appendChild(cols);
-    for (const m of list.machines) if (!m.reachable) items.push(el("div", "ext-offline", copyText("extPage.offline.bar", { machine: machineName(m) })));
+    for (const m of list.machines) if (!m.reachable) items.push(el("div", "ext-offline", copyText("extPage.offline.bar", { machine: m.name })));
     items.push(head);
     // 认得的那几样后端排在最前：它们前面一条组头（哪几样算认得照后端那一格 `known`，这里不认名字）。
     if (rows.some((r) => r.known !== null)) {
@@ -357,7 +371,7 @@ export class ExtSection {
   private rowEl(r: ExtRow, list: ExtList): HTMLElement {
     const line = el("button", "ext-row");
     line.type = "button";
-    line.dataset.key = `${r.kind}/${r.name}`;
+    line.dataset.key = rowKey(r);
     const name = el("span", "ext-name one-line", r.name);
     if (r.new) name.appendChild(el("span", "ext-new", copyText("extPage.row.new")));
     if ((r.known?.note ?? null) !== null || r.note !== null) {
@@ -370,8 +384,14 @@ export class ExtSection {
     }
     // 认得的那几样：名字后面一句从哪来（cc-monitor 自带 · 发布处；后端写好）。
     if (r.known !== null) name.append(" ", el("span", "ext-kind", r.known.from));
+    // 插件：名字后面一句从哪来（哪个市场；后端写好）——同名几个来源各一行，靠它分。
+    if (r.source !== undefined) name.append(" ", el("span", "ext-kind ext-source", r.source.said));
+    // 同名各号配置不一致、后端拆成几行的：名字后面那一行自己的标记（后端写好）。
+    if (r.heldSaid !== undefined) name.append(" ", el("span", "ext-kind ext-mismatch", r.heldSaid));
     line.appendChild(name);
     line.appendChild(el("span", "ext-kind", r.kindSaid));
+    // 哪一家（后端给的叫法；只一家时不给 ⇒ 不画）。
+    if (r.agentSaid !== undefined) name.append(" ", el("span", "ext-kind ext-family", r.agentSaid));
     line.appendChild(el("span", "ext-about one-line", r.about ?? ""));
     const dots = el("span", "ext-dots");
     r.cells.forEach((c, i) => {
@@ -382,8 +402,8 @@ export class ExtSection {
       const tip = e ? markTip(e) : null;
       d.title =
         tip === null
-          ? copyText("extPage.dot.title", { machine: machineName(m), state: c.said })
-          : copyText("extPage.dot.titleMark", { machine: machineName(m), state: c.said, mark: tip });
+          ? copyText("extPage.dot.title", { machine: m.name, state: c.said })
+          : copyText("extPage.dot.titleMark", { machine: m.name, state: c.said, mark: tip });
       dots.appendChild(d);
     });
     line.appendChild(dots);
@@ -393,7 +413,7 @@ export class ExtSection {
 
   /** 点开一行：抽屉换成它；要加钩子的那一个顺手问各台一次钩子状态。 */
   private openRow(r: ExtRow): void {
-    this.openKey = `${r.kind}/${r.name}`;
+    this.openKey = rowKey(r);
     this.slots.clear();
     this.install = freshInstall();
     this.hooks.clear();
@@ -418,7 +438,7 @@ export class ExtSection {
   }
 
   private current(): ExtRow | null {
-    return this.list?.rows.find((r) => `${r.kind}/${r.name}` === this.openKey) ?? null;
+    return this.list?.rows.find((r) => rowKey(r) === this.openKey) ?? null;
   }
 
   private renderDrawer(): void {
@@ -430,7 +450,9 @@ export class ExtSection {
     const head = el("div", "ext-drawer-head");
     head.appendChild(el("strong", "", r.name));
     head.appendChild(el("span", "ext-kind", r.kindSaid));
+    if (r.agentSaid !== undefined) head.appendChild(el("span", "ext-kind ext-family", r.agentSaid));
     if (r.known !== null) head.appendChild(el("span", "ext-kind", r.known.from));
+    if (r.source !== undefined) head.appendChild(el("span", "ext-kind ext-source", r.source.said));
     head.appendChild(
       button({ label: copyText("kit.drawer.close"), onClick: () => {
         this.openKey = null;
@@ -490,7 +512,7 @@ export class ExtSection {
   private async saveNote(r: ExtRow): Promise<void> {
     const text = this.noteDraft ?? "";
     try {
-      await extNoteSet(r.kind, r.name, text);
+      await extNoteSet(r, text);
       this.noteDraft = null;
       this.noteError = null;
       await this.reload(false, LOCAL);
@@ -506,7 +528,7 @@ export class ExtSection {
     box.appendChild(el("div", "settings-label", copyText("extPage.hooks.title")));
     for (const m of list.machines) {
       const line = el("div", "ext-hook");
-      line.appendChild(el("span", "ext-machine-name", machineName(m)));
+      line.appendChild(el("span", "ext-machine-name", m.name));
       const h = this.hooks.get(machineKey(m));
       if (!m.reachable) line.appendChild(el("div", "settings-hint", copyText("kit.offline.later")));
       else if (!h || h.kind === "loading") line.appendChild(el("div", "settings-hint", copyText("extPage.hooks.loading")));
@@ -522,31 +544,46 @@ export class ExtSection {
       line.appendChild(el("div", "settings-hint ext-hook-unsupported", copyText("extPage.hooks.unsupported")));
       return;
     }
-    for (const [label, st] of [[copyText("extPage.hooks.stop"), rep.diagnosis.stop]] as const) {
-      const d = describeState(st);
-      const s = el("div", TONE_CLASS[d.tone], copyText("extPage.hooks.stateLine", { hook: label, state: d.text }));
-      s.dataset.kind = st.kind;
-      line.appendChild(s);
-    }
-    if (rep.diagnosis.note) line.appendChild(el("div", "settings-hint", rep.diagnosis.note));
-    const snippet = rep.snippet;
+    for (const fam of rep.families) this.familyHooks(line, fam);
+  }
+
+  /** 一家那一份：钩子那一态 ＋ 要加的钩子那一段；那一家声明了信任 ⇒ 再一句信任 ＋ 未对上时要加的那一段。 */
+  private familyHooks(line: HTMLElement, fam: FamilyHooks): void {
+    // 那一态的那一句与色调是那台后端写好的（`diagnosis.said` · `tone`），照抄。
+    const d = fam.diagnosis;
+    const s = el("div", TONE_CLASS[d.tone], copyText("extPage.hooks.familyLine", { agent: fam.name, hook: copyText("extPage.hooks.stop"), state: d.said }));
+    s.dataset.kind = d.stop.kind;
+    line.appendChild(s);
+    if (d.note) line.appendChild(el("div", "settings-hint", d.note));
+    const snippet = fam.snippet;
     if (snippet === null) {
       line.appendChild(el("div", "settings-hint ext-hook-install-first", copyText("extPage.hooks.installFirst")));
       return;
     }
+    line.appendChild(this.pasteIn(copyText("extPage.hooks.copy"), snippet, copyText("extPage.hooks.target", { source: fam.source }), copyText("ccBusHooks.snippet.merge")));
+    const t = fam.trust;
+    if (t === null) return;
+    const ts = el("div", TONE_CLASS[t.tone], t.said);
+    ts.dataset.trust = t.trusted ? "trusted" : "untrusted";
+    line.appendChild(ts);
+    if (t.line !== null) line.appendChild(this.pasteIn(copyText("extPage.hooks.copyTrust"), t.line, t.file, copyText("ccBusHooks.trust.merge")));
+  }
+
+  /** 收起的那一段要加的内容（后端给的原文，照抄）。 */
+  private pasteIn(summary: string, text: string, where: string, note: string): HTMLElement {
     const more = el("details", "ext-hook-snippet");
-    more.appendChild(el("summary", "", copyText("extPage.hooks.copy")));
+    more.appendChild(el("summary", "", summary));
     const paste = buildPasteBlock({
-      text: () => snippet,
-      target: copyText("extPage.hooks.target", { source: rep.source }),
-      mergeNote: copyText("ccBusHooks.snippet.merge"),
+      text: () => text,
+      target: where,
+      mergeNote: note,
       activation: copyText("ccBusHooks.snippet.activation"),
       multiline: true,
       rows: 10,
     });
     paste.refresh();
     more.appendChild(paste.element);
-    line.appendChild(more);
+    return more;
   }
 
   private machineRow(r: ExtRow, c: ExtCell, m: ExtMachine): HTMLElement {
@@ -564,7 +601,7 @@ export class ExtSection {
     pick.disabled = bring === null || !m.reachable || this.install.busy;
     pick.addEventListener("change", () => void this.togglePick(r, m, pick.checked));
     top.appendChild(pick);
-    top.appendChild(el("span", "ext-machine-name", machineName(m)));
+    top.appendChild(el("span", "ext-machine-name", m.name));
     top.appendChild(dotOf(c.state));
     const said = c.state === "differs" && bring && m.reachable ? copyText("extPage.install.differsPick", { state: c.said }) : c.said;
     top.appendChild(el("span", "ext-machine-state", m.reachable ? said : copyText("extPage.install.offline", { state: said })));
@@ -595,8 +632,16 @@ export class ExtSection {
     return line;
   }
 
-  /** 抽屉里那台下面的 MCP 那一行（两种都没有 ⇒ 不画）：需登录那一句 ＋［登录…］（开登录抽屉）；断开那一句 ＋ 原话 ＋［复制详情］。字都是那台后端写好的。 */
+  /** 抽屉里那台下面的 MCP 那几行（都没有 ⇒ 不画）：在哪几个号里 · 各号不一致那一句（悬停那一截）；需登录那一句 ＋［登录…］（开登录抽屉）；断开那一句 ＋ 原话 ＋［复制详情］。字都是那台后端写好的。 */
   private mcpLines(line: HTMLElement, m: ExtMachine, e: McpEntry): void {
+    // 在哪几个号里 · 各号不一致：那一句与悬停那一截都是那台后端写好的。
+    const held = e.held;
+    if (held) {
+      const box = el("div", e.mismatch === true ? "ext-mcp is-mismatch" : "ext-mcp is-held");
+      box.appendChild(el("div", "ext-mcp-said", held.said));
+      if (held.tip !== null) box.title = held.tip;
+      line.appendChild(box);
+    }
     const login = e.login;
     if (login) {
       const box = el("div", "ext-mcp is-login");
@@ -632,7 +677,7 @@ export class ExtSection {
     }
   }
 
-  /** 那台上的一处：在哪 · 态 · 「卸载」（有才给）· skill 有目录的 ⇒ 本机「在文件夹中显示」、远端「在文件窗口里打开」。 */
+  /** 那台上的一处：在哪 · 态 · 「卸载」（有才给）· skill 有目录的 ⇒「在文件窗口里打开」（本机远端一样）。 */
   private placeRow(r: ExtRow, m: ExtMachine, p: ExtPlace, slot: Slot, uninstallAbove = false): HTMLElement {
     const row = el("div", "ext-place");
     row.appendChild(el("span", "ext-place-at", locText(p.at)));
@@ -644,16 +689,10 @@ export class ExtSection {
       row.appendChild(b);
     }
     if (r.kind === "skill" && p.dir !== null) {
-      // 本机 ⇒ 系统文件管理器里显示它；远端 ⇒ 文件窗口开进那个目录（认不出那台那一句由壳说）。
+      // 本机远端一样：文件窗口开进那台那个目录（认不出那台那一句由壳说）。
       const dir = p.dir;
       const origin = originOf(m);
-      const local = isLocalOrigin(origin);
-      const b = button({
-        label: local ? copyText("data.item.reveal") : copyText("extPage.button.openFiles"),
-        onClick: () => void openOnMachine(origin, { dir }),
-      });
-      if (local) b.dataset.reveal = "";
-      row.appendChild(b);
+      row.appendChild(button({ label: copyText("data.item.reveal"), onClick: () => void openFileWindow(origin, { dir }) }));
     }
     if (p.note) row.appendChild(el("span", "settings-hint", p.note));
     return row;
@@ -669,7 +708,7 @@ export class ExtSection {
     const key = machineKey(m);
     this.setSlot(key, { busy: true, card: { kind: "remove", at, card: null } });
     try {
-      const card = await extUninstallPreview(originOf(m), r.kind, r.name, at);
+      const card = await extUninstallPreview(originOf(m), r, at);
       this.setSlot(key, { card: { kind: "remove", at, card } });
     } catch (e) {
       this.setSlot(key, { error: { text: failLine(saidOf(e), "uninstall", m), stale: false, again: () => void this.openRemove(r, m, at) } });
@@ -687,14 +726,14 @@ export class ExtSection {
         box.appendChild(el("div", "settings-hint", copyText("extPage.card.loading")));
         return box;
       }
-      box.appendChild(el("div", "ext-card-title", copyText("extPage.card.removeTitle", { machine: machineName(m), path: card.path })));
+      box.appendChild(el("div", "ext-card-title", copyText("extPage.card.removeTitle", { machine: m.name, path: card.path })));
       box.appendChild(el("div", "ext-card-said", card.said));
       const files = el("ul", "ext-card-files");
       for (const f of card.files) files.appendChild(el("li", "", f));
       box.appendChild(files);
       const ok = button({ label: copyText("extPage.button.uninstall"), kind: "primary", onClick: () =>
           void this.run(r, key, m, "uninstall", async () => {
-            const done = await extUninstallApply(originOf(m), card, c.at);
+            const done = await extUninstallApply(originOf(m), r, card, c.at);
             return done.note ?? copyText("extPage.done.removed", { n: String(done.changed.length) });
           }) });
       ok.disabled = slot.busy === true;
@@ -729,7 +768,7 @@ export class ExtSection {
     inst.loading = true;
     this.renderDrawer();
     try {
-      const card = await extHubPreview(r.kind, r.name, to, inst.place);
+      const card = await extHubPreview(r, to, inst.place);
       if (this.install !== inst) return;
       inst.card = card;
       inst.error = null;
@@ -760,7 +799,7 @@ export class ExtSection {
         const row = el("label", t.ok ? "ext-target" : "ext-target is-off");
         const radio = el("input", "");
         radio.type = "radio";
-        radio.name = `ext-install-${r.kind}-${r.name}`;
+        radio.name = `ext-install-${rowKey(r)}`;
         radio.checked = card.place !== null && sameLoc(t.at, card.place);
         radio.disabled = !t.ok || inst.busy;
         radio.addEventListener("change", () => {
@@ -826,7 +865,7 @@ export class ExtSection {
     inst.busy = true;
     this.renderDrawer();
     try {
-      const got = await extHubApply(r.kind, r.name, card, inst.fill);
+      const got = await extHubApply(r, card, inst.fill);
       for (const m of got.machines) {
         const key = m.to ?? "";
         if (m.done) {

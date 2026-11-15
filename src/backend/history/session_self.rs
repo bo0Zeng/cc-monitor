@@ -41,13 +41,12 @@ pub(crate) fn first_session(chain: &[u32], rows: &[LiveRow]) -> Option<String> {
     })
 }
 
-/// 从 `start` 往上（真读父进程号）找 `agent_home` 那张活会话表里的会话。
-pub fn who_at(agent_home: &std::path::Path, start: u32) -> Option<String> {
+/// 从 `start` 往上（真读父进程号）找 `homes` 那几家活会话表里的会话。
+pub fn who_at(homes: impl crate::agents::IntoHomes, start: u32) -> Option<String> {
+    let homes_v = crate::agents::IntoHomes::into_homes(homes);
+    let homes: &[crate::agents::AgentHome] = &homes_v;
     let chain = chain_from(start, crate::platform::proc::parent_of);
-    first_session(
-        &chain,
-        super::live_table::LiveTable::scan(agent_home).rows(),
-    )
+    first_session(&chain, super::live_table::LiveTable::scan(homes).rows())
 }
 
 /// 只留有这台这一条（`sid`）的那几组。

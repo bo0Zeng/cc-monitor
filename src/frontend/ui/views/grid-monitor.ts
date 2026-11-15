@@ -19,7 +19,6 @@ import { copyText } from "../copy-table";
 import { machineName } from "../control-said";
 import { saidOf } from "../kit/detail";
 import { setDot, statusDot } from "../kit/status-dot";
-import { cappedCount } from "../kit/badge";
 import { place } from "../kit/morph";
 
 /** grid 数据源（TabManager 的只读子集 ＋ 版面那一问——便于测试注入桩）。 */
@@ -114,10 +113,10 @@ function renderBadges(s: GridSessionSnapshot, badges: HTMLElement, now: number):
     b.title = s.context.percent === null ? copyText("gridMonitor.renderBadges.ctxTokensHint") : copyText("gridMonitor.renderBadges.ctxHint");
     badges.appendChild(b);
   }
-  if (s.unread > 0) {
+  if (s.unread !== null) {
     const b = document.createElement("span");
     b.className = "grid-monitor-badge badge-unread";
-    b.textContent = cappedCount(s.unread);
+    b.textContent = s.unread; // 后端写好的字，照抄
     b.title = copyText("gridMonitor.renderBadges.unread", { unread: s.unread });
     badges.appendChild(b);
   }
@@ -476,7 +475,7 @@ export class GridMonitorView {
       filesWrap.className = "grid-monitor-peek-files";
       const k = document.createElement("span");
       k.className = "grid-monitor-peek-k";
-      k.textContent = copyText("gridMonitor.renderPeek.filesHead", { recentFilesCount: peek.recentFiles.length });
+      k.textContent = peek.filesHead ?? "";
       filesWrap.appendChild(k);
       const list = document.createElement("div");
       list.className = "grid-monitor-peek-filelist";

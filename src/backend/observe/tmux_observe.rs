@@ -270,7 +270,12 @@ fn query_tmux_server() -> (Option<u32>, Option<PathBuf>) {
 /// 本函数管的是 **tmux 的约定**（读 `TMUX_TMPDIR`、拼 `tmux-<uid>`），
 /// 那不是平台语义，不该进适配层；也不写裸 `/tmp`。
 pub(super) fn tmux_socket_dir() -> PathBuf {
-    let base = std::env::var_os("TMUX_TMPDIR")
+    tmux_socket_dir_from(std::env::var_os("TMUX_TMPDIR"))
+}
+
+/// [`tmux_socket_dir`] 的体：`TMUX_TMPDIR` 的值从参数进（判据不动进程环境）。
+fn tmux_socket_dir_from(tmux_tmpdir: Option<std::ffi::OsString>) -> PathBuf {
+    let base = tmux_tmpdir
         .map(PathBuf::from)
         .unwrap_or_else(crate::platform::paths::temp_root);
     base.join(format!("tmux-{}", crate::platform::paths::current_uid()))

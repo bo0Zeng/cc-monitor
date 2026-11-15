@@ -9,14 +9,14 @@ use std::process::{Child, Command, Stdio};
 
 const SID: &str = "0000cafe-0000-4000-8000-0000000000c1";
 
-fn record_lines(turn: &str) -> String {
+fn record_lines(sid: &str, turn: &str) -> String {
     format!(
         concat!(
             "{{\"timestamp\":\"2026-10-10T00:00:00.000Z\",\"type\":\"session_meta\",\"payload\":{{\"id\":\"{sid}\",\"cwd\":\"/work/demo\"}}}}\n",
             "{{\"timestamp\":\"2026-10-10T00:00:01.000Z\",\"type\":\"response_item\",\"payload\":{{\"type\":\"message\",\"role\":\"user\",\"content\":[{{\"type\":\"input_text\",\"text\":\"hello\"}}]}}}}\n",
             "{{\"timestamp\":\"2026-10-10T00:00:02.000Z\",\"type\":\"event_msg\",\"payload\":{{\"type\":\"task_complete\",\"turn_id\":\"{turn}\"}}}}\n",
         ),
-        sid = SID,
+        sid = sid,
         turn = turn
     )
 }
@@ -31,6 +31,11 @@ struct Rig {
 
 /// 记录树那一家的根（空）＋ Codex 那一家的根（判活认写者），一份造好的 rollout。
 fn rig(tag: &str) -> Rig {
+    rig_as(tag, SID)
+}
+
+/// [`rig`]，那份 rollout 是会话 `sid` 的（要往进程级的账上记东西的判据用自己的 sid，不撞别的判据）。
+fn rig_as(tag: &str, sid: &str) -> Rig {
     let dir = std::env::temp_dir().join(format!("ccm-wr-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     let sessions = dir.join("codex").join("sessions");
@@ -40,17 +45,22 @@ fn rig(tag: &str) -> Rig {
     let dir = std::fs::canonicalize(&dir).unwrap();
     let record = dir
         .join("codex/sessions/2026/10/10")
-        .join(format!("rollout-2026-10-10T00-00-00-{SID}.jsonl"));
-    std::fs::write(&record, record_lines("t1")).unwrap();
+        .join(format!("rollout-2026-10-10T00-00-00-{sid}.jsonl"));
+    std::fs::write(&record, record_lines(sid, "t1")).unwrap();
     let mut state = ReaderState::new(dir.join("projects"));
     // 金样里带打标回的容器：写者的环境里没有 tmux 那两格 ⇒ 控制面打标那一手答「不在 tmux 里」，这里用它的替身。
     state.tag = super::tests::no_terminal_host;
     let kind = crate::agents::codex::AGENT_KIND;
-    state.follow(&crate::agents::Followed {
-        kind,
-        root: dir.join("codex").join("sessions"),
-        face: crate::agents::record_face(kind).unwrap(),
-        live: crate::agents::LiveBy::HeldOpen,
+    let codex_home = dir.join("codex");
+    state.follow_accounts(crate::agents::REGISTRY, &|a| {
+        if a.kind == kind {
+            vec![crate::agents::AccountHome {
+                account: Some("w".into()),
+                home: codex_home.clone(),
+            }]
+        } else {
+            Vec::new()
+        }
     });
     let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     Rig {
@@ -286,7 +296,12 @@ fn the_startup_scan_finds_a_session_already_being_written() {
     let b = brief(&drain(&mut r.rx));
     assert_eq!(b.first().map(String::as_str), Some("added:codex"));
     gone(w);
-    let got = resync_sessions(&pidfiles, &mut r.state, &mut r.sink, None);
+    let got = resync_sessions(
+        std::slice::from_ref(&pidfiles),
+        &mut r.state,
+        &mut r.sink,
+        None,
+    );
     assert_eq!(got.removed, 1);
     assert_eq!(brief(&drain(&mut r.rx)), vec!["left:Ended { by: None }"]);
     std::fs::remove_dir_all(&r.dir).ok();
@@ -324,10 +339,12 @@ fn the_codex_sample_walks_into_the_golden_frames() {
     }
     let root = r.dir.to_string_lossy().into_owned();
     let pid = format!("\"pid\":{}", w.id());
+    // 金样记的是观测面交出的帧（出口写钟面之前那一份）：照它自己的字节写。
     let produced: String = drain(&mut r.rx)
         .iter()
         .map(|f| {
-            crate::wire::to_line(f)
+            serde_json::to_string(f)
+                .map(|l| l + "\n")
                 .unwrap()
                 .replace(&root, "/r")
                 .replace(&pid, "\"pid\":0")
@@ -353,14 +370,46 @@ fn activities(frames: &[Frame]) -> Vec<Option<String>> {
         .iter()
         .filter(|f| matches!(f, Frame::SessionAdded(_) | Frame::SessionStatus(_)))
         .map(|f| {
-            let v: serde_json::Value =
-                serde_json::from_str(crate::wire::to_line(f).unwrap().trim()).unwrap();
+            let v: serde_json::Value = serde_json::to_value(f).unwrap();
             v["face"]["life"]
                 .get("activity")
                 .and_then(|a| a.as_str())
                 .map(str::to_string)
         })
         .collect()
+}
+
+/// 这一家没有进程状态文件（照它声明的判活方式）：预读交回之前，宣告那一帧与这期间推出去的每一帧都说「读记录中」，
+/// 哪怕钩子事件先到、那一判已说得出一态（真机上 Codex 的钩子往往比宣告先到）。预读在池子里、还没交回。
+#[test]
+fn before_the_prime_returns_a_codex_session_reads_even_if_a_hook_event_came_first() {
+    const SID2: &str = "0000cafe-0000-4000-8000-0000000000c2";
+    let mut r = rig_as("reading-heard", SID2);
+    let (ev_tx, _ev_rx) = std::sync::mpsc::channel::<WatchEvent>();
+    r.state.pool = Some(PrimePool::start(ev_tx));
+    crate::history::live_table::hear(SID2, crate::agents::AgentEvent::TurnEnded);
+    let w = writer(&r.record);
+    on_writers(opened(&r.record), &mut r.state, &mut r.sink);
+    send_face(&r.state, &mut r.sink, SID2, false);
+    let frames = drain(&mut r.rx);
+    gone(w);
+    std::fs::remove_dir_all(&r.dir).ok();
+    let reading = crate::wire::SessionFace::of(crate::wire::Life::Reading { host: None }).name;
+    let faces: Vec<_> = frames
+        .iter()
+        .filter_map(|f| match f {
+            Frame::SessionAdded(crate::wire::SessionAdded { face, .. })
+            | Frame::SessionStatus(crate::wire::SessionStatus { face, .. }) => {
+                Some(face.name.clone())
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(faces.len(), 2, "宣告一帧 ＋ 推一帧：{frames:?}");
+    assert!(
+        faces.iter().all(|n| *n == reading),
+        "预读交回之前都说读记录中：{faces:?}"
+    );
 }
 
 /// 这一家没有进程状态文件：此刻在干什么由适配层照记录里的事件翻（一轮开始 ⇒ 在跑；一轮完了 ⇒ 闲着）。

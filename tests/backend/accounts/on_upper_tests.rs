@@ -97,6 +97,7 @@ mod show_rows {
         Facts {
             kind,
             login: LoginState::Ok,
+            retry_at: None,
         }
     }
 
@@ -139,13 +140,14 @@ mod show_rows {
             ]
             .into(),
             history: Default::default(),
+            reread_failed: Default::default(),
         }
     }
 
-    /// ★ 更细的窗口（窗口键带 `:`）在 7d 与超额之间各出一行（`rows`）：名字照窗口键（`7d:opus` ⇒「7d opus」，原名不上屏）·
-    /// 值带语气（快满 warn · 用满 fail）· ↻ · 距今；重置已过 ⇒ 值「—」、↻.. 已过。5h · 7d · 不算用量的窗口不另出行。
+    /// ★ 更细的窗口（窗口键带 `:`）紧跟 7d 各出一行（`rows`）：名字照窗口键（`7d:opus` ⇒「7d opus」，原名不上屏）·
+    /// 值带语气（快满 warn · 用满 fail）· ↻ · 距今；重置已过 ⇒「读取中」/「已重置」、不写旧数与那一刻。不算用量的窗口（超额）不另出行。
     #[test]
-    fn finer_windows_each_get_a_row_between_7d_and_overage() {
+    fn finer_windows_each_get_a_row_after_7d() {
         use cmd_wire::quota::Cell;
         let mut o = observed();
         o.reading.windows.push(win("overage", 1.0, LATER));
@@ -193,17 +195,18 @@ mod show_rows {
                     ),
                     plain(copy_core::copy_text(
                         "acct.reset.at",
-                        &[("at", &clock.text(at).0)]
+                        // 明天的那一刻写「明天 HH:MM」（钟按 UTC：NOW 是 08:00）。
+                        &[(
+                            "at",
+                            &copy_core::copy_text("acct.reset.tomorrow", &[("at", "09:00")])
+                        )]
                     )),
                     plain(clock.rel(at).unwrap().0),
                 ],
                 &vec![
                     plain(tier("sonnet")),
-                    plain(copy_core::copy_text("acct.val.none", &[])),
-                    plain(copy_core::copy_text(
-                        "acct.reset.past",
-                        &[("at", &clock.text(EARLIER).0)]
-                    )),
+                    // 夹具那一家（`claude`）注册表里认不出、查不了用量 ⇒「已重置」，不写旧数与那一刻。
+                    plain(copy_core::copy_text("acct.window.reset", &[])),
                 ],
             ]
         );
@@ -211,14 +214,11 @@ mod show_rows {
         let i7 = labels.iter().position(|l| *l == "7d").expect("7d 那一行");
         let over = copy_core::copy_text("acct.row.over", &[]);
         assert_eq!(
-            labels[i7 + 1..=i7 + 3],
-            [
-                tier("opus").as_str(),
-                tier("sonnet").as_str(),
-                over.as_str()
-            ],
-            "更细的窗口紧跟 7d、在超额之前，各一行：{labels:?}"
+            labels[i7 + 1..],
+            [tier("opus").as_str(), tier("sonnet").as_str()],
+            "更细的窗口紧跟 7d、各一行；超额关着不出行：{labels:?}"
         );
+        assert!(!labels.contains(&over.as_str()));
         assert!(
             a.rows
                 .iter()

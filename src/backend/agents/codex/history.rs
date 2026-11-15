@@ -30,60 +30,96 @@ pub(crate) fn project_dir(p: &Path) -> Option<String> {
     crate::agents::first_in_head(p, |v| parse::session_meta_cwd(v).map(str::to_string))
 }
 
-/// 这台机器上的 Codex 会话（没装 Codex / 没有会话目录 ⇒ 空）。
-pub(crate) fn sessions() -> Vec<crate::agents::SynthSession> {
-    match super::home() {
-        Some(h) => sessions_under(&h),
-        None => Vec::new(),
-    }
+/// 注册表 `HistoryFace.sessions` 那一格：这一家各号的家（账号库交来，账号 0 是默认家）各列一遍，
+/// 没装 Codex / 没有会话目录的家 ⇒ 不出。
+pub(crate) fn sessions(homes: &[crate::agents::AccountHome]) -> Vec<crate::agents::SynthSession> {
+    homes.iter().flat_map(|h| sessions_under(&h.home)).collect()
 }
 
-/// 这台机器上 Codex 会话记录的根（`<codex home>/sessions`；说不出 home ⇒ `None`）。与 [`sessions`] 扫的是同一个根。
-pub(crate) fn records_root() -> Option<std::path::PathBuf> {
-    super::home().map(|h| parse::sessions_root(&h))
+/// 注册表 `HistoryFace.roots` 那一格：每个 Codex 家两个根 —— 日期树 `<家>/sessions` 与平铺的归档根 `<家>/archived_sessions`
+/// （[`parse::archived_root`]）。与 [`sessions`] 扫的是同样两处。
+pub(crate) fn records_roots(homes: &[crate::agents::AccountHome]) -> Vec<std::path::PathBuf> {
+    homes
+        .iter()
+        .flat_map(|h| [parse::sessions_root(&h.home), parse::archived_root(&h.home)])
+        .collect()
 }
 
-/// 在会话根（[`records_root`]）下按 sid 找那份 rollout（注册表 `RecordFace.find_session` 那一格）。
+/// 在一个会话根（[`records_roots`] 那几个之一）下按 sid 找那份 rollout（注册表 `RecordFace.find_session` 那一格）。
 /// sid 形状不合法 ⇒ 先于任何 IO 就拒；只认文件名末尾那个 UUID 是它的；符号链接不算命中（不跟随）；按名字次序走，同一棵树两次答同一份。
 pub(crate) fn find_session(root: &Path, sid: &str) -> Result<std::path::PathBuf, String> {
     if !shell_quote_core::session_id_ok(sid) {
         return Err(format!("invalid session id {sid:?}"));
     }
-    walkdir::WalkDir::new(root)
-        .max_depth(DATED_DEPTH)
+    find_session_in(root, DATED_DEPTH, None, sid, &mut |_| {})
+        .ok_or_else(|| format!("session {sid} not found under {}", root.display()))
+}
+
+/// 「这一份是不是 sid 那个会话」只住这一处：在 `dir` 底下至多 `depth` 层里按名字次序找；`skip` 那个目录整棵不进；
+/// 每走过一个目录调一次 `seen`（子线程认父先找同一天、再扫整根时用它跳过已找过的那一天，判据用它数走了几个目录）。
+/// sid 不成形 ⇒ 先于任何 IO 答 `None`。
+pub(crate) fn find_session_in(
+    dir: &Path,
+    depth: usize,
+    skip: Option<&Path>,
+    sid: &str,
+    seen: &mut dyn FnMut(&Path),
+) -> Option<std::path::PathBuf> {
+    if !shell_quote_core::session_id_ok(sid) {
+        return None;
+    }
+    walkdir::WalkDir::new(dir)
+        .max_depth(depth)
         .sort_by_file_name()
         .into_iter()
+        .filter_entry(|e| Some(e.path()) != skip)
         .filter_map(Result::ok)
+        .inspect(|e| {
+            if e.file_type().is_dir() {
+                seen(e.path());
+            }
+        })
         .find(|e| {
             e.file_type().is_file()
                 && is_session_file(e.path())
                 && parse::codex_sid_from_path(e.path()).as_deref() == Some(sid)
         })
         .map(walkdir::DirEntry::into_path)
-        .ok_or_else(|| format!("session {sid} not found under {}", root.display()))
 }
 
 /// 会话根往下几层到 rollout：年 / 月 / 日 / 文件。
-const DATED_DEPTH: usize = 4;
+pub(crate) const DATED_DEPTH: usize = 4;
 
 /// 一份 Codex 会话记录的文件形态：后缀 `.jsonl`（sid 另由文件名判，见 `parse::codex_sid_from_path`）。
 pub(crate) fn is_session_file(p: &Path) -> bool {
     p.extension().and_then(|e| e.to_str()) == Some("jsonl")
 }
 
-/// [`sessions`] 的本体，Codex home 是参数（判据喂临时目录）。
+/// 压缩存的 rollout 的后缀（Codex 那个本地线程存储压缩的特性，默认关）：这里读不了 ⇒ 不当会话，登漂移账。
+const COMPRESSED: &str = "jsonl.zst";
+
+/// [`sessions`] 的本体，Codex home 是参数（判据喂临时目录）。日期树 ＋ 归档目录（平铺一层）：归档了的也列，归没归档由归档面那一判说。
 pub(crate) fn sessions_under(codex_home: &Path) -> Vec<crate::agents::SynthSession> {
     let root = parse::sessions_root(codex_home);
     if !root.is_dir() {
         return Vec::new();
     }
+    let shelf = parse::archived_root(codex_home);
     let mut out = Vec::new();
     for ent in walkdir::WalkDir::new(&root)
         .into_iter()
+        .chain(walkdir::WalkDir::new(&shelf).max_depth(1))
         .filter_map(Result::ok)
     {
         let p = ent.path();
-        if !p.is_file() || !is_session_file(p) {
+        if !p.is_file() {
+            continue;
+        }
+        if p.to_str().is_some_and(|s| s.ends_with(COMPRESSED)) {
+            super::record::drift(super::record::DriftFace::CompressedRollout, COMPRESSED);
+            continue;
+        }
+        if !is_session_file(p) {
             continue;
         }
         let Some(sid) = parse::codex_sid_from_path(p) else {
@@ -125,7 +161,7 @@ pub(crate) fn first_user_excerpt(path: &Path) -> String {
         {
             continue;
         }
-        if let Some(t) = message_said(payload).and_then(|s| s.speech()) {
+        if let Some(t) = message_said(payload).and_then(|s| s.who.speech()) {
             return t;
         }
     }

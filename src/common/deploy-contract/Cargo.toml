@@ -12,7 +12,6 @@ description = "部署那一族的契约（两侧对上的形状）：表 A 的�
 # 新旧三态的类型住它（上线的数据只一份）；比大小的函数在这里。
 cmd-wire = { path = "../cmd-wire" }
 copy-core = { path = "../copy-core" }
-shell-quote-core = { path = "../shell-quote-core" }
 
 [dev-dependencies]
 # 测试档的家一开始就是沙箱（判据碰不到这台用户的真家）。

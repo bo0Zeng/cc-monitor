@@ -281,16 +281,16 @@ fn attachment_preserves_uuid_chain() {
 fn unknown_type_does_not_panic() {
     // 注意：`parse` = 裸 `serde_json::from_str`，测的是 **serde 层**（Unknown 是
     // serde 落点，此层它确实非 displayable）。**生产走 `parse::parse_line`**，
-    // 那里 Unknown 会被抢救成 `Unrecognized`（`INVARIANTS §18.1`）—— 见 parse.rs 的护栏测试。
+    // 那里 Unknown 会被抢救成 `CcMonitorUnrecognized`（`INVARIANTS §18.1`）—— 见 parse.rs 的护栏测试。
     let r = parse(r#"{"type":"future-unknown-type","x":1}"#);
     assert!(matches!(r, JsonlRecord::Unknown));
 }
 
-/// 序列化形状：`Unrecognized` 序列化出的 `type` 是 `"cc-monitor-unrecognized"`，
+/// 序列化形状：`CcMonitorUnrecognized` 序列化出的 `type` 是 `"cc-monitor-unrecognized"`，
 /// 身份字段用 camelCase。
 #[test]
 fn unrecognized_wire_type_and_camel_case_contract() {
-    let rec = JsonlRecord::Unrecognized {
+    let rec = JsonlRecord::CcMonitorUnrecognized {
         uuid: Some("u1".into()),
         parent_uuid: Some("u0".into()),
         timestamp: Some("t1".into()),
@@ -302,7 +302,7 @@ fn unrecognized_wire_type_and_camel_case_contract() {
     assert_eq!(
         v.get("type").and_then(|t| t.as_str()),
         Some("cc-monitor-unrecognized"),
-        "Unrecognized 的 type 名变了"
+        "CcMonitorUnrecognized 的 type 名变了"
     );
     assert!(v.get("parentUuid").is_some(), "parentUuid 必须 camelCase");
     assert!(
@@ -311,7 +311,7 @@ fn unrecognized_wire_type_and_camel_case_contract() {
     );
     // 回环：抢救出的记录序列化后能被 serde 读回同一变体（不因 rename 撞其他分支）
     let back: JsonlRecord = serde_json::from_value(v).unwrap();
-    assert!(matches!(back, JsonlRecord::Unrecognized { .. }));
+    assert!(matches!(back, JsonlRecord::CcMonitorUnrecognized { .. }));
 }
 
 #[test]
@@ -342,7 +342,7 @@ fn system_record_keeps_uuid_for_branch_detection() {
 }
 
 /// 「19% 的记录是纯元数据，字节只占 0.7% ⇒ **在解析阶段就滤掉**」「该在解析阶段滤掉，不进管线」。
-/// 判据（两向相等）：每一类记录（按变体 ＋ 链身份分）⇒ 出不出通用记录（[`record_of`](super::super::record_of::record_of)），与手写的期望表逐格相等。
+/// 判据（两向相等）：每一类记录（按变体 ＋ 链身份分）⇒ 出不出通用记录（[`row_of`](super::super::record_of::row_of)），与手写的期望表逐格相等。
 /// 期望表的异源：仍进前端的每一格都写得出前端读者（下面每行的注）；没读者的一格也不许进。
 /// `class_of` 是穷尽 `match`、不带 `_` ⇒ 以后加变体编译期就得在这里表态。
 #[test]
@@ -372,7 +372,7 @@ fn record_classes_equal_the_table_with_a_reader_for_each() {
             | JsonlRecord::CostState {}
             | JsonlRecord::ArtifactCommentMonitor {}
             | JsonlRecord::ArtifactAutoreactLedger {} => "status-line",
-            JsonlRecord::Unrecognized {
+            JsonlRecord::CcMonitorUnrecognized {
                 uuid, parent_uuid, ..
             } => {
                 if uuid.is_some() || parent_uuid.is_some() {
@@ -405,7 +405,7 @@ fn record_classes_equal_the_table_with_a_reader_for_each() {
             .unwrap()
             .unwrap();
         let c = class_of(&r);
-        got.insert(c, super::super::record_of::record_of(r, 0).is_some());
+        got.insert(c, super::super::record_of::row_of(r, 0).is_some());
     }
     let want: std::collections::BTreeMap<&str, bool> = [
         ("user", true),                   // 建卡
@@ -442,7 +442,8 @@ fn a_parsed_user_record_carries_the_one_speaker_product() {
         ),
         (
             r#"{"type":"user","uuid":"c","timestamp":"t","isMeta":true,"origin":{"kind":"peer","from":"a1","handback":true},"message":{"role":"user","content":"<agent-message from=\"a1\">甲</agent-message>"}}"#,
-            serde_json::json!({"speaker": {"kind": "agentMessage", "from": "a1", "handback": true}, "text": ""}),
+            // 来话的正文在解析成品里就已解成树（原文不上线）。
+            serde_json::json!({"speaker": {"kind": "agentMessage", "from": "a1", "handback": true, "doc": md_core::parse("甲")}, "text": ""}),
         ),
         (
             r#"{"type":"attachment","uuid":"d","timestamp":"t","parentUuid":"c","attachment":{"type":"queued_command","prompt":"乙","origin":{"kind":"human"}}}"#,

@@ -6,6 +6,7 @@ const NOW: u64 = 4_000_000_000;
 
 fn a(id: &str, used: f64, rate: Option<f64>) -> Acct {
     Acct {
+        agent: String::new(),
         id: id.into(),
         api: false,
         used: [used, 0.0],
@@ -44,7 +45,7 @@ fn it_decides_and_simulates_from_the_given_facts() {
         a("team", 10.0, None),
         a("lab", 95.0, None),
     ];
-    let got = try_with(&req, &facts, NOW, &crate::common::time::Tz::default()).expect("ok");
+    let got = try_with(&req, "", &facts, NOW, &crate::common::time::Tz::default()).expect("ok");
     assert_eq!(got.decision.pick.as_deref(), Some("work"));
     assert_eq!(
         got.decision.order,
@@ -109,6 +110,7 @@ fn use_now_switches_or_says_when() {
     };
     let got = try_with(
         &req("team"),
+        "",
         &facts,
         NOW,
         &crate::common::time::Tz::default(),
@@ -120,6 +122,7 @@ fn use_now_switches_or_says_when() {
     );
     let got = try_with(
         &req("lab"),
+        "",
         &facts,
         NOW,
         &crate::common::time::Tz::default(),
@@ -149,7 +152,7 @@ fn the_clock_words_follow_the_viewing_machine() {
             crate::common::time::Tz::default().local(i64::try_from(t).expect("i64")),
         )
     };
-    let got = try_with(&req, &facts, NOW, &tz).expect("ok");
+    let got = try_with(&req, "", &facts, NOW, &tz).expect("ok");
     let sw = got.timeline.switches.first().expect("换号");
     assert_eq!(sw.at_text, face(sw.at));
     assert_ne!(sw.at_text, utc(sw.at), "八个钟头差得出来");
@@ -180,17 +183,18 @@ fn each_use_carries_the_words_it_shows() {
         ..Default::default()
     };
     let facts = [a("work", 89.0, Some(0.5)), a("team", 10.0, None)];
-    let got = try_with(&req, &facts, NOW, &crate::common::time::Tz::default()).expect("ok");
+    let got = try_with(&req, "", &facts, NOW, &crate::common::time::Tz::default()).expect("ok");
     assert!(!got.timeline.uses.is_empty());
     for u in &got.timeline.uses {
         let want = match &u.account {
-            Some(a) => crate::accounts::quota::name_words::account_text(a),
+            Some(a) => crate::accounts::quota::name_words::account_text_of("", a),
             None => copy_core::copy_text("rot.sim.hold", &[]),
         };
         assert_eq!(u.text, want, "{u:?}");
     }
     let held = try_with(
         &req,
+        "",
         &[a("work", 100.0, None)],
         NOW,
         &crate::common::time::Tz::default(),
@@ -211,7 +215,7 @@ fn an_unreadable_source_is_refused_with_its_line() {
         source: "/*--- rotation\n{".into(),
         ..Default::default()
     };
-    match try_with(&req, &[], NOW, &crate::common::time::Tz::default()) {
+    match try_with(&req, "", &[], NOW, &crate::common::time::Tz::default()) {
         Err(RotationTryErr::BadStrategy(s)) => assert!(s.contains("line"), "{s}"),
         other => panic!("{other:?}"),
     }
@@ -224,4 +228,86 @@ fn it_refuses_fields_it_does_not_use() {
         serde_json::json!({"source": "", "sid": "x"})
     )
     .is_err());
+}
+
+/// ★ 试跑同真判：事实里本家的号在前、别家的号接在后；策略交了别家的号 ⇒ 当策略出错，照兜底用本家的号。
+#[test]
+fn a_trial_run_calls_out_picking_another_agents_account() {
+    let req = RotationTryReq {
+        source: "/*--- rotation\n{\"format\": 5, \"settings\": {\"accounts\": [{\"start\": true}]}}\n---*/\nfn decide(ctx) { #{ order: [\"x\"] } }".into(),
+        ..Default::default()
+    };
+    let other = Acct {
+        agent: "other-agent".into(),
+        ..a("x", 10.0, None)
+    };
+    let mine = Acct {
+        agent: "stand-in".into(),
+        ..a("work", 10.0, None)
+    };
+    let got = try_with(
+        &req,
+        "stand-in",
+        &[mine, other],
+        NOW,
+        &crate::common::time::Tz::default(),
+    )
+    .expect("ok");
+    assert!(got.decision.strategy_error.is_some(), "{:?}", got.decision);
+    assert_eq!(got.decision.pick.as_deref(), Some("work"));
+}
+
+/// 时间线上一段的号名照推演那条会话那一家问：账号 0 叫那一家默认家目录的短形：默认那一家有本机布局、写得出短形，替身家不在注册表里、说不出 ⇒ 空串；两家叫法不同，传错家就对不上。
+#[test]
+fn a_use_segment_names_its_account_after_the_sessions_family() {
+    use crate::accounts::quota::name_words::account_text_of;
+    let (default, fake) = (
+        crate::agents::default_kind(),
+        crate::agents::fake::AGENT_KIND,
+    );
+    assert_ne!(
+        account_text_of(default, "0"),
+        account_text_of(fake, "0"),
+        "两家账号 0 的叫法一样 ⇒ 下面两条分不出是不是照家问的"
+    );
+    assert_eq!(use_text(default, Some("0")), account_text_of(default, "0"));
+    assert_eq!(use_text(fake, Some("0")), account_text_of(fake, "0"));
+}
+
+/// 试跑那一下交进来的家一路带到时间线：推演那条会话是替身家的、在用账号 0 ⇒ 那一段叫替身家账号 0 的名字，不是默认那一家的。
+#[test]
+fn a_trial_names_its_segments_after_the_family_it_was_asked_for() {
+    use crate::accounts::quota::name_words::account_text_of;
+    let fake = crate::agents::fake::AGENT_KIND;
+    assert_ne!(
+        account_text_of(fake, "0"),
+        account_text_of(crate::agents::default_kind(), "0")
+    );
+    let req = RotationTryReq {
+        source: source(),
+        settings: Some(serde_json::json!({
+            "caps": {"5h": [{"from": 0, "to": 1440, "v": 90}]},
+            "accounts": [{"id": "0"}]
+        })),
+        ..Default::default()
+    };
+    let facts = [Acct {
+        agent: fake.into(),
+        ..a("0", 10.0, None)
+    }];
+    let got = try_with(&req, fake, &facts, NOW, &crate::common::time::Tz::default()).expect("ok");
+    let zero: Vec<_> = got
+        .timeline
+        .uses
+        .iter()
+        .filter(|u| u.account.as_deref() == Some("0"))
+        .collect();
+    assert!(
+        !zero.is_empty(),
+        "推演里没用到账号 0：{:?}",
+        got.timeline.uses
+    );
+    for u in zero {
+        assert_eq!(u.text, account_text_of(fake, "0"), "{u:?}");
+    }
 }

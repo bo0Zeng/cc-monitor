@@ -1,6 +1,6 @@
 //! 终端实时预览（L2）：订阅名单里一个终端的画面，有变化就推一整屏。
 //!
-//! # 线上三条帧命令（`Run::Builtin`：要碰本连接的票表与应答通道，同传输那几条；只在帧面）
+//! # 线上三条帧命令（帧面硬臂 `How::Frame`：要碰本连接的票表与应答通道，同 `cancel` · `stream-watch`；只在帧面）
 //!
 //! | 命令 | `args` | 应答 | |
 //! |---|---|---|---|
@@ -239,7 +239,7 @@ impl crate::wire::typed::Codes for FollowErr {
     const ALL: &'static [&'static str] = FOLLOW_CODES;
     fn into_said(self) -> crate::common::said::Said {
         let FollowErr(s) = self;
-        let code = s.code_or_fallback().to_string();
+        let code = cmd_wire::failed::Failed::code_or_fallback(s.code.clone());
         let f = crate::wire::spec::fail(&code, s);
         if code == "bad_args" {
             return f;
@@ -399,7 +399,7 @@ impl Desk {
             other => Frame::refused(
                 id,
                 other,
-                "unknown_command",
+                cmd_wire::UNKNOWN_COMMAND,
                 &crate::common::contract::malformed(&format!("unknown follow command `{other}`")),
             ),
         }
@@ -525,6 +525,7 @@ impl Desk {
             Arc::clone(&ended),
             tx.clone(),
             Arc::clone(&pending),
+            landed::Landed::new(),
         );
         {
             let mut g = lock(&me.tickets);
@@ -709,6 +710,9 @@ pub struct Watch {
     rx: smpsc::Receiver<Ev>,
     pending: Arc<AtomicBool>,
     closed: bool,
+    /// 托管那一形读线落下了几帧「变了」（只在测试档有）。
+    #[cfg(test)]
+    landed: landed::Landed,
 }
 
 impl Watch {
@@ -723,6 +727,8 @@ impl Watch {
             rx,
             pending,
             closed: false,
+            #[cfg(test)]
+            landed: landed::Landed::new(),
         })
     }
 
@@ -732,6 +738,7 @@ impl Watch {
         let (conn, held, buf) = open_hosted(sock)?;
         let (tx, rx) = smpsc::channel::<Ev>();
         let pending = Arc::new(AtomicBool::new(false));
+        let landed = landed::Landed::new();
         spawn_hosted_reader(
             Arc::clone(&conn),
             buf,
@@ -739,12 +746,15 @@ impl Watch {
             Arc::new(AtomicBool::new(false)),
             tx,
             Arc::clone(&pending),
+            landed.clone(),
         );
         Ok(Watch {
             conn: Some(Conn::Hosted(conn)),
             rx,
             pending,
             closed: false,
+            #[cfg(test)]
+            landed,
         })
     }
 
@@ -915,6 +925,25 @@ fn open_hosted(
     Ok((Arc::new(s), held, buf))
 }
 
+/// 托管那一形读线每落下一帧「变了」（已交进通道）记一笔：测试档那一份住 `tests/`（判据等它，`Watch::wait_landed`）；
+/// 发布构建里是这一份空的。
+#[cfg(not(test))]
+pub(crate) mod landed {
+    #[derive(Clone)]
+    pub(crate) struct Landed;
+
+    impl Landed {
+        pub(crate) fn new() -> Landed {
+            Landed
+        }
+        pub(crate) fn mark(&self) {}
+    }
+}
+
+#[cfg(test)]
+#[path = "../../../tests/backend/control/terminal_follow_landed.rs"]
+pub(crate) mod landed;
+
 /// 读那条只看的连接：`out` · 尺寸变了 · 整屏重来 · 持有者变了（记下新的）⇒ 「变了」（连着几笔只报一次，同 [`spawn_reader`]）；
 /// `ended` ⇒ 记下终端没了；读到头 ⇒ 「客户端退了」。
 fn spawn_hosted_reader(
@@ -924,6 +953,7 @@ fn spawn_hosted_reader(
     ended: Arc<AtomicBool>,
     tx: smpsc::Sender<Ev>,
     pending: Arc<AtomicBool>,
+    landed: landed::Landed,
 ) {
     use crate::host::managed::client;
     use crate::host::managed::wire::{Ctl, Frame as HostFrame};
@@ -946,6 +976,9 @@ fn spawn_hosted_reader(
             };
             if changed && !pending.swap(true, Ordering::AcqRel) && tx.send(Ev::Changed).is_err() {
                 break;
+            }
+            if changed {
+                landed.mark();
             }
         }
         tx.send(Ev::Closed).discard(Why::PeerGone); // 订阅线程已停（退订 / 推了收尾帧）⇒ 没人收

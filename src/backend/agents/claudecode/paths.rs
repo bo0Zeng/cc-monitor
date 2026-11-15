@@ -16,7 +16,7 @@ pub const BASE_URL_ENV: &str = "ANTHROPIC_BASE_URL";
 /// 账号归属读会话进程环境时读的那两个键（注册表 `AccountsFace.session_env`）。
 pub(crate) const SESSION_ENV_KEYS: super::super::SessionEnvKeys = super::super::SessionEnvKeys {
     config_dir: CONFIG_DIR_ENV,
-    base_url: BASE_URL_ENV,
+    base_url: Some(BASE_URL_ENV),
     settings_may_set_base_url,
 };
 
@@ -272,8 +272,8 @@ pub fn is_session_record_path(target: &Path) -> bool {
 /// 3. 解完的那一份**必须是**会话记录的形状（[`is_session_record_path`] 答真）——
 ///    它删的恰恰是那一类，别的一样都删不到。
 ///
-/// `home` 由调用方给：生产侧是 [`resolve_home`]（见 [`session_file_for_delete`]），
-/// 判据拿临时目录当 home，不碰真实配置根，也不改测试进程的环境变量。
+/// `home` 由调用方给：生产侧是通用层照根表找到的、会话所在那个号的家（`agents::locate_session_for_delete_among`），
+/// 这里不自己取默认家；判据拿临时目录当 home，不碰真实配置根，也不改测试进程的环境变量。
 pub fn session_file_for_delete_in(home: &Path, sid: &str) -> Result<PathBuf, String> {
     let root = projects_root(home);
     // 这几句只带原因词；下层原话记一行日志（删历史会话的失败形是一句话，没有原话位）。
@@ -343,11 +343,6 @@ pub fn session_file_for_delete_in(home: &Path, sid: &str) -> Result<PathBuf, Str
         ));
     }
     Ok(real)
-}
-
-/// [`session_file_for_delete_in`] 的生产入口：根取本机后端此刻的配置根（[`resolve_home`]）。
-pub(crate) fn session_file_for_delete(sid: &str) -> Result<PathBuf, String> {
-    session_file_for_delete_in(&resolve_home(), sid)
 }
 
 #[cfg(test)]

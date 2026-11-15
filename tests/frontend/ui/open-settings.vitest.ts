@@ -59,10 +59,10 @@ describe("ST1 点设置有反馈", () => {
       .join("\n");
     expect([...code.matchAll(/commands\.open_settings_window\(/g)].length).toBe(0);
     const calls = [...code.matchAll(/\bopenSettingsWindow\(([^)]*\)?)/g)].map((m) => m[1]);
-    const bare: string[] = calls.filter((a) => a === ")" || a === "settingsTrigger)");
+    const bare: string[] = calls.filter((a) => a === ")" || a === "anchor)");
     expect(bare.length, "不带目的地的：栏顶「设置」· 命令面板「设置」· 快捷键").toBe(3);
     const rest = calls.filter((a) => !bare.includes(a));
-    expect(rest.length, "带目的地的入口（账号面板 · 没有会话时的「账号…」· 拉窗没成那一条的［接上终端］ · 主窗口空态「开始用」卡 · 上下文 · 快捷键一览 · 待办）").toBe(7);
+    expect(rest.length, "带目的地的入口（账号面板 · 没有会话时的「账号…」· 拉窗没成那一条的［接上终端］ · 主窗口空态「开始用」卡 · 上下文 · 快捷键一览 · 待办 · 栏顶按钮）").toBe(8);
     for (const a of rest) expect(a, "带目的地的那几处都取 settings-dest 的").toMatch(/^undefined, dest\./);
   });
 

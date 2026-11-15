@@ -1,5 +1,5 @@
 /**
- * **删一个会话 · 换它的模型与权限档** —— 界面经通道直说那台机器的后端。
+ * **删一个会话 · 归档 · 取消归档 · 换它的模型与权限档** —— 界面经通道直说那台机器的后端。
  *
  * 本机远端同一条 `chan.call(origin, …)`：`files-delete-session {sid} → {path}`（只收 sid，落点由后端按 sid 在它自己的记录树里找、必须恰是 `<sid>.jsonl`）。
  * 入参 · 回包的类型从后端生成（`generated/TypedCommands.ts`），两端形状由握手时的形状指纹核过。
@@ -19,14 +19,30 @@ export async function deleteSession(origin: Machine, sid: string): Promise<void>
   await callTyped(origin, "files-delete-session", { sid }, budgetWithin(DELETE_BUDGET_MS));
 }
 
+/** 归档 · 取消归档：那台照那一家的归档面跑它那一条命令（等它 ＋ 回程）。 */
+const ARCHIVE_BUDGET_MS = 30_000;
+
+/** 归档 `origin` 那台机器上的会话 `sid`（`files-archive-session`）；那台拒了 ⇒ 抛，错里是那台那一句。 */
+export async function archiveSession(origin: Machine, sid: string): Promise<void> {
+  await callTyped(origin, "files-archive-session", { sid }, budgetWithin(ARCHIVE_BUDGET_MS));
+}
+
+/** 取消归档 `origin` 那台机器上的会话 `sid`（`files-unarchive-session`）；同 [`archiveSession`]。 */
+export async function unarchiveSession(origin: Machine, sid: string): Promise<void> {
+  await callTyped(origin, "files-unarchive-session", { sid }, budgetWithin(ARCHIVE_BUDGET_MS));
+}
+
 /** 换模型 · 切权限档：送那一家的那一行 / 按切档键、从记录里读回（那台自己的期限之外留回程）。 */
 const SWITCH_BUDGET_MS = 30_000;
 
-/** 换这条会话的模型（`session-model`）：结局照回包读；没回来 ⇒ 那一句（发出去了没等到回话 ⇒ 不说，界面写「结果未知」）。不抛。 */
-export async function switchModel(origin: Machine, sid: string, model: string): Promise<Switched> {
+/** 换这条会话的模型（`session-model`）：只判是不是没成（被拒 · 结果未知），别的照那台那一句（已发出那一形没有读回的字）；
+ *  没回来 ⇒ 那一句（发出去了没等到回话 ⇒ 不说，界面写「结果未知」）。不抛。
+ *  [effort] 是那个模型 `efforts` 里选的那一档的原值；没选 ⇒ 不带这一格（那一家照它自己的缺省）。 */
+export async function switchModel(origin: Machine, sid: string, model: string, effort?: string): Promise<Switched> {
   try {
-    const r = await callTyped(origin, "session-model", { sid, model }, budgetWithin(SWITCH_BUDGET_MS));
-    return { done: r.result === "done", text: r.model, said: r.said ?? null };
+    const r = await callTyped(origin, "session-model", effort === undefined ? { sid, model } : { sid, model, effort }, budgetWithin(SWITCH_BUDGET_MS));
+    const failed = r.result === "refused" || r.result === "unsure";
+    return { done: !failed, text: r.model, said: r.said ?? null };
   } catch (e) {
     return { done: false, text: null, said: failedSaid(e) };
   }

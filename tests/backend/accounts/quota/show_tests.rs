@@ -40,6 +40,7 @@ fn facts(kind: Kind) -> Facts {
     Facts {
         kind,
         login: LoginState::Ok,
+        retry_at: None,
     }
 }
 
@@ -132,9 +133,6 @@ fn slots_are_rounded_and_named_by_their_semantic_position() {
         s.slots,
         vec![
             SlotShow {
-                resets_at_text: None,
-                resets_at_rel_text: None,
-                reset_text: None,
                 slot: "5h".into(),
                 pct: Some(63),
                 resets_at: Some(LATER),
@@ -145,9 +143,6 @@ fn slots_are_rounded_and_named_by_their_semantic_position() {
                 window: "five_hour".into(),
             },
             SlotShow {
-                resets_at_text: None,
-                resets_at_rel_text: None,
-                reset_text: None,
                 slot: "7d".into(),
                 pct: Some(41),
                 resets_at: Some(NOW + 5 * 86_400),
@@ -178,10 +173,10 @@ fn full_is_a_window_at_a_hundred_not_a_refusal() {
     let s = full_of(0.996, LATER, false);
     assert_eq!((s.full, s.pct), (false, Some(100)));
     assert!(!full_of(1.0, EARLIER, false).full, "窗口已重置");
-    let wire = serde_json::to_value(full_of(1.0, LATER, true)).expect("json");
+    let wire = serde_json::to_value(full_of(1.0, LATER, true).wire()).expect("json");
     assert_eq!(wire["full"], true);
     assert!(
-        serde_json::to_value(full_of(0.5, LATER, false))
+        serde_json::to_value(full_of(0.5, LATER, false).wire())
             .expect("json")
             .get("full")
             .is_none(),
@@ -223,6 +218,7 @@ fn observed() -> crate::accounts::quota::ledger::Observed {
         ]
         .into(),
         history: Default::default(),
+        reread_failed: Default::default(),
     }
 }
 
@@ -239,4 +235,80 @@ fn a_slot_takes_the_live_window_not_one_already_reset() {
         (s.window.as_str(), s.pct, s.full),
         ("seven_day", Some(40), false)
     );
+}
+
+/// ★ 出口造线上那一下逐格照搬：后端的行每一格填不同的值，造出来的线上显示态与逐格写出的那一份相等（只给后端看的几格不带过去）。
+#[test]
+fn the_wire_show_carries_each_cell_from_the_row() {
+    use cmd_wire::quota::Source;
+    let w = |s: &str| Some(Words(s.into()));
+    let row = QuotaShow {
+        kind: Kind::Sub,
+        state: QuotaState::Near,
+        stale: true,
+        limiting: Some("7d".into()),
+        slots: vec![SlotShow {
+            slot: "5h".into(),
+            pct: Some(41),
+            resets_at: Some(LATER),
+            full: true,
+            text: Words("text".into()),
+            tone: Tone::Warn,
+            per_pct_text: w("per"),
+            window: "five_hour".into(),
+        }],
+        login: LoginState::NeedsKey,
+        windows: vec![WindowShow {
+            name: "seven_day".into(),
+            key: Some("7d".into()),
+            pct: Some(42),
+            resets_at: Some(LATER + 1),
+            resets_at_text: w("后端那一格"),
+            resets_at_rel_text: w("wrel"),
+            seen_at: EARLIER,
+            from: Source::Usage,
+            tokens_per_pct: Some(25_000),
+            per_pct_text: w("wper"),
+            lapsed: Some(Lapsed::Reset),
+            full: true,
+            near: true,
+            tone: Tone::Fail,
+            row: Some(2),
+        }],
+        usage: Usage {
+            text: Words("usage".into()),
+            ..Usage::default()
+        },
+    };
+    let want = cmd_wire::quota::QuotaShow {
+        kind: Kind::Sub,
+        state: QuotaState::Near,
+        stale: true,
+        slots: vec![cmd_wire::quota::SlotShow {
+            slot: "5h".into(),
+            pct: Some(41),
+            resets_at: Some(LATER),
+            full: true,
+            text: Words("text".into()),
+            tone: Tone::Warn,
+            per_pct_text: w("per"),
+        }],
+        login: LoginState::NeedsKey,
+        windows: vec![cmd_wire::quota::WindowShow {
+            name: "seven_day".into(),
+            key: Some("7d".into()),
+            pct: Some(42),
+            resets_at: Some(LATER + 1),
+            from: Source::Usage,
+            tokens_per_pct: Some(25_000),
+            per_pct_text: w("wper"),
+            tone: Tone::Fail,
+            row: Some(2),
+        }],
+        usage: Usage {
+            text: Words("usage".into()),
+            ..Usage::default()
+        },
+    };
+    assert_eq!(row.wire(), want);
 }

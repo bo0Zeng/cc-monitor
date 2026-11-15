@@ -5,7 +5,7 @@
  * |---|---|---|
  * | 起一条 | `forward-start {origin, localPort, remoteHost, remotePort}`（端口是原文） | `{id}` |
  * | 停一条 | `forward-stop {id}` | `{id}` |
- * | 列 | `forward-list` | `{forwards:[{id, origin, localPort, remoteHost, remotePort, state, connCount}]}` |
+ * | 列 | `forward-list` | `{forwards:[{id, origin, localPort, remoteHost, remotePort, state, said}]}` |
  *
  * 转发账与开链路同一个家（后端 `dial/forwards.rs`）；monitor 零转发账。本机后端不在 ⇒ 通道那一层报（D11，不回落）。
  * 入参 · 回包都是后端类型生成的（`generated/`）；回包形状由握手时的形状指纹管，这里不逐格判。

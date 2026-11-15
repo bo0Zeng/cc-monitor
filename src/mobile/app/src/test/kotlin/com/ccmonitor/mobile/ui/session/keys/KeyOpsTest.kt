@@ -19,7 +19,7 @@ import org.junit.Test
 class KeyOpsTest {
     private val esc = KeyBinding.Input(listOf(KeyPress.Special(SpecialKey.ESC)))
     private var n = 0
-    private val dao = FakeKeyDao(defaultKeyGroups(), defaultKeys())
+    private val dao = FakeKeyDao(defaultKeyGroups(commonGroupName()), defaultKeys())
     private val settingsDao = FakeSettingsDao()
     private val settings = SettingsRepository(settingsDao)
     private val ops = KeyOps(dao, settings) { "id${n++}" }
@@ -58,7 +58,7 @@ class KeyOpsTest {
     @Test
     fun aSavedNewKeyGoesLastInItsGroup() =
         runTest {
-            val gid = defaultKeyGroups().first().id
+            val gid = defaultKeyGroups(commonGroupName()).first().id
             val k = ops.save(KeyDraft(id = null, groupId = gid, tap = Slot.of(esc)))
             assertEquals(dao.keys(gid).last(), k)
             assertEquals(10, k.sortOrder)
@@ -69,7 +69,7 @@ class KeyOpsTest {
     @Test
     fun draggingRenumbersTheGroupsAndTheKeys() =
         runTest {
-            ops.moveGroup(defaultKeyGroups().last().id, 0)
+            ops.moveGroup(defaultKeyGroups(commonGroupName()).last().id, 0)
             assertEquals(listOf("kg-vim", "kg-common", "kg-shell"), dao.groups().map { it.id })
             assertEquals(listOf(0, 1, 2), dao.groups().map { it.sortOrder })
             val gid = "kg-common"
@@ -85,7 +85,7 @@ class KeyOpsTest {
             ops.createGroup("git")
             ops.deleteKey(dao.allKeys().first())
             ops.restoreDefaults()
-            assertEquals(defaultKeyGroups(), dao.groups())
+            assertEquals(defaultKeyGroups(commonGroupName()), dao.groups())
             assertEquals(defaultKeys().sortedWith(compareBy({ it.groupId }, { it.sortOrder })), dao.allKeys())
         }
 

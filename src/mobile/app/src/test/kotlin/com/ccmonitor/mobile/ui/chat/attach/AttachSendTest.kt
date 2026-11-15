@@ -20,37 +20,31 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import kotlin.coroutines.EmptyCoroutineContext
 
-/** ➤ 那一下：那一排全落好了才发，编号随那一句交 `session-queue-put`（按先后），排清空；那台拒了重发照带；新建会话没有那一排。 */
+/** ➤ 那一下：那一排全落好了才发（核心判），编号随那一句交 `session-queue-put`（按先后），排清空；那台拒了重发照带；新建会话没有那一排。 */
 @OptIn(ExperimentalCoroutinesApi::class)
 class AttachSendTest {
     @get:Rule val dir = TemporaryFolder()
 
-    private val staged = mapOf("key" to "k1", "chunks" to 1.0, "bytes" to 5.0, "sha256" to "ab".repeat(32))
-
     private fun FakeCoreLink.there(say: () -> Reply) {
-        var n = 0
-        answer = { cmd, args ->
+        answer = { cmd, _ ->
             when (cmd) {
-                "session-attachment-check" -> Reply.Ok(mapOf("items" to List((args!!["items"] as List<*>).size) { OK }))
-                "session-attachment-commit" -> Reply.Ok(mapOf("id" to "id-${++n}", "name" to "n", "path" to "/w/n", "rel" to "n", "bytes" to 5.0, "sha256" to "ab", "class" to "image"))
                 "session-queue-put" -> say()
                 "history-tail" -> Reply.Ok(FakeCoreLink.tail(0, 0, 0))
                 else -> Reply.Ok(mapOf("rows" to emptyList<Any>(), "next" to 0, "eof" to true))
             }
         }
-        transferred = { Reply.Ok(staged) }
     }
 
     private fun TestScope.session(
-        link: FakeCoreLink,
+        core: CoreTray,
         target: ChatTarget = ChatTarget.Existing("s1"),
     ) = ChatSession(
-        link,
-        link,
+        core.base,
+        core.base,
         target,
         "box",
         backgroundScope,
-        attachOf = { scope, sid -> AttachTray(link, "box", AttachStore(dir.root), scope, sid, { 7 }, EmptyCoroutineContext) },
+        attachOf = { scope, sid -> AttachTray(core, AttachStore(dir.root), scope, sid, { 7 }, EmptyCoroutineContext) },
     ).also {
         it.open()
         runCurrent()
@@ -63,35 +57,35 @@ class AttachSendTest {
     @Test
     fun send_hands_the_ids_in_order_with_the_line_and_clears_the_row() =
         runTest {
-            val link = FakeCoreLink().apply { there { queued } }
-            val s = session(link)
+            val core = CoreTray().apply { base.there { queued } }
+            val s = session(core)
             val tray = s.attach!!
             tray.add("a.png", true) { ByteArray(5).inputStream() }
             tray.add("b.png", true) { ByteArray(5).inputStream() }
             runCurrent()
             s.send("两张都是 360 宽的")
             runCurrent()
-            assertEquals(listOf<Pair<Any?, Any?>>("两张都是 360 宽的" to listOf("id-1", "id-2")), says(link))
+            assertEquals(listOf<Pair<Any?, Any?>>("两张都是 360 宽的" to listOf("id-1", "id-2")), says(core.base))
             assertEquals(emptyList<AttachCard>(), tray.state.value.cards)
         }
 
     @Test
     fun nothing_goes_out_until_every_card_has_landed_and_a_bare_row_can_go_alone() =
         runTest {
-            val link = FakeCoreLink().apply { there { queued } }
-            link.state.value = linkDown("down")
-            val s = session(link)
+            val core = CoreTray().apply { base.there { queued } }
+            core.base.state.value = linkDown("down")
+            val s = session(core)
             s.attach!!.add("a.png", true) { ByteArray(5).inputStream() }
             runCurrent()
             s.send("看这张")
             runCurrent()
-            assertEquals(emptyList<Any>(), says(link))
+            assertEquals(emptyList<Any>(), says(core.base))
 
-            link.state.value = linkUp()
+            core.base.state.value = linkUp()
             runCurrent()
             s.send("")
             runCurrent()
-            assertEquals(listOf<Pair<Any?, Any?>>("" to listOf("id-1")), says(link))
+            assertEquals(listOf<Pair<Any?, Any?>>("" to listOf("id-1")), says(core.base))
         }
 
     @Test
@@ -99,9 +93,9 @@ class AttachSendTest {
         runTest {
             var first = true
             val refused = Reply.Failed(Failed("queue_full", "队满了", "", null))
-            val link =
-                FakeCoreLink().apply {
-                    there {
+            val core =
+                CoreTray().apply {
+                    base.there {
                         if (first) {
                             first = false
                             refused
@@ -110,7 +104,7 @@ class AttachSendTest {
                         }
                     }
                 }
-            val s = session(link)
+            val s = session(core)
             s.attach!!.add("a.png", true) { ByteArray(5).inputStream() }
             runCurrent()
             s.send("这张")
@@ -119,7 +113,7 @@ class AttachSendTest {
                 s.state.value.outbox
                     .single { it.failed }
                     .id
-            s.cancel(local)
+            s.withdraw(local)
             runCurrent()
             val back = s.state.value.recall
             assertEquals("撤回 ⇒ 字回输入框（没有［重试］）", "这张", back?.text)
@@ -129,14 +123,13 @@ class AttachSendTest {
     @Test
     fun a_new_session_has_no_row() =
         runTest {
-            val link = FakeCoreLink()
-            assertNull(session(link, ChatTarget.Draft("t", "~/p")).attach)
+            assertNull(session(CoreTray(), ChatTarget.Draft("t", "~/p")).attach)
         }
 
-    /** ➤ 灰到全传完；只有附件没字也能发；没字没附件 ⇒ 运行中那一颗是 ■。 */
+    /** ➤ 灰到全传完（全落好没有是核心判的那一格）；只有附件没字也能发；没字没附件 ⇒ 运行中那一颗是 ■。 */
     @Test
     fun the_send_button_waits_for_every_card() {
-        fun row(vararg p: AttachPhase) = AttachUi(p.mapIndexed { i, ph -> AttachCard("$i", "n", 1L, true, dir.root, ph) })
+        fun row(vararg p: AttachPhase) = AttachUi(p.mapIndexed { i, ph -> AttachCard("$i", "n", 1L, true, dir.root, ph) }, ready = p.all { it is AttachPhase.Landed })
         assertEquals(Sendable.EMPTY, sendable(" ", null))
         assertEquals(Sendable.EMPTY, sendable("", row()))
         assertEquals(Sendable.READY, sendable("hi", null))

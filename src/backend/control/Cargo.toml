@@ -24,7 +24,6 @@ backend-agents = { path = "../agents" }
 backend-dial = { path = "../dial" }
 backend-history = { path = "../history" }
 backend-host = { path = "../host" }
-backend-stderr-log = { path = "../stderr_log" }
 backend-wire = { path = "../wire" }
 backend-common = { path = "../common" }
 backend-platform = { path = "../platform" }
@@ -70,11 +69,11 @@ ts-rs = { workspace = true, optional = true }
 test-home = { path = "../../common/test-home" }
 # 源码扫描型守卫的「只留生产段」剥法 · 仓根住址（只在测试档）。
 guard-core = { path = "../../common/guard-core" }
-# 判据要的那几样：信号 · 进程组（`libc`）· 机器表判据的钥匙（`russh`）· 传输台判据核字节（`sha2`）。
+# 判据要的那几样：信号 · 进程组（`libc`）· 机器表判据的钥匙（`russh`）· 两台之间复制判据核字节（`sha2`）。
 libc.workspace = true
 russh.workspace = true
 sha2.workspace = true
-# 传输台判据核落点的读面（文件管理那一块）。
+# 两台之间复制判据核落点的读面（文件管理那一块）。
 backend-files = { path = "../files", features = ["test-support"] }
 # 量具（金样 · 线程级内存 · 听 `tracing` 说了什么）。
 test-meters = { path = "../test-meters" }

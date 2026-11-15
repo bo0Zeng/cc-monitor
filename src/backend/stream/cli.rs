@@ -48,7 +48,7 @@ const CLI_REQUEST_ID: &str = "cli";
 
 /// 一条命令**上不上 CLI 面** —— 从 `REGISTRY` 派生，不是手抄一张表。
 ///
-/// 判据是帧面硬臂（`Run::on_frame_arm`：`Run::Builtin` 与 typed 的那一档）：那种命令的实现住在 `inbound::dispatch` 的硬臂里，
+/// 判据是帧面硬臂（`Typed::on_frame_arm`：登记行写 `How::Frame` / `How::FrameBlocking` 的那一档）：那种命令的实现住在 `inbound::dispatch` 的硬臂里，
 /// 要 `replies` 通道与在飞表才能跑，而**一次性 exec 里两样都不存在**。
 ///
 /// 另一条：派生出来的名字是 ccm 自己的诊断口（`--ccm-print` 这类）⇒ 不上。二进制叫 `ccm` 时
@@ -122,7 +122,7 @@ pub(crate) fn refuse_unknown_to(
         .any(|a| a == crate::wire::cli_words::TEXT_FLAG);
     let f = crate::wire::detail::failed(
         None,
-        "unknown_command",
+        cmd_wire::UNKNOWN_COMMAND,
         contract::malformed(&format!("unknown CLI flag {flag}")),
         None,
         None,

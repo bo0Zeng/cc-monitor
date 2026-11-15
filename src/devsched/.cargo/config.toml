@@ -1,0 +1,4 @@
+# 构建输出不落在源码树里（src/devsched/target/）：仓里有走源码树收文件的判据，产物落进 src/ 会让它们扫错东西。
+# 同后端那棵：改落仓根的隐藏目录 .build/（.gitignore 已忽略）。相对路径以本文件的上级（src/devsched/）为基准。
+[build]
+target-dir = "../../.build/devsched"

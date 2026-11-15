@@ -31,7 +31,7 @@ const snap = (over: Partial<GridSessionSnapshot>): GridSessionSnapshot => ({
   running: null,
   agents: null,
   context: null,
-  unread: 0,
+  unread: null,
   background: false,
   backgroundWork: null,
   account: null,
@@ -45,7 +45,7 @@ const settle = async (): Promise<void> => {
 
 /**
  * 本机后端那一份的替身（夹具）：按机器首见的先后分组、组内按脸上的序、组头与顶上那一句写成「核心·…」。
- * 只为给界面一份成品；真的排法 · 字住后端判据（`tests/backend/control/monitor_board_tests.rs`）。
+ * 只为给界面一份成品；真的排法 · 字住后端判据（`tests/backend/faces/monitor_board_face_tests.rs`）。
  */
 function stubBoard(sessions: readonly GridSessionSnapshot[]): MonitorBoard {
   const by = new Map<string, GridSessionSnapshot[]>();
@@ -252,6 +252,7 @@ describe("F91 GridMonitorView", () => {
           ? {
               model: "claude-opus-4-8",
               recentFiles: ["/a/b.ts", "/a/c.ts"],
+              filesHead: "核心·改过的文件（夹具）",
               summary: "核心·agent 2 · 1 在跑",
               more: null,
               agents: [
@@ -270,6 +271,8 @@ describe("F91 GridMonitorView", () => {
     expect(agents).toContain("planner");
     const files = [...document.querySelectorAll(".grid-monitor-peek-file")].map((e) => e.textContent);
     expect(files).toEqual(["/a/b.ts", "/a/c.ts"]);
+    // 「改过的文件 N」那一格照抄会话事实里写好的那一句（不数）。
+    expect(document.querySelector(".grid-monitor-peek-files .grid-monitor-peek-k")?.textContent).toBe("核心·改过的文件（夹具）");
     view.close();
   });
 
@@ -280,7 +283,7 @@ describe("F91 GridMonitorView", () => {
       let model = "m1";
       const source = mkSource(
         () => [snap({ sessionId: "l1", title: "a" })],
-        () => ({ model, recentFiles: [] as string[], agents: [] as never[], summary: null, more: null }),
+        () => ({ model, recentFiles: [] as string[], filesHead: null, agents: [] as never[], summary: null, more: null }),
       );
       const view = new GridMonitorView(source);
       await openSettled(view);
@@ -305,11 +308,11 @@ describe("F91 GridMonitorView", () => {
     vi.useFakeTimers();
     try {
       document.body.replaceChildren();
-      let unread = 0;
+      let unread: string | null = null;
       let contextPct = 40;
       const source = mkSource(
         () => [snap({ sessionId: "l1", title: "a", unread, context: { text: `${contextPct}%`, tone: "plain", percent: contextPct } })],
-        () => ({ model: "m", recentFiles: [] as string[], agents: [] as never[], summary: null, more: null }),
+        () => ({ model: "m", recentFiles: [] as string[], filesHead: null, agents: [] as never[], summary: null, more: null }),
       );
       const view = new GridMonitorView(source);
       await openSettled(view);
@@ -317,7 +320,7 @@ describe("F91 GridMonitorView", () => {
       const titleNode = document.querySelector(".grid-monitor-peek-title");
       expect(titleNode).not.toBeNull();
       // 后台会话来新消息 + context 涨 —— 这俩是高频 glance 字段，不该触发 peek 重建（否则清掉用户选区）
-      unread = 7;
+      unread = "7";
       contextPct = 55;
       vi.advanceTimersByTime(1000);
       expect(document.querySelector(".grid-monitor-peek-title")).toBe(titleNode); // 同一节点 = 未重建
@@ -335,7 +338,7 @@ describe("F91 GridMonitorView", () => {
       let files = Array.from({ length: 12 }, (_, i) => `/f${i}.ts`);
       const source = mkSource(
         () => [snap({ sessionId: "l1", title: "a" })],
-        () => ({ model: "m", recentFiles: files, agents: [] as never[], summary: null, more: null }),
+        () => ({ model: "m", recentFiles: files, filesHead: `核心·${files.length}`, agents: [] as never[], summary: null, more: null }),
       );
       const view = new GridMonitorView(source);
       await openSettled(view);
@@ -443,6 +446,7 @@ describe("监控板照后端成品摆", () => {
       peekSession: () => ({
         model: null,
         recentFiles: [],
+        filesHead: null,
         summary: "核心·agent 9 · 1 在跑", // 总数后端照实数（连被挤出表的），与界面手上那三条对不上
         more: null,
         agents: [
@@ -468,7 +472,7 @@ describe("监控板照后端成品摆", () => {
       snapshotSessions: () => sessions,
       switchTo: vi.fn(),
       board: async () => ({ summary: "", groups: [{ machine: LOCAL, title: "本机·1", sids: ["l1"] }] }),
-      peekSession: () => ({ model: null, recentFiles: [], summary: "核心·agent 14", more: "核心·+4", agents }),
+      peekSession: () => ({ model: null, recentFiles: [], filesHead: null, summary: "核心·agent 14", more: "核心·+4", agents }),
     });
     await openSettled(view);
     document.querySelector<HTMLElement>(".grid-monitor-cell")!.click();
@@ -623,11 +627,11 @@ describe("UP1 机器总览按行更新", () => {
   /** 三台机器、七个会话；`snapshotSessions` 每拍都返回**新对象**（与 `TabManager.snapshotSessions` 同形）。 */
   const base = (): GridSessionSnapshot[] => [
     snap({ sessionId: "l1", title: "本机一", cwdShown: "/w/a", running: "核心·在跑 2", agents: "agent 3 · 2 在跑", face: ordered(liveFace("working"), 1) }),
-    snap({ sessionId: "l2", title: "本机二", cwdShown: "/w/b", context: { text: "85%", tone: "warn", percent: 85 }, unread: 4 }),
+    snap({ sessionId: "l2", title: "本机二", cwdShown: "/w/b", context: { text: "85%", tone: "warn", percent: 85 }, unread: "4" }),
     snap({ sessionId: "l3", title: "本机三", face: goldenFace("ended") }),
     snap({ sessionId: "p1", title: "派一", origin: "pi", needs: "核心·等批准", face: ordered(liveFace("needs_you"), 0) }),
     snap({ sessionId: "p2", title: "派二", origin: "pi", background: true, face: goldenFace("reconnectable") }),
-    snap({ sessionId: "n1", title: "诺一", origin: "nano", cwdShown: "/srv", unread: 120 }),
+    snap({ sessionId: "n1", title: "诺一", origin: "nano", cwdShown: "/srv", unread: "99+" }),
     snap({ sessionId: "n2", title: "诺二", origin: "nano", context: { text: "12%", tone: "plain", percent: 12 } }),
   ];
   const sourceOf = (mutate: () => (s: GridSessionSnapshot[]) => void): GridSource => {
@@ -694,7 +698,7 @@ describe("UP1 机器总览按行更新", () => {
     try {
       t.take();
       t.set((s) => {
-        s[1].unread = 5;
+        s[1].unread = "5";
       });
       vi.advanceTimersByTime(1000);
       const recs = t.take();
@@ -716,7 +720,7 @@ describe("UP1 机器总览按行更新", () => {
         s[3].face = ordered(liveFace("working"), 1); // p1 不再等
         s[3].needs = null;
         s[5].cwdShown = null; // n1 的目录行摘掉
-        s[6].unread = 1;
+        s[6].unread = "1";
       });
       await repoll(t.view);
       for (const [sid, el] of before) expect(t.cellOf(sid), sid).toBe(el);
@@ -741,7 +745,7 @@ describe("UP1 机器总览按行更新", () => {
         (s) => {
           s.splice(4, 1); // p2 没了
           s[1].context = null;
-          s.push(snap({ sessionId: "z1", title: "新机", origin: "zeta", cwdShown: "/z", unread: 2 }));
+          s.push(snap({ sessionId: "z1", title: "新机", origin: "zeta", cwdShown: "/z", unread: "2" }));
         },
         (s) => {
           s.splice(3, 2); // pi 整组没了
@@ -774,7 +778,7 @@ describe("UP1 机器总览按行更新", () => {
     try {
       t.cellOf("n2").focus();
       t.set((s) => {
-        s[0].unread = 9;
+        s[0].unread = "9";
       });
       vi.advanceTimersByTime(1000);
       expect(document.activeElement).toBe(t.cellOf("n2"));

@@ -161,13 +161,11 @@ fn a_stuck_command_answers_by_the_carried_deadline_or_else_by_the_cap() {
     let bin = dir.join("bin");
     std::fs::create_dir_all(&bin).expect("建目录");
     let fake = bin.join("tmux");
-    std::fs::write(
+    // 马上被起 ⇒ 经 `write_exe` 写（本进程写的写端会漏进别的判据线程 fork 出来的子进程 ⇒ ETXTBSY）。
+    test_home::write_exe(
         &fake,
         "#!/bin/sh\nfor a in \"$@\"; do\n  if [ \"$a\" = display-message ]; then printf '$1\\ts1\\t1\\t\\n'; exit 0; fi\ndone\nexec sleep 30\n",
-    )
-    .expect("写假 tmux");
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    );
     let out = std::process::Command::new(std::env::current_exe().expect("测试二进制"))
         .args([
             "stream::inbound::caps_tests::caps_child",

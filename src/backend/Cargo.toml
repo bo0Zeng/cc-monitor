@@ -96,169 +96,47 @@ shots = ["backend-common/shots"]
 # （判据 `readonly_guard::g6_dependency_signoff`）。仓内 crate 照写 `path`。
 serde.workspace = true
 serde_json.workspace = true
-# 本 crate 里平台原语那一层（唯一许平台原语与平台 cfg 的地方）。
+# 拆出去的各层（`backend-*`）：每层管什么、只引哪几层写在 `lib.rs` 各自那一行 `use`。
 backend-platform = { path = "platform" }
-# 两边都要、又不含平台原语的纯工具那一层（只引平台层）。
 backend-common = { path = "common" }
-# 文件管理那一块（只读族 ＋ 写面；只引纯工具与平台两层）。
 backend-files = { path = "files" }
-# agent 适配层（每个 agent 一份；只引纯工具与平台两层）。
 backend-agents = { path = "agents" }
-# 中转的宿主（绑口 · 钥匙 · 起中转；只引纯工具与平台两层）。
 backend-relay = { path = "relay" }
-# 脱离常驻那条载体的 stderr 落盘（只引纯工具与平台两层）。
 backend-stderr-log = { path = "stderr_log" }
-# 帧面的协议零件（帧 · typed 命令 · 登记形状 · 主题表 · 监听判定；只引 agents · relay · 纯工具 · 平台四层）。
 backend-wire = { path = "wire" }
-# SSH 拨号的后端那一侧（钥匙 · known_hosts · 转发的账 · 问远端后端 · 开终端；只引帧面零件 · 纯工具 · 平台三层）。
 backend-dial = { path = "dial" }
-# 宿主口（tmux · 托管）与 ccm 这一行的词（只引 agents · 帧面零件 · 纯工具 · 平台四层）。
 backend-host = { path = "host" }
-# 历史清单那一族与会话血缘（只引 agents · 拨号 · 宿主口 · 帧面零件 · 纯工具 · 平台六层）。
 backend-history = { path = "history" }
-# 账号域：上游选择 · 账号库 · 登录 · 额度与轮换 · oauth（只引历史清单 · agents · 宿主口 · 中转宿主 · 帧面零件 · 纯工具 · 平台七层）。
 backend-accounts = { path = "accounts" }
-# 后端代管的用户资产：别名 · MCP · skill · 扩展 · 枢纽 · 公钥 · 资产目录（只引账号域 · agents · 宿主口 · 拨号 · 历史清单 · 帧面零件 · 纯工具 · 平台八层）。
 backend-assets = { path = "assets" }
-# 控制面：会改变世界的那一半（只引资产 · 账号域 · agents · 拨号 · 历史清单 · 宿主口 · 诊断文件 · 帧面零件 · 纯工具 · 平台十层；不引观测面）。
 backend-control = { path = "control" }
-# 观测面：读，不改变世界（只引资产 · 账号域 · agents · 历史清单 · 宿主口 · 帧面零件 · 纯工具 · 平台八层；不引控制面）。
 backend-observe = { path = "observe" }
-# 计划的读面：找 pb · 跑 `pb dump` · 加工成品 · 盯计划仓（只引足迹 · 观测面 · 历史清单 · agents · 插件 · 帧面零件 · 纯工具 · 平台八层）。
 backend-plan = { path = "plan" }
-# 帧面宿主：每条帧命令的薄壳 · 格目录 · 通用投影（引除文件管理 · 插件 · 诊断文件外的全部十四层）。
 backend-faces = { path = "faces" }
-# 中转（通信层面 B，搬字节那一层）：本 crate 是它的宿主 —— 绑口、钥匙、期限、上游选择都由这里交进去。
-comms-outward = { path = "../comms/outward" }
-# 上游 base URL 能不能用的唯一一份（中转解析 · 上游选择装表 · 写口）；非业务 crate ⇒ 通信层成员可以用它（C2）。
-upstream-url-core = { path = "../common/upstream-url-core" }
-acct-core = { path = "../common/acct-core" }
 # typed 命令两端对上的那几样：机器名 · 形状指纹表（hello 带出去）。
 cmd-wire = { path = "../common/cmd-wire" }
 # 照契约类型写成品字的那一侧（↗ 浮层那一张）：壳链同一份。
 face-core = { path = "../common/face-core" }
-# 第三方 API key 的唯一住址（装它的类型 / 落盘格式 / 权限判断）。
-# 🔴 **开了 `harden`** —— 「backend 只许读」收窄成
-# 「backend 里只有账号域那一份（`accounts/upstream_select/file_face.rs`）写这份文件，只从帧面 `apikey-key-set` 进来」。
-# 理由：远端那台机器上的 key 只能由那台的后端写（那份文件是上游选择
-# 自己的状态，不是用户文件，走 `readonly_guard` 第四层）。「出生即只给本人」只有一份实现
-# （`creds_core::perm::create_private`），不在本 crate 另写一个 ⇒ 要它就得开这个 feature。
-# ⚠ 买掉的那一格如实记：「backend 写不了这份文件」不由**编译器**兜，由判据兜 ——
-#   写半边（`perm::create_private`）在本 crate 生产段的引用处 == 第四层登记的那一份
-#   （`readonly_guard::g6_dependency_signoff` 那条边界判据 ＋ `relay::creds_guard` 那条 feature 判据）。
-# 顺带：开了之后读凭据文件与中转钥匙时按句柄量权限（`perm::open_checked`，Windows 上读属主与 DACL）。
-creds-core = { path = "../common/creds-core", features = ["harden"] }
-# 交给 Win32 的路径（长路径前缀）只从它来：不覆盖改名那一处用；仓内 crate、零依赖。
-win-path-core = { path = "../common/win-path-core" }
-# POSIX 单引号 quote 的唯一实现。
-# 本 crate 只用它一处（`control/tmux_hook::sq`）；载荷渲染也走它。
-shell-quote-core = { path = "../common/shell-quote-core" }
 # 后端的门牌与家的契约（端口 · 钥匙 · 路由语法 · `~/.cc-monitor/` 下每一样的相对路径），与 monitor 同一份（目标）。
 relay-route-core = { path = "../common/relay-route-core" }
 # 有上限读（读上限 `Cap` · 同步整读）的唯一一份；零依赖。
 cap-core = { path = "../common/cap-core" }
 # 本人通道（常驻后端听的那个 Unix 套接字 · 目录独占锁 · 核对端 uid · 一次性子命令连它）：monitor 链同一份。
 own-chan = { path = "../common/own-chan" }
-# 等一个进程退出（会话的 claude · tmux server · 写记录的进程：Linux pidfd · Windows 进程句柄，零轮询）；Windows 开进程句柄也从它来。monitor 链同一份。
-pidwatch-core = { path = "../common/pidwatch-core" }
-# 平台原语（目录锁 · 只给本人的目录 · 原子写 · /proc stat · 进程表）：`backend-platform` 那一层叫它；记在这里是为了让依赖签字（`readonly_guard::g6`）够得着它的源码。
-platform-core = { path = "../common/platform-core" }
 # 对外文案表的 Rust 取文口（所有对外文案与报错都从一张表来）。
 # 后端自己出句子、读的是与前端 / monitor 同一份 `src/shared/copy/table.json`。
-# 依赖只有 `serde_json`（本 crate 早就有）⇒ 不引新的第三方包。
 copy-core = { path = "../common/copy-core" }
-# 一组一条命令的结局那一句（`said_of`）：与文件窗口 · 手机嵌的核心同一份。
-batch-core = { path = "../common/batch-core" }
-# 助手正文的 Markdown 解析成块树（`md_core::parse`，出 `cmd_wire::md` 的 `Doc`）：两家适配层翻译助手正文时调它，两端只照树排版。
-md-core = { path = "../common/md-core" }
-# 轮换的策略文件（`accounts/quota/strategy/`）跑在它的沙箱里：纯 Rust、零 C 依赖、按操作数掐、表有序。
-# `sync` ⇒ 编好的策略能放进进程里的缓存跨线程用；`serde` ⇒ 上下文与回值经 serde 进出；`no_time` ⇒ 脚本里没有取时间的函数。
-rhai.workspace = true
-# 部署那一族的契约（表 A 的键与行 · 戳格式 · 答话形状 · 路径），与 monitor 同一份；判定（承诺 · 换不换 · 认不认）住 `deploy` crate。
-deploy-contract = { path = "../common/deploy-contract" }
-# 拨号核心（竞速 · 跳板 · 鉴权 · 复用 · 用法 · SFTP 客户端）：手机同一份；本后端经 `dial/mod.rs::host` 装上自己那一套。
-ssh-dial = { path = "../comms/ssh-dial" }
-# 装 / 升级远端后端的判定与编排（与 ssh-dial 并列；手机 mobcore 链同一份）。
-deploy = { path = "deploy" }
-# 出网口（这台所有出站 TCP 只在那里开：直连或经代理）：中转去上游 · 拨 SSH 都经它；本后端起来时照自己的环境装这台的描述（`main.rs`）。
+# 出网口（这台所有出站 TCP 只在那里开：直连或经代理）：本后端起来时照自己的环境装这台的描述（`stream/entry.rs`）。
 egress = { path = "../comms/egress" }
-# 连远端常驻后端的客户端那一侧（桌面 · 手机同一份）：测试连接拿表单那份配置跑一趟它的常驻流（`dial/probe.rs`），与真连接同一串。
+# 连远端常驻后端的客户端那一侧（桌面 · 手机同一份）：进后端的口只认它那条盯着的命令名（`watch::WATCH_CMD`）。
 # 它的期限与退避属客户端那一侧，不进本 crate 的零定时器判据人群。
 resident-client = { path = "../comms/resident-client" }
-# 通道那一句（离线那一句只由连接层写：`chan::said::offline`）。
+# 有上限读一行 · 读全（`line::read_capped_*`）：本后端读 stdin 那一处与通道同一份。
 comms-inward = { path = "../comms/inward" }
 # feature 集与为什么开 `net` 写在 `[workspace.dependencies]` 那一行。
 tokio.workspace = true
-# 本 crate 直接用 libc 的那几处（flock · 信号 · malloc_trim …）。**已是 tokio 在 unix 上的传递依赖**
-# （本 crate Cargo.lock 里 libc 0.2.186 早已解析）⇒ 声明它不动 lock、离线可用。
-# 不引入任何 feature。
-libc.workspace = true
-# 伪终端（`platform/child.rs::converse_in_terminal`：要终端才肯问的官方子命令，如 `claude mcp login`）。三个系统一套。
-portable-pty.workspace = true
-# 托管终端的屏（`host/managed/screen.rs`）：伪终端输出照它算成一屏 ＋ 回滚，整屏字节 · 抓屏 · 瘦客户端本地画都从它出。MIT。
-vt100.workspace = true
-# **backend 侧第一条加密依赖**，也是**本仓第一条 TLS（X.509 + 根证书链）依赖**。
-#
-# ⚠ 「backend 侧」不是「本仓」：`ring` 在 monitor 的依赖图里也有。两个词分清楚：
-#   · **依赖图**（谁的 Cargo.lock / cargo tree 里有它）：`ring 0.17.14` 在这条依赖加进来**之前**就已在
-#     monitor 的依赖图里 —— `git show c3cf193:src/frontend/shell/Cargo.lock | grep -c '^name = "ring"$'` ⇒ **1**，
-#     `cargo tree -i ring --manifest-path ../frontend/shell/Cargo.toml` ⇒ `ring └── russh └── monitor`。
-#     同一把尺子量 **backend 自己**那份 lock 的同一个尖 ⇒ **0** —— 所以「**backend 侧**第一条」是真话。
-#   · **本机 cargo 缓存**（`~/.cargo/registry/cache/` 里有没有那个 `.crate` 文件）：**只说这台机器**，
-#     与依赖图是两件事。缓存里有不等于依赖图里有，反过来也一样。
-#   ⇒ 下面「少下一棵 C 构建树」这条好处**两个口径都成立**，但它买到的是**构建时间**，不是「本仓第一条」。
-#
-# **只准 TLS**，「不引 HTTP 框架」的白名单一个字没松 —— HTTP/1.1 的请求解析与
-# chunked 写出仍是手写的（见 src/relay/）。
-# 选 `rustls` 而不是 `ureq`/`hyper`：后两者是 HTTP 客户端/框架，会把「一个块」变成一层框架。
-# crypto provider 钉 `ring`（不是默认的 aws-lc-rs）：`ring` 是 monitor 侧 `russh` 已经在用的那一棵，
-# 复用它省掉 aws-lc-rs 那棵**另外**要现下载现编的 C 构建树。
-rustls.workspace = true
-# CAS 的摘要形 `expect: {"sha256": …}`（编辑器存盘 · 上传提交，`files/mod.rs::content_sha256`）。
-# **零新包**：`ring 0.17.14` 本来就在本 crate 的 lock 里、发出去的二进制已经链接它（上面 `rustls` 的 provider · `russh`），
-# 这一行只是把它从间接依赖提成直接依赖（版本跟 lock 里那一份）。
-ring.workspace = true
-# ── `--dial` 那条代理臂的 SSH 客户端 ──────────────────────
-#
-# 🔴 **它只服务 `src/dial/`那一份**（`dial_locality` 那条判据把「谁许 `use russh`」钉在文件维上）。
-# 版本与 feature 集（`0.65` · `default-features = false` · `["ring", "flate2", "rsa"]`）与 `ssh-dial/Cargo.toml` ·
-# `../mobile/core-rs/rust/Cargo.toml` 那两行逐字相同：同一棵 workspace 里 russh 只许解析出一份
-# （`dial_compress_tests::russh_comes_from_crates_io_at_a_version_with_the_zlib_fix` 钉 lock 里恰好一块、来自 crates.io）。
-# 界面进程零 SSH（界面那一侧的 `russh` / `russh-sftp` / `primefield` 三行早删了）⇒ 本 workspace 是唯一的 SSH 客户端。
-# 0.61 那时靠 lock 播种绕过的两件（`primefield 0.14.0-rc.9` 钉 · yanked 的 `crypto-bigint 0.7.3`）随升级没了：
-# 0.65 重解析出的是 `primefield 0.14.0` 正式版与 `crypto-bigint 0.7.10`（未 yank，10-28 crates.io 实查）。
-# 0.62 → 0.65 跟着改的 API：`check_server_key` 收 `PublicKeyOrCertificate`（`ssh-dial/connect.rs`：证书不认）。
-#
-# ⚠ **如实登记**：
-#   ① **本 crate 的依赖树不是零 C**（`rustls`/`ring` 带进来的），后端要的是「静态 musl 二进制」。
-#      russh 走的是**同一棵 `ring`** ⇒ 它**不新增**一棵 C 构建树；但这句话是「不新增」，**不是**「零 C」。
-#      上面 tokio 那条 `net` feature 的注释同结论。
-#   ② musl 交叉编译：沙箱门禁只做本机 gnu 构建、不做交叉编译（门禁全绿证不出 musl 编得过）；
-#      0.65 这一版本机 `cargo zigbuild --target x86_64-unknown-linux-musl` 现打编过。
-# ─────────────────────────────────────────────────────────────────────────
-russh.workspace = true
-# ── SFTP 客户端：**SFTP 进本机常驻后端**（用户「进本机常驻后端，只写暂存区」）──
-#
-# 🔴 **它只服务 `src/comms/ssh-dial/sftp.rs` 那一份**：`readonly_guard::remote_write_layer` 把「持 SFTP 会话 /
-# 开子系统 / 协议改动动词」钉在那**一份文件**上，而那份文件的写根 == `{~/.cc-monitor/staging, ~/.cc-monitor/bin}`
-# （`INVARIANTS §41.6`）。签字行住 `readonly_guard::g6_dependency_signoff`。
-# 版本照抄当年 `../frontend/shell/Cargo.toml` 那一行（`3`，lock 里 `3.0.0`，Apache-2.0；现打核过 5 个候选、
-# 用户「不要 GPL」核过）。monitor 那一行同拍删了（界面进程零 SFTP）⇒ 本 crate 是唯一一份。
-# ⚠ 3.0.0 **仍然无** posix-rename@openssh 扩展 ⇒ `ssh-dial/sftp.rs::put_atomic` 的近似原子写照旧成立，不许当成已解决。
-# 它是**传输泛型**的（吃 `AsyncRead + AsyncWrite`，自己的 `tokio` 没开 `net`）⇒ 结构上开不了 socket，
-# 字节只能走 `dial/` 那条已鉴权的 SSH 连接。
-russh-sftp.workspace = true
-notify.workspace = true
-walkdir.workspace = true
-# 帧流压缩（`wire/listen.rs` 的 deflate；解压包那一支住文件管理那一块）。签字行住 `readonly_guard::g6_dependency_signoff`。
-flate2.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
-# 配置文件（`~/.cc-monitor/profiles.toml`）的读与按条目改：保留用户手写的注释与排版（`assets/profiles`）。
-toml_edit.workspace = true
-# 时刻按看的人那一台的时区写（请求信封 `tz` 是 IANA 名）：时区库随二进制带（`tzdb-bundle-always`），
-# 不读这台的 `/usr/share/zoneinfo`、Windows 上也是同一份 ⇒ 远端后端按看的那一台的钟写字、夏令时按那一刻算。纯 Rust、无构建脚本。
-jiff.workspace = true
 
 # ── 远端 musl 版的全局分配器：mimalloc（`main.rs` 那一处 `#[global_allocator]`，判据 `allocator_guard`）──
 # musl 自带的分配器放掉的内存不还给系统：680 MB 合成世界里热完全文搜索索引就常驻 350–490 MB（glibc 同一世界 117 MB），
@@ -297,6 +175,16 @@ tar.workspace = true
 ts-rs.workspace = true
 # 假时钟（停着的钟，`advance` 才走）：测「挂着的提问自己带的期限」· 保活几轮判死不按墙钟等。只在测试档开。
 tokio = { workspace = true, features = ["test-util"] }
+# 下面这几条主 crate 生产段不引，只在挂主 crate 的判据里引（引到上层、够不到上层的那几份 `cross/*` 等）；签字记在它们 `[dependencies]` 那一档。
+acct-core = { path = "../common/acct-core" }
+creds-core = { path = "../common/creds-core" }
+deploy = { path = "deploy" }
+deploy-contract = { path = "../common/deploy-contract" }
+md-core = { path = "../common/md-core" }
+shell-quote-core = { path = "../common/shell-quote-core" }
+libc.workspace = true
+ring.workspace = true
+toml_edit.workspace = true
 # 平台层只给测试用的那几样（判据看要起的命令 · 私有 tmux server · 起子进程前那一道落到空 socket 目录）＋ 它那几个线上类型的 TS 派生。
 backend-platform = { path = "platform", features = ["test-support", "ts"] }
 # 纯工具那一层只给测试用的那几样（契约错的诊断 · 整份读按块的夹具 · 脚本化的会话快照）＋ 它那几个线上类型的 TS 派生。
@@ -416,7 +304,6 @@ vt100 = "=0.16.2"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 ring = "0.17"
 russh = { version = "0.65", default-features = false, features = ["ring", "flate2", "rsa"] }
-russh-sftp = "3"
 notify = "8.2"
 walkdir = "2.5"
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }

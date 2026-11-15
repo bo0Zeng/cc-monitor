@@ -1,0 +1,23 @@
+[package]
+name = "devsched-wire"
+description = "开发调度两端之间的帧与连接：调度端与编译节点链同一份"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+
+# 测试住仓根 tests/ 的同形位置（仓里的守卫只剥 #[cfg(test)] mod，src/ 下整份测试会被当生产段扫）
+[[test]]
+name = "conn"
+path = "../../../tests/devsched/wire/conn.rs"
+
+[[test]]
+name = "frames"
+path = "../../../tests/devsched/wire/frames.rs"
+
+[[test]]
+name = "frames_md"
+path = "../../../tests/devsched/wire/frames_md.rs"

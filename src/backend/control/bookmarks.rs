@@ -3,17 +3,41 @@
 //!
 //! - 全仓唯一的写口是 [`answer_edit`]（只从 `faces/bookmarks_face.rs` 进）：读—改—写在那个目录的跨进程锁里、原子写
 //!   ⇒ 两个窗口 / 一个窗口和手机同时加，两边加的都在。
-//! - 切换 · 删 · 加怎么比（按归一之后的形，`cmd_wire::bookmarks::normalize_dir`）只在这里判；
+//! - 切换 · 删 · 加怎么比（按归一之后的形，[`normalize_dir`]，只此一份）只在这里判；
 //!   「各栏此刻的目录（入参的 `at`）各是第几条」（回包的 `here`）也只在这里判，窗口与手机照它画。
 //! - 读三态：不在 ⇒ 空的一份；读不懂 ⇒ `bookmarks_unreadable`，**不覆盖**（照实说出来，由人去看那份文件）。
 
 use crate::common::own_state::{Doc, Read};
 use crate::common::said::Said;
 use crate::platform::fs::Own;
-use cmd_wire::bookmarks::{
-    normalize_dir, BookmarkOp, Bookmarks, BookmarksEditReq, BookmarksReadReq,
-};
+use cmd_wire::bookmarks::{BookmarkOp, Bookmarks, BookmarksEditReq, BookmarksReadReq};
 use copy_core::copy_text;
+
+/// 目录路径归一：连续的 `/` 折成一个；只剩 `/` 就是根；否则去掉尾巴上那一个 `/`。
+///
+/// ⚠ 空串照旧是空串、相对路径照旧是相对的（不补前导 `/`）；空串由写的那一方挡掉，不在这里编一个路径出来。
+fn normalize_dir(path: &str) -> String {
+    let mut out = String::with_capacity(path.len());
+    let mut prev_slash = false;
+    for c in path.chars() {
+        if c == '/' {
+            if !prev_slash {
+                out.push(c);
+            }
+            prev_slash = true;
+        } else {
+            out.push(c);
+            prev_slash = false;
+        }
+    }
+    if out == "/" {
+        return out;
+    }
+    if out.ends_with('/') {
+        out.pop();
+    }
+    out
+}
 
 /// 那一份：状态（读不懂 · 比这一版新 ⇒ 不覆盖；落点 · 上限 · 版本照声明表）。
 const DOC: Doc<Bookmarks> = Doc::of(&relay_route_core::BOOKMARKS_FILE);

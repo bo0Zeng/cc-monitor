@@ -5,11 +5,24 @@ import type { Scene } from "../scenes/index";
 import { sleep, waitCount, waitFor } from "../scenes/helpers";
 import { PERF_TURNS, perfHugeWorld, perfMainWorld, perfWorld } from "./world";
 import "./actions";
-import { sidOf } from "../fake/world";
+import { LOCAL, sidOf } from "../fake/world";
 import { SETTINGS_SCALE, settingsPerfWorld } from "./settings-world";
+import type { SceneCtx } from "../fake/types";
 
 /** 最长那条会话（`PERF_TURNS[0]`，420 轮）的 sid：查看窗那一项开它。 */
 export const LONGEST_SID = sidOf(0x100);
+
+/**
+ * 动手之前等世界里活着的那几个会话的记录都读完（本机后端的「读完了」那一帧，`FakeBackend.primed`）：
+ * 宣告不等预读，tab 齐了的那一刻后台还在冷读整份记录，这时量的是开机冷扫、不是切回。
+ */
+/** 只等本机那几个：远端的「读完了」经本机后端转来，壳连上之前转过的不补发，等它们可能等不到。 */
+async function readAll(ctx: SceneCtx, ms?: number): Promise<void> {
+  await ctx.backend.primed(
+    ctx.backend.world.sessions.filter((s) => !s.ended && s.origin === LOCAL).map((s) => s.sid),
+    ms,
+  );
+}
 
 export const PERF_SCENES: Scene[] = [
   {
@@ -24,6 +37,7 @@ export const PERF_SCENES: Scene[] = [
     act: async (ctx) => {
       window.__perfBackend = ctx.backend;
       await waitCount("#tab-bar .tab", PERF_TURNS.length, 600_000);
+      await readAll(ctx, 600_000);
       await sleep(900);
     },
   },
@@ -39,6 +53,7 @@ export const PERF_SCENES: Scene[] = [
     act: async (ctx) => {
       window.__perfBackend = ctx.backend;
       await waitCount("#tab-bar .tab", PERF_TURNS.length, 180_000);
+      await readAll(ctx);
       await sleep(900);
     },
   },
@@ -67,9 +82,10 @@ export const PERF_SCENES: Scene[] = [
     width: 1280,
     height: 800,
     world: perfWorld,
-    act: async () => {
+    act: async (ctx) => {
       // 开发服务器下 WebKit 头一回按需编译整张模块图要很久 ⇒ 时限放宽（量从安静之后才开始，不算进读数）
       await waitCount("#tab-bar .tab", PERF_TURNS.length, 180_000);
+      await readAll(ctx);
       await sleep(900);
     },
   },

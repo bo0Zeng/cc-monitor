@@ -1,4 +1,4 @@
-//! 名单台：新连接没带过此刻那份 ⇒ 报一次、带过 ⇒ 不报 · 名单没变不报 · 连着改几次只报到最新那份、按序 · 应答 `from[]` 交宿主 ·
+//! 名单台：新连接没带过此刻那份 ⇒ 报一次、带过 ⇒ 不报 · 名单没变不报 · 连着改几次只报到最新那份、按序 · 报失败不记成已报 · 应答 `from[]` 交宿主 ·
 //! 读清单的宿主交回手上那份（attach 行与报的那一问同一个读法）。替身后端只认 `stream-watch`。
 use super::*;
 use crate::client::{park, BackendHello};
@@ -15,12 +15,14 @@ fn hello() -> BackendHello {
     .witness()
 }
 
-/// 替身那一头收到的每一问的入参；`froms` ＝ 每答一次取一份（没有 ⇒ 空）；`hold` 有值 ⇒ 每答之前等一个放行。
+/// 替身那一头收到的每一问的入参；`froms` ＝ 每答一次取一份（没有 ⇒ 空）；`hold` 有值 ⇒ 每答之前等一个放行；
+/// `fails` ＝ 头几问答失败。
 #[derive(Default)]
 struct Peer {
     asks: Mutex<Vec<serde_json::Value>>,
     froms: Mutex<Vec<serde_json::Value>>,
     hold: Option<Arc<Notify>>,
+    fails: Mutex<usize>,
 }
 
 /// 一条替身连接：答 `stream-watch`（交回 `from`）。
@@ -40,6 +42,23 @@ fn link(peer: &Arc<Peer>) -> Arc<InboundClient> {
             p.asks.lock().unwrap().push(v["args"].clone());
             if let Some(h) = &p.hold {
                 h.notified().await;
+            }
+            let failed = {
+                let mut n = p.fails.lock().unwrap();
+                let failed = *n > 0;
+                *n = n.saturating_sub(1);
+                failed
+            };
+            if failed {
+                c.route_reply(
+                    v["id"].as_str().unwrap(),
+                    false,
+                    Some("internal".into()),
+                    None,
+                    None,
+                    None,
+                );
+                continue;
             }
             let from = {
                 let mut f = p.froms.lock().unwrap();
@@ -141,6 +160,64 @@ async fn quick_changes_end_on_the_latest_and_never_overtake() {
         vec![serde_json::json!([]), serde_json::json!(["a", "b", "c"])],
         "中间那几份不发"
     );
+}
+
+/// 报失败一次 ⇒ 不记成已报：同一份再要报（`set_and_hear`）照样再问一次、交回那一趟的 `from[]`；报成了才记上。
+#[tokio::test(start_paused = true)]
+async fn a_failed_report_is_not_counted_as_told() {
+    let peer = Arc::new(Peer {
+        fails: Mutex::new(1),
+        ..Default::default()
+    });
+    peer.froms
+        .lock()
+        .unwrap()
+        .push(serde_json::json!([{ "sid": "a", "path": "/p/a.jsonl", "seq": 3 }]));
+    let desk = Desk::new(|_| vec![], |_| {});
+    desk.set(set(&["a"]), set(&[]));
+    desk.up(&link(&peer), None);
+    settle().await;
+    assert_eq!(peer.asks.lock().unwrap().len(), 1, "接上即报，这一问答失败");
+    let heard = desk.set_and_hear(set(&["a"]), set(&[]));
+    settle().await;
+    let asks = peer.asks.lock().unwrap().clone();
+    assert_eq!(asks.len(), 2, "报失败的那份没记成已报：再报一次");
+    assert_eq!(sids(&asks[1]), serde_json::json!(["a"]));
+    assert_eq!(
+        heard.await.unwrap(),
+        vec![WatchFrom {
+            sid: "a".into(),
+            path: "/p/a.jsonl".into(),
+            seq: 3
+        }]
+    );
+    let again = desk.set_and_hear(set(&["a"]), set(&[]));
+    settle().await;
+    assert_eq!(again.await.unwrap(), vec![]);
+    assert_eq!(peer.asks.lock().unwrap().len(), 2, "报成了的不再问");
+}
+
+/// 报的途中换了连接 ⇒ 旧那条报成了不算新那条知道：新那条照样报一次。
+#[tokio::test(start_paused = true)]
+async fn a_report_answered_on_the_old_link_does_not_count_for_the_new_one() {
+    let gate = Arc::new(Notify::new());
+    let old = Arc::new(Peer {
+        hold: Some(Arc::clone(&gate)),
+        ..Default::default()
+    });
+    let new = Arc::new(Peer::default());
+    let desk = Desk::new(|_| vec![], |_| {});
+    desk.set(set(&["a"]), set(&[]));
+    desk.up(&link(&old), None);
+    settle().await;
+    assert_eq!(old.asks.lock().unwrap().len(), 1, "旧那条的那一问还没答");
+    let new_link = link(&new);
+    desk.up(&new_link, None);
+    gate.notify_one();
+    settle().await;
+    let asks = new.asks.lock().unwrap().clone();
+    assert_eq!(asks.len(), 1, "新那条没带过名单：照样报");
+    assert_eq!(sids(&asks[0]), serde_json::json!(["a"]));
 }
 
 /// 应答里的 `from[]` 原样交宿主；空的不交。

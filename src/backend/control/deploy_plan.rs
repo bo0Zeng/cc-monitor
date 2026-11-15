@@ -100,23 +100,9 @@ pub(crate) fn carried_slots_in(home: &std::path::Path) -> Result<Vec<deploy::Slo
     Ok(slots)
 }
 
-/// 装完的那份计划 → 应答。
+/// 装完的那份计划 → 应答（那一句是 `deploy` crate 写的，手机结局行同一句）。
 pub fn installed_of(p: &Plan) -> Installed {
-    let build = match &p.action {
-        DeployAction::Keep { theirs, .. } => theirs.clone(),
-        DeployAction::Skip | DeployAction::Deploy(_) => p.expected.clone(),
-    };
-    // 那台不比这一版旧 ⇒ 那一句接上出路（先卸载再部署 = 明确授权覆盖）：手动点也不降级。
-    let said = match &p.action {
-        DeployAction::Keep { .. } => copy_text("rsSftp.deploy.keptNotOlder", &[("why", &p.said())]),
-        DeployAction::Skip | DeployAction::Deploy(_) => p.said(),
-    };
-    Installed {
-        action: p.action.tag(),
-        said,
-        build,
-        os: p.key.os.label().to_string(),
-    }
+    Installed { said: p.said() }
 }
 
 /// `machine` 空 ⇒ `bad_args`；不空 ⇒ 这台家目录里带着的那几个槽。
@@ -149,18 +135,16 @@ fn load(p: &std::path::Path) -> Result<Vec<u8>, Said> {
     Ro::read_capped(p, BACKEND_BYTES_CAP)
 }
 
-/// `deploy-install` 的本体（这台的家目录 · 对面由调用方给）：每走一步交 `on`，结局是应答。
+/// `deploy-install` 的本体（这台的家目录 · 对面由调用方给）：每走一步交 `on`，结局是装完的那份计划（应答照它写，[`installed_of`]）。
 pub(crate) async fn install(
     req: &DeployInstallReq,
     home: &std::path::Path,
     host: &dyn deploy::Place,
     on: &(dyn Fn(deploy::Step) + Send + Sync),
-) -> Result<Installed, Said> {
+) -> Result<Plan, Said> {
     let slots = checked(home, &req.machine)?;
     let now = crate::common::time::now_secs();
-    deploy::install(host, &slots, &load, &req.machine, now, on)
-        .await
-        .map(|p| installed_of(&p))
+    deploy::install(host, &slots, &load, &req.machine, now, on).await
 }
 
 crate::wire::typed::codes! {
@@ -224,7 +208,7 @@ pub(crate) async fn answer_install(req: DeployInstallReq) -> Result<Installed, D
         Err(said) => Err(said),
     };
     if !req.machine.trim().is_empty() {
-        let os = got.as_ref().ok().map(|i| i.os.clone());
+        let os = got.as_ref().ok().map(|p| p.key.os.label().to_string());
         crate::control::machine_state::note(&req.machine, deploy::machine::Fact::Deployed { os });
         // 没做成那一句与复制详情记进那台的成品（机器条那一行照它说，不另弹 toast）。
         if let Err(f) = &got {
@@ -234,14 +218,15 @@ pub(crate) async fn answer_install(req: DeployInstallReq) -> Result<Installed, D
                     said: f.said.clone(),
                     detail: crate::wire::detail::of(
                         Some("deploy-install"),
-                        f.code_or_fallback(),
+                        &cmd_wire::failed::Failed::code_or_fallback(f.code.clone()),
                         f.raw.as_deref(),
                     ),
                 },
             );
         }
     }
-    got.map_err(|f| crate::wire::typed::of_fail(f, DeployInstallErr::IoFailed))
+    got.map(|p| installed_of(&p))
+        .map_err(|f| crate::wire::typed::of_fail(f, DeployInstallErr::IoFailed))
 }
 
 // ═══ 卸载（帧命令 `deploy-uninstall`）═══════════════════════════════════════════════════════
@@ -257,10 +242,7 @@ pub(crate) async fn uninstall(
     let slots = checked(home, &req.machine)?;
     deploy::uninstall(host, &slots, &load, &req.machine)
         .await
-        .map(|r| Uninstalled {
-            removed: r.removed,
-            said: r.said,
-        })
+        .map(|r| Uninstalled { said: r.said })
 }
 
 crate::wire::typed::codes! {

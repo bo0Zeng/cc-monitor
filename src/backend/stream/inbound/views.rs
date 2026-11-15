@@ -137,7 +137,7 @@ impl StreamView {
 
 /// [`crate::wire::to_line`] 照这条流的出口声明裁过（[`StreamView`]；`None` ＝ 全量，字节与 `to_line` 同）。流的写者对每一帧调它。
 pub fn to_line_viewed(
-    frame: &crate::wire::Frame,
+    frame: &crate::wire::WireFrame,
     view: Option<&StreamView>,
 ) -> serde_json::Result<String> {
     let Some(view) = view else {

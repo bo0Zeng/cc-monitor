@@ -119,8 +119,8 @@ export function afterSwitch(kind: SwitchKind, r: Switched): { text: string | nul
 export interface SwitchHost {
   /** 那台起会话能选的（`session-open-facts`）。 */
   facts(origin: string): Promise<OpenFacts>;
-  /** 交那条命令，结局读成 [`Switched`]（不抛）。 */
-  send(tab: Tab, kind: SwitchKind, value: string): Promise<Switched>;
+  /** 交那条命令，结局读成 [`Switched`]（不抛）；[effort] 是那个模型 `efforts` 里选的那一档的原值（没档 ⇒ 不在）。 */
+  send(tab: Tab, kind: SwitchKind, value: string, effort: string | undefined): Promise<Switched>;
   /** 那台握手时说做不到 `op` ⇒ 那一句；做得到 / 没把握 ⇒ `null`。 */
   unavailable(origin: string, op: string): string | null;
   /** 换成了 ⇒ 重问会话事实。 */
@@ -209,7 +209,7 @@ export class SwitchChips {
       const on = checkedValue(tab, kind, this.localOf(tab.sessionId));
       items = [
         { label: switchTitle(kind), heading: true },
-        ...picks.map((p): MenuItem => ({ label: p.text, checked: p.value === on, onClick: () => void this.pick(tab, kind, p) })),
+        ...picks.map((p): MenuItem => this.item(tab, kind, p, on)),
         ...(note ? [{ label: "", divider: true }, { label: note, heading: true }] : []),
       ];
     } catch (e) {
@@ -219,13 +219,21 @@ export class SwitchChips {
     openMenu({ el: anchor, align: "start" }, items);
   }
 
+  /** 菜单里的一项：那个模型有推理档 ⇒ 这一项只负责展开，子菜单列各档（先后 · 字照那台，勾缺省那一档），选一档才交；没有 ⇒ 点了就交。 */
+  private item(tab: Tab, kind: SwitchKind, p: AgentPick, on: string | null): MenuItem {
+    const efforts = p.efforts ?? [];
+    if (efforts.length === 0) return { label: p.text, checked: p.value === on, onClick: () => void this.pick(tab, kind, p, undefined) };
+    const steps = efforts.map((e): MenuItem => ({ label: e.text, checked: e.value === p.defaultEffort, onClick: () => void this.pick(tab, kind, p, e.value) }));
+    return { label: p.text, checked: p.value === on, submenu: [{ label: copyText("session.effort.title"), heading: true }, ...steps] };
+  }
+
   /** 选了一项：两颗都不可点、原位转圈；结局回来照 [`afterSwitch`] 换字或出 toast。 */
-  private async pick(tab: Tab, kind: SwitchKind, p: AgentPick): Promise<void> {
+  private async pick(tab: Tab, kind: SwitchKind, p: AgentPick, effort: string | undefined): Promise<void> {
     const l = this.localOf(tab.sessionId);
     if (l.pending) return;
     l.pending = { kind, pick: p };
     this.repaint(tab.sessionId);
-    const r = await this.host.send(tab, kind, p.value);
+    const r = await this.host.send(tab, kind, p.value, effort);
     l.pending = null;
     const out = afterSwitch(kind, r);
     if (out.text !== null) {

@@ -14,7 +14,9 @@
 
 use super::layout::{describe, Op, Plan};
 use super::model::Manifest;
-use super::scan::{is_under, item_at, join, Roots, BACKUP_PREFIX, ROLLED_BACK_NAME, UNDO_NAME};
+use super::scan::{
+    in_library, is_under, item_at, join, Roots, BACKUP_PREFIX, ROLLED_BACK_NAME, UNDO_NAME,
+};
 use crate::common::door::{self, Door, Refused};
 use crate::common::said::Said;
 use crate::platform::acct_view::{is_absolute, under_root, Item};
@@ -97,7 +99,7 @@ impl Run<'_> {
         // 回滚留着它（Claude Code 自己头一回用也会建它），号里那一份照备份取回。
         for (op, p) in lines
             .iter()
-            .filter(|(op, p)| *op != "DELETE" || is_under(p, &self.r.accts))
+            .filter(|(op, p)| *op != "DELETE" || in_library(p, &self.r.accts))
         {
             self.undo.push_str(&format!("{op}\t{p}\n"));
         }
@@ -161,7 +163,7 @@ impl Run<'_> {
                 self.record(&[("DELETE", to)])
             }
             Op::Remove(p) => {
-                if !is_under(p, &self.r.accts) || *p == self.r.accts {
+                if !in_library(p, &self.r.accts) {
                     return Err(copy_text(
                         "beAcctExec.remove.outside",
                         &[("path", p), ("accts", &self.r.accts)],
@@ -551,7 +553,7 @@ fn rekey_one(
     table: &str,
     config_dir: &str,
 ) -> Result<(), String> {
-    if !is_under(config_dir, &r.accts) || config_dir == r.accts {
+    if !in_library(config_dir, &r.accts) {
         return Err(copy_text(
             "beAcctExec.rollback.outside",
             &[("path", config_dir)],
@@ -606,7 +608,7 @@ fn restore_one(d: &dyn Door, r: &Roots, saved: &str, aside: &str, p: &str) -> Re
 }
 
 fn delete_one(d: &dyn Door, r: &Roots, p: &str) -> Result<(), String> {
-    if !is_under(p, &r.accts) {
+    if !in_library(p, &r.accts) {
         return Err(copy_text(
             "beAcctExec.remove.outside",
             &[("path", p), ("accts", &r.accts)],

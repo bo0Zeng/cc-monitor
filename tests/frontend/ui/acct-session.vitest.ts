@@ -42,14 +42,15 @@ beforeEach(() => {
 
 describe("换号条", () => {
   it("★ 第一次见到的记录不回填；之后新来的一条 ⇒ 流末尾一行 `work → team · 为什么`（为什么照后端配好的那一句）", () => {
-    const old = { at: NOW - 600, from: "work", to: "team", cause: { k: "order" as const }, because: "旧的那一次" };
+    const old = { at: NOW - 600, from: "work", to: "team", cause: { k: "order" as const }, because: "旧的那一次", moved: "work → team（夹具）" };
     onSessionEntry("s1", entry(read({ log: [old] })), host);
     expect(content.querySelector("[data-acct-strip]")).toBeNull();
-    const fresh = { at: NOW, from: "team", to: "lab", cause: { k: "unusable" as const }, because: "后端配好的为什么" };
+    const fresh = { at: NOW, from: "team", to: "lab", cause: { k: "unusable" as const }, because: "后端配好的为什么", moved: "team → lab（夹具）" };
     onSessionEntry("s1", entry(read({ log: [old, fresh] })), host);
     const strips = content.querySelectorAll<HTMLElement>("[data-acct-strip]");
     expect(strips).toHaveLength(1);
-    expect(strips[0].textContent).toContain(copyText("rot.strip.move", { from: "team", to: "lab" }));
+    // 「从哪个号 → 到哪个号」那一截照抄后端写好的 moved（不拿号表自己拼）。
+    expect(strips[0].textContent).toContain("team → lab（夹具）");
     expect(strips[0].textContent).toContain("后端配好的为什么");
     [...strips[0].querySelectorAll("button")].find((b) => b.textContent === copyText("acct.menu.open"))!.click();
     expect(host.openPanel).toHaveBeenCalledWith("s1", "<local>");

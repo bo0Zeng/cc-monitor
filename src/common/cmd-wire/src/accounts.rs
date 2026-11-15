@@ -11,10 +11,9 @@ use serde::{Deserialize, Serialize};
     any(test, feature = "ts"),
     ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
+#[serde(rename_all = "kebab-case")]
 pub enum AccountKind {
-    #[serde(rename = "subscription")]
     Subscription,
-    #[serde(rename = "api-key")]
     ApiKey,
 }
 
@@ -58,6 +57,9 @@ pub struct AccountAddArgs {
     pub is_default: Option<bool>,
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub dry_run: Option<bool>,
+    /// 这个号是哪一家的号（线上的 kind）；缺席 ⇒ 缺省那一家，注册表里没有 ⇒ `refused`。
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub agent: Option<crate::AgentKind>,
 }
 
 /// `accounts-remove`：删一个号（只删它自己的目录，共享库不动；改动前留备份）。
@@ -244,7 +246,8 @@ pub struct AccountLoginCmd {
     pub cmd: String,
 }
 
-/// `accounts-mcp-remove`：从这台各号共用的用户级 MCP 里删一条（所有号一起撤）。
+/// `accounts-mcp-remove`：从这台各号共用的用户级 MCP 里删 `agent` 那一家的一条（那一家所有号一起撤）。
+/// `agent` 缺席 ⇒ 缺省那一家（同 `mcp-read`）；不是同步 MCP 的那几家之一 ⇒ `bad_args`。
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -254,9 +257,13 @@ pub struct AccountLoginCmd {
 )]
 pub struct AccountMcpNameArgs {
     pub name: String,
+    #[serde(default)]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub agent: Option<crate::AgentKind>,
 }
 
-/// `accounts-mcp-pick`：两边都改了的那一条，用哪一版。`from` = 那个号里的那一版；缺席 / `null` = 共享的那一版。
+/// `accounts-mcp-pick`：`agent` 那一家两边都改了的那一条，用哪一版。`from` = 那个号里的那一版；缺席 / `null` = 共享的那一版。
+/// `agent` 同 [`AccountMcpNameArgs::agent`]。
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -268,6 +275,9 @@ pub struct AccountMcpPickArgs {
     pub name: String,
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub from: Option<String>,
+    #[serde(default)]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub agent: Option<crate::AgentKind>,
 }
 
 /// `accounts-mcp-sync`：停 / 开各号之间同步用户级 MCP（停了已同步的不删）。
@@ -309,7 +319,34 @@ pub struct AccountMcpChoice {
 )]
 pub struct AccountMcpConflict {
     pub name: String,
+    /// 哪一家的（线上的 kind）；缺席 ⇒ 缺省那一家（同 `mcp-read`）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub agent: Option<crate::AgentKind>,
+    /// 这一栏不止一家时那一家对人的叫法（后端照注册表说好；只一家 ⇒ 缺席，界面不画家）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub agent_said: Option<String>,
     pub choices: Vec<AccountMcpChoice>,
+}
+
+/// 共享集合里的一条服务器：名字 ＋ 哪一家的（缺席 ⇒ 缺省那一家，同 `mcp-read`；同名的两家各是一条，不相撞）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct AccountMcpServer {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub agent: Option<crate::AgentKind>,
+    /// 这一栏不止一家时那一家对人的叫法（后端照注册表说好；只一家 ⇒ 缺席，界面不画家）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub agent_said: Option<String>,
 }
 
 /// `accounts-mcp-read` · `accounts-mcp-remove` · `accounts-mcp-pick` · `accounts-mcp-sync` 的成品：这台各号共用的用户级 MCP 此刻的样子。
@@ -325,8 +362,8 @@ pub struct AccountMcpView {
     pub enabled: bool,
     /// 各号之间在不在同步（用户停了 ⇒ `false`：各号各管各的，`conflicts` 恒空）。
     pub sync: bool,
-    /// 共享集合里的名字（排好序）。
-    pub servers: Vec<String>,
+    /// 共享集合里的服务器：照家序，一家之内按名字排好序。
+    pub servers: Vec<AccountMcpServer>,
     pub conflicts: Vec<AccountMcpConflict>,
     /// 这一趟改写了哪几个号（只读那一条恒空）。
     pub changed: Vec<String>,
@@ -357,16 +394,8 @@ pub struct AccountsList {
 pub struct ListMeta {
     /// 这台建了账号库（清单读得出）。
     pub enabled: bool,
-    /// 账号库目录（后端认进程是哪个号用，不上线）。
-    #[serde(skip)]
-    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
-    pub accts_dir: String,
     pub manifest_path: String,
     pub updated_at: Option<String>,
-    /// 账号 0 的配置目录（清单里写了才有；后端用，不上线）。
-    #[serde(skip)]
-    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
-    pub shared_store: Option<String>,
     /// 清单里认得的号数。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub count: usize,
@@ -407,6 +436,14 @@ pub struct ScannedAccount {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub color: Option<u8>,
+    /// 这个号是哪一家的号（线上的 kind；清单里没写的照缺省那一家给出）；认不出 ⇒ 缺。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub agent: Option<crate::AgentKind>,
+    /// 号表里那一格写了、注册表里认不出的那一家（原样）：`agent` 这时缺。认得出 · 没写 ⇒ 缺（没写的照缺省那一家进 `agent`）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub unknown_agent: Option<String>,
 }
 
 /// `accounts-list` 每个号一行。
@@ -430,15 +467,36 @@ pub struct AccountRow {
     pub plate: crate::cells::Words,
     /// 账号行第二行那一句：类型字（同额度卡首行那一格）· 这个号的那一格（邮箱 · 需登录 · 端点的主机），后端写好，两端照摆。
     pub kind_line: crate::cells::Words,
-    /// 这个号的额度格（同一份 `quota-read` 成品里取，后端 `with_quota` 写，两端照摆）：订阅号一个语义位一格、照 5h · 7d 的次序，
-    /// `text` 是整格的字（位名 · 值 · 重置），`tone` 是那一格的语气（数旧也画 warn）；按量号一格（`按量` · 被拒那一句，`slot` 空串）；
-    /// 账读不出 ⇒ 一格 `5h 读不到`；没出过数的订阅号 · 账上没有 ⇒ 空。紧凑那一格（恢复菜单 · 新会话框）取第一格。
+    /// 这个号紧凑那一格（恢复菜单 · 新会话框 · 手机机器页每号后面那一格；同一份 `quota-read` 成品里取，后端 `with_quota` 写，两端照摆）：
+    /// 订阅号 ⇒ 头一个语义位那一格，`text` 是整格的字（位名 · 值 · 重置），`tone` 是那一格的语气（数旧也画 warn）；
+    /// 按量号 ⇒ 一格（`按量` · 被拒那一句，`slot` 空串）；账读不出 ⇒ 一格 `5h 读不到`；没出过数的订阅号 · 账上没有 ⇒ 空。至多一格。
     pub slots: Vec<crate::quota::SlotShow>,
+    /// 这个号在额度账上那几行（设置页照摆：收到几窗列几行）：同一份 `quota-read` 成品里那一号的 `rows`，后端 `with_quota` 照抄，
+    /// 只把抬头里账号行自己有的几格（名 · 类型 · 登录态）去掉、剩被拒到几点 · 无采样（没有就不成那一行）；
+    /// 账读不出 ⇒ 一行 `5h 读不到`；账上没有它 ⇒ 空。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(
+        any(test, feature = "ts"),
+        ts(optional, as = "Option<crate::quota::Rows>")
+    )]
+    pub quota: crate::quota::Rows,
     /// 选不了（`selectable: false`）的那一句：需登录 · 没配 key · 不隔离 · 号目录不在；选得了 ⇒ `null`。
     /// 账号 0 不经选号（起它走「不指定号」那一条）⇒ 恒 `null`。
     pub unselectable: Option<crate::cells::Words>,
+    /// 这个号那一家的 MCP 登录不在号之间同步（`mcp_logins_exec::logins_shared` 判 `None`）⇒ 那一句，两端第一行照摆；同步 ⇒ 缺。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub mcp_logins: Option<crate::cells::Words>,
     /// 给不给［登录…］：需登录、而这一家能在 app 里登录 ⇒ `true`（需登录却登不了的，`unselectable` 那一句说为什么）。
     pub login: bool,
+    /// 给不给［退出登录］：这一家声明了退出那一条、这个号是登着的订阅号 ⇒ `true`（`login-out`）；缺 ＝ 不给。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<bool>"))]
+    pub sign_out: bool,
+    /// 给不给［登录状态］：这一家声明了状态那一条、这个号是订阅号 ⇒ `true`（`login-status`）；缺 ＝ 不给。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<bool>"))]
+    pub status: bool,
     /// 进不进新建会话的选号表：隔离、有配置目录 ⇒ `true`（需登录的照样列、灰着，选不选得了看 `selectable`）；
     /// 账号 0（不经选号）· 原地模式 ⇒ `false`。两个出口照它列，不自己判。
     pub new_session: bool,
@@ -501,11 +559,11 @@ pub struct SessionAccountReply {
     pub usage: Option<crate::quota::Usage>,
     /// 那一条最后一次看到距今超过 30 分钟。
     pub stale: bool,
-    /// 悬停卡的行，一格一个字。
-    pub hover: Vec<Vec<String>>,
-    /// 悬停卡里采样那一格在第几行：出口在那一行后面接上问的是哪台（那台叫什么是出口那一侧的事）；没有 ⇒ `null`。
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number | null"))]
-    pub sampled: Option<usize>,
+    /// 悬停卡的行：一格一个字与语气（额度账那一段照它写好的格，出口照语气上色）。
+    pub hover: crate::quota::Rows,
+    /// 几点采的那一句（「采样于 12:03」，号名那一格的悬停提示，不成行）：出口在后面接上问的是哪台（那台叫什么是出口那一侧的事）；没有 ⇒ `null`。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "string | null"))]
+    pub sampled: Option<String>,
     /// 这个号与那台的默认号都确知、而且不一样。
     pub differs: bool,
     #[cfg_attr(any(test, feature = "ts"), ts(inline))]

@@ -101,6 +101,16 @@ fn pane(dir: &str, names: &[&str]) -> FileWindow {
     w
 }
 
+/// 选中第一行（还没选中时），照此刻那台的样子拿一份菜单成品（本机后端那一份真函数答），读 `a` 那一件此刻为什么做不了。
+fn act_why_now(w: &mut FileWindow, a: crate::select::Action) -> Option<String> {
+    if w.picked_rows().is_empty() {
+        let first = w.listing.rows.lock().unwrap()[0].row.name.clone();
+        w.pick_also(&[&first]);
+    }
+    crate::find::testing::seed_menu(w);
+    w.act_why(a).expect("成品当场就有")
+}
+
 /// 驱动器：一帧一帧喂**生产那个** `Workspace::frame`（时钟每帧走一秒，永不凑成双击）。
 struct Drive {
     ctx: egui::Context,
@@ -373,17 +383,8 @@ fn closing_a_tab_with_a_transfer_running_closes_it_and_the_transfer_keeps_going(
     let mut ws = Workspace::new(pane("/srv", &["a"]));
     assert!(ws.open_tab(0));
     // 第 1 个标签页上有一摞上传在飞（表里一行；看板还没落结局）。
-    let board = crate::transfer::DropBoard::default();
-    let id = ws.progress.add(
-        crate::progress::Trip::Upload {
-            board: board.clone(),
-            items: Vec::new(),
-            dir: "srv".into(),
-            ask: crate::transfer::tests::upload_ask(&[]),
-        },
-        Some("/srv".into()),
-        None,
-    );
+    let (trip, board) = crate::transfer::tests::upload_trip(&["a.bin"], "/srv");
+    let id = ws.progress.add(trip, Some("/srv".into()), None);
     // 窗口那一份上刚开的那一行，新标签页手上那一份里也看得见 ⇒ 两边是同一张表。
     assert_eq!(
         ws.tab(0, 1).progress.running(),
@@ -409,10 +410,7 @@ fn closing_a_tab_with_a_transfer_running_closes_it_and_the_transfer_keeps_going(
         .listing
         .epoch
         .load(std::sync::atomic::Ordering::SeqCst);
-    board.finish(crate::transfer::DropOutcome {
-        ok: 1,
-        ..Default::default()
-    });
+    crate::transfer::tests::land(&board, &[cmd_wire::batch::ItemState::Done], "已上传 1 项");
     ws.settle_progress();
     assert!(
         ws.pane_on(0)
@@ -456,7 +454,7 @@ fn a_gone_monitor_is_said_as_such_not_as_reconnecting() {
     let close = copy_text("rsFilewinChrome.link.close", &[]);
     assert!(painted.iter().any(|(t, _)| *t == close), "没给「关闭窗口」");
     assert_eq!(
-        ws.pane_on(0).refused_here(crate::select::Action::Rename),
+        act_why_now(ws.pane_on_mut(0), crate::select::Action::Rename),
         Some(copy_text("rsFilewinChrome.link.severedReadOnly", &[]))
     );
 }
@@ -589,14 +587,14 @@ fn a_dropped_link_shows_the_strip_keeps_the_stale_listing_and_blocks_writes() {
     );
     assert_eq!(ws.pane_on(0).listing.rows.lock().unwrap().len(), 2);
     // 写类那几件做不了，说同一句。
-    let read_only = copy_text("acctPage.offline.hover", &[]);
+    let read_only = copy_text("link.machine.readOnly", &[]);
     assert_eq!(
-        ws.pane_on(0).refused_here(crate::select::Action::Rename),
+        act_why_now(ws.pane_on_mut(0), crate::select::Action::Rename),
         Some(read_only.clone())
     );
     // 下载也要那台（读也得连着）⇒ 同样灰着（「要不要那台机器」一处判，`offline_cmd`）。
     assert_eq!(
-        ws.pane_on(0).refused_here(crate::select::Action::Download),
+        act_why_now(ws.pane_on_mut(0), crate::select::Action::Download),
         Some(read_only.clone()),
         "下载要那台机器，离线时却没挡"
     );
@@ -615,10 +613,8 @@ fn a_dropped_link_shows_the_strip_keeps_the_stale_listing_and_blocks_writes() {
             > before,
         "又连上了却没重列那一屏"
     );
-    assert_eq!(
-        ws.pane_on(0).refused_here(crate::select::Action::Rename),
-        None
-    );
+    // 又连上：写类那几颗放开。
+    assert_eq!(ws.pane_on(0).offline_cmd(crate::chrome::Cmd::Mkdir), None);
 }
 
 #[test]
@@ -644,12 +640,23 @@ fn splitting_and_unsplitting() {
 /// 两栏各自的第一个菜单会撞同一个 id ⇒ egui 当成「开着时有人点了别处」当场关掉 ⇒ 第二栏右键只关不开。
 #[test]
 fn right_click_menus_open_on_both_sides() {
-    let mut ws = two_sides(pane("/l", &["a"]), pane("/r", &["b"]));
+    let (mut l, mut r) = (pane("/l", &["a"]), pane("/r", &["b"]));
+    let _ = crate::find::testing::wire_menu(&mut l, "ws-menu-l");
+    let _ = crate::find::testing::wire_menu(&mut r, "ws-menu-r");
+    let mut ws = two_sides(l, r);
     let mut d = Drive::new();
     for (name, side) in [("b", 1usize), ("a", 0usize)] {
         let at = d.find(&mut ws, name);
         assert_eq!(at.len(), 1);
         d.click(&mut ws, at[0].center(), egui::PointerButton::Secondary);
+        // 菜单照本机后端那一份成品摆：等它回来。
+        for _ in guard_core::wall::rounds() {
+            if ws.pane_on(side).menu().is_some() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            d.frame(&mut ws, Vec::new());
+        }
         let m = ws
             .pane_on(side)
             .menu()
@@ -734,6 +741,7 @@ async fn copy_across_speaks_files_copy_with_a_common_root() {
         None,
     );
     assert_eq!(ws.pane_on(0).picked_name(), Ok("x.txt".to_string()));
+    crate::find::testing::await_product_async(ws.pane_on_mut(0)).await;
     assert!(ws.copy_to_other(None), "起不来：{:?}", ws.notice());
     settle_copy(ws.pane_on(1)).await;
     let copies = copies_on_wire(&wired);
@@ -871,31 +879,14 @@ async fn copy_across_refuses_what_it_cannot_do_and_sends_nothing() {
     assert!(!ws.copy_to_other(None));
     none_started();
     assert!(ws.notice().is_some());
-    // ③ 选中的一摞里有一个有损名 ⇒ 整摞不做。
-    {
-        let mut rows = ws.pane_on(0).listing.rows.lock().unwrap();
-        rows.push(
-            Row {
-                lossy_name: true,
-                ..file("\u{FFFD}odd", "/srv/a")
-            }
-            .into(),
-        );
-    }
-    ws.pane_on_mut(0).apply_intent(Intent::SelectAll, 0.0, None);
-    assert!(!ws.copy_to_other(None));
-    none_started();
-    assert!(
-        ws.notice().unwrap_or("").contains("\u{FFFD}odd"),
-        "没点名是哪一项：{:?}",
-        ws.notice()
-    );
-    ws.pane_on(0).listing.rows.lock().unwrap().pop();
+    // （「一摞里有个有损名 ⇒ 整摞不做」那一形不再有：有损名的行恒带字节、寻址得到；能不能复制只照那一栏的成品 `acts`。）
     // ④ 两栏同一个目录。
     ws.pane_on_mut(1).navigate_to("/srv/a".into());
     // 换目录起了一趟列目录：等它走完再量。
     side.idle().await;
     ws.pane_on_mut(0).apply_intent(Intent::SelectAll, 0.0, None);
+    crate::find::testing::await_product_async(ws.pane_on_mut(0)).await;
+    side.idle().await;
     assert!(!ws.copy_to_other(None));
     none_started();
     assert_eq!(
@@ -906,6 +897,7 @@ async fn copy_across_refuses_what_it_cannot_do_and_sends_nothing() {
     );
     // 正控：换回别的目录 ⇒ 两项（一个文件、一个目录）一组一条。
     ws.pane_on_mut(1).navigate_to("/srv/b".into());
+    crate::find::testing::await_product_async(ws.pane_on_mut(0)).await;
     assert!(ws.copy_to_other(None), "起不来：{:?}", ws.notice());
     settle_copy(ws.pane_on(1)).await;
     assert_eq!(wired.count("files-copy"), 1);
@@ -921,6 +913,7 @@ async fn copy_across_takes_the_whole_selection_and_a_directory_goes_recursive() 
     ws.focus_side(0);
     ws.pane_on_mut(0)
         .apply_intent(crate::select::Intent::SelectAll, 0.0, None);
+    crate::find::testing::await_product_async(ws.pane_on_mut(0)).await;
     assert!(ws.copy_to_other(None), "起不来：{:?}", ws.notice());
     let b = settle_copy(ws.pane_on(1)).await;
     let copies = copies_on_wire(&wired);
@@ -1399,19 +1392,9 @@ async fn screenshot_for_the_shots_tool() {
     }
     // 一趟下载在路上（进度那一行）。
     if scene == "pull" {
-        let pull = crate::download::DownloadBoard::default();
-        pull.begin("release.tar.gz");
-        pull.progress(1_200_000, 3_400_000);
-        w.adopt_trip(
-            crate::progress::Trip::Download {
-                board: pull,
-                name: "release.tar.gz".into(),
-                src: vdir.join("release.tar.gz").to_string_lossy().to_string(),
-                dest: "~/下载/release.tar.gz".into(),
-            },
-            None,
-            None,
-        );
+        let (trip, pull) = crate::transfer::tests::download_trip("release.tar.gz");
+        crate::transfer::tests::moved(&pull, (0, 1), (1_200_000, 3_400_000), Some("约 4 秒"));
+        w.adopt_trip(trip, None, None);
     }
     // 就地新建文件夹那一格把名字清空了就回车：原因挂在那一格下面。
     if scene == "mkdir-error" {
@@ -1422,38 +1405,13 @@ async fn screenshot_for_the_shots_tool() {
     // 「进度」表：两趟在跑（上传一摞 · 下载）· 删除一个文件夹（那台撤不动 ⇒「停」灰着）· 上传失败 · 复制到另一台完成。
     if scene == "progress" {
         use crate::progress::Trip;
-        let items: Vec<crate::transfer::Pending> =
-            ["release-1.tar.gz", "release-2.tar.gz", "release-3.tar.gz"]
-                .iter()
-                .filter_map(|n| crate::transfer::Pending::into_remote_dir(&format!("/tmp/{n}"), &d))
-                .collect();
-        let up = crate::transfer::DropBoard::default();
-        w.progress.add(
-            Trip::Upload {
-                board: up.clone(),
-                ask: crate::transfer::tests::upload_ask(&items),
-                items: items.clone(),
-                dir: "orders-service".into(),
-            },
-            Some(d.clone()),
-            None,
-        );
-        up.cancels().mint("release-2.tar.gz");
-        up.progress("release-1.tar.gz", 20_000_000, 20_000_000);
-        up.progress("release-2.tar.gz", 4_400_000, 20_000_000);
-        let down = crate::download::DownloadBoard::default();
-        w.progress.add(
-            Trip::Download {
-                board: down.clone(),
-                name: "logs-0930.zip".into(),
-                src: vdir.join("logs-0930.zip").to_string_lossy().to_string(),
-                dest: "~/下载/logs-0930.zip".into(),
-            },
-            None,
-            None,
-        );
-        down.begin("logs-0930.zip");
-        down.progress(58_000_000, 480_000_000);
+        let releases = ["release-1.tar.gz", "release-2.tar.gz", "release-3.tar.gz"];
+        let (trip, up) = crate::transfer::tests::upload_trip(&releases, &d);
+        w.progress.add(trip, Some(d.clone()), None);
+        crate::transfer::tests::moved(&up, (1, 3), (24_400_000, 60_000_000), Some("约 40 秒"));
+        let (trip, down) = crate::transfer::tests::download_trip("logs-0930.zip");
+        w.progress.add(trip, None, None);
+        crate::transfer::tests::moved(&down, (0, 1), (58_000_000, 480_000_000), Some("约 3 分钟"));
         let rm = crate::batch::BatchBoard::new(batch_core::Plan {
             verb: batch_core::Verb::Delete,
             cmd: "files-delete",
@@ -1470,38 +1428,30 @@ async fn screenshot_for_the_shots_tool() {
             Some(d.clone()),
             None,
         );
-        rm.progress(batch_core::Tick {
-            done: 1,
-            total: 2,
-            bytes: None,
-        });
-        let failed = crate::transfer::DropBoard::default();
-        w.progress.add(
-            Trip::Upload {
-                board: failed.clone(),
-                ask: crate::transfer::tests::upload_ask(&items),
-                items: items.clone(),
-                dir: "orders-service".into(),
+        rm.progress(
+            batch_core::Tick {
+                done: 1,
+                total: 2,
+                bytes: None,
             },
-            Some(d.clone()),
             None,
         );
-        failed.finish(crate::transfer::DropOutcome {
-            ok: 1,
-            failed: vec![
-                (
-                    "release-2.tar.gz".into(),
-                    crate::source::Failed {
-                        code: "io_failed".into(),
-                        said: copy_core::copy_text("reason.io.full", &[]),
-                        detail: "时刻：2026-10-08 15:40:02 +08:00\n机器：Linux x86_64 · 后端 p13-shots\n命令：files-commit-upload\n码：io_failed\n原话：No space left on device (os error 28)".into(),
-                        data: None,
-                    },
-                ),
-                ("release-3.tar.gz".into(), copy_core::copy_text("reason.io.full", &[]).into()),
+        let (trip, failed) = crate::transfer::tests::upload_trip(&releases, &d);
+        w.progress.add(trip, Some(d.clone()), None);
+        let full = |k: &str, detail: Option<&str>| cmd_wire::batch::BatchOutcome {
+            code: Some("io_failed".into()),
+            reason: Some(copy_core::copy_text("reason.io.full", &[])),
+            detail: detail.map(str::to_string),
+            ..cmd_wire::batch::BatchOutcome::bare(k, cmd_wire::batch::ItemState::Failed)
+        };
+        failed.set(batch_core::Phase::Ended(cmd_wire::batch::BatchReply {
+            outcomes: vec![
+                cmd_wire::batch::BatchOutcome::bare("0", cmd_wire::batch::ItemState::Done),
+                full("1", Some("时刻：2026-10-08 15:40:02 +08:00\n机器：Linux x86_64 · 后端 p13-shots\n命令：transfer-copy\n码：io_failed\n原话：No space left on device (os error 28)")),
+                full("2", None),
             ],
-            ..Default::default()
-        });
+            said: "上传 3 项 · 完成 1 · 失败 ×2".into(),
+        }));
         let cross = crate::batch::BatchBoard::new(batch_core::Plan {
             verb: batch_core::Verb::Copy,
             cmd: "transfer-copy",
@@ -1556,22 +1506,18 @@ async fn screenshot_for_the_shots_tool() {
             total: 5,
             bytes: None,
         };
-        cut.progress(t);
+        cut.progress(t, None);
         cut.set(batch_core::Phase::Cut(batch_core::cut_line(
             &cut.plan(),
             &t,
         )));
         w.progress.settle(chrono_like_today_at(13, 41));
     }
-    // 结局行那两颗：上传一摞停了（［继续］：没传的那几项再开单，续传先对尾块）· 复制到另一台部分失败（［重试失败的］）；
+    // 结局行那两颗：上传一组停了（撤下的那几项回 `cancelled`）· 复制到另一台部分失败（［重试失败的］）；
     //   状态栏「已选 3 项 · 大小」（都是文件）。
     if scene == "batch-end" {
         use crate::progress::Trip;
-        let items: Vec<crate::transfer::Pending> =
-            ["release-1.tar.gz", "release-2.tar.gz", "release-3.tar.gz"]
-                .iter()
-                .filter_map(|n| crate::transfer::Pending::into_remote_dir(&format!("/tmp/{n}"), &d))
-                .collect();
+        let releases = ["release-1.tar.gz", "release-2.tar.gz", "release-3.tar.gz"];
         let cross = crate::batch::BatchBoard::new(batch_core::Plan {
             verb: batch_core::Verb::Copy,
             cmd: "transfer-copy",
@@ -1605,41 +1551,21 @@ async fn screenshot_for_the_shots_tool() {
             ],
             said: "复制 3 项 · 完成 1 · 跳过 1 · 失败 ×1".into(),
         }));
-        let up = crate::transfer::DropBoard::default();
-        w.progress.add(
-            Trip::Upload {
-                board: up.clone(),
-                ask: crate::transfer::tests::upload_ask(&items),
-                items: items.clone(),
-                dir: "orders-service".into(),
-            },
-            Some(d.clone()),
-            None,
-        );
-        up.cancels().request();
-        let cancelled: crate::source::Failed = crate::transfer::CANCELLED.as_str().into();
-        up.finish(crate::transfer::DropOutcome {
-            ok: 1,
-            failed: vec![
-                ("release-2.tar.gz".into(), cancelled.clone()),
-                ("release-3.tar.gz".into(), cancelled),
+        let (trip, up) = crate::transfer::tests::upload_trip(&releases, &d);
+        w.progress.add(trip, Some(d.clone()), None);
+        crate::transfer::tests::land(
+            &up,
+            &[
+                cmd_wire::batch::ItemState::Done,
+                cmd_wire::batch::ItemState::Cancelled,
+                cmd_wire::batch::ItemState::Cancelled,
             ],
-            ..Default::default()
-        });
-        // 一趟下载在跑（表最底下那一行，只为让上面两行整行摆得下）。
-        let down = crate::download::DownloadBoard::default();
-        w.progress.add(
-            Trip::Download {
-                board: down.clone(),
-                name: "logs-0930.zip".into(),
-                src: vdir.join("logs-0930.zip").to_string_lossy().to_string(),
-                dest: "~/下载/logs-0930.zip".into(),
-            },
-            None,
-            None,
+            "上传 3 项 · 完成 1 · 已停 2",
         );
-        down.begin("logs-0930.zip");
-        down.progress(58_000_000, 480_000_000);
+        // 一趟下载在跑（表最底下那一行，只为让上面两行整行摆得下）。
+        let (trip, down) = crate::transfer::tests::download_trip("logs-0930.zip");
+        w.progress.add(trip, None, None);
+        crate::transfer::tests::moved(&down, (0, 1), (58_000_000, 480_000_000), Some("约 3 分钟"));
         w.pick_also(&["Cargo.toml", "README.md"]);
         w.progress.settle(chrono_like_today_at(13, 41));
     }
@@ -1703,10 +1629,10 @@ async fn screenshot_for_the_shots_tool() {
         let i = row_of(&w, "main.rs");
         w.begin_rename(i);
         w.write_prompt_mut().unwrap().text = "retry.rs".into();
-        let e = copy_core::copy_text("beFilesRead.ioKind.denied", &[]);
+        let why = copy_core::io_reason(std::io::ErrorKind::PermissionDenied);
         let said = copy_core::copy_text(
             "beFilesWrite.rename.failed",
-            &[("e", &e), ("src", "main.rs"), ("dst", "retry.rs")],
+            &[("why", &why), ("src", "main.rs"), ("dst", "retry.rs")],
         );
         let l = |k: &str| copy_core::copy_text(k, &[]);
         let detail = [
@@ -1743,16 +1669,14 @@ async fn screenshot_for_the_shots_tool() {
     // 上传遇到同名：本机三份、两份同名 ⇒ 那台后端探了回同名清单，冲突框照它画（时刻是后端写好的字）。
     if scene == "upload-clash" {
         let local = base.join("..").join("..").join("local");
-        let items: Vec<crate::transfer::Pending> = ["main.rs", "README.md", "notes.txt"]
+        let paths: Vec<String> = ["main.rs", "README.md", "notes.txt"]
             .iter()
-            .filter_map(|n| {
-                crate::transfer::Pending::into_remote_dir(&local.join(n).to_string_lossy(), &d)
-            })
+            .map(|n| local.join(n).to_string_lossy().into_owned())
             .collect();
-        let b = crate::batch::BatchBoard::new(batch_core::Plan {
-            into: Some(d.clone()),
-            ..crate::transfer::tests::upload_ask(&items).plan()
-        });
+        let b = crate::batch::BatchBoard::new(
+            crate::transfer::upload_plan(&w.source.origin(), w.source.label(), &paths, &d, None)
+                .unwrap(),
+        );
         let c = |key: &str, name: &str, size: u64, at: &str, there: u64, there_at: &str| {
             cmd_wire::batch::Conflict {
                 key: key.into(),
@@ -1887,7 +1811,7 @@ async fn screenshot_for_the_shots_tool() {
         }
         // 再 Ctrl 点上 main.rs 与 notes.txt（选中态本体那一口，同键盘 / 点击走的那一个）。
         w.pick_also(&["main.rs", "notes.txt"]);
-        w.perform(crate::select::Action::Delete, None);
+        crate::find::testing::perform_now_async(&mut w, crate::select::Action::Delete).await;
     }
     // 计划反查那两张：目录落在一片的仓库里 ⇒ 「格」一列 ＋ 预览头「归属」；右键多「在计划里看」。
     //   合成后端照真后端的回包形状答 `plan-files`（中性例子）⇒ 等它落到窗口上。
@@ -2035,19 +1959,9 @@ async fn screenshot_for_the_shots_tool() {
                     self.ws.close_tab(0, a);
                 }
                 if self.n == 20 && self.scene == "close-window" {
-                    let down = crate::download::DownloadBoard::default();
-                    self.ws.progress.add(
-                        crate::progress::Trip::Download {
-                            board: down.clone(),
-                            name: "logs-0930.zip".into(),
-                            src: "/x/logs-0930.zip".into(),
-                            dest: "~/下载/logs-0930.zip".into(),
-                        },
-                        None,
-                        None,
-                    );
-                    down.begin("logs-0930.zip");
-                    down.progress(12, 100);
+                    let (trip, down) = crate::transfer::tests::download_trip("logs-0930.zip");
+                    self.ws.progress.add(trip, None, None);
+                    crate::transfer::tests::moved(&down, (0, 1), (12, 100), None);
                     self.ws.begin_close_ask();
                 }
                 // 改权限：现值（644）答回来、预填过之后勾上三个执行位 ⇒ 755。
@@ -2340,19 +2254,9 @@ fn closing_the_window_asks_once_listing_unsaved_pages_and_running_trips() {
     );
     // 一页改了没存 ＋ 一趟下载在跑。
     *ws.pane_on_mut(1).editing_text_mut().unwrap() = "x2\n".into();
-    let down = crate::download::DownloadBoard::default();
-    ws.progress.add(
-        crate::progress::Trip::Download {
-            board: down.clone(),
-            name: "logs.zip".into(),
-            src: "/r/logs.zip".into(),
-            dest: "/tmp/logs.zip".into(),
-        },
-        None,
-        None,
-    );
-    down.begin("logs.zip");
-    down.progress(12, 100);
+    let (trip, down) = crate::transfer::tests::download_trip("logs.zip");
+    ws.progress.add(trip, None, None);
+    crate::transfer::tests::moved(&down, (0, 1), (12, 100), None);
     assert!(
         close_frame(&mut d, &mut ws, true).contains(&cancel),
         "有东西会丢，关窗却没拦"
@@ -2384,17 +2288,8 @@ fn closing_the_window_asks_once_listing_unsaved_pages_and_running_trips() {
     );
     // 只剩一趟在跑（没有没保存的）⇒ 那一问上没有「全部保存后关闭」。
     let mut ws = two_sides(pane("/l", &["a"]), pane("/r", &["b"]));
-    let up = crate::transfer::DropBoard::default();
-    ws.progress.add(
-        crate::progress::Trip::Upload {
-            board: up,
-            items: Vec::new(),
-            dir: "l".into(),
-            ask: crate::transfer::tests::upload_ask(&[]),
-        },
-        Some("/l".into()),
-        None,
-    );
+    let (trip, _up) = crate::transfer::tests::upload_trip(&["a.bin"], "/l");
+    ws.progress.add(trip, Some("/l".into()), None);
     let mut d = Drive::new();
     assert!(close_frame(&mut d, &mut ws, true).contains(&cancel));
     let painted = d.frame(&mut ws, Vec::new());
@@ -2647,20 +2542,18 @@ fn opening_a_text_opens_an_edit_tab_beside_the_folder_and_again_switches_to_it()
     assert_eq!(ws.tabs_on(0), 2, "答了「不保存」那一页没关");
 }
 
-/// 「进度」表里该画全的那几行字：每趟下载两行（名字 · 落点）＋ 失败那一趟的两句原因。排好序。
+/// 「进度」表里该画全的那几行字：每组下载的标题（落点）＋ 失败那一组的两句原因。排好序。
 fn progress_rows_of(downloads: usize) -> Vec<String> {
     let mut want: Vec<String> = (0..downloads)
-        .flat_map(|k| {
-            [
-                copy_text(
-                    "rsFilewinProgress.download.running",
-                    &[("name", &format!("big-{k}.iso"))],
-                ),
-                copy_text(
-                    "rsFilewinProgress.download.detail",
-                    &[("dest", &format!("/tmp/big-{k}.iso"))],
-                ),
-            ]
+        .map(|k| {
+            copy_text(
+                "rsFilewinBatch.ask.title",
+                &[
+                    ("action", &batch_core::Verb::Download.text()),
+                    ("n", "1"),
+                    ("dir", &format!("/tmp/big-{k}.iso")),
+                ],
+            )
         })
         .chain([
             "r-2.tar.gz：磁盘满".to_string(),
@@ -2671,53 +2564,50 @@ fn progress_rows_of(downloads: usize) -> Vec<String> {
     want
 }
 
-/// 「进度」表照行数长高：四趟在跑 ＋ 一趟上传失败（两个没成，自动摊开）⇒ 失败那一行与它底下每一句原因都整个画在表里，
-/// 不被状态栏压住、不在表的可见区外面。改值验：失败那一行不摊开（原因挤成一行截断）⇒ 本条红。
-#[test]
-fn the_progress_table_grows_to_show_an_expanded_failure_whole() {
-    use crate::progress::Trip;
-    let dir = "/srv/data";
-    let mut ws = Workspace::new(pane(dir, &["a.bin"]));
-    for k in 0..4 {
-        let down = crate::download::DownloadBoard::default();
+/// 表里摆 `n` 组在跑的下载（`dir/big-k.iso` → `/tmp/big-k.iso`，走到一成）＋ 一组上传失败（两项没成，各一句原因）。
+fn busy_table_with_a_failure(ws: &Workspace, dir: &str, n: usize) {
+    for k in 0..n {
+        let name = format!("big-{k}.iso");
+        let plan = crate::download::one_plan(
+            &crate::source::Origin::named("devbox"),
+            cmd_wire::files::WirePath::from(format!("{dir}/{name}").as_str()),
+            &name,
+            &format!("/tmp/{name}"),
+        )
+        .unwrap();
+        let down = crate::batch::BatchBoard::new(plan);
         ws.progress.add(
-            Trip::Download {
+            crate::progress::Trip::Batch {
                 board: down.clone(),
-                name: format!("big-{k}.iso"),
-                src: format!("{dir}/big-{k}.iso"),
-                dest: format!("/tmp/big-{k}.iso"),
+                icon: egui_phosphor::regular::DOWNLOAD_SIMPLE,
             },
             None,
             None,
         );
-        down.begin(&format!("big-{k}.iso"));
-        down.progress(1, 10);
+        crate::transfer::tests::moved(&down, (0, 1), (1, 10), None);
     }
-    let items: Vec<crate::transfer::Pending> = ["r-2.tar.gz", "r-3.tar.gz"]
-        .iter()
-        .filter_map(|n| crate::transfer::Pending::into_remote_dir(&format!("/tmp/{n}"), dir))
-        .collect();
-    let failed = crate::transfer::DropBoard::default();
-    ws.progress.add(
-        Trip::Upload {
-            board: failed.clone(),
-            ask: crate::transfer::tests::upload_ask(&items),
-            items,
-            dir: "data".into(),
-        },
-        Some(dir.into()),
-        None,
-    );
-    failed.finish(crate::transfer::DropOutcome {
-        failed: vec![
-            (
-                "r-2.tar.gz".into(),
-                copy_core::copy_text("reason.io.full", &[]).into(),
-            ),
-            ("r-3.tar.gz".into(), "没有权限".into()),
+    let (trip, failed) = crate::transfer::tests::upload_trip(&["r-2.tar.gz", "r-3.tar.gz"], dir);
+    ws.progress.add(trip, Some(dir.into()), None);
+    let why = |k: &str, reason: String| cmd_wire::batch::BatchOutcome {
+        reason: Some(reason),
+        ..cmd_wire::batch::BatchOutcome::bare(k, cmd_wire::batch::ItemState::Failed)
+    };
+    failed.set(batch_core::Phase::Ended(cmd_wire::batch::BatchReply {
+        outcomes: vec![
+            why("0", copy_core::copy_text("reason.io.full", &[])),
+            why("1", "没有权限".into()),
         ],
-        ..Default::default()
-    });
+        said: "上传 2 项 · 失败 ×2".into(),
+    }));
+}
+
+/// 「进度」表照行数长高：四趟在跑 ＋ 一趟上传失败（两个没成，自动摊开）⇒ 失败那一行与它底下每一句原因都整个画在表里，
+/// 不被状态栏压住、不在表的可见区外面。改值验：失败那一行不摊开（原因挤成一行截断）⇒ 本条红。
+#[test]
+fn the_progress_table_grows_to_show_an_expanded_failure_whole() {
+    let dir = "/srv/data";
+    let mut ws = Workspace::new(pane(dir, &["a.bin"]));
+    busy_table_with_a_failure(&ws, dir, 4);
     let screen = egui::vec2(1280.0, 800.0);
     let painted = frames_at(&mut ws, screen, 6);
     assert!(ws.progress.is_open(), "有失败却没自动摊开「进度」表");
@@ -2766,49 +2656,9 @@ fn the_progress_table_grows_to_show_an_expanded_failure_whole() {
 /// （表的高度照这一帧真排出来的行高定，不是照估的行高；估矮了最底那一行被裁掉半截）。
 #[test]
 fn the_progress_table_is_tall_enough_that_no_row_is_clipped() {
-    use crate::progress::Trip;
     let dir = "/srv/data";
     let mut ws = Workspace::new(pane(dir, &["a.bin"]));
-    for k in 0..5 {
-        let down = crate::download::DownloadBoard::default();
-        ws.progress.add(
-            Trip::Download {
-                board: down.clone(),
-                name: format!("big-{k}.iso"),
-                src: format!("{dir}/big-{k}.iso"),
-                dest: format!("/tmp/big-{k}.iso"),
-            },
-            None,
-            None,
-        );
-        down.begin(&format!("big-{k}.iso"));
-        down.progress(1, 10);
-    }
-    let items: Vec<crate::transfer::Pending> = ["r-2.tar.gz", "r-3.tar.gz"]
-        .iter()
-        .filter_map(|n| crate::transfer::Pending::into_remote_dir(&format!("/tmp/{n}"), dir))
-        .collect();
-    let failed = crate::transfer::DropBoard::default();
-    ws.progress.add(
-        Trip::Upload {
-            board: failed.clone(),
-            ask: crate::transfer::tests::upload_ask(&items),
-            items,
-            dir: "data".into(),
-        },
-        Some(dir.into()),
-        None,
-    );
-    failed.finish(crate::transfer::DropOutcome {
-        failed: vec![
-            (
-                "r-2.tar.gz".into(),
-                copy_core::copy_text("reason.io.full", &[]).into(),
-            ),
-            ("r-3.tar.gz".into(), "没有权限".into()),
-        ],
-        ..Default::default()
-    });
+    busy_table_with_a_failure(&ws, dir, 5);
     let ctx = egui::Context::default();
     crate::theme::install(&ctx, &crate::theme::testing::default_theme());
     let screen = egui::vec2(1280.0, 800.0);
@@ -2845,41 +2695,66 @@ fn the_progress_table_is_tall_enough_that_no_row_is_clipped() {
     }
 }
 
-/// 断线时哪几件做不了 —— 唯一一处（`offline_cmd`）：要碰那台的一律「离线 · 只读」（含「终端」），只改看法的照常；连着时全都照常。
+/// 断线时哪几件做不了：命令栏那几颗（`offline_cmd`）要碰那台的一律「离线 · 只读」（含「终端」），只改看法的照常；
+/// 选中的那几件照菜单成品（那台的样子交给本机后端判）：要碰那台的灰着、进目录照常。连着时全都照常。
 #[test]
 fn offline_greys_exactly_what_needs_the_machine() {
     use crate::chrome::Cmd;
     use crate::select::Action as A;
     let mut ws = Workspace::new(pane("/srv/data", &["a.bin"]));
-    let all = [
+    let cmds = [
         (Cmd::Mkdir, true),
         (Cmd::NewFile, true),
         (Cmd::Upload, true),
         (Cmd::Term, true),
         (Cmd::Across, true),
-        (Cmd::Act(A::Download), true),
-        (Cmd::Act(A::Edit), true),
-        (Cmd::Act(A::Delete), true),
-        (Cmd::Act(A::Properties), true),
-        (Cmd::Act(A::Open), false),
         (Cmd::Sidebar, false),
         (Cmd::Hidden, false),
         (Cmd::Split, false),
         (Cmd::Preview, false),
     ];
-    for (c, _) in all {
+    let acts = [
+        (A::Download, true),
+        (A::Copy, true),
+        (A::Delete, true),
+        (A::Properties, true),
+    ];
+    for (c, _) in cmds {
         assert_eq!(ws.pane_on(0).offline_cmd(c), None, "连着时 {c:?} 却灰了");
     }
-    ws.gate.set(crate::source::LinkSeen::Down);
-    let pane = ws.pane_on(0);
-    for (c, greyed) in all {
+    for (a, _) in acts {
         assert_eq!(
-            pane.offline_cmd(c).is_some(),
-            greyed,
+            act_why_now(ws.pane_on_mut(0), a),
+            None,
+            "连着时 {a:?} 却灰了"
+        );
+    }
+    ws.gate.set(crate::source::LinkSeen::Down);
+    let read_only = copy_core::copy_text("link.machine.readOnly", &[]);
+    for (c, greyed) in cmds {
+        assert_eq!(
+            ws.pane_on(0).offline_cmd(c),
+            greyed.then(|| read_only.clone()),
             "断线时 {c:?} 该{}灰",
             if greyed { "" } else { "不" }
         );
     }
+    for (a, _) in acts {
+        assert_eq!(
+            act_why_now(ws.pane_on_mut(0), a),
+            Some(read_only.clone()),
+            "断线时 {a:?} 该灰"
+        );
+    }
+    // 进目录照常（进去那一下自己会说断开）。
+    let mut ws = Workspace::new(pane("/srv/data", &["a.bin"]));
+    ws.pane_on_mut(0).listing.rows.lock().unwrap()[0].row.is_dir = true;
+    ws.gate.set(crate::source::LinkSeen::Down);
+    assert_eq!(
+        act_why_now(ws.pane_on_mut(0), A::Open),
+        None,
+        "断线时进目录灰了"
+    );
 }
 
 /// 标签页那一组键（甲5 键盘表）：Ctrl+Tab / Ctrl+Shift+Tab 绕着走 · Ctrl+n 第 n 个 · F6 换栏 · Ctrl+B 左栏 · Ctrl+H 隐藏文件 · Alt+P 预览。

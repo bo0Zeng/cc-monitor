@@ -27,14 +27,19 @@ class PendingResendTest {
     ) : HostOutbox {
         val settled = mutableMapOf<String, String>()
 
+        /** 记回去的那台拒时那一句（拒了才有）。 */
+        val refusedSaid = mutableMapOf<String, String?>()
+
         override suspend fun due() = rows.filter { it.id !in settled && it.sid != null && (it.outcome == PendingOutcome.PENDING || it.outcome == PendingOutcome.UNSURE) }
 
         override suspend fun settle(
             id: String,
             outcome: String,
             attempts: Int,
+            refusedSaid: String?,
         ) {
             settled[id] = outcome
+            this.refusedSaid[id] = refusedSaid
         }
 
         override fun attachments(id: String) = if (id == "p2") listOf("att-1") else emptyList()
@@ -65,10 +70,11 @@ class PendingResendTest {
             assertEquals(listOf("p1" to "s1", "p2" to "s2"), puts.map { it?.get("id") to it?.get("sid") })
             assertEquals("随带的附件照带", listOf("att-1"), puts[1]?.get("attachments"))
             assertEquals(mapOf("p1" to PendingOutcome.DELIVERED, "p2" to PendingOutcome.DELIVERED), box.settled)
+            assertEquals("收了的不带拒时那一句", mapOf("p1" to null, "p2" to null), box.refusedSaid)
         }
 
     @Test
-    fun `那台拒了 ⇒ 记成没送到、不再交；没回执（断着 · 期限到）⇒ 留着等下一回接上`() =
+    fun `那台拒了 ⇒ 记成没送到（连那台那一句）、不再交；没回执（断着 · 期限到）⇒ 留着等下一回接上`() =
         runTest {
             val link = FakeCoreLink().apply { state.value = linkConnecting() }
             val replies = ArrayDeque(listOf<Reply>(Reply.Failed(Failed("too_long", "s-refused", "")), Reply.TimedOut("t-said", "")))
@@ -78,6 +84,7 @@ class PendingResendTest {
             link.state.value = linkUp()
             runCurrent()
             assertEquals(mapOf("p1" to PendingOutcome.REFUSED), box.settled)
+            assertEquals("★ 拒了 ⇒ 那台那一句同一下记回去（重开照它画）", mapOf("p1" to "s-refused"), box.refusedSaid)
         }
 
     @Test

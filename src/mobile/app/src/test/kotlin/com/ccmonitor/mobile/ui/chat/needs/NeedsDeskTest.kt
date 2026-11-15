@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.ui.chat.needs
 
+import com.ccmonitor.mobile.core.claude.link.RawJson
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.copy.DurationFormat
 import com.ccmonitor.mobile.core.copy.copyText
@@ -72,6 +73,9 @@ class NeedsDeskTest {
         var answered: String? = null
         var stays: Boolean = true
 
+        /** 核心把这一条分进哪一列（`"asks"` · `"manual"`）；`null` ⇒ 照核心那一判（交了 ask ⇒ 待答请求）。 */
+        var column: String? = null
+
         /** 这一条那一项上那台写好的会走的那一句（`{dur}` 空位）。 */
         val clock: Map<String, Any?> = mapOf("text" to "核心·t {dur}", "head" to "核心·h {dur}")
 
@@ -94,6 +98,41 @@ class NeedsDeskTest {
             )
     }
 
+    /**
+     * 核心问一圈那一口的替身（只这一台 `box`）：照那台那条流问 `sessions-needs`（判据照它数问了几次），整份照合好的那一形交回
+     * （每项 · 每条收场的带上是 `box`）。合法本身另有 Rust 判据管。
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun coreOf(
+        link: FakeCoreLink,
+        board: Board,
+    ): suspend (String) -> String =
+        {
+            val data = (link.call("sessions-needs", null) as Reply.Ok).data as Map<String, Any?>
+            val items = data.getValue("items") as List<Any?>
+            // 分两列照核心那一判（会话且交了 ask ⇒ 待答请求；判据可点名本条进哪一列），合法本身另有 Rust 判据管。
+            val (asks, manual) =
+                items.partition {
+                    val x = it as Map<String, Any?>
+                    val session = x["session"] as Map<String, Any?>?
+                    val named = board.column?.takeIf { session?.get("sid") == "s1" }
+                    named?.let { c -> c == "asks" } ?: (x["kind"] == "session" && (session?.get("needs") as Map<String, Any?>?)?.get("ask") != null)
+                }
+            val column = { xs: List<Any?>, head: String ->
+                mapOf("items" to xs.map { mapOf("origin" to "box", "item" to it) }, "total" to xs.size, "head" to head, "sure" to true)
+            }
+            RawJson.write(
+                mapOf(
+                    "asks" to column(asks, "核心·待答请求"),
+                    "manual" to column(manual, "核心·头"),
+                    "unreadable" to emptyList<Any>(),
+                    "down" to emptyList<Any>(),
+                    "ended" to (data.getValue("ended") as List<Map<String, Any?>>).map { it + ("origin" to "box") },
+                    "windowTitle" to "核心·标题",
+                ),
+            )
+        }
+
     private class Rig(
         val link: FakeCoreLink,
         val board: Board,
@@ -103,10 +142,15 @@ class NeedsDeskTest {
 
     private fun TestScope.rig(
         mine: Map<String, Any?>?,
+        column: String? = null,
         answer: (Map<String, Any?>?) -> Reply = { Reply.Ok(mapOf("result" to "answered")) },
     ): Rig {
         val link = FakeCoreLink()
-        val board = Board().also { it.mine = mine }
+        val board =
+            Board().also {
+                it.mine = mine
+                it.column = column
+            }
         link.answer = { cmd, args ->
             when (cmd) {
                 "sessions-needs" -> board.reply()
@@ -115,8 +159,8 @@ class NeedsDeskTest {
             }
         }
         val pushes = MutableSharedFlow<Changed>(extraBufferCapacity = 16)
-        val needs = NeedsBoard(MutableStateFlow(mapOf("box" to NeedsSource(link, pushes))), backgroundScope)
-        val desk = NeedsDesk(link, needs.state.map { it["box"] }, { needs.reask("box") }, MutableStateFlow("s1"), "box", backgroundScope, now = { 0L })
+        val needs = NeedsBoard(MutableStateFlow(mapOf("box" to NeedsSource(link, pushes) { 1L })), backgroundScope, coreOf(link, board))
+        val desk = NeedsDesk(link, needs.state.map { it.merged }, "box", needs::reask, MutableStateFlow("s1"), "box", backgroundScope, now = { 0L })
         runCurrent()
         advanceTimeBy(NeedsBoard.DEBOUNCE_MS + 1)
         runCurrent()
@@ -136,9 +180,10 @@ class NeedsDeskTest {
             assertEquals("等批准 · Bash", bar.head)
             assertEquals("touch a.txt", bar.line2)
             assertTrue("挂着请求 ⇒ 有［答］", bar.canAnswer)
+            assertEquals("界面答得了的 ⇒ 抬头是待答请求", copyText("needs.asks.title"), bar.title)
             // 第一行是那台写好的那一句（`clock.head`），已等那一截照 waitedMs ＋ 收到以后走过的填，过 60 s 多 1m。
-            assertEquals("核心·h ${DurationFormat.short(12_000L)}", bar.firstLine(0L))
-            assertEquals("核心·h ${DurationFormat.short(72_000L)}", bar.firstLine(60_000L))
+            assertEquals(DurationFormat.clock("核心·h {dur}", 0L, 12_000L, 0L), bar.firstLine(0L))
+            assertEquals(DurationFormat.clock("核心·h {dur}", 0L, 72_000L, 0L), bar.firstLine(60_000L))
         }
 
     @Test
@@ -186,8 +231,40 @@ class NeedsDeskTest {
             val bar = r.desk.state.value.bar!!
             assertEquals("只能在终端里答", bar.line2)
             assertFalse(bar.canAnswer)
+            assertEquals("答不了的 ⇒ 抬头是需手动", copyText("beSession.needs.unknown"), bar.title)
             r.desk.open()
             assertNull("答不了的不升抽屉", r.desk.state.value.sheet)
+        }
+
+    @Test
+    fun `挡着终端的那一条在核心的需手动列：抬头需手动、第二行在终端里答、没有［答］`() =
+        runTest {
+            val r = rig(needs(null, manual = "在终端里答"))
+            val bar = r.desk.state.value.bar!!
+            assertEquals(copyText("beSession.needs.unknown"), bar.title)
+            assertEquals("在终端里答", bar.line2)
+            assertFalse("那台那一句用界面字体", bar.code)
+            assertFalse(bar.canAnswer)
+        }
+
+    @Test
+    fun `抬头 · 第二行 · 有没有［答］只照核心分的列，不另看 ask：交了 ask 却在需手动列 ⇒ 需手动、第二行那台那一句、不给答、不升抽屉`() =
+        runTest {
+            val r = rig(needs("approve", manual = "核心·答不了那一句"), column = "manual")
+            val bar = r.desk.state.value.bar!!
+            assertEquals("在需手动列 ⇒ 抬头是需手动", copyText("beSession.needs.unknown"), bar.title)
+            assertEquals("需手动 ⇒ 第二行是 manualText", "核心·答不了那一句", bar.line2)
+            assertFalse(bar.code)
+            assertFalse("需手动列 ⇒ 没有［答］", bar.canAnswer)
+            r.desk.open()
+            assertNull("需手动列 ⇒ 不升抽屉", r.desk.state.value.sheet)
+            r.board.column = "asks"
+            r.pushes.emit(Changed.Needs("s1"))
+            settle()
+            val again = r.desk.state.value.bar!!
+            assertEquals("换进待答请求列 ⇒ 抬头是待答请求", copyText("needs.asks.title"), again.title)
+            assertEquals("待答请求 ⇒ 第二行是 headCode", "touch a.txt", again.line2)
+            assertTrue(again.canAnswer)
         }
 
     @Test
@@ -238,8 +315,8 @@ class NeedsDeskTest {
             val link = FakeCoreLink()
             val board = Board().also { it.mine = needs("approve") }
             link.answer = { cmd, _ -> if (cmd == "sessions-needs") board.reply() else Reply.LinkDown }
-            val needs = NeedsBoard(MutableStateFlow(mapOf("box" to NeedsSource(link, MutableSharedFlow()))), backgroundScope)
-            val desk = NeedsDesk(link, needs.state.map { it["box"] }, { needs.reask("box") }, MutableStateFlow("s1"), "box", backgroundScope, now = { 0L }, answerCall = { _, _ -> gate.await() })
+            val needs = NeedsBoard(MutableStateFlow(mapOf("box" to NeedsSource(link, MutableSharedFlow()) { 1L })), backgroundScope, coreOf(link, board))
+            val desk = NeedsDesk(link, needs.state.map { it.merged }, "box", needs::reask, MutableStateFlow("s1"), "box", backgroundScope, now = { 0L }, answerCall = { _, _ -> gate.await() })
             settle()
             desk.open()
             desk.pick("allow")
@@ -442,10 +519,10 @@ class NeedsDeskTest {
         }
 
     @Test
-    fun `选项分段只照那台给的 row：批准三段 · 批计划与有题的提问一段；要附话的字后加省略`() {
-        val sub = Wire.bind<NeedsAsk>(golden["subAgent"])!!
+    fun `选项分段只照那台给的 row：批准两段 · 批计划与有题的提问一段；要附话的字后加省略`() {
+        val sub = Wire.bind<NeedsAsk>(golden["approve"])!!
         val groups = choiceGroups(sub)
-        assertEquals(listOf(listOf("allow", "always-0", "always-1"), listOf("deny", "deny-note", "deny-stop"), listOf("release")), groups.map { g -> g.map { it.choice.id } })
+        assertEquals(listOf(listOf("allow", "always-0", "always-1"), listOf("deny", "deny-note", "deny-stop")), groups.map { g -> g.map { it.choice.id } })
         assertEquals(copyText("askBlock.choice.more", "label" to "拒绝并说明"), groups[1][1].label)
 
         val plan = choiceGroups(Wire.bind<NeedsAsk>(golden["plan"])!!)
@@ -454,8 +531,8 @@ class NeedsDeskTest {
         val q = choiceGroups(Wire.bind<NeedsAsk>(golden["question"])!!)
         assertEquals(listOf(listOf("answer", "dismiss")), q.map { g -> g.map { it.choice.id } })
 
-        val moved = sub.copy(choices = sub.choices.map { if (it.id == "always-1") it.copy(row = NeedsChoiceRow.RELEASE) else it })
-        assertEquals("段只照那台给的 row，不按 id 认", listOf("always-1", "release"), choiceGroups(moved).last().map { it.choice.id })
+        val moved = sub.copy(choices = sub.choices.map { if (it.id == "always-1") it.copy(row = NeedsChoiceRow.HOLD) else it })
+        assertEquals("段只照那台给的 row，不按 id 认", listOf("always-1", "deny", "deny-note", "deny-stop"), choiceGroups(moved).last().map { it.choice.id })
     }
 
     @Test

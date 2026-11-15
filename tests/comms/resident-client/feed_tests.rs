@@ -452,7 +452,7 @@ fn cfg() -> Config {
     Config {
         machine: "box".into(),
         mine: Some(MINE.into()),
-        tz: Some("Asia/Shanghai".into()),
+        tz: "Asia/Shanghai".into(),
         handshake: Duration::from_secs(20),
     }
 }
@@ -1736,7 +1736,7 @@ async fn replacing_the_resident_runs_ensure_replace_then_reconnects() {
 
     let none: Arc<Feed<T>> = Feed::start(cfg(), None, desk(), sink(|_| {}));
     let e = none.replace().await.unwrap_err();
-    assert_eq!(e.said, comms_inward::chan::said::offline("box"));
+    assert_eq!(e.said, copy_core::offline("box"));
     assert_eq!(none.theirs(), None);
 }
 

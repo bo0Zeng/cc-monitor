@@ -2,7 +2,6 @@ package com.ccmonitor.mobile.core.ssh
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.ccmonitor.mobile.core.data.crypto.SshKeyGenerator
 import com.ccmonitor.mobile.core.rs.Core
 import com.ccmonitor.mobile.core.wire.Wire
 import com.ccmonitor.mobile.core.wire.gen.CaptureEnd
@@ -146,7 +145,7 @@ class RustTransportTest {
             val t = connected(auth = AuthMethod.KeystoreSigner(alias))
             assertEquals("ks\n", runBlocking { t.execCapture("echo ks") }.stdout)
         } finally {
-            runCatching { KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(alias) }
+            runCatching { KeyStore.getInstance(SshKeyGenerator.ANDROID_KEYSTORE).apply { load(null) }.deleteEntry(alias) }
         }
     }
 

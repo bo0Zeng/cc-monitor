@@ -25,15 +25,26 @@ pub struct SessionScan {
 }
 
 impl SessionScan {
-    /// 吸收一行原始字节（带不带换行都行）。不是合法 UTF-8 ⇒ 停（之后的行都不算）。`kind` ＝ 这份记录是哪一家的（`agents::record_kind_of`，跟着这份文件走）。
-    pub(super) fn absorb_bytes(&mut self, kind: &str, line: &[u8]) {
+    /// 吸收一行原始字节（带不带换行都行）。不是合法 UTF-8 ⇒ 停（之后的行都不算）。`kind` ＝ 这份记录是哪一家的（`agents::record_kind_of`，跟着这份文件走）；
+    /// 认不出是哪一家的（缺）⇒ 只数行，会话级那几格不问哪一家。
+    pub(super) fn absorb_bytes(&mut self, kind: Option<&str>, line: &[u8]) {
         if self.stopped || line.is_empty() {
             return;
         }
-        match std::str::from_utf8(line) {
-            Ok(s) => self.absorb(kind, s),
-            Err(_) => self.stopped = true,
+        match (std::str::from_utf8(line), kind) {
+            (Ok(s), Some(kind)) => self.absorb(kind, s),
+            (Ok(s), None) => {
+                self.count(s);
+            }
+            (Err(_), _) => self.stopped = true,
         }
+    }
+
+    /// 数一行（空行不算）：[`Self::absorb`] 头上那一截，认不出是哪一家的那一份只做到这里。
+    fn count(&mut self, line: &str) -> bool {
+        let counted = !line.trim_start_matches('\u{feff}').trim().is_empty();
+        self.count += u32::from(counted);
+        counted
     }
 
     /// 前面这一段（`self`）接上后面那一段（`later`）：按段序合并与整份顺扫相等。
@@ -66,11 +77,10 @@ impl SessionScan {
     /// 吸收一行原文：那一家翻成 [`SessionLine`]（〔perfC〕适配层只取要的那几格，一行里几 MB 的工具输出不复制）；
     /// 解不成 ⇒ 只数行。首条人说的话要看整条记录 ⇒ 还没取到摘录时，人说的那几行另解一次（通常第一条就取到）。
     pub(super) fn absorb(&mut self, kind: &str, line: &str) {
-        let trimmed = line.trim_start_matches('\u{feff}').trim();
-        if trimmed.is_empty() {
+        if !self.count(line) {
             return;
         }
-        self.count += 1;
+        let trimmed = line.trim_start_matches('\u{feff}').trim();
         let Some(l) = crate::agents::session_line(kind, trimmed) else {
             return;
         };
@@ -154,7 +164,7 @@ impl SessionScan {
         };
         SessionRow {
             session_id,
-            record_path: p.to_string_lossy().into_owned(),
+            jsonl_path: p.to_string_lossy().into_owned(),
             started_at_ms: self
                 .started_at
                 .unwrap_or_else(|| super::listing::created_ms_or_mtime(p)),
@@ -177,8 +187,7 @@ impl SessionScan {
 pub(crate) struct SessionRow {
     pub(crate) session_id: String,
     /// 记录文件的路径（字符串）。
-    #[serde(rename = "jsonlPath")]
-    pub(crate) record_path: String,
+    pub(crate) jsonl_path: String,
     pub(crate) started_at_ms: i64,
     pub(crate) updated_at_ms: i64,
     pub(crate) message_count_approx: u32,

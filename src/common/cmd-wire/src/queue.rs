@@ -45,7 +45,7 @@ pub struct QueueItem {
     pub rewind: Option<crate::rewind::Rewind>,
     #[cfg_attr(any(test, feature = "ts"), ts(inline))]
     pub state: QueueState,
-    /// 那一条此刻在等什么，会话那台写好（发送中 · 等确认 · 需手动 · 答完再送 · 未送进会话 · {为什么}；同回执那一句）：
+    /// 那一条此刻在等什么，会话那台写好（发送中 · 等确认 · 等回答 · 答完再送 · 未送进会话 · {为什么}；同回执那一句）：
     /// 不写第几、不写哪一端；各端照摆，不按 `state` 自己挑字。
     pub said: String,
 }
@@ -57,7 +57,7 @@ pub struct QueueItem {
 #[serde(deny_unknown_fields)]
 pub struct QueueList {
     pub items: Vec<QueueItem>,
-    /// 最近送进 agent 的那几条的 id（先送的在前，只留最近几条）。两端都不据它判那一句的去向：回执到了就离开待发，之后只照名单与记录画。
+    /// 最近送进 agent 的那几条的 id（先送的在前，只留最近几条）。名单里出现在 `sent` ⇒ 那一句已离队，两端据它收起待发（与回执到了同一个结局）。
     pub sent: Vec<String>,
 }
 
@@ -118,7 +118,7 @@ pub struct QueuePut {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
     pub seq: Option<u64>,
-    /// 那一条此刻的样子，会话那台写好（发送中 · 等确认 · 需手动 · 答完再送 · 已送进 · 已撤），同名单那一句。
+    /// 那一条此刻的样子，会话那台写好（发送中 · 等确认 · 等回答 · 答完再送 · 已送进 · 已撤），同名单那一句。
     pub said: String,
 }
 
@@ -139,8 +139,10 @@ pub struct SessionQueueCancelReq {
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
 pub struct QueueCancelled {
-    /// `false` ⇒ 那一条已不在队里（送过 · 撤过 · 没有这一条），什么都没动。
+    /// `true` ⇒ 这一句不会送进会话了（撤了 · 早撤过 · 先撤后到记作撤过）；`false` ⇒ 已送进会话或正在送，撤不回，什么都没动。
     pub cancelled: bool,
+    /// 会话那台写好的那一句（撤了 · 正在送 · 已送进会话各一句），两端照原样画。
+    pub said: String,
     pub queue: QueueList,
 }
 

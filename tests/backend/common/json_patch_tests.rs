@@ -150,3 +150,42 @@ fn 字符串里的括号和引号不搅乱() {
     assert_eq!(parsed(&p.whole)["note"], json!("a } \" { b"));
     assert_eq!(parsed(&p.whole)["env"], json!({"K": "v", "A": "]"}));
 }
+
+/// 几格按序就地改完、末了再解开核一次：恰等于原文解开之后照样放上这几格；BOM 原样留着；没动的那几段逐字还在。
+#[test]
+fn 几格按序改完_核对恰好只换了这几格() {
+    let src = "\u{feff}{\n  \"a\": 1.10,\n  \"t\": {\n    \"/z\": {\n      \"y\": 1,\n      \"f\": false\n    }\n  }\n}\n";
+    let out = set_checked(
+        src,
+        &[
+            (&["t", "/z", "f"], json!(true)),
+            (&["t", "/n", "f"], json!(true)),
+            (&["u"], json!({})),
+        ],
+    )
+    .expect("核得上");
+    assert!(out.starts_with('\u{feff}'), "BOM 没留着：{out:?}");
+    assert_eq!(
+        parsed(out.trim_start_matches('\u{feff}')),
+        json!({ "a": 1.1, "t": { "/z": { "y": 1, "f": true }, "/n": { "f": true } }, "u": {} })
+    );
+    assert!(out.contains("\"a\": 1.10,"), "数字写法变了：{out}");
+    assert!(out.contains("\"y\": 1,\n      \"f\": true\n"), "{out}");
+}
+
+/// 文件还不在（空串）⇒ 只有这几格的新文件（两格缩进、末尾换行）。
+#[test]
+fn 文件不在_只有这几格的新文件() {
+    assert_eq!(
+        set_checked("", &[(&["s", "x"], json!({ "c": 1 }))]).as_deref(),
+        Some("{\n  \"s\": {\n    \"x\": {\n      \"c\": 1\n    }\n  }\n}\n")
+    );
+}
+
+/// 就地改核不上就不交出去：同名键出现两次（就地换的是头一个、解开认的是后一个）· 沿途不是对象 · 读不懂。
+#[test]
+fn 就地改核不上_不交出去() {
+    for src in ["{\"s\": {}, \"s\": {}}", "{\"s\": [1]}", "not json", "[1]"] {
+        assert_eq!(set_checked(src, &[(&["s", "x"], json!(1))]), None, "{src}");
+    }
+}

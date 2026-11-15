@@ -13,10 +13,10 @@
 
 例外的号被代码头注引用，不改号；号不复用。
 
-- 例外 1 · **删历史会话**（本机远端同一条）：帧命令 `files-delete-session`，只收 sid；落点由后端按 sid 在自己的记录树里找（`agents::claudecode::paths::session_file_for_delete`：解到底必须恰是 `projects/<项目>/<sid>.jsonl`，链接出界不跟），删前二次确认。
+- 例外 1 · **删历史会话**（本机远端同一条）：帧命令 `files-delete-session`，只收 sid；落点由后端按 sid 照根表找到会话所在那个号的家、在那一家的记录树里找（`agents::locate_session_for_delete_among` → `agents::claudecode::paths::session_file_for_delete_in`：解到底必须恰是 `projects/<项目>/<sid>.jsonl`，链接出界不跟），删前二次确认。
 - 例外 2 · **后端自部署**：写那台的 `~/.cc-monitor/bin/`（非用户数据、幂等、按 `deploy-install` 只升不降），绝不碰 `<claude_dir>`。
 - 例外 4 · **别名块与别名文件**：rc / `$PROFILE` 里的 BEGIN / END 块（`aliases_block_install` / `aliases_block_remove`，本机远端同一条），经 `Door::put`（§4）。
-- 例外 5 · **项目 MCP 配置**：帧命令 `mcp-sync-apply`（装）/ `ext-uninstall-apply`（卸），写面只有项目 `.mcp.json`（落点必须是那台上的绝对项目目录，不含 `..`），绝不写 `~/.claude.json` / `settings.json`。
+- 例外 5 · **项目 MCP 配置**：帧命令 `mcp-sync-apply`（装）/ `ext-uninstall-apply`（卸），写面只有那一家声明的项目级 MCP 文件（`project_mcp_of`），只改服务器表里那一节、别的节与写法一字不变（落点必须是那台上的绝对项目目录，不含 `..`），绝不写各家的用户级配置。
 - 例外 6 · **公钥推送**：帧命令 `pubkey-push`，只追加到远端 `~/.ssh/authorized_keys`（幂等去重），一律经那台后端 `authorized-keys-add` 写；那台后端不在就没成、先装后端，monitor 侧不再有远端直写。
 - 例外 7 · **装 cc-bus skill**：往 `<claude_dir>/skills/cc-bus/` 写（`src/backend/assets/cc_bus_install.rs`），四个配套一条不许省：只由扩展页确认卡触发 · realpath 白名单（解到底仍在 claude 目录底下）· 逐文件比、一致就不写 · 覆盖前整目录改名成 `cc-bus.bak-<秒>`。
 
@@ -57,7 +57,7 @@
 | `ps-registry/` `ps-await/` | **缓存/IPC** | `bind.rs` | Linux bash / zsh 接入块留的终端记录与认出来的窗口，启动重扫 |
 | `logs/` | **缓存/派生** | `logging.rs` · 本机常驻后端 | `monitor/` 按天滚动、留 3 天（§15）；`backend/` 是脱离运行的本机后端 stderr |
 | `bin/` `staging/` `logs/backend/` `relay-key` `cache/last-seen.json` `launch-pending/` `answer-plugin/` `ssh_config` `profiles-written.json` `cache/skeleton/` `cache/listing.json` `cache/remote-listing/` | **缓存** | 本机后端 | 能重建的：程序 · 上传暂存区 · 错误输出 · 中转钥匙（丢了重铸）· 离线那台的上次值 · 起会话便条 · 答题插件 · 终端用的 ssh 配置 · 上次写出的配置指纹 · 大记录的骨架 · 历史清单缓存（都照记录重扫）· 远端那几台的会话清单副本（照那台再问一次整份） |
-| `run/` `backend.json` `prefs.json` `machines.json` `profiles.toml` `aliases.sh` `aliases.ps1` `skill-installs.json` `assets-catalog.json` `chores.json` `plan-review.json` `bookmarks.json` `backups/` `accounts/` `accounts-mcp.json` `apikey-credentials.json` `quota.json` `rotation.json` `lineage.json` `launch-accounts.json` `session-queue/` `cc-bus/` `known_hosts` `set-groups.json` `groups-owed.json` `strategies/` `hosts/` | **真相** | 本机后端 | 删了会丢的：常驻后端的套接字与进程记录 · 退出行为 · 这台的偏好（启动命令 · 每号模型 · 上下文上限 · 各家数据目录）· 机器表 · 别名配置 · 装记录 · 资产目录 · 「待办」里的选择 · 计划需手动的认可 · 这台的书签（文件窗口与手机收藏的目录）· 卸外来资产前的备份 · 账号库 · API key · 各号最近的用量与轮换设置 · 会话血缘 · 每条会话上次用的号 · 会话输入队（还没送进会话的那几句，一条会话一份）· cc-bus 的收件箱与已读位置 · 各台的主机钥匙（删了下回连上就是首见）· 补足会话建的组与组名的对应 · 组改名与解散没送到别台的待补 · 轮换策略的源码 · 托管终端（各自的事实与连接入口；按版本的程序副本也住这里）。声明表（`relay_route_core::OWN_FILES`）里的每一份都在「文件与数据」那一页列着，故意不列的写在 `data_paths_tests.rs` 的 `NOT_LISTED`（每行写为什么）。名字只取 `relay_route_core`：家里那几样（含 `history-metadata.json` · `apikey-credentials.json`）由本机后端 `data-report` 的 `own` 列（`relay_route_core::OWN_HOME_ENTRIES`）；住数据目录的 `logs/backend/` 由 `data_paths.rs::monitor_entries` 列 |
+| `run/` `backend.json` `prefs.json` `machines.json` `profiles.toml` `aliases.sh` `aliases.ps1` `skill-installs.json` `assets-catalog.json` `chores.json` `plan-review.json` `bookmarks.json` `backups/` `accounts/` `accounts-mcp.json` `apikey-credentials.json` `quota.json` `rotation.json` `lineage.json` `launch-accounts.json` `session-queue/` `cc-bus/` `known_hosts` `set-groups.json` `groups-owed.json` `strategies/` `hosts/` | **真相** | 本机后端 | 删了会丢的：常驻后端的套接字与进程记录 · 退出行为 · 这台的偏好（启动命令 · 每号模型 · 上下文上限 · 各家数据目录）· 机器表 · 别名配置 · 装记录 · 资产目录 · 「待办」里的选择 · 计划需手动的认可 · 这台的书签（文件窗口与手机收藏的目录）· 卸外来资产前的备份 · 账号库 · API key · 各号最近的用量与轮换设置 · 会话血缘 · 每条会话上次用的号 · 会话输入队（还没送进会话的那几句，一条会话一份）· cc-bus 的收件箱与已读位置 · 各台的主机钥匙（删了下回连上就是首见）· 补足会话建的组与组名的对应 · 组改名与解散没送到别台的待补 · 轮换策略的源码 · 托管终端（各自的事实与连接入口；按版本的程序副本也住这里）。声明表（`relay_route_core::OWN_FILES`）里的每一份都在「文件与数据」那一页列着，故意不列的写在 `tests/backend/footprint/data_tests.rs`（每行写为什么）。名字只取 `relay_route_core`：家里那几样（含 `history-metadata.json` · `apikey-credentials.json`）由本机后端 `data-report` 的 `own` 列（`relay_route_core::OWN_HOME_ENTRIES`）；住数据目录的那几样名字住 `relay_route_core::MONITOR_DATA_ENTRIES`，由本机后端 `data-report` 本机那一问列 |
 
 - **真相** = 用户手写 / 意图，删了丢东西、要备份、要迁移友好；**缓存/派生** = 能从别处重建，随便删。
 - **新增任何 data dir 文件，必须声明它是哪类**：界面这一侧的（monitor 数据目录）在 `data_paths.rs` 的枚举里（`DataPathInfo.class: DataClass` 非可选）；本机后端家里的（`~/.cc-monitor/`）在 `relay_route_core::OWN_HOME_ENTRIES` 里（后端 `data-report` 的 `own` 照它出、界面照抄）。设置页每行据它显示「删了会丢 / 可随手删」。两边拼起来与上表两向相等（`data_paths_tests.rs`，异源判据）；后端自家那几样另与上表逐样对（`footprint/data_tests.rs`）。
@@ -209,9 +209,9 @@
 
 **为什么不能松动**：Claude Code 写 pidfile 偶发漏 `procStart`；字段一必填，整个会话就被静默忽略、漏一个 Tab。
 
-### 18.1 看不懂的记录不静默丢 —— 抢救成 `Unrecognized`
+### 18.1 看不懂的记录不静默丢 —— 抢救成 `CcMonitorUnrecognized`
 
-未知 `type`、或已知 `type` 但字段解析失败而原文仍是合法 JSON ⇒ 抢救成 `JsonlRecord::Unrecognized`（留原文与链身份），不出 `parse_line` 之外丢掉；只有连 JSON 都不成立的行才回 `Err`。带链身份（`uuid` / `parentUuid`）的记录不论认不认得都进链（`chain.rs`）。各降级点各记一笔有界的账，住那台后端 `src/backend/agents/claudecode/drift.rs`（帧命令 `drift-report`）；设置「诊断」复制出的诊断信息里「未识别数据」那一段就是它。
+未知 `type`、或已知 `type` 但字段解析失败而原文仍是合法 JSON ⇒ 抢救成 `JsonlRecord::CcMonitorUnrecognized`（留原文与链身份），不出 `parse_line` 之外丢掉；只有连 JSON 都不成立的行才回 `Err`。带链身份（`uuid` / `parentUuid`）的记录不论认不认得都进链（`chain.rs`）。各降级点各记一笔有界的账：计数 · 封顶 · 排序只住通用层 `src/backend/agents/drift.rs` 的 `DriftLedger`，各家只交面、各开一本（Claude Code 在 `agents/claudecode/drift.rs`，Codex 在 `agents/codex/record.rs`），帧命令 `drift-report` 把各家并成一份；设置「诊断」复制出的诊断信息里「未识别数据」那一段就是它。
 
 上屏只分一刀，判在适配层一处（`record_of::quiet_unread_of`）：没见过的 `type` 又没有链身份 ⇒ 那一家的簿记行，不画「认不出的记录」卡，会话事实 `quietUnread` 照实记几行、哪几种；带链身份的、已知类型形状变了的，照旧一行一张卡。
 
@@ -324,7 +324,7 @@ Claude Code 把很多不是人说的东西也写成 `type=user`。判定只有�
 
 ## 30. tmux ↔ 会话精确映射靠 `@ccm_sid`，不靠名字/目录反推
 
-`/branch` 在同一个 tmux 里把会话从 A 换成 B，tmux 名不变；同一目录常有多个 claude tmux ⇒ 按名字或 `cwd` 反推会撞进别的会话。tmux 用户选项 **`@ccm_sid`** 记「此刻在跑哪个 sid」，写者是后端 `src/backend/control/identity_tag.rs`（看到 pidfile 的那一刻读那个进程的 `TMUX_PANE` 定位窗格、对那个窗格打标，`/clear`、`/branch` 跟着重打，零新增节拍）；读它的有三处：终端名单 `terminals-list`（`host::list`，tmux 那一臂是 `host/tmux.rs::parse_rows`）· 身份门 `control/gate.rs` · ccm 的会话快照 `common/session_snapshot.rs`；托管终端那一形由托管进程带着同一个 sid。`@ccm_sid_expect` 是起会话时声明的意图，**任何破坏性判断只认 `@ccm_sid`**。
+`/branch` 在同一个 tmux 里把会话从 A 换成 B，tmux 名不变；同一目录常有多个 claude tmux ⇒ 按名字或 `cwd` 反推会撞进别的会话。tmux 用户选项 **`@ccm_sid`** 记「此刻在跑哪个 sid」，写者是后端 `src/backend/control/identity_tag.rs`（看到 pidfile 的那一刻读那个进程的 `TMUX_PANE` 定位窗格、对那个窗格打标，`/clear`、`/branch` 跟着重打，零新增节拍）；读它的有三处：终端名单 `terminals-list`（`host::list`，tmux 那一臂是 `host/tmux.rs::parse_rows`）· 身份门 `control/gate.rs` · ccm 的会话快照 `common/session_snapshot.rs`；托管终端那一形由托管进程带着同一个 sid。起会话的那一方（ccm · `control/launch.rs`）一个身份标都不写，**任何破坏性判断只认 `@ccm_sid`**。
 
 **铁律**：attach / resume 一律先按 `sid == @ccm_sid` 精确匹配；已知 sid 无一命中 ⇒ 判「不在任何 tmux」，绝不回退按 `cwd` 抓别的会话。命中多个时：非破坏性动作按第一个继续（界面写明命中几个；`ccm` 接回不另说），破坏性动作（kill · 换号重启）拒绝。
 
@@ -525,7 +525,7 @@ webview 拿得到的 Tauri 权限只许是登记过的那一批；webview 里跑
 
 **为什么不能松动**：对端校验的是它自己的入口，本侧不判，拼错的那一段已经在路上了（收掉一个 agent 的后果是杀掉一棵进程树）；盘上真出现过没人预料的 id（一份名叫 `--help.jsonl` 的收件箱文件）。
 
-**谁在守**：`ccm_invocation_tests.rs::every_value_is_judged_before_it_becomes_a_ccm_argument` · `argv_tests.rs::a_session_id_is_judged_before_it_goes_anywhere` · `fork_write_tests.rs::the_fork_ids_are_whitelisted_at_the_frame_face` · `cc_bus_tests.rs::bus_ids_are_judged_here_before_they_reach_cc_bus` · `plan_tests.rs::a_session_name_that_would_confuse_tmux_is_refused` · `plan_tests.rs::free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold` · `plan_tests.rs::a_launcher_is_one_command_fragment_from_the_shared_whitelist` · `library_tests.rs::unsafe_config_dirs_are_dropped` · `dial_forwards_tests.rs::the_spec_fence_stands_before_any_lookup_or_dial` · `dial_terminal_tests.rs::the_open_terminal_cwd_passes_real_names_and_refuses_what_quote_cannot_hold` · `mcp_edit_tests.rs::relative_or_dotdot_project_dirs_are_refused` · `lib_invariant_population_tests.rs::every_file_that_quotes_a_value_into_a_shell_line_is_registered`（拼值进 shell 的文件逐份登记）。
+**谁在守**：`ccm_invocation_tests.rs::every_value_is_judged_before_it_becomes_a_ccm_argument` · `fork_write_tests.rs::the_fork_ids_are_whitelisted_at_the_frame_face` · `cc_bus_tests.rs::bus_ids_are_judged_here_before_they_reach_cc_bus` · `plan_tests.rs::a_session_name_that_would_confuse_tmux_is_refused` · `plan_tests.rs::free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold` · `plan_tests.rs::a_launcher_is_one_command_fragment_from_the_shared_whitelist` · `library_tests.rs::unsafe_config_dirs_are_dropped` · `dial_forwards_tests.rs::the_spec_fence_stands_before_any_lookup_or_dial` · `dial_terminal_tests.rs::the_open_terminal_cwd_passes_real_names_and_refuses_what_quote_cannot_hold` · `mcp_edit_tests.rs::relative_or_dotdot_project_dirs_are_refused` · `lib_invariant_population_tests.rs::every_file_that_quotes_a_value_into_a_shell_line_is_registered`（拼值进 shell 的文件逐份登记）。
 
 ---
 

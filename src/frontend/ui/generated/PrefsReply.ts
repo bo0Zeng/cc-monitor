@@ -7,15 +7,15 @@ import type { Prefs } from "./Prefs";
  */
 export type PrefsReply = { 
 /**
- * `absent`（没设过）· `ok` · `unreadable`（读不懂：也照答，不是失败）。
+ * `absent`（没设过 · 格式比下限老当没有，后者带 `reason`）· `ok` · `unreadable`（读不懂：也照答，不是失败）。
  */
 state: FileState, 
 /**
- * `unreadable` 时的原因（那一句不带原话）。
+ * `unreadable` 时的原因（那一句不带原话）；`absent` 而盘上那份格式比下限老（当没有）⇒ 也带那一句。
  */
 reason: string | null, 
 /**
- * `unreadable` 时的复制详情。
+ * 带原因时的复制详情。
  */
 detail: string | null, 
 /**
@@ -25,4 +25,8 @@ path: string | null,
 /**
  * 照用的那一份。
  */
-prefs: Prefs, };
+prefs: Prefs, 
+/**
+ * 上下文上限那一段标题右侧「已改 N」（覆盖几条；一条都没有 ⇒ `null`），界面照抄。
+ */
+contextLimitsText: string | null, };

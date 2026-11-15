@@ -110,7 +110,7 @@ fn a_socket_with_no_server_says_so_in_its_own_words() {
         e.code.as_deref(),
         Some("no_server"),
         "没有 server 时报的是 `{}` —— 那一档被压进别的码里了。实得：{e:?}",
-        e.code_or_fallback()
+        cmd_wire::failed::Failed::code_or_fallback(e.code.clone())
     );
 }
 
@@ -130,7 +130,7 @@ fn missing_tmux_and_missing_session_are_two_different_answers() {
         gone.code,
         "「这台机没有 tmux」与「会话不存在」共用了同一个码 `{}` —— \
              压成一句之后，拿到这条错的人没法判断该去装 tmux 还是该去看会话名",
-        absent.code_or_fallback()
+        cmd_wire::failed::Failed::code_or_fallback(absent.code.clone())
     );
     assert_ne!(
         absent.said, gone.said,
@@ -157,7 +157,7 @@ fn an_empty_screen_is_a_success_and_a_failure_is_never_an_empty_string() {
         assert!(
             !e.said.trim().is_empty(),
             "失败那一档回了一句空话 —— 那与静默空串是同一件事。码：{}",
-            e.code_or_fallback()
+            cmd_wire::failed::Failed::code_or_fallback(e.code.clone())
         );
     }
 }

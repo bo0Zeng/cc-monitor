@@ -51,9 +51,6 @@ import com.ccmonitor.mobile.core.claude.link.Deploying
 import com.ccmonitor.mobile.core.claude.link.deployFix
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.Host
-import com.ccmonitor.mobile.core.data.db.machineNames
-import com.ccmonitor.mobile.core.data.db.machineTable
-import com.ccmonitor.mobile.core.rs.Core
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.feedback.ErrorLine
 import com.ccmonitor.mobile.core.ui.feedback.LocalAppSnackbar
@@ -67,18 +64,19 @@ import com.ccmonitor.mobile.core.ui.sheet.SheetAction
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
-import com.ccmonitor.mobile.core.wire.Wire
 import com.ccmonitor.mobile.core.wire.gen.FirstRunAct
 import com.ccmonitor.mobile.core.wire.gen.FirstRunGo
 import com.ccmonitor.mobile.core.wire.gen.FirstRunStep
 import com.ccmonitor.mobile.core.wire.gen.FirstRunStepId
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
-import com.ccmonitor.mobile.core.wire.gen.MachineCheck
 import com.ccmonitor.mobile.core.wire.gen.MachineDot
 import com.ccmonitor.mobile.core.wire.gen.Tone
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ssh.HostLogin
 import com.ccmonitor.mobile.ssh.login
+import com.ccmonitor.mobile.ssh.machineCheck
+import com.ccmonitor.mobile.ssh.machineNameOf
+import com.ccmonitor.mobile.ssh.machineNames
 import com.ccmonitor.mobile.ui.common.BusyLine
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
 import com.ccmonitor.mobile.ui.common.HostLink
@@ -123,7 +121,7 @@ fun HostListScreen(
     val snackbar = LocalAppSnackbar.current
 
     // 按 groupId 分组：命名组按名排序在前，未分组的放最后。
-    val groups = remember(hosts) { groupHosts(hosts) }
+    val groups = remember(hosts) { hostGroups(hosts) }
     val showHeaders = groups.any { it.first != null }
 
     // `MainActivity` 开着 `enableEdgeToEdge()`，不垫 inset 标题会压在状态栏下、FAB 压在手势条上。
@@ -146,9 +144,9 @@ fun HostListScreen(
                                 )
                             }
                         }
-                        items(groupHosts, key = { it.id }) { host ->
+                        items(groupHosts, key = { it.host.id }) { (host, name) ->
                             HostRow(
-                                host,
+                                name,
                                 look = looks[host.id],
                                 // 种类跟着 hostId 一起交出去，见本屏头注。
                                 onClick = { onConnect(host.id) },
@@ -156,7 +154,7 @@ fun HostListScreen(
                                 onEdit = { onEdit(host.id) },
                                 onDelete = {
                                     val gone = vm.deleteHost(host)
-                                    snackbar.showUndo(copyText("machineList.remove.done", "machine" to host.label)) {
+                                    snackbar.showUndo(copyText("machineList.remove.done", "machine" to name)) {
                                         gone.await()?.let { vm.restoreHost(it) }
                                     }
                                 },
@@ -291,9 +289,18 @@ private fun ImportSshConfigDialog(
     )
 }
 
-/** 按 groupId 分组：命名组按名排序在前，未分组的放最后。 */
-private fun groupHosts(hosts: List<Host>): List<Pair<String?, List<Host>>> {
-    val byGroup = hosts.groupBy { it.groupId?.trim()?.ifBlank { null } }
+/** 列表里的一台，带它的名字。 */
+internal data class NamedHost(
+    val host: Host,
+    val name: String,
+)
+
+private fun groupOf(host: Host): String? = host.groupId?.trim()?.ifBlank { null }
+
+/** 按 groupId 分组：命名组按名排序在前，未分组的放最后。名字照核心对整张表取的那一份（[machineNameOf]）。 */
+internal fun hostGroups(hosts: List<Host>): List<Pair<String?, List<NamedHost>>> {
+    val name = machineNameOf(hosts)
+    val byGroup = hosts.map { NamedHost(it, name(it.id)) }.groupBy { groupOf(it.host) }
     return buildList {
         byGroup.keys
             .filterNotNull()
@@ -322,7 +329,7 @@ private fun hostDotLabel(look: HostRowLook): String = look.word ?: copyText("ccB
 @OptIn(ExperimentalFoundationApi::class) // combinedClickable：点行连接，长按 ＝ ⋯（手机的右键菜单）
 @Composable
 private fun HostRow(
-    host: Host,
+    name: String,
     look: HostRowLook?,
     onClick: () -> Unit,
     onFiles: () -> Unit,
@@ -330,7 +337,7 @@ private fun HostRow(
     onDelete: () -> Unit,
 ) {
     var showMenu by remember { mutableStateOf(false) }
-    if (showMenu) HostRowMenu(host, onEdit, onFiles, onDelete, onDismiss = { showMenu = false })
+    if (showMenu) HostRowMenu(name, onEdit, onFiles, onDelete, onDismiss = { showMenu = false })
     Column(
         Modifier
             .fillMaxWidth()
@@ -347,7 +354,7 @@ private fun HostRow(
         ) {
             StatusDot(look?.dot, look?.takeIf { it.dot != null }?.let(::hostDotLabel))
             Column(Modifier.weight(1f)) {
-                Text(host.label, style = MaterialTheme.typography.titleSmall)
+                Text(name, style = MaterialTheme.typography.titleSmall)
                 // 第二行只照那台状态成品的那个词（连接中 · 要更新 · 离线 …），颜色随点；没有 ⇒ 不出。地址在编辑页里。
                 look?.word?.let { w ->
                     val tokens = LocalAppTokens.current
@@ -360,7 +367,7 @@ private fun HostRow(
                     Text(w, style = MaterialTheme.typography.bodySmall, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
-            PhIconButton(Ph.DotsThree, copyText("mobHosts.row.more", "label" to host.label), onClick = { showMenu = true }, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            PhIconButton(Ph.DotsThree, copyText("mobHosts.row.more", "label" to name), onClick = { showMenu = true }, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -368,14 +375,14 @@ private fun HostRow(
 /** 一台的 ⋯：行尾「编辑 · 文件」收进这里，删除也在这里（只删本机这条配置、撤得回 ⇒ 不弹框，删后给撤销）。 */
 @Composable
 private fun HostRowMenu(
-    host: Host,
+    name: String,
     onEdit: () -> Unit,
     onFiles: () -> Unit,
     onDelete: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     ActionSheet(
-        title = host.label,
+        title = name,
         actions =
             listOf(
                 SheetAction(Ph.PencilSimple, copyText("rsFilewinEditor.label.edit"), onClick = onEdit),
@@ -481,7 +488,8 @@ fun HostEditorScreen(
             jump = jump,
         )
     val others = allHosts.filter { it.id != existing?.id }
-    val check = remember(others, draft) { machineCheck(others + draft) }
+    // 正在编的那一台排最后交核心判（毛病 ＋ 那一台展开的地址）。
+    val check = remember(others, draft) { machineCheck(others + draft, others.size) }
 
     Column(
         Modifier
@@ -631,10 +639,6 @@ private fun MoreToggle(
         Text(copyText("mobHostEdit.more.title"), style = MaterialTheme.typography.labelLarge)
     }
 }
-
-/** 编辑页那张表（正在编的那一台排最后）交核心判：毛病（判法 · 说法与桌面 `machines-try` 同一处）＋ 那一台展开的地址。 */
-private fun machineCheck(table: List<Host>): MachineCheck =
-    Wire.read<MachineCheck>(Core.machineCheck(table.machineTable(), table.lastIndex)) ?: error("wire contract mismatch: machine check")
 
 /** 选一台已存主机作跳板机（ssh -J；存的是它的名字，名字是核心算的），或「无（直连）」。 */
 @Composable

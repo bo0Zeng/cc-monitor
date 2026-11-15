@@ -46,6 +46,7 @@ import com.ccmonitor.mobile.core.ui.icon.PhIconButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.wire.gen.Hide
 import com.ccmonitor.mobile.link.Fetched
+import com.ccmonitor.mobile.ssh.machineName
 import com.ccmonitor.mobile.ui.common.HostLink
 import com.ccmonitor.mobile.ui.common.conversationsHolder
 import com.ccmonitor.mobile.ui.common.rememberHostLink
@@ -185,7 +186,7 @@ private fun RowSheets(
                 on { annotate(it, snackbar, HistoryAnnotate.rename(r.sessionId, title), copyText("history.rename.failed"), done = copyText("history.rename.done")) }
             }
         RowDialog.DELETE ->
-            DeleteDialog(r, board.chats(r.hostId)?.machine ?: r.hostId, onDismiss = onDismiss) {
+            DeleteDialog(r, onDismiss = onDismiss) {
                 on { deleteSession(it, snackbar, r) }
             }
     }
@@ -346,7 +347,7 @@ fun rememberRecent(
     linkReady: Boolean,
 ): List<ChatRow>? {
     val hosts = koinInject<HostRepository>()
-    val machine by produceState<String?>(null, hostId) { value = runCatching { hosts.get(hostId)?.label }.getOrNull()?.ifBlank { null } ?: hostId }
+    val machine by produceState<String?>(null, hostId) { value = hosts.machineName(hostId) }
     val name = machine
     if (!linkReady || name == null) return null
     val vm: RecentChats = koinViewModel(key = "recent-$hostId") { parametersOf(hostId, name) }

@@ -525,10 +525,12 @@ pub fn who(id: &str) -> crate::plan::Whose {
     let live = Some(Live {
         activity: Some(crate::agents::SessionActivity::NeedsYou),
         needs: Some(cmd_wire::needs::NeedsKind::Approve),
+        housed: None,
     });
     match id {
         MAIN => Whose::Session {
             sid: MAIN.into(),
+            title: "甲会话".into(),
             live,
         },
         SUB => Whose::Subagent {

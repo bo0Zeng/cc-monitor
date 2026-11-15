@@ -62,7 +62,6 @@ const ALLOWED_DEPS: &[(&str, &[&str])] = &[
             "relay-route-core",
             // 零依赖：读上限的类型 `Cap`（经 `copy-core` 与 `relay-route-core` 也进来）。
             "cap-core",
-            "upstream-url-core",
             "rustls",
             "webpki-roots",
             "tracing",

@@ -9,5 +9,5 @@ SELFDIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
 [ $# -le 1 ] || { echo "cc-bus unread: 多给了参数" >&2; exit 2; }
 id="${1:-}"
 [ -n "$id" ] || id=$("$SELFDIR/cc-bus-whoami.sh") || exit 1
-ccbus_ask unread "$(jq -cn --arg id "$id" '{id:$id}')" || { case "$CCBUS_CODE" in bad_*) exit 2 ;; *) exit 1 ;; esac; }
+ccbus_ask bus-unread "$(jq -cn --arg id "$id" '{id:$id}')" || { case "$CCBUS_CODE" in bad_*) exit 2 ;; *) exit 1 ;; esac; }
 printf '%s' "$CCBUS_OUT" | jq -r '.unread'

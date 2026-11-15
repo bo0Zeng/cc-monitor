@@ -84,7 +84,7 @@ async function mount(lines: RigPayload[], outline?: string[], shape: Constructor
     .map((u) => outlineEntry(u, text(lines.find((p) => (p.record as { id?: string }).id === u)!)));
   const v = new SessionViewer(shape);
   document.body.appendChild(v.element);
-  await v.load({ jsonlPath: "/p/s1.jsonl", displayTitle: "T", origin: LOCAL, suppressBranch: true });
+  await v.load({ jsonlPath: "/p/s1.jsonl", sessionId: "s1", displayTitle: "T", origin: LOCAL, suppressBranch: true });
   await settleOutline();
   expectLoaded(v.element);
   return v;
@@ -148,7 +148,7 @@ describe("SE1 清单挂进查看器：后端给什么就列什么（查看器不
     document.body.appendChild(v.element);
     outlineBackend.available = false;
     outlineBackend.reason = "本机后端不在";
-    await v.load({ jsonlPath: "/p/s1.jsonl", displayTitle: "T", origin: LOCAL, suppressBranch: true });
+    await v.load({ jsonlPath: "/p/s1.jsonl", sessionId: "s1", displayTitle: "T", origin: LOCAL, suppressBranch: true });
     await settleOutline();
     expect(rowsOf(v).length).toBe(0);
     expect(toggleOf(v).disabled).toBe(true);
@@ -159,7 +159,7 @@ describe("SE1 清单挂进查看器：后端给什么就列什么（查看器不
     const w = new SessionViewer();
     document.body.appendChild(w.element);
     outlineBackend.failure = "transport";
-    await w.load({ jsonlPath: "/p/s2.jsonl", displayTitle: "T", origin: LOCAL, suppressBranch: true });
+    await w.load({ jsonlPath: "/p/s2.jsonl", sessionId: "s2", displayTitle: "T", origin: LOCAL, suppressBranch: true });
     await settleOutline();
     expect(toggleOf(w).title).toContain("本机后端不在");
   });
@@ -266,7 +266,7 @@ describe("KR45D1 点一下跳过去", () => {
 
     viewerRig.chunk = [userLine(1, "n1", "新会话唯一一句")];
     outlineBackend.entries = [outlineEntry("n1", "新会话唯一一句")];
-    await v.load({ jsonlPath: "/p/s2.jsonl", displayTitle: "T2", origin: LOCAL, suppressBranch: true });
+    await v.load({ jsonlPath: "/p/s2.jsonl", sessionId: "s2", displayTitle: "T2", origin: LOCAL, suppressBranch: true });
     await settleOutline();
     expectLoaded(v.element);
 
@@ -347,7 +347,7 @@ describe("㊱③ 查看器的 Ctrl+F：工具行查找框 ＋ 问后端 `history
     viewerRig.find = {
       available: true,
       total: 1,
-      hits: [{ uuid: "a1", kind: "assistant", before: "回复里有 ", matched: "needle", after: "", turn: 1, tsMs: 0, tsText: "" }],
+      hits: [{ uuid: "a1", before: "回复里有 ", matched: "needle", after: "", turn: 1, meta: "Claude · 第 1 轮" }],
       head: "那台写的头",
       widen: false,
     };
@@ -382,8 +382,8 @@ describe("㊱③ 查看器的 Ctrl+F：工具行查找框 ＋ 问后端 `history
       available: true,
       total: 2,
       hits: [
-        { uuid: "a1", kind: "assistant", before: "统一做**", matched: "重试", after: " ＋ `退避` ＋ __整体超时__**；", turn: 0, tsMs: 0, tsText: "" },
-        { uuid: "a1", kind: "assistant", before: "## > ", matched: "**重试**", after: "", turn: 0, tsMs: 0, tsText: "" },
+        { uuid: "a1", before: "统一做**", matched: "重试", after: " ＋ `退避` ＋ __整体超时__**；", turn: 0, meta: "Claude" },
+        { uuid: "a1", before: "## > ", matched: "**重试**", after: "", turn: 0, meta: "Claude" },
       ],
       head: "",
       widen: false,
@@ -394,7 +394,7 @@ describe("㊱③ 查看器的 Ctrl+F：工具行查找框 ＋ 问后端 `history
     input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
     await settleOutline();
     const hits = [...v.element.querySelectorAll<HTMLElement>('[data-role="find-hit"]')];
-    // 片段那一行（头一行「谁 · 第几轮 · 时刻」同主窗口面板）。
+    // 片段那一行（头一行照抄那台写好的 `meta`，同主窗口面板）。
     expect(hits.map((h) => h.querySelector("mark")!.parentElement!.textContent)).toEqual(["统一做重试 ＋ 退避 ＋ 整体超时；", "重试"]);
     expect(hits.map((h) => h.firstElementChild!.textContent)).toEqual(["Claude", "Claude"]);
     expect(hits.map((h) => h.querySelector("mark")!.textContent)).toEqual(["重试", "重试"]);
@@ -454,7 +454,7 @@ describe("乙4-④ 查看器的头 · 底一行 · 各态", () => {
     const badge = Object.assign(document.createElement("span"), { textContent: "Codex" });
     const act = Object.assign(document.createElement("button"), { textContent: "恢复" });
     const proj = Object.assign(document.createElement("span"), { textContent: "orders" });
-    await v.load({ jsonlPath: "/p/s1.jsonl", displayTitle: "支付回调验签", origin: LOCAL, suppressBranch: true, head: { badges: [badge], actions: act, meta: [proj] } });
+    await v.load({ jsonlPath: "/p/s1.jsonl", sessionId: "s1", displayTitle: "支付回调验签", origin: LOCAL, suppressBranch: true, head: { badges: [badge], actions: act, meta: [proj] } });
     await settleOutline();
     const title = v.element.querySelector('[data-role="title"]')!;
     expect(title.textContent).toBe("支付回调验签");
@@ -468,7 +468,7 @@ describe("乙4-④ 查看器的头 · 底一行 · 各态", () => {
     viewerRig.failPage = true;
     const v = new SessionViewer();
     document.body.appendChild(v.element);
-    await v.load({ jsonlPath: "/p/s1.jsonl", displayTitle: "T", origin: LOCAL, suppressBranch: true });
+    await v.load({ jsonlPath: "/p/s1.jsonl", sessionId: "s1", displayTitle: "T", origin: LOCAL, suppressBranch: true });
     await settleOutline();
     const bar = v.element.querySelector<HTMLElement>('[role="alert"]')!;
     expect(bar.textContent).toMatch(copyPattern("sessionViewer.load.failed"));

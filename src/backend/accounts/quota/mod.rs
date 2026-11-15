@@ -8,6 +8,7 @@ pub mod ledger;
 pub mod name_words;
 pub mod nodes;
 pub mod probe;
+pub mod reread;
 pub mod rotation;
 pub mod rules;
 pub mod setup;
@@ -15,6 +16,9 @@ pub mod show;
 pub mod spend;
 pub mod strategy;
 pub mod warm;
+
+/// 重置时刻之后再等这么久才当它换过窗（上游换窗按整点 / 十分对齐，留余量）：开窗那一判与到点重读都照它。
+pub const RESET_MARGIN_S: u64 = 60;
 
 /// ★ 派生事实「已重置、未计时」的唯一判法：这个窗口（或卡着的那一处）说的重置时刻已经过了 ⇒ 之后没再看到它，
 /// 上次的数不再作数（用量当 0、窗口没开）。说不出几点重置 ⇒ 不算（还在那一期里）。

@@ -1,15 +1,15 @@
 {
   "cases": {
     "accounts-list": {
-      "rust": "{\"meta\":{\"enabled\":true,\"manifestPath\":\"manifestPath-x\",\"updatedAt\":\"updatedAt-x\",\"count\":7,\"error\":\"error-x\",\"unsupported\":\"unsupported-x\",\"nextDefault\":\"nextDefault-x\",\"effectiveDefault\":\"effectiveDefault-x\"},\"accounts\":[{\"name\":\"name-x\",\"label\":\"label-x\",\"email\":\"email-x\",\"configDir\":\"configDir-x\",\"isDefault\":true,\"mode\":\"mode-x\",\"exists\":true,\"loggedIn\":true,\"authKind\":\"authKind-x\",\"authReady\":true,\"selectable\":true,\"color\":7,\"configDirShown\":\"configDirShown-x\",\"keyMasked\":\"keyMasked-x\",\"endpointHost\":\"endpointHost-x\",\"badge\":{\"text\":\"text-x\",\"warn\":true},\"plate\":\"plate-x\",\"kindLine\":\"kindLine-x\",\"slots\":[{\"slot\":\"slot-x\",\"pct\":7,\"resetsAt\":7,\"resetsAtRelText\":\"resetsAtRelText-x\",\"resetText\":\"resetText-x\",\"full\":true,\"text\":\"text-x\",\"tone\":\"plain\",\"perPctText\":\"perPctText-x\"}],\"unselectable\":\"unselectable-x\",\"login\":true,\"newSession\":true}],\"notice\":\"notice-x\"}",
+      "rust": "{\"meta\":{\"enabled\":true,\"manifestPath\":\"manifestPath-x\",\"updatedAt\":\"updatedAt-x\",\"count\":7,\"error\":\"error-x\",\"unsupported\":\"unsupported-x\",\"nextDefault\":\"nextDefault-x\",\"effectiveDefault\":\"effectiveDefault-x\"},\"accounts\":[{\"name\":\"name-x\",\"label\":\"label-x\",\"email\":\"email-x\",\"configDir\":\"configDir-x\",\"isDefault\":true,\"mode\":\"mode-x\",\"exists\":true,\"loggedIn\":true,\"authKind\":\"authKind-x\",\"authReady\":true,\"selectable\":true,\"color\":7,\"agent\":\"agent-x\",\"configDirShown\":\"configDirShown-x\",\"keyMasked\":\"keyMasked-x\",\"endpointHost\":\"endpointHost-x\",\"badge\":{\"text\":\"text-x\",\"warn\":true},\"plate\":\"plate-x\",\"kindLine\":\"kindLine-x\",\"slots\":[{\"slot\":\"slot-x\",\"pct\":7,\"resetsAt\":7,\"full\":true,\"text\":\"text-x\",\"tone\":\"plain\",\"perPctText\":\"perPctText-x\"}],\"unselectable\":\"unselectable-x\",\"mcpLogins\":\"mcpLogins-x\",\"login\":true,\"signOut\":true,\"status\":true,\"newSession\":true}],\"notice\":\"notice-x\"}",
       "sample": {
         "accounts": [
           {
+            "agent": "agent-x",
             "authKind": "authKind-x",
             "authReady": true,
             "badge": {
               "text": "text-x",
-              "title": "title-x",
               "warn": true
             },
             "color": 7,
@@ -24,11 +24,13 @@
             "label": "label-x",
             "loggedIn": true,
             "login": true,
+            "mcpLogins": "mcpLogins-x",
             "mode": "mode-x",
             "name": "name-x",
             "newSession": true,
             "plate": "plate-x",
             "selectable": true,
+            "signOut": true,
             "slots": [
               {
                 "full": true,
@@ -42,6 +44,7 @@
                 "tone": "plain"
               }
             ],
+            "status": true,
             "unselectable": "unselectable-x"
           }
         ],
@@ -59,13 +62,14 @@
       }
     },
     "assets-catalog": {
-      "rust": "{\"self\":\"self-x\",\"machines\":[{\"id\":\"id-x\",\"label\":\"label-x\",\"gen\":7,\"seenAt\":7,\"assets\":[{\"kind\":\"skill\",\"name\":\"name-x\",\"project\":\"project-x\",\"dir\":\"dir-x\",\"digest\":\"digest-x\",\"summary\":{},\"off\":true}],\"projectDirs\":[\"projectDirs-x\"],\"notes\":{\"k\":{\"text\":\"text-x\",\"rev\":7}},\"sharedMcp\":true}],\"rows\":[{\"kind\":\"skill\",\"name\":\"name-x\",\"state\":\"state-x\",\"from\":[{\"machine\":\"machine-x\",\"project\":\"project-x\",\"digest\":\"digest-x\",\"summary\":{}}]}],\"problems\":[\"problems-x\"],\"changed\":true,\"path\":\"path-x\"}",
+      "rust": "{\"self\":\"self-x\",\"machines\":[{\"id\":\"id-x\",\"label\":\"label-x\",\"gen\":7,\"seenAt\":7,\"assets\":[{\"agent\":\"agent-x\",\"kind\":\"skill\",\"name\":\"name-x\",\"project\":\"project-x\",\"dir\":\"dir-x\",\"digest\":\"digest-x\",\"summary\":{},\"off\":true}],\"projectDirs\":[\"projectDirs-x\"],\"notes\":{\"k\":{\"text\":\"text-x\",\"rev\":7}},\"sharedMcp\":true}],\"rows\":[{\"agent\":\"agent-x\",\"kind\":\"skill\",\"name\":\"name-x\",\"state\":\"state-x\",\"from\":[{\"machine\":\"machine-x\",\"project\":\"project-x\",\"digest\":\"digest-x\",\"summary\":{}}]}],\"problems\":[\"problems-x\"],\"changed\":true,\"path\":\"path-x\"}",
       "sample": {
         "changed": true,
         "machines": [
           {
             "assets": [
               {
+                "agent": "agent-x",
                 "digest": "digest-x",
                 "dir": "dir-x",
                 "kind": "skill",
@@ -97,6 +101,7 @@
         ],
         "rows": [
           {
+            "agent": "agent-x",
             "from": [
               {
                 "digest": "digest-x",
@@ -114,13 +119,14 @@
       }
     },
     "assets-catalog-merge": {
-      "rust": "{\"self\":\"self-x\",\"machines\":[{\"id\":\"id-x\",\"label\":\"label-x\",\"gen\":7,\"seenAt\":7,\"assets\":[{\"kind\":\"skill\",\"name\":\"name-x\",\"project\":\"project-x\",\"dir\":\"dir-x\",\"digest\":\"digest-x\",\"summary\":{},\"off\":true}],\"projectDirs\":[\"projectDirs-x\"],\"notes\":{\"k\":{\"text\":\"text-x\",\"rev\":7}},\"sharedMcp\":true}],\"rows\":[{\"kind\":\"skill\",\"name\":\"name-x\",\"state\":\"state-x\",\"from\":[{\"machine\":\"machine-x\",\"project\":\"project-x\",\"digest\":\"digest-x\",\"summary\":{}}]}],\"problems\":[\"problems-x\"],\"changed\":true,\"path\":\"path-x\"}",
+      "rust": "{\"self\":\"self-x\",\"machines\":[{\"id\":\"id-x\",\"label\":\"label-x\",\"gen\":7,\"seenAt\":7,\"assets\":[{\"agent\":\"agent-x\",\"kind\":\"skill\",\"name\":\"name-x\",\"project\":\"project-x\",\"dir\":\"dir-x\",\"digest\":\"digest-x\",\"summary\":{},\"off\":true}],\"projectDirs\":[\"projectDirs-x\"],\"notes\":{\"k\":{\"text\":\"text-x\",\"rev\":7}},\"sharedMcp\":true}],\"rows\":[{\"agent\":\"agent-x\",\"kind\":\"skill\",\"name\":\"name-x\",\"state\":\"state-x\",\"from\":[{\"machine\":\"machine-x\",\"project\":\"project-x\",\"digest\":\"digest-x\",\"summary\":{}}]}],\"problems\":[\"problems-x\"],\"changed\":true,\"path\":\"path-x\"}",
       "sample": {
         "changed": true,
         "machines": [
           {
             "assets": [
               {
+                "agent": "agent-x",
                 "digest": "digest-x",
                 "dir": "dir-x",
                 "kind": "skill",
@@ -152,6 +158,7 @@
         ],
         "rows": [
           {
+            "agent": "agent-x",
             "from": [
               {
                 "digest": "digest-x",
@@ -212,18 +219,14 @@
       }
     },
     "deploy-install": {
-      "rust": "{\"action\":\"skip\",\"said\":\"said-x\",\"build\":\"build-x\",\"os\":\"os-x\"}",
+      "rust": "{\"said\":\"said-x\"}",
       "sample": {
-        "action": "skip",
-        "build": "build-x",
-        "os": "os-x",
         "said": "said-x"
       }
     },
     "deploy-uninstall": {
-      "rust": "{\"removed\":true,\"said\":\"said-x\"}",
+      "rust": "{\"said\":\"said-x\"}",
       "sample": {
-        "removed": true,
         "said": "said-x"
       }
     },
@@ -261,6 +264,10 @@
         "said": "said-x",
         "state": "absent"
       }
+    },
+    "files-archive-session": {
+      "rust": "null",
+      "sample": null
     },
     "files-batch-stop": {
       "rust": "{\"stopping\":true}",
@@ -375,17 +382,18 @@
       }
     },
     "files-extract": {
-      "rust": "{\"path\":\"path-x\",\"bytes\":7,\"files\":7,\"dirs\":7,\"links\":7}",
+      "rust": "{\"path\":\"path-x\",\"bytes\":7,\"size_text\":\"size_text-x\",\"files\":7,\"dirs\":7,\"links\":7}",
       "sample": {
         "bytes": 7,
         "dirs": 7,
         "files": 7,
         "links": 7,
-        "path": "path-x"
+        "path": "path-x",
+        "size_text": "size_text-x"
       }
     },
     "files-find": {
-      "rust": "{\"hits\":[{\"path\":\"path-x\",\"kind\":\"dir\",\"class\":\"folder\",\"location\":\"location-x\",\"size\":7,\"mtime_secs\":7,\"mtime_text\":\"mtime_text-x\",\"marks\":[[7,7]]}],\"start\":\"start-x\",\"sort\":\"relevance\",\"desc\":true,\"total_hits\":7,\"truncated\":true,\"scanned\":7,\"index_age_secs\":7,\"index_missing\":true,\"stale\":true,\"index_root\":\"index_root-x\",\"out_of_index\":true,\"cover_root\":\"cover_root-x\",\"seq\":7,\"offset\":7}",
+      "rust": "{\"hits\":[{\"path\":\"path-x\",\"kind\":\"dir\",\"class\":\"folder\",\"location\":\"location-x\",\"size\":7,\"size_text\":\"size_text-x\",\"mtime_secs\":7,\"mtime_text\":\"mtime_text-x\",\"marks\":[[7,7]]}],\"start\":\"start-x\",\"sort\":\"relevance\",\"desc\":true,\"total_hits\":7,\"truncated\":true,\"scanned\":7,\"index_age_secs\":7,\"index_missing\":true,\"stale\":true,\"index_root\":\"index_root-x\",\"out_of_index\":true,\"cover_root\":\"cover_root-x\",\"seq\":7,\"offset\":7}",
       "sample": {
         "cover_root": "cover_root-x",
         "desc": true,
@@ -403,7 +411,8 @@
             "mtime_secs": 7,
             "mtime_text": "mtime_text-x",
             "path": "path-x",
-            "size": 7
+            "size": 7,
+            "size_text": "size_text-x"
           }
         ],
         "index_age_secs": 7,
@@ -498,16 +507,19 @@
       }
     },
     "files-ls": {
-      "rust": "{\"held\":\"held-x\",\"whole\":true,\"same\":true,\"order\":[\"order-x\"],\"up\":{\"k\":{\"path\":\"path-x\",\"name\":\"name-x\",\"kind\":\"dir\",\"size\":7,\"size_text\":\"size_text-x\",\"mtime_secs\":7,\"mtime_text\":\"mtime_text-x\",\"mtime_full\":\"mtime_full-x\",\"link_dir\":true,\"link_to\":\"dir\",\"class\":\"folder\",\"type_text\":\"type_text-x\",\"gates\":{\"preview\":{\"text\":{\"cap\":7,\"lang\":\"lang-x\"}},\"view\":{\"cap\":7},\"edit\":{\"cap\":7}},\"shown\":\"shown-x\"}},\"head\":{\"total\":7,\"info\":{\"shown\":\"shown-x\",\"up\":\"up-x\",\"crumbs\":[{\"name\":\"name-x\",\"path\":\"path-x\"}],\"truncated\":true,\"total\":7,\"unreadable\":7}}}",
+      "rust": "{\"held\":\"held-x\",\"whole\":true,\"same\":true,\"order\":[\"order-x\"],\"up\":{\"k\":{\"path\":\"path-x\",\"name\":\"name-x\",\"kind\":\"dir\",\"size\":7,\"size_text\":\"size_text-x\",\"mtime_secs\":7,\"mtime_text\":\"mtime_text-x\",\"mtime_full\":\"mtime_full-x\",\"link_dir\":true,\"link_to\":\"dir\",\"class\":\"folder\",\"type_text\":\"type_text-x\",\"gates\":{\"preview\":{\"text\":{\"cap\":7,\"lang\":\"lang-x\"}},\"view\":{\"cap\":7},\"edit\":{\"cap\":7}},\"shown\":\"shown-x\"}},\"head\":{\"total\":7,\"info\":{\"shown\":\"shown-x\",\"up\":\"up-x\",\"crumbs\":[{\"name\":\"name-x\",\"path\":\"path-x\"}],\"truncated\":true,\"total\":7,\"unreadable\":7,\"at_home\":true,\"by\":\"name\",\"descending\":true}}}",
       "sample": {
         "head": {
           "info": {
+            "at_home": true,
+            "by": "name",
             "crumbs": [
               {
                 "name": "name-x",
                 "path": "path-x"
               }
             ],
+            "descending": true,
             "shown": "shown-x",
             "total": 7,
             "truncated": true,
@@ -555,6 +567,29 @@
         "whole": true
       }
     },
+    "files-menu": {
+      "rust": "{\"groups\":[[{\"item\":{\"act\":\"open\"},\"text\":\"text-x\",\"why\":\"why-x\"}]],\"acts\":[{\"action\":\"open\",\"text\":\"text-x\",\"why\":\"why-x\"}]}",
+      "sample": {
+        "acts": [
+          {
+            "action": "open",
+            "text": "text-x",
+            "why": "why-x"
+          }
+        ],
+        "groups": [
+          [
+            {
+              "item": {
+                "act": "open"
+              },
+              "text": "text-x",
+              "why": "why-x"
+            }
+          ]
+        ]
+      }
+    },
     "files-mkdir": {
       "rust": "{\"path\":\"path-x\"}",
       "sample": {
@@ -589,7 +624,7 @@
       }
     },
     "files-size": {
-      "rust": "{\"path\":\"path-x\",\"bytes\":7,\"files\":7,\"dirs\":7,\"links\":7,\"other\":7,\"skipped_mounts\":7,\"unreadable_dirs\":7}",
+      "rust": "{\"path\":\"path-x\",\"bytes\":7,\"size_text\":\"size_text-x\",\"files\":7,\"dirs\":7,\"links\":7,\"other\":7,\"skipped_mounts\":7,\"unreadable_dirs\":7}",
       "sample": {
         "bytes": 7,
         "dirs": 7,
@@ -597,6 +632,7 @@
         "links": 7,
         "other": 7,
         "path": "path-x",
+        "size_text": "size_text-x",
         "skipped_mounts": 7,
         "unreadable_dirs": 7
       }
@@ -608,7 +644,7 @@
       }
     },
     "files-stat": {
-      "rust": "{\"path\":\"path-x\",\"up\":\"up-x\",\"kind\":\"dir\",\"size\":7,\"readonly\":true,\"mode\":7,\"mtime_secs\":7,\"mtime_text\":\"mtime_text-x\",\"mtime_full\":\"mtime_full-x\",\"owner\":\"owner-x\",\"link_target\":\"link_target-x\"}",
+      "rust": "{\"path\":\"path-x\",\"up\":\"up-x\",\"kind\":\"dir\",\"size\":7,\"size_text\":\"size_text-x\",\"readonly\":true,\"mode\":7,\"mtime_secs\":7,\"mtime_text\":\"mtime_text-x\",\"mtime_full\":\"mtime_full-x\",\"owner\":\"owner-x\",\"link_target\":\"link_target-x\"}",
       "sample": {
         "kind": "dir",
         "link_target": "link_target-x",
@@ -620,8 +656,13 @@
         "path": "path-x",
         "readonly": true,
         "size": 7,
+        "size_text": "size_text-x",
         "up": "up-x"
       }
+    },
+    "files-unarchive-session": {
+      "rust": "null",
+      "sample": null
     },
     "files-write-text": {
       "rust": "{\"path\":\"path-x\",\"bytes\":7,\"sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\"}",
@@ -632,7 +673,7 @@
       }
     },
     "history-lines": {
-      "rust": "{\"from\":7,\"next\":7,\"eof\":true,\"end\":7,\"lines\":[{\"session_id\":\"session_id-x\",\"path\":\"path-x\",\"seq\":7,\"end\":7,\"cwd\":\"cwd-x\",\"record\":{\"agent\":\"agent-x\",\"id\":\"id-x\",\"at\":\"at-x\",\"timeText\":\"timeText-x\",\"atMs\":7,\"draw\":\"card\",\"human\":true,\"t\":\"said\",\"who\":{\"speaker\":{\"kind\":\"human\"},\"text\":\"text-x\",\"parts\":[{\"text\":\"text-x\",\"fold\":{\"shown\":7,\"total\":7,\"more\":\"more-x\"}}]},\"blocks\":[{\"type\":\"prose\",\"doc\":{\"blocks\":[{\"t\":\"p\",\"k\":[\"k-x\"]}],\"segs\":[7]},\"more\":\"more-x\"}],\"results\":{\"k\":{\"ok\":true,\"rejected\":true,\"lines\":7,\"added\":7,\"removed\":7,\"files\":7,\"answer\":{\"kind\":\"approved\"},\"exitCode\":7,\"error\":\"error-x\",\"file\":\"file-x\",\"patch\":{\"rows\":[{\"kind\":\"add\",\"text\":\"text-x\",\"oldNo\":7,\"newNo\":7}],\"shown\":7,\"truncated\":true,\"added\":7,\"removed\":7,\"stat\":\"stat-x\",\"notice\":\"notice-x\"},\"text\":\"text-x\",\"preview\":\"preview-x\",\"chars\":7,\"kind\":\"launched\"}},\"cwd\":\"cwd-x\",\"attachments\":[{\"name\":\"name-x\",\"rel\":\"rel-x\",\"class\":\"folder\",\"classText\":\"classText-x\",\"bytes\":7,\"sizeText\":\"sizeText-x\",\"gone\":true}]}}]}",
+      "rust": "{\"from\":7,\"next\":7,\"eof\":true,\"end\":7,\"lines\":[{\"session_id\":\"session_id-x\",\"path\":\"path-x\",\"seq\":7,\"end\":7,\"cwd\":\"cwd-x\",\"record\":{\"agent\":\"agent-x\",\"id\":\"id-x\",\"at\":\"at-x\",\"timeText\":\"timeText-x\",\"atMs\":7,\"draw\":\"card\",\"human\":true,\"t\":\"said\",\"who\":{\"speaker\":{\"kind\":\"human\"},\"text\":\"text-x\",\"parts\":[{\"text\":\"text-x\",\"fold\":{\"shown\":7,\"total\":7,\"more\":\"more-x\"}}]},\"blocks\":[{\"type\":\"prose\",\"doc\":{\"blocks\":[{\"t\":\"p\",\"k\":[\"k-x\"]}],\"segs\":[7]},\"more\":\"more-x\"}],\"results\":{\"k\":{\"ok\":true,\"rejected\":true,\"lines\":7,\"added\":7,\"removed\":7,\"files\":7,\"answer\":{\"kind\":\"approved\"},\"exitCode\":7,\"error\":\"error-x\",\"file\":\"file-x\",\"patch\":{\"rows\":[{\"kind\":\"add\",\"text\":\"text-x\",\"oldNo\":7,\"newNo\":7}],\"shown\":7,\"truncated\":true,\"added\":7,\"removed\":7,\"stat\":\"stat-x\",\"notice\":\"notice-x\",\"showAllText\":\"showAllText-x\"},\"text\":\"text-x\",\"preview\":\"preview-x\",\"chars\":7,\"kind\":\"launched\",\"resultText\":\"resultText-x\"}},\"cwd\":\"cwd-x\",\"attachments\":[{\"name\":\"name-x\",\"rel\":\"rel-x\",\"class\":\"folder\",\"classText\":\"classText-x\",\"bytes\":7,\"sizeText\":\"sizeText-x\",\"gone\":true}]}}]}",
       "sample": {
         "end": 7,
         "eof": true,
@@ -706,6 +747,7 @@
                         "text": "text-x"
                       }
                     ],
+                    "showAllText": "showAllText-x",
                     "shown": 7,
                     "stat": "stat-x",
                     "truncated": true
@@ -713,6 +755,7 @@
                   "preview": "preview-x",
                   "rejected": true,
                   "removed": 7,
+                  "resultText": "resultText-x",
                   "text": "text-x"
                 }
               },
@@ -743,7 +786,7 @@
       }
     },
     "history-list": {
-      "rust": "{\"held\":\"held-x\",\"whole\":true,\"same\":true,\"order\":[\"order-x\"],\"up\":{\"k\":{\"agent\":\"agent-x\",\"sessionId\":\"sessionId-x\",\"projectPath\":\"projectPath-x\",\"projectName\":\"projectName-x\",\"aiTitle\":\"aiTitle-x\",\"firstUserExcerpt\":\"firstUserExcerpt-x\",\"title\":\"title-x\",\"startedAt\":7,\"updatedAt\":7,\"jsonlPath\":\"jsonlPath-x\",\"messageCountApprox\":7,\"isBg\":true,\"starred\":true,\"customTitle\":\"customTitle-x\",\"hidden\":{\"by\":\"self\",\"said\":\"said-x\"},\"forkedFromSessionId\":\"forkedFromSessionId-x\",\"projectDir\":\"projectDir-x\",\"group\":\"group-x\",\"lastAccount\":\"lastAccount-x\",\"label\":\"label-x\",\"untitled\":true,\"face\":{\"dot\":\"running\",\"life\":{\"is\":\"live\",\"activity\":\"working\"},\"settled\":true,\"name\":\"name-x\",\"tip\":\"tip-x\",\"line\":\"line-x\",\"tone\":\"plain\",\"order\":7,\"can\":{\"close\":{\"can\":\"quiet\"},\"resume\":{\"can\":\"yes\"},\"front\":{\"can\":\"yes\"},\"attach\":{\"can\":\"yes\"},\"view\":{\"can\":\"yes\",\"said\":\"在 cc-monitor 里打开它的终端\",\"open\":{\"kind\":\"attach\"}},\"reattach\":{\"can\":\"yes\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"},\"stop\":{\"can\":\"yes\"},\"say\":{\"can\":\"yes\",\"hint\":\"hint-x\"},\"end\":{\"can\":\"yes\"}},\"account\":\"account-x\"},\"can\":{\"resume\":\"yes\",\"accounts\":true,\"fork\":true,\"delete\":\"yes\"},\"agentTag\":\"agentTag-x\",\"context\":true,\"at\":7,\"atText\":\"atText-x\",\"sectionText\":\"sectionText-x\",\"spanText\":\"spanText-x\",\"origin\":\"origin-x\",\"reveal\":true,\"deleteAsk\":\"deleteAsk-x\"}},\"head\":{\"total\":7,\"info\":{\"groups\":[{\"key\":\"key-x\",\"agent\":\"agent-x\",\"projectName\":\"projectName-x\",\"projectPath\":\"projectPath-x\",\"projectDir\":\"projectDir-x\",\"count\":7,\"hasLive\":true,\"starred\":true,\"atText\":\"atText-x\",\"order\":7,\"failed\":\"failed-x\",\"origin\":\"origin-x\"}],\"notice\":\"notice-x\"}}}",
+      "rust": "{\"held\":\"held-x\",\"whole\":true,\"same\":true,\"order\":[\"order-x\"],\"up\":{\"k\":{\"agent\":\"agent-x\",\"sessionId\":\"sessionId-x\",\"projectPath\":\"projectPath-x\",\"projectName\":\"projectName-x\",\"aiTitle\":\"aiTitle-x\",\"firstUserExcerpt\":\"firstUserExcerpt-x\",\"title\":\"title-x\",\"startedAt\":7,\"updatedAt\":7,\"jsonlPath\":\"jsonlPath-x\",\"messageCountApprox\":7,\"isBg\":true,\"starred\":true,\"customTitle\":\"customTitle-x\",\"hidden\":{\"by\":\"self\",\"said\":\"said-x\"},\"forkedFromSessionId\":\"forkedFromSessionId-x\",\"projectDir\":\"projectDir-x\",\"group\":\"group-x\",\"lastAccount\":\"lastAccount-x\",\"label\":\"label-x\",\"untitled\":true,\"face\":{\"dot\":\"running\",\"life\":{\"is\":\"live\",\"activity\":\"working\"},\"settled\":true,\"name\":\"name-x\",\"tip\":\"tip-x\",\"line\":\"line-x\",\"clock\":{\"text\":\"text-x\",\"from\":7},\"peek\":\"peek-x\",\"tone\":\"plain\",\"order\":7,\"can\":{\"close\":{\"can\":\"quiet\"},\"resume\":{\"can\":\"yes\"},\"front\":{\"can\":\"yes\"},\"attach\":{\"can\":\"yes\"},\"view\":{\"can\":\"yes\",\"said\":\"said-x\",\"open\":{\"kind\":\"attach\",\"terminal\":\"terminal-x\"}},\"reattach\":{\"can\":\"yes\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"},\"stop\":{\"can\":\"yes\"},\"say\":{\"can\":\"yes\",\"hint\":\"hint-x\"},\"end\":{\"can\":\"yes\"}},\"account\":\"account-x\"},\"can\":{\"resume\":\"yes\",\"resumeWhy\":\"resumeWhy-x\",\"accounts\":true,\"fork\":true,\"delete\":\"yes\"},\"archive\":{\"archived\":true,\"label\":\"label-x\",\"failed\":\"failed-x\"},\"agentTag\":\"agentTag-x\",\"context\":true,\"at\":7,\"atText\":\"atText-x\",\"sectionText\":\"sectionText-x\",\"spanText\":\"spanText-x\",\"origin\":\"origin-x\",\"reveal\":true,\"deleteAsk\":\"deleteAsk-x\"}},\"head\":{\"total\":7,\"info\":{\"groups\":[{\"key\":\"key-x\",\"agent\":\"agent-x\",\"projectName\":\"projectName-x\",\"projectPath\":\"projectPath-x\",\"projectDir\":\"projectDir-x\",\"count\":7,\"countText\":\"countText-x\",\"hasLive\":true,\"starred\":true,\"atText\":\"atText-x\",\"order\":7,\"failed\":\"failed-x\",\"origin\":\"origin-x\"}],\"notice\":\"notice-x\"}}}",
       "sample": {
         "head": {
           "info": {
@@ -752,6 +795,7 @@
                 "agent": "agent-x",
                 "atText": "atText-x",
                 "count": 7,
+                "countText": "countText-x",
                 "failed": "failed-x",
                 "hasLive": true,
                 "key": "key-x",
@@ -777,13 +821,19 @@
             "agent": "agent-x",
             "agentTag": "agentTag-x",
             "aiTitle": "aiTitle-x",
+            "archive": {
+              "archived": true,
+              "failed": "failed-x",
+              "label": "label-x"
+            },
             "at": 7,
             "atText": "atText-x",
             "can": {
               "accounts": true,
               "delete": "yes",
               "fork": true,
-              "resume": "yes"
+              "resume": "yes",
+              "resumeWhy": "resumeWhy-x"
             },
             "context": true,
             "customTitle": "customTitle-x",
@@ -825,10 +875,15 @@
                 "view": {
                   "can": "yes",
                   "open": {
-                    "kind": "attach"
+                    "kind": "attach",
+                    "terminal": "terminal-x"
                   },
-                  "said": "在 cc-monitor 里打开它的终端"
+                  "said": "said-x"
                 }
+              },
+              "clock": {
+                "from": 7,
+                "text": "text-x"
               },
               "dot": "running",
               "life": {
@@ -838,14 +893,12 @@
               "line": "line-x",
               "name": "name-x",
               "order": 7,
+              "peek": "peek-x",
               "settled": true,
               "tip": "tip-x",
               "tone": "plain"
             },
             "firstUserExcerpt": "firstUserExcerpt-x",
-            "forkedFrom": {
-              "label": "label-x"
-            },
             "forkedFromSessionId": "forkedFromSessionId-x",
             "group": "group-x",
             "hidden": {
@@ -876,7 +929,7 @@
       }
     },
     "history-read": {
-      "rust": "{\"rows\":[{\"end\":7,\"hash\":7,\"record\":{\"agent\":\"agent-x\",\"id\":\"id-x\",\"at\":\"at-x\",\"timeText\":\"timeText-x\",\"atMs\":7,\"draw\":\"card\",\"human\":true,\"t\":\"said\",\"who\":{\"speaker\":{\"kind\":\"human\"},\"text\":\"text-x\",\"parts\":[{\"text\":\"text-x\",\"fold\":{\"shown\":7,\"total\":7,\"more\":\"more-x\"}}]},\"blocks\":[{\"type\":\"prose\",\"doc\":{\"blocks\":[{\"t\":\"p\",\"k\":[\"k-x\"]}],\"segs\":[7]},\"more\":\"more-x\"}],\"results\":{\"k\":{\"ok\":true,\"rejected\":true,\"lines\":7,\"added\":7,\"removed\":7,\"files\":7,\"answer\":{\"kind\":\"approved\"},\"exitCode\":7,\"error\":\"error-x\",\"file\":\"file-x\",\"patch\":{\"rows\":[{\"kind\":\"add\",\"text\":\"text-x\",\"oldNo\":7,\"newNo\":7}],\"shown\":7,\"truncated\":true,\"added\":7,\"removed\":7,\"stat\":\"stat-x\",\"notice\":\"notice-x\"},\"text\":\"text-x\",\"preview\":\"preview-x\",\"chars\":7,\"kind\":\"launched\"}},\"cwd\":\"cwd-x\",\"attachments\":[{\"name\":\"name-x\",\"rel\":\"rel-x\",\"class\":\"folder\",\"classText\":\"classText-x\",\"bytes\":7,\"sizeText\":\"sizeText-x\",\"gone\":true}]},\"cwd\":\"cwd-x\"}],\"next\":7,\"eof\":true}",
+      "rust": "{\"rows\":[{\"end\":7,\"hash\":7,\"record\":{\"agent\":\"agent-x\",\"id\":\"id-x\",\"at\":\"at-x\",\"timeText\":\"timeText-x\",\"atMs\":7,\"draw\":\"card\",\"human\":true,\"t\":\"said\",\"who\":{\"speaker\":{\"kind\":\"human\"},\"text\":\"text-x\",\"parts\":[{\"text\":\"text-x\",\"fold\":{\"shown\":7,\"total\":7,\"more\":\"more-x\"}}]},\"blocks\":[{\"type\":\"prose\",\"doc\":{\"blocks\":[{\"t\":\"p\",\"k\":[\"k-x\"]}],\"segs\":[7]},\"more\":\"more-x\"}],\"results\":{\"k\":{\"ok\":true,\"rejected\":true,\"lines\":7,\"added\":7,\"removed\":7,\"files\":7,\"answer\":{\"kind\":\"approved\"},\"exitCode\":7,\"error\":\"error-x\",\"file\":\"file-x\",\"patch\":{\"rows\":[{\"kind\":\"add\",\"text\":\"text-x\",\"oldNo\":7,\"newNo\":7}],\"shown\":7,\"truncated\":true,\"added\":7,\"removed\":7,\"stat\":\"stat-x\",\"notice\":\"notice-x\",\"showAllText\":\"showAllText-x\"},\"text\":\"text-x\",\"preview\":\"preview-x\",\"chars\":7,\"kind\":\"launched\",\"resultText\":\"resultText-x\"}},\"cwd\":\"cwd-x\",\"attachments\":[{\"name\":\"name-x\",\"rel\":\"rel-x\",\"class\":\"folder\",\"classText\":\"classText-x\",\"bytes\":7,\"sizeText\":\"sizeText-x\",\"gone\":true}]},\"cwd\":\"cwd-x\"}],\"next\":7,\"eof\":true}",
       "sample": {
         "eof": true,
         "next": 7,
@@ -949,6 +1002,7 @@
                         "text": "text-x"
                       }
                     ],
+                    "showAllText": "showAllText-x",
                     "shown": 7,
                     "stat": "stat-x",
                     "truncated": true
@@ -956,6 +1010,7 @@
                   "preview": "preview-x",
                   "rejected": true,
                   "removed": 7,
+                  "resultText": "resultText-x",
                   "text": "text-x"
                 }
               },
@@ -983,7 +1038,7 @@
       }
     },
     "history-search": {
-      "rust": "{\"sessions\":[{\"agent\":\"agent-x\",\"sessionId\":\"sessionId-x\",\"projectPath\":\"projectPath-x\",\"projectName\":\"projectName-x\",\"jsonlPath\":\"jsonlPath-x\",\"title\":\"title-x\",\"updatedAt\":7,\"hits\":[{\"uuid\":\"uuid-x\",\"kind\":\"kind-x\",\"before\":\"before-x\",\"matched\":\"matched-x\",\"after\":\"after-x\",\"tool\":\"tool-x\",\"offset\":7,\"line\":7}],\"moreHits\":7,\"hitsTruncated\":true,\"isBg\":true,\"can\":{\"resume\":\"yes\",\"accounts\":true,\"fork\":true,\"delete\":\"yes\"},\"face\":{\"dot\":\"running\",\"life\":{\"is\":\"live\",\"activity\":\"working\"},\"settled\":true,\"name\":\"name-x\",\"tip\":\"tip-x\",\"line\":\"line-x\",\"tone\":\"plain\",\"order\":7,\"can\":{\"close\":{\"can\":\"quiet\"},\"resume\":{\"can\":\"yes\"},\"front\":{\"can\":\"yes\"},\"attach\":{\"can\":\"yes\"},\"view\":{\"can\":\"yes\",\"said\":\"在 cc-monitor 里打开它的终端\",\"open\":{\"kind\":\"attach\"}},\"reattach\":{\"can\":\"yes\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"},\"stop\":{\"can\":\"yes\"},\"say\":{\"can\":\"yes\",\"hint\":\"hint-x\"},\"end\":{\"can\":\"yes\"}},\"account\":\"account-x\"},\"atText\":\"atText-x\",\"spanText\":\"spanText-x\",\"label\":\"label-x\",\"starred\":true,\"hidden\":{\"by\":\"self\",\"said\":\"said-x\"}}],\"unreadable\":7,\"skipped\":[\"skipped-x\"]}",
+      "rust": "{\"sessions\":[{\"agent\":\"agent-x\",\"sessionId\":\"sessionId-x\",\"projectPath\":\"projectPath-x\",\"projectName\":\"projectName-x\",\"jsonlPath\":\"jsonlPath-x\",\"title\":\"title-x\",\"updatedAt\":7,\"hits\":[{\"uuid\":\"uuid-x\",\"who\":\"who-x\",\"before\":\"before-x\",\"matched\":\"matched-x\",\"after\":\"after-x\",\"tool\":\"tool-x\",\"offset\":7,\"line\":7}],\"moreHits\":7,\"hitsTruncated\":true,\"isBg\":true,\"can\":{\"resume\":\"yes\",\"resumeWhy\":\"resumeWhy-x\",\"accounts\":true,\"fork\":true,\"delete\":\"yes\"},\"face\":{\"dot\":\"running\",\"life\":{\"is\":\"live\",\"activity\":\"working\"},\"settled\":true,\"name\":\"name-x\",\"tip\":\"tip-x\",\"line\":\"line-x\",\"clock\":{\"text\":\"text-x\",\"from\":7},\"peek\":\"peek-x\",\"tone\":\"plain\",\"order\":7,\"can\":{\"close\":{\"can\":\"quiet\"},\"resume\":{\"can\":\"yes\"},\"front\":{\"can\":\"yes\"},\"attach\":{\"can\":\"yes\"},\"view\":{\"can\":\"yes\",\"said\":\"said-x\",\"open\":{\"kind\":\"attach\",\"terminal\":\"terminal-x\"}},\"reattach\":{\"can\":\"yes\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"},\"stop\":{\"can\":\"yes\"},\"say\":{\"can\":\"yes\",\"hint\":\"hint-x\"},\"end\":{\"can\":\"yes\"}},\"account\":\"account-x\"},\"atText\":\"atText-x\",\"spanText\":\"spanText-x\",\"label\":\"label-x\",\"starred\":true,\"hidden\":{\"by\":\"self\",\"said\":\"said-x\"}}],\"unreadable\":7,\"skipped\":[\"skipped-x\"]}",
       "sample": {
         "sessions": [
           {
@@ -993,7 +1048,8 @@
               "accounts": true,
               "delete": "yes",
               "fork": true,
-              "resume": "yes"
+              "resume": "yes",
+              "resumeWhy": "resumeWhy-x"
             },
             "face": {
               "account": "account-x",
@@ -1032,10 +1088,15 @@
                 "view": {
                   "can": "yes",
                   "open": {
-                    "kind": "attach"
+                    "kind": "attach",
+                    "terminal": "terminal-x"
                   },
-                  "said": "在 cc-monitor 里打开它的终端"
+                  "said": "said-x"
                 }
+              },
+              "clock": {
+                "from": 7,
+                "text": "text-x"
               },
               "dot": "running",
               "life": {
@@ -1045,12 +1106,10 @@
               "line": "line-x",
               "name": "name-x",
               "order": 7,
+              "peek": "peek-x",
               "settled": true,
               "tip": "tip-x",
               "tone": "plain"
-            },
-            "forkedFrom": {
-              "label": "label-x"
             },
             "hidden": {
               "by": "self",
@@ -1060,12 +1119,12 @@
               {
                 "after": "after-x",
                 "before": "before-x",
-                "kind": "kind-x",
                 "line": 7,
                 "matched": "matched-x",
                 "offset": 7,
                 "tool": "tool-x",
-                "uuid": "uuid-x"
+                "uuid": "uuid-x",
+                "who": "who-x"
               }
             ],
             "hitsTruncated": true,
@@ -1089,7 +1148,7 @@
       }
     },
     "history-tail": {
-      "rust": "{\"total\":7,\"tail_from\":7,\"split_at\":7,\"end\":7,\"how\":\"tail\",\"from\":7,\"rows\":[{\"end\":7,\"hash\":7,\"record\":{\"agent\":\"agent-x\",\"id\":\"id-x\",\"at\":\"at-x\",\"timeText\":\"timeText-x\",\"atMs\":7,\"draw\":\"card\",\"human\":true,\"t\":\"said\",\"who\":{\"speaker\":{\"kind\":\"human\"},\"text\":\"text-x\",\"parts\":[{\"text\":\"text-x\",\"fold\":{\"shown\":7,\"total\":7,\"more\":\"more-x\"}}]},\"blocks\":[{\"type\":\"prose\",\"doc\":{\"blocks\":[{\"t\":\"p\",\"k\":[\"k-x\"]}],\"segs\":[7]},\"more\":\"more-x\"}],\"results\":{\"k\":{\"ok\":true,\"rejected\":true,\"lines\":7,\"added\":7,\"removed\":7,\"files\":7,\"answer\":{\"kind\":\"approved\"},\"exitCode\":7,\"error\":\"error-x\",\"file\":\"file-x\",\"patch\":{\"rows\":[{\"kind\":\"add\",\"text\":\"text-x\",\"oldNo\":7,\"newNo\":7}],\"shown\":7,\"truncated\":true,\"added\":7,\"removed\":7,\"stat\":\"stat-x\",\"notice\":\"notice-x\"},\"text\":\"text-x\",\"preview\":\"preview-x\",\"chars\":7,\"kind\":\"launched\"}},\"cwd\":\"cwd-x\",\"attachments\":[{\"name\":\"name-x\",\"rel\":\"rel-x\",\"class\":\"folder\",\"classText\":\"classText-x\",\"bytes\":7,\"sizeText\":\"sizeText-x\",\"gone\":true}]},\"cwd\":\"cwd-x\"}],\"next\":7,\"eof\":true,\"held\":{\"path\":\"path-x\",\"next\":7,\"next_byte\":7,\"mark\":\"mark-x\"}}",
+      "rust": "{\"total\":7,\"tail_from\":7,\"split_at\":7,\"end\":7,\"how\":\"tail\",\"said\":\"said-x\",\"from\":7,\"rows\":[{\"end\":7,\"hash\":7,\"record\":{\"agent\":\"agent-x\",\"id\":\"id-x\",\"at\":\"at-x\",\"timeText\":\"timeText-x\",\"atMs\":7,\"draw\":\"card\",\"human\":true,\"t\":\"said\",\"who\":{\"speaker\":{\"kind\":\"human\"},\"text\":\"text-x\",\"parts\":[{\"text\":\"text-x\",\"fold\":{\"shown\":7,\"total\":7,\"more\":\"more-x\"}}]},\"blocks\":[{\"type\":\"prose\",\"doc\":{\"blocks\":[{\"t\":\"p\",\"k\":[\"k-x\"]}],\"segs\":[7]},\"more\":\"more-x\"}],\"results\":{\"k\":{\"ok\":true,\"rejected\":true,\"lines\":7,\"added\":7,\"removed\":7,\"files\":7,\"answer\":{\"kind\":\"approved\"},\"exitCode\":7,\"error\":\"error-x\",\"file\":\"file-x\",\"patch\":{\"rows\":[{\"kind\":\"add\",\"text\":\"text-x\",\"oldNo\":7,\"newNo\":7}],\"shown\":7,\"truncated\":true,\"added\":7,\"removed\":7,\"stat\":\"stat-x\",\"notice\":\"notice-x\",\"showAllText\":\"showAllText-x\"},\"text\":\"text-x\",\"preview\":\"preview-x\",\"chars\":7,\"kind\":\"launched\",\"resultText\":\"resultText-x\"}},\"cwd\":\"cwd-x\",\"attachments\":[{\"name\":\"name-x\",\"rel\":\"rel-x\",\"class\":\"folder\",\"classText\":\"classText-x\",\"bytes\":7,\"sizeText\":\"sizeText-x\",\"gone\":true}]},\"cwd\":\"cwd-x\"}],\"next\":7,\"eof\":true,\"held\":{\"path\":\"path-x\",\"next\":7,\"next_byte\":7,\"mark\":\"mark-x\"}}",
       "sample": {
         "end": 7,
         "eof": true,
@@ -1171,6 +1230,7 @@
                         "text": "text-x"
                       }
                     ],
+                    "showAllText": "showAllText-x",
                     "shown": 7,
                     "stat": "stat-x",
                     "truncated": true
@@ -1178,6 +1238,7 @@
                   "preview": "preview-x",
                   "rejected": true,
                   "removed": 7,
+                  "resultText": "resultText-x",
                   "text": "text-x"
                 }
               },
@@ -1202,13 +1263,31 @@
             }
           }
         ],
+        "said": "said-x",
         "split_at": 7,
         "tail_from": 7,
         "total": 7
       }
     },
+    "machine-interrupts": {
+      "rust": "{\"relayedSessions\":7,\"relayedMaybe\":7,\"liveStreams\":7,\"forwards\":7,\"rows\":[{\"label\":\"label-x\",\"items\":[\"items-x\"]}]}",
+      "sample": {
+        "forwards": 7,
+        "liveStreams": 7,
+        "relayedMaybe": 7,
+        "relayedSessions": 7,
+        "rows": [
+          {
+            "items": [
+              "items-x"
+            ],
+            "label": "label-x"
+          }
+        ]
+      }
+    },
     "machine-read": {
-      "rust": "{\"machines\":{\"k\":{\"name\":\"name-x\",\"state\":\"up\",\"dot\":\"up\",\"linked\":true,\"offline\":true,\"reason\":\"resolve\",\"stage\":\"deploy\",\"version\":\"version-x\",\"os\":\"os-x\",\"word\":\"word-x\",\"said\":\"said-x\",\"offlineSaid\":\"offlineSaid-x\",\"heldSaid\":\"heldSaid-x\",\"fixes\":[{\"fix\":\"retry\",\"label\":\"label-x\"}],\"seenHostKey\":\"seenHostKey-x\",\"expectedHostKey\":\"expectedHostKey-x\",\"detail\":\"detail-x\",\"route\":\"route-x\",\"strip\":{\"tone\":\"plain\",\"progress\":true}}},\"empty\":{\"line\":\"line-x\",\"hint\":\"hint-x\",\"count\":\"count-x\",\"allListed\":true}}",
+      "rust": "{\"machines\":{\"k\":{\"name\":\"name-x\",\"state\":\"up\",\"dot\":\"up\",\"linked\":true,\"offline\":true,\"reason\":\"resolve\",\"stage\":\"deploy\",\"version\":\"version-x\",\"os\":\"os-x\",\"word\":\"word-x\",\"said\":\"said-x\",\"offlineSaid\":\"offlineSaid-x\",\"heldSaid\":\"heldSaid-x\",\"withdrawHeld\":\"withdrawHeld-x\",\"rewindHeld\":\"rewindHeld-x\",\"fixes\":[{\"fix\":\"retry\",\"label\":\"label-x\"}],\"seenHostKey\":\"seenHostKey-x\",\"expectedHostKey\":\"expectedHostKey-x\",\"detail\":\"detail-x\",\"route\":\"route-x\",\"strip\":{\"tone\":\"plain\",\"progress\":true}}},\"empty\":{\"line\":\"line-x\",\"hint\":\"hint-x\",\"count\":\"count-x\",\"allListed\":true}}",
       "sample": {
         "empty": {
           "allListed": true,
@@ -1234,6 +1313,7 @@
             "offlineSaid": "offlineSaid-x",
             "os": "os-x",
             "reason": "resolve",
+            "rewindHeld": "rewindHeld-x",
             "route": "route-x",
             "said": "said-x",
             "seenHostKey": "seenHostKey-x",
@@ -1244,20 +1324,22 @@
               "tone": "plain"
             },
             "version": "version-x",
+            "withdrawHeld": "withdrawHeld-x",
             "word": "word-x"
           }
         }
       }
     },
     "machine-stop": {
-      "rust": "{\"stopped\":\"stopped-x\",\"pid\":7}",
+      "rust": "{\"stopped\":\"stopped-x\",\"pid\":7,\"said\":\"said-x\"}",
       "sample": {
         "pid": 7,
+        "said": "said-x",
         "stopped": "stopped-x"
       }
     },
     "machine-wake": {
-      "rust": "{\"name\":\"name-x\",\"state\":\"up\",\"dot\":\"up\",\"linked\":true,\"offline\":true,\"reason\":\"resolve\",\"stage\":\"deploy\",\"version\":\"version-x\",\"os\":\"os-x\",\"word\":\"word-x\",\"said\":\"said-x\",\"offlineSaid\":\"offlineSaid-x\",\"heldSaid\":\"heldSaid-x\",\"fixes\":[{\"fix\":\"retry\",\"label\":\"label-x\"}],\"seenHostKey\":\"seenHostKey-x\",\"expectedHostKey\":\"expectedHostKey-x\",\"detail\":\"detail-x\",\"route\":\"route-x\",\"strip\":{\"tone\":\"plain\",\"progress\":true}}",
+      "rust": "{\"name\":\"name-x\",\"state\":\"up\",\"dot\":\"up\",\"linked\":true,\"offline\":true,\"reason\":\"resolve\",\"stage\":\"deploy\",\"version\":\"version-x\",\"os\":\"os-x\",\"word\":\"word-x\",\"said\":\"said-x\",\"offlineSaid\":\"offlineSaid-x\",\"heldSaid\":\"heldSaid-x\",\"withdrawHeld\":\"withdrawHeld-x\",\"rewindHeld\":\"rewindHeld-x\",\"fixes\":[{\"fix\":\"retry\",\"label\":\"label-x\"}],\"seenHostKey\":\"seenHostKey-x\",\"expectedHostKey\":\"expectedHostKey-x\",\"detail\":\"detail-x\",\"route\":\"route-x\",\"strip\":{\"tone\":\"plain\",\"progress\":true}}",
       "sample": {
         "detail": "detail-x",
         "dot": "up",
@@ -1275,6 +1357,7 @@
         "offlineSaid": "offlineSaid-x",
         "os": "os-x",
         "reason": "resolve",
+        "rewindHeld": "rewindHeld-x",
         "route": "route-x",
         "said": "said-x",
         "seenHostKey": "seenHostKey-x",
@@ -1285,6 +1368,7 @@
           "tone": "plain"
         },
         "version": "version-x",
+        "withdrawHeld": "withdrawHeld-x",
         "word": "word-x"
       }
     },
@@ -1328,7 +1412,7 @@
       }
     },
     "quota-read": {
-      "rust": "{\"state\":\"present\",\"reason\":\"reason-x\",\"detail\":\"detail-x\",\"path\":\"path-x\",\"now\":7,\"accounts\":[{\"agent\":\"agent-x\",\"account\":\"account-x\",\"kind\":\"sub\",\"state\":\"ok\",\"stale\":true,\"slots\":[{\"slot\":\"slot-x\",\"pct\":7,\"resetsAt\":7,\"resetsAtRelText\":\"resetsAtRelText-x\",\"resetText\":\"resetText-x\",\"full\":true,\"text\":\"text-x\",\"tone\":\"plain\",\"perPctText\":\"perPctText-x\"}],\"login\":\"ok\",\"windows\":[{\"name\":\"name-x\",\"key\":\"key-x\",\"pct\":7,\"resetsAt\":7,\"resetsAtRelText\":\"resetsAtRelText-x\",\"from\":\"headers\",\"tokensPerPct\":7,\"perPctText\":\"perPctText-x\",\"tone\":\"plain\"}],\"usage\":{\"slot\":\"slot-x\",\"window\":\"window-x\",\"value\":\"value-x\",\"reset\":\"reset-x\",\"text\":\"text-x\",\"tone\":\"plain\"},\"rows\":[[{\"text\":\"text-x\",\"tone\":\"plain\"}]],\"warm\":{\"act\":\"send\",\"at\":7,\"atText\":\"atText-x\",\"text\":\"text-x\"}}],\"unseen\":[{\"agent\":\"agent-x\",\"account\":\"account-x\",\"kind\":\"sub\",\"login\":\"ok\",\"usage\":{\"slot\":\"slot-x\",\"window\":\"window-x\",\"value\":\"value-x\",\"text\":\"text-x\",\"tone\":\"plain\"},\"rows\":[[{\"text\":\"text-x\",\"tone\":\"plain\"}]],\"warm\":{\"act\":\"send\",\"at\":7,\"atText\":\"atText-x\",\"text\":\"text-x\"}}],\"candidates\":[{\"agent\":\"agent-x\",\"account\":\"account-x\",\"kind\":\"sub\"}],\"text\":\"text-x\",\"names\":{\"slots\":{\"k\":\"slots-x\"}},\"verdict\":{\"text\":\"text-x\",\"sub\":\"sub-x\",\"tone\":\"plain\"}}",
+      "rust": "{\"state\":\"present\",\"reason\":\"reason-x\",\"detail\":\"detail-x\",\"path\":\"path-x\",\"now\":7,\"accounts\":[{\"agent\":\"agent-x\",\"account\":\"account-x\",\"kind\":\"sub\",\"state\":\"ok\",\"stale\":true,\"slots\":[{\"slot\":\"slot-x\",\"pct\":7,\"resetsAt\":7,\"full\":true,\"text\":\"text-x\",\"tone\":\"plain\",\"perPctText\":\"perPctText-x\"}],\"login\":\"ok\",\"windows\":[{\"name\":\"name-x\",\"key\":\"key-x\",\"pct\":7,\"resetsAt\":7,\"from\":\"headers\",\"tokensPerPct\":7,\"perPctText\":\"perPctText-x\",\"tone\":\"plain\"}],\"usage\":{\"slot\":\"slot-x\",\"window\":\"window-x\",\"value\":\"value-x\",\"reset\":\"reset-x\",\"text\":\"text-x\",\"tone\":\"plain\"},\"rows\":[[{\"text\":\"text-x\",\"tone\":\"plain\"}]],\"sampled\":\"sampled-x\",\"warm\":{\"act\":\"send\",\"at\":7,\"atText\":\"atText-x\",\"text\":\"text-x\"}}],\"unseen\":[{\"agent\":\"agent-x\",\"account\":\"account-x\",\"kind\":\"sub\",\"login\":\"ok\",\"usage\":{\"slot\":\"slot-x\",\"window\":\"window-x\",\"value\":\"value-x\",\"text\":\"text-x\",\"tone\":\"plain\"},\"rows\":[[{\"text\":\"text-x\",\"tone\":\"plain\"}]],\"warm\":{\"act\":\"send\",\"at\":7,\"atText\":\"atText-x\",\"text\":\"text-x\"}}],\"candidates\":[{\"agent\":\"agent-x\",\"account\":\"account-x\",\"kind\":\"sub\"}],\"text\":\"text-x\",\"names\":{\"slots\":{\"k\":\"slots-x\"}},\"verdict\":{\"text\":\"text-x\",\"sub\":\"sub-x\",\"tone\":\"plain\"}}",
       "sample": {
         "accounts": [
           {
@@ -1344,6 +1428,7 @@
                 }
               ]
             ],
+            "sampled": "sampled-x",
             "slots": [
               {
                 "full": true,
@@ -1443,20 +1528,18 @@
       }
     },
     "resync": {
-      "rust": "{\"added\":7,\"removed\":7,\"retagged\":7,\"caught_up\":7,\"watchers\":7,\"unavailable\":[{\"command\":\"command-x\",\"code\":\"code-x\",\"said\":\"said-x\"}]}",
+      "rust": "{\"added\":7,\"removed\":7,\"said\":\"said-x\",\"unavailable\":[{\"command\":\"command-x\",\"code\":\"code-x\",\"said\":\"said-x\"}]}",
       "sample": {
         "added": 7,
-        "caught_up": 7,
         "removed": 7,
-        "retagged": 7,
+        "said": "said-x",
         "unavailable": [
           {
             "code": "code-x",
             "command": "command-x",
             "said": "said-x"
           }
-        ],
-        "watchers": 7
+        ]
       }
     },
     "rotation-facts": {
@@ -1654,7 +1737,7 @@
       "sample": {}
     },
     "rotation-view": {
-      "rust": "{\"now\":7,\"nowText\":\"nowText-x\",\"title\":\"title-x\",\"strategy\":{\"id\":\"id-x\",\"description\":\"description-x\",\"summary\":\"summary-x\",\"rev\":\"rev-x\",\"error\":{\"line\":7,\"msg\":\"msg-x\"},\"remove\":{\"enabled\":true,\"why\":\"why-x\",\"who\":\"who-x\"},\"forNew\":true,\"tzUnknown\":true,\"hand\":true},\"board\":{\"all\":[{\"key\":\"key-x\",\"kind\":\"percent\",\"window\":\"window-x\",\"label\":\"label-x\",\"help\":\"help-x\",\"v\":{},\"num\":1.5,\"from\":\"own\",\"nullable\":\"nullable-x\",\"choices\":[{\"v\":\"v-x\",\"label\":\"label-x\"}],\"min\":1.5,\"max\":1.5,\"segs\":[{\"from\":7,\"to\":7,\"fromText\":\"fromText-x\",\"toText\":\"toText-x\",\"v\":1.5,\"text\":\"text-x\",\"tip\":\"tip-x\"}],\"lead\":\"lead-x\",\"under\":\"under-x\",\"same\":\"same-x\",\"reset\":true}],\"rows\":[{\"account\":\"account-x\",\"row\":7,\"line\":\"line-x\",\"hover\":\"hover-x\",\"cells\":[{\"key\":\"key-x\",\"kind\":\"percent\",\"window\":\"window-x\",\"label\":\"label-x\",\"help\":\"help-x\",\"v\":{},\"num\":1.5,\"from\":\"own\",\"nullable\":\"nullable-x\",\"choices\":[{\"v\":\"v-x\",\"label\":\"label-x\"}],\"min\":1.5,\"max\":1.5,\"segs\":[{\"from\":7,\"to\":7,\"fromText\":\"fromText-x\",\"toText\":\"toText-x\",\"v\":1.5,\"text\":\"text-x\",\"tip\":\"tip-x\"}],\"lead\":\"lead-x\",\"under\":\"under-x\",\"same\":\"same-x\",\"reset\":true}],\"rules\":[\"rules-x\"],\"marks\":[{\"glyph\":\"glyph-x\",\"dashed\":true,\"tip\":\"tip-x\"}],\"missing\":true}]},\"start\":\"start-x\",\"current\":\"current-x\",\"lineup\":[{\"account\":\"account-x\",\"group\":\"use\",\"state\":\"state-x\",\"why\":\"why-x\",\"movable\":true,\"stay\":\"stay-x\"}],\"manual\":true,\"off\":[\"off-x\"],\"accounts\":[{\"account\":\"account-x\",\"kind\":\"sub\",\"w5h\":{\"open\":true,\"used\":1.5,\"resets\":7,\"rate\":1.5,\"tokensPerPct\":7},\"w7d\":{\"open\":true,\"used\":1.5,\"resets\":7,\"rate\":1.5,\"tokensPerPct\":7},\"weekly\":true,\"login\":\"ok\",\"blocked\":{\"why\":\"refused\",\"until\":7,\"text\":\"text-x\"},\"plate\":{\"color\":7,\"label\":\"label-x\",\"text\":\"text-x\"},\"full\":[\"full-x\"]}],\"listed\":7,\"decision\":{\"pick\":\"pick-x\",\"holdUntil\":7,\"order\":[\"order-x\"],\"why\":[{\"account\":\"account-x\",\"why\":\"why-x\"}],\"fromTemp\":true,\"skipped\":[\"skipped-x\"],\"temp\":[\"temp-x\"],\"nextNode\":7,\"strategyError\":\"strategyError-x\"},\"timeline\":{\"switches\":[{\"at\":7,\"atText\":\"atText-x\",\"account\":\"account-x\"}],\"uses\":[{\"from\":7,\"to\":7,\"account\":\"account-x\",\"fromTemp\":true,\"skipped\":[\"skipped-x\"],\"text\":\"text-x\"}],\"lanes\":[{\"account\":\"account-x\",\"segs\":[{\"from\":7,\"to\":7,\"sendable\":true,\"reset\":true,\"text\":\"text-x\"}]}],\"truncated\":true,\"ticks\":[{\"at\":7,\"text\":\"text-x\"}]},\"log\":[{\"at\":7,\"from\":\"from-x\",\"to\":\"to-x\",\"cause\":{\"k\":\"order\"},\"why\":\"why-x\",\"saw\":{\"accounts\":[{\"id\":\"id-x\",\"used5h\":1.5,\"resets5h\":7,\"rate5h\":1.5,\"others\":1.5}],\"pace\":1.5,\"spread\":1.5,\"context\":7},\"because\":\"because-x\"}],\"hints\":[{\"hint\":{\"k\":\"hold\",\"account\":\"account-x\"},\"tone\":\"plain\",\"text\":\"text-x\",\"detail\":\"detail-x\"}],\"can\":{\"reorder\":true,\"off\":true,\"edit\":true}}",
+      "rust": "{\"now\":7,\"nowText\":\"nowText-x\",\"title\":\"title-x\",\"strategy\":{\"id\":\"id-x\",\"description\":\"description-x\",\"summary\":\"summary-x\",\"rev\":\"rev-x\",\"error\":{\"line\":7,\"msg\":\"msg-x\"},\"remove\":{\"enabled\":true,\"why\":\"why-x\",\"who\":\"who-x\"},\"forNew\":true,\"tzUnknown\":true,\"hand\":true},\"board\":{\"all\":[{\"key\":\"key-x\",\"kind\":\"percent\",\"window\":\"window-x\",\"label\":\"label-x\",\"help\":\"help-x\",\"v\":{},\"num\":1.5,\"from\":\"own\",\"nullable\":\"nullable-x\",\"choices\":[{\"v\":\"v-x\",\"label\":\"label-x\"}],\"min\":1.5,\"max\":1.5,\"segs\":[{\"from\":7,\"to\":7,\"fromText\":\"fromText-x\",\"toText\":\"toText-x\",\"v\":1.5,\"text\":\"text-x\",\"tip\":\"tip-x\"}],\"lead\":\"lead-x\",\"under\":\"under-x\",\"same\":\"same-x\",\"reset\":true}],\"rows\":[{\"account\":\"account-x\",\"row\":7,\"line\":\"line-x\",\"hover\":\"hover-x\",\"cells\":[{\"key\":\"key-x\",\"kind\":\"percent\",\"window\":\"window-x\",\"label\":\"label-x\",\"help\":\"help-x\",\"v\":{},\"num\":1.5,\"from\":\"own\",\"nullable\":\"nullable-x\",\"choices\":[{\"v\":\"v-x\",\"label\":\"label-x\"}],\"min\":1.5,\"max\":1.5,\"segs\":[{\"from\":7,\"to\":7,\"fromText\":\"fromText-x\",\"toText\":\"toText-x\",\"v\":1.5,\"text\":\"text-x\",\"tip\":\"tip-x\"}],\"lead\":\"lead-x\",\"under\":\"under-x\",\"same\":\"same-x\",\"reset\":true}],\"rules\":[\"rules-x\"],\"marks\":[{\"glyph\":\"glyph-x\",\"dashed\":true,\"tip\":\"tip-x\"}],\"missing\":true}]},\"start\":\"start-x\",\"current\":\"current-x\",\"lineup\":[{\"account\":\"account-x\",\"group\":\"use\",\"state\":\"state-x\",\"why\":\"why-x\",\"movable\":true,\"stay\":\"stay-x\"}],\"manual\":true,\"off\":[\"off-x\"],\"accounts\":[{\"account\":\"account-x\",\"kind\":\"sub\",\"w5h\":{\"open\":true,\"used\":1.5,\"resets\":7,\"rate\":1.5,\"tokensPerPct\":7},\"w7d\":{\"open\":true,\"used\":1.5,\"resets\":7,\"rate\":1.5,\"tokensPerPct\":7},\"weekly\":true,\"login\":\"ok\",\"blocked\":{\"why\":\"refused\",\"until\":7,\"text\":\"text-x\"},\"plate\":{\"color\":7,\"label\":\"label-x\",\"text\":\"text-x\"},\"full\":[\"full-x\"]}],\"listed\":7,\"decision\":{\"pick\":\"pick-x\",\"holdUntil\":7,\"order\":[\"order-x\"],\"why\":[{\"account\":\"account-x\",\"why\":\"why-x\"}],\"fromTemp\":true,\"skipped\":[\"skipped-x\"],\"temp\":[\"temp-x\"],\"nextNode\":7,\"strategyError\":\"strategyError-x\"},\"timeline\":{\"switches\":[{\"at\":7,\"atText\":\"atText-x\",\"account\":\"account-x\"}],\"uses\":[{\"from\":7,\"to\":7,\"account\":\"account-x\",\"fromTemp\":true,\"skipped\":[\"skipped-x\"],\"text\":\"text-x\"}],\"lanes\":[{\"account\":\"account-x\",\"segs\":[{\"from\":7,\"to\":7,\"sendable\":true,\"reset\":true,\"text\":\"text-x\"}]}],\"truncated\":true,\"ticks\":[{\"at\":7,\"text\":\"text-x\"}]},\"log\":[{\"at\":7,\"from\":\"from-x\",\"to\":\"to-x\",\"cause\":{\"k\":\"order\"},\"why\":\"why-x\",\"saw\":{\"accounts\":[{\"id\":\"id-x\",\"used5h\":1.5,\"resets5h\":7,\"rate5h\":1.5,\"others\":1.5}],\"pace\":1.5,\"spread\":1.5,\"context\":7},\"because\":\"because-x\",\"moved\":\"moved-x\"}],\"hints\":[{\"hint\":{\"k\":\"hold\",\"account\":\"account-x\"},\"tone\":\"plain\",\"text\":\"text-x\",\"detail\":\"detail-x\"}],\"can\":{\"reorder\":true,\"off\":true,\"edit\":true},\"foot\":\"foot-x\"}",
       "sample": {
         "accounts": [
           {
@@ -1812,13 +1895,13 @@
             }
           ]
         },
+        "foot": "foot-x",
         "hints": [
           {
             "detail": "detail-x",
             "hint": {
               "account": "account-x",
-              "k": "hold",
-              "until": 7
+              "k": "hold"
             },
             "text": "text-x",
             "tone": "plain"
@@ -1843,6 +1926,7 @@
               "k": "order"
             },
             "from": "from-x",
+            "moved": "moved-x",
             "saw": {
               "accounts": [
                 {
@@ -2014,7 +2098,7 @@
       }
     },
     "session-open": {
-      "rust": "{\"landed\":\"started\",\"session\":\"session-x\",\"line\":\"line-x\",\"sid\":\"sid-x\",\"agent\":\"agent-x\",\"cwd\":\"cwd-x\",\"account\":{\"name\":\"name-x\",\"configDir\":\"configDir-x\",\"model\":\"model-x\"},\"note\":\"note-x\",\"prompt\":{\"result\":\"delivered\",\"why\":\"not_yours\",\"said\":\"said-x\",\"note\":\"note-x\",\"screen\":\"screen-x\",\"acts\":[\"retry\"]},\"arrival\":{\"by\":{\"kind\":\"sid\",\"sid\":\"sid-x\"},\"since\":7,\"session\":\"session-x\",\"host\":\"tmux\"}}",
+      "rust": "{\"landed\":\"started\",\"session\":\"session-x\",\"at\":\"at-x\",\"line\":\"line-x\",\"sid\":\"sid-x\",\"agent\":\"agent-x\",\"cwd\":\"cwd-x\",\"account\":{\"name\":\"name-x\",\"configDir\":\"configDir-x\",\"model\":\"model-x\"},\"note\":\"note-x\",\"prompt\":{\"result\":\"delivered\",\"why\":\"not_yours\",\"said\":\"said-x\",\"note\":\"note-x\",\"screen\":\"screen-x\",\"acts\":[\"retry\"]},\"arrival\":{\"by\":{\"kind\":\"sid\",\"sid\":\"sid-x\"},\"since\":7,\"session\":\"session-x\",\"host\":\"tmux\"}}",
       "sample": {
         "account": {
           "configDir": "configDir-x",
@@ -2031,6 +2115,7 @@
           "session": "session-x",
           "since": 7
         },
+        "at": "at-x",
         "cwd": "cwd-x",
         "landed": "started",
         "line": "line-x",
@@ -2050,24 +2135,48 @@
       }
     },
     "session-open-facts": {
-      "rust": "{\"recent\":[{\"cwd\":\"cwd-x\",\"shown\":\"shown-x\",\"lastText\":\"lastText-x\"}],\"hosts\":[\"managed\"],\"run\":\"managed\",\"agents\":[{\"kind\":\"kind-x\",\"text\":\"text-x\",\"models\":[{\"value\":\"value-x\",\"text\":\"text-x\"}],\"modelDefault\":{\"value\":\"value-x\",\"text\":\"text-x\"},\"modelNote\":\"modelNote-x\",\"permissionModes\":[{\"value\":\"value-x\",\"text\":\"text-x\"}]}],\"fork\":{\"agent\":\"agent-x\",\"launch\":{\"cwd\":{\"kind\":\"known\",\"value\":\"value-x\",\"from\":\"record\"},\"account\":{\"kind\":\"known\",\"value\":\"value-x\",\"from\":\"record\"},\"terminal\":{\"kind\":\"known\",\"value\":{\"host\":\"tmux\",\"terminal\":\"terminal-x\"},\"from\":\"record\"}},\"turn\":7,\"startText\":\"startText-x\"}}",
+      "rust": "{\"recent\":[{\"cwd\":\"cwd-x\",\"shown\":\"shown-x\",\"lastText\":\"lastText-x\"}],\"hosts\":[\"managed\"],\"run\":\"managed\",\"agents\":[{\"kind\":\"kind-x\",\"text\":\"text-x\",\"models\":[{\"value\":\"value-x\",\"text\":\"text-x\",\"efforts\":[{\"value\":\"value-x\",\"text\":\"text-x\",\"defaultEffort\":\"defaultEffort-x\"}],\"defaultEffort\":\"defaultEffort-x\"}],\"modelDefault\":{\"value\":\"value-x\",\"text\":\"text-x\",\"efforts\":[{\"value\":\"value-x\",\"text\":\"text-x\",\"defaultEffort\":\"defaultEffort-x\"}],\"defaultEffort\":\"defaultEffort-x\"},\"modelNote\":\"modelNote-x\",\"permissionModes\":[{\"value\":\"value-x\",\"text\":\"text-x\",\"efforts\":[{\"value\":\"value-x\",\"text\":\"text-x\",\"defaultEffort\":\"defaultEffort-x\"}],\"defaultEffort\":\"defaultEffort-x\"}]}],\"fork\":{\"agent\":\"agent-x\",\"launch\":{\"cwd\":{\"kind\":\"known\",\"value\":\"value-x\",\"from\":\"record\"},\"account\":{\"kind\":\"known\",\"value\":\"value-x\",\"from\":\"record\"},\"terminal\":{\"kind\":\"known\",\"value\":{\"host\":\"tmux\",\"terminal\":\"terminal-x\"},\"from\":\"record\"}},\"turn\":7,\"startText\":\"startText-x\",\"fromText\":\"fromText-x\"}}",
       "sample": {
         "agents": [
           {
             "kind": "kind-x",
             "modelDefault": {
+              "defaultEffort": "defaultEffort-x",
+              "efforts": [
+                {
+                  "defaultEffort": "defaultEffort-x",
+                  "text": "text-x",
+                  "value": "value-x"
+                }
+              ],
               "text": "text-x",
               "value": "value-x"
             },
             "modelNote": "modelNote-x",
             "models": [
               {
+                "defaultEffort": "defaultEffort-x",
+                "efforts": [
+                  {
+                    "defaultEffort": "defaultEffort-x",
+                    "text": "text-x",
+                    "value": "value-x"
+                  }
+                ],
                 "text": "text-x",
                 "value": "value-x"
               }
             ],
             "permissionModes": [
               {
+                "defaultEffort": "defaultEffort-x",
+                "efforts": [
+                  {
+                    "defaultEffort": "defaultEffort-x",
+                    "text": "text-x",
+                    "value": "value-x"
+                  }
+                ],
                 "text": "text-x",
                 "value": "value-x"
               }
@@ -2077,6 +2186,7 @@
         ],
         "fork": {
           "agent": "agent-x",
+          "fromText": "fromText-x",
           "launch": {
             "account": {
               "from": "record",
@@ -2124,7 +2234,7 @@
       }
     },
     "session-queue-cancel": {
-      "rust": "{\"cancelled\":true,\"queue\":{\"items\":[{\"seq\":7,\"id\":\"id-x\",\"end\":\"end-x\",\"text\":\"text-x\",\"attachments\":[\"attachments-x\"],\"rewind\":{\"to\":\"to-x\",\"how\":\"conversation\",\"when\":\"after_turn\"},\"state\":\"queued\",\"said\":\"said-x\"}],\"sent\":[\"sent-x\"]}}",
+      "rust": "{\"cancelled\":true,\"said\":\"said-x\",\"queue\":{\"items\":[{\"seq\":7,\"id\":\"id-x\",\"end\":\"end-x\",\"text\":\"text-x\",\"attachments\":[\"attachments-x\"],\"rewind\":{\"to\":\"to-x\",\"how\":\"conversation\",\"when\":\"after_turn\"},\"state\":\"queued\",\"said\":\"said-x\"}],\"sent\":[\"sent-x\"]}}",
       "sample": {
         "cancelled": true,
         "queue": {
@@ -2149,7 +2259,8 @@
           "sent": [
             "sent-x"
           ]
-        }
+        },
+        "said": "said-x"
       }
     },
     "session-queue-put": {
@@ -2251,7 +2362,7 @@
       }
     },
     "sessions-needs": {
-      "rust": "{\"items\":[{\"kind\":\"session\",\"rank\":7,\"clock\":{\"text\":\"text-x\",\"head\":\"head-x\"},\"session\":{\"sid\":\"sid-x\",\"label\":\"label-x\",\"face\":{\"dot\":\"running\",\"life\":{\"is\":\"live\",\"activity\":\"working\"},\"settled\":true,\"name\":\"name-x\",\"tip\":\"tip-x\",\"line\":\"line-x\",\"tone\":\"plain\",\"order\":7,\"can\":{\"close\":{\"can\":\"quiet\"},\"resume\":{\"can\":\"yes\"},\"front\":{\"can\":\"yes\"},\"attach\":{\"can\":\"yes\"},\"view\":{\"can\":\"yes\",\"said\":\"在 cc-monitor 里打开它的终端\",\"open\":{\"kind\":\"attach\"}},\"reattach\":{\"can\":\"yes\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"},\"stop\":{\"can\":\"yes\"},\"say\":{\"can\":\"yes\",\"hint\":\"hint-x\"},\"end\":{\"can\":\"yes\"}},\"account\":\"account-x\"},\"needs\":{\"kind\":\"approve\",\"tool\":\"tool-x\",\"call\":\"call-x\",\"what\":\"what-x\",\"text\":\"text-x\",\"head\":\"head-x\",\"headCode\":\"headCode-x\",\"tone\":\"plain\",\"rank\":7,\"waitedMs\":7,\"ask\":{\"id\":\"id-x\",\"kind\":\"approve\",\"tool\":\"tool-x\",\"run\":{\"id\":\"id-x\",\"text\":\"text-x\"},\"what\":\"what-x\",\"detail\":\"detail-x\",\"choices\":[{\"id\":\"id-x\",\"text\":\"text-x\",\"look\":\"main\",\"note\":\"none\",\"row\":\"main\",\"picks\":true}],\"questions\":[{\"id\":\"id-x\",\"text\":\"text-x\",\"head\":\"head-x\",\"multi\":true,\"options\":[{\"id\":\"id-x\",\"text\":\"text-x\",\"detail\":\"detail-x\"}],\"other\":true}]},\"manualText\":\"manualText-x\"},\"hidden\":{\"by\":\"self\",\"said\":\"said-x\"}}}],\"ended\":[{\"sid\":\"sid-x\",\"end\":{\"said\":\"said-x\",\"stays\":true}}],\"manualUnreadable\":\"manualUnreadable-x\"}",
+      "rust": "{\"items\":[{\"kind\":\"session\",\"rank\":7,\"clock\":{\"text\":\"text-x\",\"head\":\"head-x\"},\"session\":{\"sid\":\"sid-x\",\"label\":\"label-x\",\"needs\":{\"kind\":\"approve\",\"tool\":\"tool-x\",\"call\":\"call-x\",\"what\":\"what-x\",\"text\":\"text-x\",\"head\":\"head-x\",\"headCode\":\"headCode-x\",\"tone\":\"need\",\"rank\":7,\"waitedMs\":7,\"ask\":{\"id\":\"id-x\",\"kind\":\"approve\",\"tool\":\"tool-x\",\"run\":{\"id\":\"id-x\",\"text\":\"text-x\"},\"what\":\"what-x\",\"detail\":\"detail-x\",\"choices\":[{\"id\":\"id-x\",\"text\":\"text-x\",\"look\":\"main\",\"note\":\"none\",\"row\":\"main\",\"picks\":true}],\"questions\":[{\"id\":\"id-x\",\"text\":\"text-x\",\"head\":\"head-x\",\"multi\":true,\"options\":[{\"id\":\"id-x\",\"text\":\"text-x\",\"detail\":\"detail-x\"}],\"other\":true}]},\"manualText\":null,\"askHead\":\"askHead-x\",\"askPage\":\"askPage-x\"},\"hidden\":{\"by\":\"self\",\"said\":\"said-x\"}}}],\"ended\":[{\"sid\":\"sid-x\",\"end\":{\"said\":\"said-x\",\"stays\":true}}],\"manualUnreadable\":\"manualUnreadable-x\"}",
       "sample": {
         "ended": [
           {
@@ -2271,60 +2382,6 @@
             "kind": "session",
             "rank": 7,
             "session": {
-              "face": {
-                "account": "account-x",
-                "can": {
-                  "attach": {
-                    "can": "yes"
-                  },
-                  "close": {
-                    "can": "quiet"
-                  },
-                  "end": {
-                    "can": "yes"
-                  },
-                  "front": {
-                    "can": "yes"
-                  },
-                  "model": {
-                    "can": "yes"
-                  },
-                  "permission": {
-                    "can": "yes"
-                  },
-                  "reattach": {
-                    "can": "yes"
-                  },
-                  "resume": {
-                    "can": "yes"
-                  },
-                  "say": {
-                    "can": "yes",
-                    "hint": "hint-x"
-                  },
-                  "stop": {
-                    "can": "yes"
-                  },
-                  "view": {
-                    "can": "yes",
-                    "open": {
-                      "kind": "attach"
-                    },
-                    "said": "在 cc-monitor 里打开它的终端"
-                  }
-                },
-                "dot": "running",
-                "life": {
-                  "activity": "working",
-                  "is": "live"
-                },
-                "line": "line-x",
-                "name": "name-x",
-                "order": 7,
-                "settled": true,
-                "tip": "tip-x",
-                "tone": "plain"
-              },
               "hidden": {
                 "by": "self",
                 "said": "said-x"
@@ -2368,11 +2425,13 @@
                   "tool": "tool-x",
                   "what": "what-x"
                 },
+                "askHead": "askHead-x",
+                "askPage": "askPage-x",
                 "call": "call-x",
                 "head": "head-x",
                 "headCode": "headCode-x",
                 "kind": "approve",
-                "manualText": "manualText-x",
+                "manualText": null,
                 "rank": 7,
                 "text": "text-x",
                 "tone": "plain",
@@ -2503,52 +2562,6 @@
           }
         ],
         "said": "said-x"
-      }
-    },
-    "transfer-download": {
-      "rust": "{\"items\":[{\"key\":\"key-x\",\"state\":\"opened\",\"id\":\"id-x\",\"staged\":\"staged-x\",\"path\":\"path-x\",\"new_name\":\"new_name-x\",\"overwrite\":true,\"code\":\"code-x\",\"reason\":\"reason-x\",\"detail\":\"detail-x\"}]}",
-      "sample": {
-        "items": [
-          {
-            "code": "code-x",
-            "detail": "detail-x",
-            "id": "id-x",
-            "key": "key-x",
-            "new_name": "new_name-x",
-            "overwrite": true,
-            "path": "path-x",
-            "reason": "reason-x",
-            "staged": "staged-x",
-            "state": "opened"
-          }
-        ]
-      }
-    },
-    "transfer-start": {
-      "rust": "null",
-      "sample": null
-    },
-    "transfer-stop": {
-      "rust": "null",
-      "sample": null
-    },
-    "transfer-upload": {
-      "rust": "{\"items\":[{\"key\":\"key-x\",\"state\":\"opened\",\"id\":\"id-x\",\"staged\":\"staged-x\",\"path\":\"path-x\",\"new_name\":\"new_name-x\",\"overwrite\":true,\"code\":\"code-x\",\"reason\":\"reason-x\",\"detail\":\"detail-x\"}]}",
-      "sample": {
-        "items": [
-          {
-            "code": "code-x",
-            "detail": "detail-x",
-            "id": "id-x",
-            "key": "key-x",
-            "new_name": "new_name-x",
-            "overwrite": true,
-            "path": "path-x",
-            "reason": "reason-x",
-            "staged": "staged-x",
-            "state": "opened"
-          }
-        ]
       }
     }
   },

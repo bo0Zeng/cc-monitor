@@ -183,7 +183,7 @@ else
   #
   #   · 那条 poller **08-14 被整条删掉** —— 提交 `0085d0d`（2026-08-14）标题逐字
   #     「U-NP④：ccm 的 1s 身份轮询整条删掉，`@ccm_sid` 改由后端打」。今天 `shared/ccm`
-  #     只写 `@ccm_sid_expect`（**意图**通道），`@ccm_sid`（**事实**通道）它一个字都不写；
+  #     一个身份标都不写（`@ccm_sid` 只由后端写）；
   #     `shared/ccm` 里还留着一条 `the_identity_poller_is_gone_for_good` 守卫钉这件事。
   #   · 打标搬进了 **backend 自己**，而**本夹具跑的就是那个 backend**（上面 `$BACKEND`，
   #     PATH 上挂着 `-L <本趟私有名>` 的 tmux shim ⇒ 它的 `tmux` 打的正是本套件这台 server）：

@@ -21,11 +21,11 @@ end?: TaskEnd,
  */
 row?: string, } | { "kind": "agentMessage", from?: string, name?: string, handback: boolean, 
 /**
- * 正文解析好的块树（造记录那一下由 `body` 解一次，两端照树排版）。没有正文 ⇒ 缺。
+ * 正文解析好的块树；两端照树排版。没有正文 ⇒ 缺。
  */
 doc?: Doc, } | { "kind": "peerSession", from?: string, 
 /**
- * 正文解析好的块树（造记录那一下由 `body` 解一次，两端照树排版）。没有正文 ⇒ 缺。
+ * 正文解析好的块树；两端照树排版。没有正文 ⇒ 缺。
  */
 doc?: Doc, 
 /**
@@ -33,7 +33,7 @@ doc?: Doc,
  */
 title?: string, } | { "kind": "coordinator", 
 /**
- * 正文解析好的块树（造记录那一下由 `body` 解一次，两端照树排版）。没有正文 ⇒ 缺。
+ * 正文解析好的块树；两端照树排版。没有正文 ⇒ 缺。
  */
 doc?: Doc, } | { "kind": "agentTask" } | { "kind": "system", 
 /**
@@ -41,6 +41,6 @@ doc?: Doc, } | { "kind": "agentTask" } | { "kind": "system",
  */
 body?: string, } | { "kind": "compactSummary", 
 /**
- * 摘要有多少字（写好的数，`copy_core::count_text`；界面拼进「摘要 {n} 字」）。
+ * 那张卡收着时的标题（「上下文已压缩 · 摘要 n 字 · 钟面」）：出口那一下按看的那一台的时区写（`wire::stamp`），解析那一层不写 ⇒ 缺。界面照抄。
  */
-charsText: string, } | { "kind": "interrupt" } | { "kind": "toolResult" };
+titleText?: string, } | { "kind": "interrupt" } | { "kind": "toolResult" };

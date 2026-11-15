@@ -53,12 +53,13 @@ impl Step {
     /// 这一步对人说的那一句（`machine` = 那台的名字；与那台状态成品问题行那一句同一句）。
     pub fn said(self, machine: &str) -> String {
         let (state, stage) = self.kind();
-        crate::machine::said(state, stage, None, machine)
+        copy_core::machine::said(state, stage, None, machine)
     }
 }
 
 impl Plan {
-    /// 这一趟做了什么那一句：已是这一版 · 装上了这一版（带原因）· 那台不比这一版旧、没动它（计划里那一句）。
+    /// 这一趟做了什么那一句：已是这一版 · 装上了这一版（带原因）· 那台不比这一版旧、没动它（计划里那一句接上出路：
+    /// 先卸载再部署 = 明确授权覆盖，手动点也不降级）。桌面 `deploy-install` 应答与手机结局行同用这一句。
     pub fn said(&self) -> String {
         let path = format!("~/{}", relay_route_core::BACKEND_LANDING_REL);
         let machine = self.key.label();
@@ -80,7 +81,9 @@ impl Plan {
                     ("reason", reason),
                 ],
             ),
-            DeployAction::Keep { why, .. } => why.clone(),
+            DeployAction::Keep { why, .. } => {
+                copy_text("rsSftp.deploy.keptNotOlder", &[("why", why)])
+            }
         }
     }
 }

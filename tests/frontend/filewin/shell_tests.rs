@@ -106,7 +106,7 @@ impl FileWindow {
     }
 
     /// 系统存盘框开着时要下的那一项。
-    pub(crate) fn pull_want(&self) -> Option<&(String, String)> {
+    pub(crate) fn pull_want(&self) -> Option<&(Vec<u8>, String)> {
         self.pull_want.as_ref()
     }
 }
@@ -226,6 +226,7 @@ fn a_symlink_to_a_directory_walks_in_on_activate_and_enter() {
         0.0,
         None,
     );
+    crate::find::testing::seed_menu(&mut w);
     assert!(
         w.apply_intent(crate::select::Intent::Open, 0.0, None),
         "回车没进去：{:?}",
@@ -364,31 +365,32 @@ fn a_listing_in_flight_is_visible_as_loading() {
 // 第二刀 · ③ `§5.4d` 在窗口这一侧接得上吗
 // ════════════════════════════════════════════════════════════════════════
 
-/// 拖进来的本机路径 → 待传清单：**目标目录就是当前目录**，名字取 basename。
+/// 拖进来的本机路径 → 一组上传：**落点就是当前目录**，每一项的名字取 basename（标题与冲突框照它写）。
 #[test]
-fn dropped_paths_become_pending_uploads_into_the_current_directory() {
-    let w = FileWindow::new(Source::remote(synth_cfg("r")), "/srv/data".into(), None);
-    let got = w.pending_for(&["/home/u/a.txt".to_string(), "/home/u/dir/b.bin".to_string()]);
-    assert_eq!(
-        got.iter()
-            .map(|p| p.remote_path.clone())
-            .collect::<Vec<_>>(),
-        vec!["/srv/data/a.txt", "/srv/data/b.bin"]
-    );
-    assert_eq!(
-        got.iter().map(|p| p.name.clone()).collect::<Vec<_>>(),
-        vec!["a.txt", "b.bin"]
-    );
+fn dropped_paths_become_one_upload_group_into_the_current_directory() {
+    let here = Source::remote(synth_cfg("r"));
+    let plan = crate::transfer::upload_plan(
+        &here.origin(),
+        here.label(),
+        &["/home/u/a.txt".to_string(), "/home/u/dir/b.bin".to_string()],
+        "/srv/data",
+        None,
+    )
+    .unwrap();
+    assert_eq!(plan.args["to_dir"], "/srv/data");
+    assert_eq!(plan.into.as_deref(), Some("/srv/data"));
+    assert_eq!(plan.names, vec!["a.txt", "b.bin"]);
 }
 
-/// 接不上就**出声**：远端源 ＋ 没有运行时 ⇒ 不许静默吞掉一摞文件。
+/// 接不上就**出声**：没有运行时 ⇒ 不许静默吞掉一摞文件。
 #[test]
 fn a_drop_with_no_runtime_says_so_instead_of_swallowing_the_files() {
     let mut w = FileWindow::new(Source::remote(synth_cfg("r")), "/srv/data".into(), None);
-    let items = w.pending_for(&["/home/u/a.txt".to_string()]);
-    assert_eq!(items.len(), 1);
     *w.listing.error.lock().unwrap() = None;
-    assert!(!w.start_drop(items, None), "没有运行时却说起得来");
+    assert!(
+        !w.start_drop(&["/home/u/a.txt".to_string()], None),
+        "没有运行时却说起得来"
+    );
     assert!(
         w.listing.error.lock().unwrap().is_some(),
         "一摞文件被吞了，屏幕上一句话都没有"
@@ -403,11 +405,7 @@ fn finishing_a_drop_round_triggers_exactly_one_reload() {
     assert!(!w.settle_trips(), "一趟都没跑却说要重列");
     let (_, up) = adopt_upload(&mut w);
     assert!(!w.settle_trips(), "还在传就重列了");
-    up.finish(crate::transfer::DropOutcome {
-        skipped: 0,
-        ok: 1,
-        ..Default::default()
-    });
+    ended(&up, &[cmd_wire::batch::ItemState::Done], "已上传 1 项");
     assert!(w.settle_trips(), "跑完一趟却不重列");
     assert!(!w.settle_trips(), "同一趟重列了第二次");
 }
@@ -487,6 +485,14 @@ fn menu_pick(ctx: &egui::Context, w: &mut FileWindow, row_name: &str, label: &st
         modifiers: egui::Modifiers::default(),
     };
     let _ = paint(w, vec![right(true), right(false)]);
+    // 菜单照本机后端那一份成品摆：等它回来（一帧一帧跑）。
+    for _ in guard_core::wall::rounds() {
+        if w.menu().is_some() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        let _ = paint(w, Vec::new());
+    }
     assert!(w.menu().is_some(), "右键那一行没摆出菜单");
     let painted = paint(w, Vec::new());
     let items = crate::copy::testing::rects_of(&painted, label);
@@ -502,13 +508,13 @@ fn a_copy_from_the_menu_puts_up_the_rename_box_for_that_row() {
     let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.bin"), file_row("b.bin")]);
     assert!(w.copy_prompt().is_none(), "什么都没点就摆出了框");
     assert!(
-        !w.perform(crate::select::Action::Copy, None),
+        !crate::find::testing::perform_now(&mut w, crate::select::Action::Copy),
         "没选中却说摆出来了"
     );
 
     pick_row(&mut w, 1);
     assert!(
-        w.perform(crate::select::Action::Copy, None),
+        crate::find::testing::perform_now(&mut w, crate::select::Action::Copy),
         "第 1 行的复制点了，框却没摆出来"
     );
     let p = w.copy_prompt().expect("框不见了");
@@ -537,7 +543,7 @@ fn directories_lossy_names_and_out_of_range_rows_put_up_nothing() {
         lossy_name: true,
     };
     let mut w = remote_window_with_rows("/srv/data", vec![dir, lossy]);
-    assert!(!w.begin_copy(1), "有损名也摆出了「复制为」框");
+    // 有损名那一行做不做得了只照成品（`perform` 那一道，本机后端照原行判）；`begin_copy` 自己不再判。
     assert!(!w.begin_copy(99), "越界下标也摆出了框（或者 panic 了）");
     assert!(w.copy_prompt().is_none());
     // 目录**摆得出**「复制为」框了（后端 `recursive: true`），框里记着「源是目录」
@@ -555,7 +561,10 @@ fn directories_lossy_names_and_out_of_range_rows_put_up_nothing() {
 fn the_copy_box_hands_any_typed_name_to_the_far_side() {
     let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.bin")]);
     pick_row(&mut w, 0);
-    assert!(w.perform(crate::select::Action::Copy, None));
+    assert!(crate::find::testing::perform_now(
+        &mut w,
+        crate::select::Action::Copy
+    ));
     for typed in ["", "   ", "sub/a.bin", "a.bin", "a.bin.copy"] {
         w.copy_prompt.as_mut().unwrap().new_name = typed.to_string();
         assert!(!w.confirm_copy(None), "没有运行时却说起得来");
@@ -1197,7 +1206,7 @@ fn a_write_from_the_menu_reaches_the_right_row() {
     let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.bin"), dir_row("sub")]);
     assert!(w.write_prompt().is_none(), "什么都没点就摆出了框");
     assert!(
-        !w.perform(crate::select::Action::Rename, None),
+        !crate::find::testing::perform_now(&mut w, crate::select::Action::Rename),
         "没选中却说接上了一跳"
     );
 
@@ -1212,7 +1221,7 @@ fn a_write_from_the_menu_reaches_the_right_row() {
         .unwrap();
     pick_row(&mut w, i);
     assert!(
-        w.perform(crate::select::Action::Rename, None),
+        crate::find::testing::perform_now(&mut w, crate::select::Action::Rename),
         "目录那一行的改名点了，框却没摆出来"
     );
     let p = w.write_prompt().expect("框不见了").clone();
@@ -1220,7 +1229,7 @@ fn a_write_from_the_menu_reaches_the_right_row() {
     assert_eq!(p.dir, "/srv/data");
     assert_eq!(p.text, "sub", "改名那个框没预填原名");
     assert_eq!(
-        p.to_op().unwrap_err().is_empty(),
+        p.to_ops().unwrap_err().is_empty(),
         false,
         "预填原名之后直接确定应当被拒（没有要改的东西）"
     );
@@ -1236,7 +1245,10 @@ fn a_write_from_the_menu_reaches_the_right_row() {
         .position(|r| r.name == "a.bin")
         .unwrap();
     pick_row(&mut w, j);
-    assert!(w.perform(crate::select::Action::Chmod, None));
+    assert!(crate::find::testing::perform_now(
+        &mut w,
+        crate::select::Action::Chmod
+    ));
     let p = w.write_prompt().expect("框不见了").clone();
     assert_eq!(p.src_name, "a.bin");
     assert_eq!(p.text, "", "权限那个框预填了东西 —— 那必然是猜的");
@@ -1244,28 +1256,30 @@ fn a_write_from_the_menu_reaches_the_right_row() {
 
 /// 🔴 **删除不经那个框** —— 它直接起一摞，确认那一步归「一次问完」。
 ///
-/// 这个窗口没有运行时 ⇒ 它起不来，而它必须**出声**（不许静默吞掉一次删除）。
+/// 这个窗口没接通道 ⇒ 问不到成品、起不来，而它必须**出声**（不许静默吞掉一次删除）；接上了 ⇒ 那一摞起了。
 #[test]
 fn a_delete_click_goes_straight_to_the_batch_and_says_so_when_it_cannot_run() {
     let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.bin")]);
     pick_row(&mut w, 0);
     assert!(
         !w.perform(crate::select::Action::Delete, None),
-        "没有运行时却说起得来"
+        "没接通道却说起得来"
     );
     assert!(
         w.write_prompt().is_none(),
         "删除竟然摆出了一个「叫什么名字」的框"
     );
-    let e = w
-        .listing
-        .error
-        .lock()
-        .unwrap()
-        .clone()
-        .expect("一次删除被吞了，屏幕上一句话都没有")
-        .said;
-    assert!(no_runtime(&e), "报的不是「没有运行时」：{e}");
+    assert_eq!(
+        w.key_notice(),
+        Some(NO_LINE.as_str()),
+        "一次删除被吞了，屏幕上一句话都没有"
+    );
+    let _ = crate::find::testing::wire_menu(&mut w, "fw-delete-click");
+    assert!(crate::find::testing::perform_now(
+        &mut w,
+        crate::select::Action::Delete
+    ));
+    assert!(w.write_prompt().is_none());
 }
 
 /// 有损名 · 越界下标 —— **两档都不接**（第二道闸，防「按钮没了、调用还在」）。
@@ -1416,7 +1430,7 @@ fn the_hit_list_can_never_hand_the_window_a_row_index() {
 
 /// 起一摞真的走 `writeops::run_writes`，而**不是**在窗口里另写一套确认流。
 ///
-/// ⚠ 判源码是代理（同族先例：`transfer_tests::the_real_adapters_speak_only_through_the_channel`）。
+/// ⚠ 判源码是代理。
 /// 买的是：多选长出来那天，它自动落在「一次问完」那条路上。
 #[test]
 fn the_window_starts_a_batch_through_the_shared_three_step_function() {
@@ -1477,7 +1491,7 @@ fn the_window_starts_a_batch_through_the_shared_three_step_function() {
 /// ⚠ 买不到：真机上鼠标点得到（本机无图形会话，喂的是合成事件）。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_real_click_on_delete_walks_the_whole_chain_even_on_a_session_file() {
-    let delete_label = crate::select::Item::Act(Action::Delete).label(1, None);
+    let delete_label = copy_core::copy_text("history.menu.delete", &[]);
     let jsonl = "/home/u/.claude/projects/dash-proj/abc-123.jsonl";
     let mut w = FileWindow::seeded(
         Source::remote(synth_cfg("e2e-fence")),
@@ -1535,6 +1549,13 @@ async fn a_real_click_on_delete_walks_the_whole_chain_even_on_a_session_file() {
         modifiers: egui::Modifiers::default(),
     };
     let _ = paint(&mut w, 0.3, vec![right(true), right(false)]);
+    for _ in guard_core::wall::rounds() {
+        if w.menu().is_some() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        let _ = paint(&mut w, 0.35, Vec::new());
+    }
     assert!(w.menu().is_some(), "右键那一行没摆出菜单");
     let painted = paint(&mut w, 0.4, Vec::new());
     let items = crate::copy::testing::rects_of(&painted, delete_label.as_str());
@@ -1640,21 +1661,25 @@ async fn a_real_click_on_download_asks_the_system_save_box() {
         }],
     );
     assert!(w.pull_want().is_none(), "什么都没点就要了存盘框");
+    // 菜单成品问本机后端：接一台合成后端（它只答那一问）。
+    let wired = crate::find::testing::wire_up(
+        "pull-e2e",
+        crate::find::testing::FakeBackend::new(&[], crate::find::testing::Declared::default()),
+    )
+    .await;
+    w.attach_line(wired.line.clone());
     let ctx = egui::Context::default();
     menu_pick(&ctx, &mut w, "报表.csv", DOWNLOAD_LABEL.as_str());
     assert_eq!(
         w.pull_want().cloned(),
-        Some(("/srv/data/报表.csv".to_string(), "报表.csv".to_string())),
+        Some((
+            "/srv/data/报表.csv".as_bytes().to_vec(),
+            "报表.csv".to_string()
+        )),
         "真点了「下载」，存盘框要下的不是被点那一行"
     );
     // 🔴 **一个字节都没动**：存盘框还没答，传输一趟都没起。
-    assert!(
-        w.progress
-            .jobs()
-            .iter()
-            .all(|j| !matches!(j.trip, crate::progress::Trip::Download { .. })),
-        "还在选落点，传输就起来了"
-    );
+    assert!(w.progress.jobs().is_empty(), "还在选落点，传输就起来了");
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -1778,7 +1803,9 @@ async fn an_oversized_row_never_asks_the_remote_and_still_says_why() {
         EDIT_LABEL = EDIT_LABEL.as_str()
     );
 
-    // 而**直接调那条路**（多选长出来那天会走到）也要：不发往返 ＋ 出声。
+    // 而**直接调那条路**（多选长出来那天会走到）也要：不发往返 ＋ 出声（那一句照选中它时的成品）。
+    pick_row(&mut w, 0);
+    crate::find::testing::seed_menu(&mut w);
     assert!(!w.begin_edit(0, None), "超上限那一行竟然发了那趟读");
     assert!(w.edits.open_pending().is_none(), "一趟都不该发");
     assert!(w.edits.opening().is_none());
@@ -2500,7 +2527,26 @@ fn picking_a_sort_relists_right_away() {
 #[test]
 fn the_chrome_really_paints_breadcrumbs_the_terminal_button_and_the_sorted_header() {
     let mut w = remote_window_with_rows("/srv/data/子目录", vec![file_row("x")]);
+    // 点表头会重列一趟：接一台收下就不答的 ⇒ 停在「回包未到」（没通道那一支是问不成，箭头跟着作废）。
+    let side = crate::find::testing::SideRt::new();
+    crate::find::testing::hold_silent(&mut w, &side);
     let ctx = egui::Context::default();
+    // 那台答了一趟（头里 `by` ＝ 名称、A 在前）⇒ 表头照它画箭头。
+    let land = |w: &mut FileWindow, by| {
+        let mine = w.listing.start();
+        assert!(store_listed_if_current(
+            &w.listing,
+            mine,
+            Ok(crate::find::testing::reply_of_rows(
+                &[file_row("x")],
+                cmd_wire::files::LsHead {
+                    by,
+                    ..crate::find::testing::plain_head(1)
+                },
+            )),
+        ));
+    };
+    land(&mut w, crate::source::SortBy::Name);
     let _ = crate::chrome::testing::frame(&ctx, &mut w, Vec::new());
     let painted: Vec<String> = crate::chrome::testing::frame(&ctx, &mut w, Vec::new())
         .into_iter()
@@ -2520,17 +2566,26 @@ fn the_chrome_really_paints_breadcrumbs_the_terminal_button_and_the_sorted_heade
             "这一帧上没有「{want}」。画出来的是：{painted:?}"
         );
     }
-    // 换一列之后箭头跟着走（它读的是同一个状态，不是一个写死的串）。
+    // 换一列：回包未到箭头不动；那台答了「按类型」⇒ 箭头跟着走（读的是回包头，不是一个写死的串、也不是本窗记的那一列）。
     w.click_header(crate::source::SortBy::Type);
-    let painted: Vec<String> = crate::chrome::testing::frame(&ctx, &mut w, Vec::new())
-        .into_iter()
-        .map(|(t, _)| t)
-        .collect();
+    let paint = |w: &mut FileWindow| -> Vec<String> {
+        crate::chrome::testing::frame(&ctx, w, Vec::new())
+            .into_iter()
+            .map(|(t, _)| t)
+            .collect()
+    };
     let ty = format!(
         "{} {}",
         crate::rows::column_label(crate::source::SortBy::Type),
         egui_phosphor::regular::CARET_UP
     );
+    let painted = paint(&mut w);
+    assert!(
+        painted.iter().any(|t| *t == up) && !painted.iter().any(|t| *t == ty),
+        "回包未到箭头就挪了：{painted:?}"
+    );
+    land(&mut w, crate::source::SortBy::Type);
+    let painted = paint(&mut w);
     assert!(painted.iter().any(|t| *t == ty));
     assert!(!painted.iter().any(|t| *t == up), "旧那一列的箭头还画着");
 }
@@ -2796,7 +2851,7 @@ async fn a_lossy_directory_is_entered_and_everything_inside_is_addressed_by_its_
                 "files-read-text",
                 "files-copy",
                 "files-stat",
-                "transfer-upload",
+                "transfer-copy",
                 "files-delete",
                 "files-index-status",
                 "files-browse",
@@ -2885,7 +2940,7 @@ async fn a_lossy_directory_is_entered_and_everything_inside_is_addressed_by_its_
         "复制为时窗口又自己探了同名"
     );
     // 删除（写面：根是当前目录的字节）。
-    assert!(w.perform(Action::Delete, None));
+    assert!(crate::find::testing::perform_now_async(&mut w, Action::Delete).await);
     for _ in guard_core::wall::rounds() {
         if w.write_board.is_asking() {
             break;
@@ -2911,15 +2966,12 @@ async fn a_lossy_directory_is_entered_and_everything_inside_is_addressed_by_its_
         last_args(&wired, "files-index-rebuild")["path"],
         b16(b"/srv/d\xff")
     );
-    // 上传：整组开单那一条的落点目录按字节（同名在那台探，窗口不再自己问 `files-stat`）。
+    // 上传：那一组 `transfer-copy` 的落点目录按字节（同名在那台探，窗口不再自己问 `files-stat`）。
     let stats = wired.count("files-stat");
-    assert!(w.start_drop(
-        vec![crate::transfer::Pending::into_remote_dir("/tmp/up.txt", &w.cwd).unwrap()],
-        None
-    ));
-    wait_for(&wired, "transfer-upload", 1).await;
+    assert!(w.start_drop(&["/tmp/up.txt".to_string()], None));
+    wait_for(&wired, "transfer-copy", 1).await;
     assert_eq!(
-        last_args(&wired, "transfer-upload")["remote_dir"],
+        last_args(&wired, "transfer-copy")["to_dir"],
         b16(b"/srv/d\xff")
     );
     assert_eq!(wired.count("files-stat"), stats, "上传时窗口又自己探了同名");
@@ -3150,78 +3202,92 @@ fn the_preview_switch_survives_a_reopen_and_keeps_the_zoom() {
 // 文件窗口的行为缺陷（同类后台活一次一趟 · 下载可停 · 列表落地 · 框里说原因 · 结局看得到 · 隐藏文件 · 命中不每帧克隆）
 // ════════════════════════════════════════════════════════════════════════
 
-/// 一摞上传还在飞（人按过取消、还有几件排着）时再拖一摞进来：照样起，是「进度」表里**独立的一行**；
-/// **上一摞的取消不被清掉、也不传给新的一摞**（一趟一块看板、一张取消台 —— 此前一类只有一块，只能一次一趟）。
-/// 下载同理：在下的时候再要下载，照样摆「存到哪儿」。
+/// 一组上传还在跑时再拖一组进来：照样起，是「进度」表里**独立的一行**、另一张票；**停上一组不碰新的这一组**
+/// （一组一块看板 —— 此前一类只有一块，只能一次一趟）。下载同理：在下的时候再要下载，照样摆「存到哪儿」。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_second_trip_of_the_same_kind_runs_beside_the_first_and_leaves_its_cancel_alone() {
-    let wired = crate::find::testing::wire_up(
-        "side-by-side",
-        crate::find::testing::FakeBackend::new(
-            &["files-ls"],
-            crate::find::testing::Declared::default(),
-        ),
-    )
-    .await;
-    let mut w = crate::find::testing::window_on(&wired, "/srv/data");
-    let items = w.pending_for(&["/tmp/x/first.bin".to_string()]);
-    assert!(w.start_drop(items, None), "第一摞没起来");
-    let first = w.board.clone();
-    first.cancels().request();
-    let items = w.pending_for(&["/tmp/x/late.bin".to_string()]);
-    assert!(w.start_drop(items, None), "上一摞还在飞，第二摞没起来");
+async fn a_second_trip_of_the_same_kind_runs_beside_the_first_and_leaves_its_stop_alone() {
+    let (mut w, log) = crate::transfer::tests::one_line_window(Some(Default::default()));
     assert!(
-        first.cancels().is_cancelled(),
-        "第二摞把第一摞的取消清掉了 —— 排着的那几件会接着传"
+        w.start_drop(&["/tmp/x/first.bin".to_string()], None),
+        "第一组没起来"
     );
     assert!(
-        !w.board.cancels().is_cancelled(),
-        "第二摞接了第一摞的取消 —— 一件都起不来"
+        w.start_drop(&["/tmp/x/late.bin".to_string()], None),
+        "上一组还在跑，第二组没起来"
     );
-    let ups = w
+    let boards: Vec<crate::batch::BatchBoard> = w
         .progress
         .jobs()
-        .iter()
-        .filter(|j| matches!(j.trip, crate::progress::Trip::Upload { .. }))
-        .count();
-    assert_eq!(ups, 2, "两摞上传不是「进度」表里的两行");
-    // 下载：一趟在下 ⇒ 菜单 / 键盘再要下载照样起存盘框（这扇窗没有运行时 ⇒ 框起不来、说一句，但要下的那一项记下了）。
+        .into_iter()
+        .map(|j| match j.trip {
+            crate::progress::Trip::Batch { board, .. } => board,
+            _ => panic!("上传那一行不是一组"),
+        })
+        .collect();
+    assert_eq!(boards.len(), 2, "两组上传不是「进度」表里的两行");
+    assert_ne!(boards[0].ticket(), boards[1].ticket(), "两组同一张票");
+    // 撤的那一手由起跑那一侧装（tokio 那条），装在发出去之前 ⇒ 两组都发出去了再停。
+    tokio::time::timeout(guard_core::wall::CEILING, async {
+        while log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(_, s, _)| s == crate::transfer::CMD_TRANSFER)
+            .count()
+            < 2
+        {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("两组没都发出去");
+    assert!(boards[0].stop(), "第一组停不下");
+    assert!(boards[0].stopping());
+    assert!(!boards[1].stopping(), "停第一组把第二组也停了");
+    // 下载：一组在下 ⇒ 菜单 / 键盘再要下载照样起存盘框（这扇窗没有运行时 ⇒ 框起不来、说一句，但要下的那一项记下了）。
     let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.bin")]);
-    let pull = crate::download::DownloadBoard::default();
-    pull.begin("big.iso");
-    w.adopt_trip(
-        crate::progress::Trip::Download {
-            board: pull,
-            name: "big.iso".into(),
-            src: "/srv/data/big.iso".into(),
-            dest: "/tmp/big.iso".into(),
-        },
-        None,
-        None,
-    );
+    let (pull, _) = pull_board(&w, "big.iso");
+    w.adopt_trip(pull, None, None);
     pick_row(&mut w, 0);
-    w.perform(crate::select::Action::Download, None);
+    crate::find::testing::perform_now_async(&mut w, crate::select::Action::Download).await;
     assert!(w.pull_want().is_some(), "在下的时候再要下载，没起存盘框");
 }
 
-/// 「进度」表上在下的那一行有「停」：点了 ⇒ 这一趟的取消台按下（订阅停掉，`.part` 留着续传）；
-/// 下一趟是另一块看板，不被上一趟的取消拦下。
+/// 下载一项那一行（一组）：`name` 那一项从这一台到本机 `/tmp`。
+fn pull_board(w: &FileWindow, name: &str) -> (crate::progress::Trip, crate::batch::BatchBoard) {
+    let plan = crate::download::one_plan(
+        &w.source.origin(),
+        cmd_wire::files::WirePath::from(format!("/srv/{name}").as_str()),
+        name,
+        &format!("/tmp/{name}"),
+    )
+    .unwrap();
+    let board = crate::batch::BatchBoard::new(plan);
+    (
+        crate::progress::Trip::Batch {
+            board: board.clone(),
+            icon: egui_phosphor::regular::DOWNLOAD_SIMPLE,
+        },
+        board,
+    )
+}
+
+/// 「进度」表上在下的那一行有「停」：点了 ⇒ 交出停哪一趟、那一组的撤真的拨下去（`files-batch-stop` 那一手）；
+/// 下一组是另一块看板，不被上一组的停拦下。
 #[test]
 fn a_download_in_flight_can_be_stopped_from_its_row_in_the_progress_table() {
     let ctx = egui::Context::default();
     let progress = crate::progress::Progress::default();
-    let board = crate::download::DownloadBoard::default();
-    board.begin("big.iso");
-    progress.add(
-        crate::progress::Trip::Download {
-            board: board.clone(),
-            name: "big.iso".into(),
-            src: "/srv/big.iso".into(),
-            dest: "/tmp/big.iso".into(),
-        },
-        None,
-        None,
-    );
+    let w = remote_window_with_rows("/srv", Vec::new());
+    let (trip, board) = pull_board(&w, "big.iso");
+    let sent = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    {
+        let sent = sent.clone();
+        board.set_stopper(std::sync::Arc::new(move || {
+            sent.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }));
+    }
+    progress.add(trip, None, None);
     let mut t = 0.0;
     let mut acted = None;
     let mut paint = |ev: Vec<egui::Event>, acted: &mut Option<crate::progress::Act>| {
@@ -3248,10 +3314,13 @@ fn a_download_in_flight_can_be_stopped_from_its_row_in_the_progress_table() {
         panic!("点了「停」却没交出停哪一趟：{acted:?}");
     };
     assert!(progress.stop(id));
-    assert!(board.cancels().is_cancelled(), "点了停，这一趟没被撤");
-    let next = crate::download::DownloadBoard::default();
-    next.begin("next.iso");
-    assert!(!next.cancels().is_cancelled(), "上一趟的取消拦下了下一趟");
+    assert_eq!(
+        sent.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "点了停，这一组的撤没拨下去"
+    );
+    let (_, next) = pull_board(&w, "next.iso");
+    assert!(!next.stopping(), "上一组的停拦下了下一组");
 }
 
 /// 列表还在路上时换了排序：换档重列了一趟，出发时那一档的那一屏落地时作废（表头不许指着一列、行却是另一种序）。
@@ -3331,42 +3400,26 @@ fn a_bad_name_is_explained_under_the_cell() {
 /// 有失败 ⇒ 自己摊开、红点亮着；人收起来红点还在，人自己再点开才算看过。
 #[test]
 fn a_transfer_outcome_is_not_lost_behind_a_collapsed_table() {
+    use cmd_wire::batch::ItemState;
     let progress = crate::progress::Progress::default();
-    let pull = crate::download::DownloadBoard::default();
-    progress.add(
-        crate::progress::Trip::Download {
-            board: pull.clone(),
-            name: "ok.bin".into(),
-            src: "/srv/ok.bin".into(),
-            dest: "/tmp/ok.bin".into(),
-        },
-        None,
-        None,
-    );
-    pull.begin("ok.bin");
-    pull.finish(crate::download::Outcome::Done {
-        dest: "/tmp/ok.bin".into(),
-        bytes: 1,
-    });
+    let mut w = remote_window_with_rows("/srv/data", Vec::new());
+    let (trip, pull) = pull_board(&w, "ok.bin");
+    progress.add(trip, None, None);
+    ended(&pull, &[ItemState::Done], "已复制 1 项");
     progress.settle(0);
     assert!(!progress.is_empty(), "传完了，状态栏上那一颗没了");
     assert!(!progress.is_open(), "成功也自己摊开了");
     assert!(!progress.unseen_fail(), "成功也亮了红点");
-    let up = crate::transfer::DropBoard::default();
-    progress.add(
-        crate::progress::Trip::Upload {
-            board: up.clone(),
-            items: Vec::new(),
-            dir: "data".into(),
-            ask: crate::transfer::tests::upload_ask(&[]),
-        },
-        Some("/srv/data".into()),
-        None,
-    );
-    up.finish(crate::transfer::DropOutcome {
-        failed: vec![("x.bin".into(), "盘满了".into())],
-        ..Default::default()
-    });
+    let (_, up) = adopt_upload(&mut w);
+    let trip = w
+        .progress
+        .jobs()
+        .into_iter()
+        .next()
+        .map(|j| j.trip)
+        .unwrap();
+    progress.add(trip, Some("/srv/data".into()), None);
+    ended(&up, &[ItemState::Failed], "上传 1 项 · 失败 ×1");
     progress.settle(0);
     assert!(progress.is_open(), "有失败，那张表却还收着");
     assert!(progress.unseen_fail(), "有失败，状态栏上没有红点");
@@ -3647,10 +3700,9 @@ fn no_runtime(e: &str) -> bool {
     .any(|k| copy_core::copy_matches(&format!("rsFilewinShell.{k}.noRuntime"), e))
 }
 
-/// 目录打不开：照后端的码说是哪一种（名字带进那一句）＋ 三条出路；点「回上一级」就往上走、点「回主目录」记下要回家。
+/// 目录打不开：照画后端写好的那一句（窗口不按码另挑字）＋ 两条出路 ＋［复制详情］；点「回上一级」就往上走、点「回主目录」记下要回家。
 #[test]
-fn a_directory_that_cannot_be_opened_says_which_kind_and_offers_the_way_out() {
-    use crate::source::OpenFail;
+fn a_directory_that_cannot_be_opened_says_the_backend_sentence_and_offers_the_way_out() {
     let ctx = egui::Context::default();
     let painted_of = |w: &mut FileWindow| -> Vec<String> {
         let _ = crate::chrome::testing::frame(&ctx, w, Vec::new());
@@ -3659,16 +3711,28 @@ fn a_directory_that_cannot_be_opened_says_which_kind_and_offers_the_way_out() {
             .map(|(t, _)| t)
             .collect()
     };
-    for (kind, key) in [
-        (OpenFail::NotFound, "rsFilewinShell.open.notFound"),
-        (OpenFail::Denied, "rsFilewinShell.open.denied"),
-        (OpenFail::NotDir, "rsFilewinShell.open.notDir"),
-        (OpenFail::Other, "rsFilewinShell.open.other"),
-    ] {
+    let fail = |code: &str| crate::source::Failed {
+        code: code.to_string(),
+        said: format!("那台写好的一句 · {code}"),
+        detail: "原话 · 系统原话".to_string(),
+        data: None,
+    };
+    // 哪几种码给出路（后端 `files-ls` 打不开的那四种）；别的码只说那一句，不给「回上一级」「回主目录」。
+    let opens = ["not_found", "denied", "not_dir", "unreadable"];
+    for code in opens {
+        assert!(crate::source::opens_fail(code), "{code} 该给出路");
+    }
+    for code in ["bad_args", "io_failed", "unreachable"] {
+        assert!(
+            !crate::source::opens_fail(code),
+            "{code} 不是目录打不开，不该给出路"
+        );
+    }
+    for code in opens {
         let mut w = remote_window_with_rows("/srv/data/gone", vec![]);
-        *w.listing.open_fail.lock().unwrap() = Some((kind, "系统原话".into()));
+        *w.listing.open_fail.lock().unwrap() = Some(fail(code));
         let painted = painted_of(&mut w);
-        let said = copy_text(key, &[("name", "gone")]);
+        let said = fail(code).said;
         for want in [
             said.as_str(),
             &copy_text("rsFilewinShell.open.up", &[]),
@@ -3676,23 +3740,23 @@ fn a_directory_that_cannot_be_opened_says_which_kind_and_offers_the_way_out() {
         ] {
             assert!(
                 painted.iter().any(|t| t == want),
-                "{key}：这一帧上没有「{want}」。画出来的是：{painted:?}"
+                "{code}：这一帧上没有「{want}」。画出来的是：{painted:?}"
             );
         }
         // 同一颗［复制详情］（图标 ＋ 字，`kit::copy_detail_button`）。
         let copy = copy_text("detail.act.copy", &[]);
         assert!(
             painted.iter().any(|t| t.ends_with(&copy)),
-            "{key}：这一帧上没有［复制详情］。画出来的是：{painted:?}"
+            "{code}：这一帧上没有［复制详情］。画出来的是：{painted:?}"
         );
     }
     let mut w = remote_window_with_rows("/srv/data/gone", vec![]);
-    *w.listing.open_fail.lock().unwrap() = Some((OpenFail::NotFound, "系统原话".into()));
+    *w.listing.open_fail.lock().unwrap() = Some(fail("not_found"));
     let _ = crate::chrome::testing::frame(&ctx, &mut w, Vec::new());
     crate::chrome::testing::click(&ctx, &mut w, &copy_text("rsFilewinShell.open.up", &[]));
     assert_eq!(w.cwd, "/srv/data", "点了「回上一级」没往上走");
     let mut w = remote_window_with_rows("/srv/data/gone", vec![]);
-    *w.listing.open_fail.lock().unwrap() = Some((OpenFail::Denied, "系统原话".into()));
+    *w.listing.open_fail.lock().unwrap() = Some(fail("denied"));
     let _ = crate::chrome::testing::frame(&ctx, &mut w, Vec::new());
     crate::chrome::testing::click(&ctx, &mut w, &copy_text("rsFilewinShell.open.home", &[]));
     assert!(w.want_home, "点了「回主目录」没记下要回家");
@@ -3780,15 +3844,20 @@ fn adopt_batch(w: &mut FileWindow) -> (u64, crate::batch::BatchBoard) {
     (id, b)
 }
 
-fn adopt_upload(w: &mut FileWindow) -> (u64, crate::transfer::DropBoard) {
-    let board = w.board.fresh_like();
-    let ask = crate::batch::BatchBoard::new(copy_plan());
+fn adopt_upload(w: &mut FileWindow) -> (u64, crate::batch::BatchBoard) {
+    let plan = crate::transfer::upload_plan(
+        &w.source.origin(),
+        w.source.label(),
+        &["/tmp/a.bin".to_string()],
+        &w.cwd,
+        None,
+    )
+    .unwrap();
+    let board = crate::batch::BatchBoard::new(plan);
     let id = w.adopt_trip(
-        crate::progress::Trip::Upload {
+        crate::progress::Trip::Batch {
             board: board.clone(),
-            items: Vec::new(),
-            dir: "data".into(),
-            ask,
+            icon: egui_phosphor::regular::UPLOAD_SIMPLE,
         },
         Some(w.cwd.clone()),
         None,
@@ -3847,25 +3916,16 @@ fn a_group_that_fully_succeeds_says_so_in_a_toast() {
     );
     let (_, up) = adopt_upload(&mut w);
     w.receipt = None;
-    up.finish(crate::transfer::DropOutcome {
-        ok: 2,
-        ..Default::default()
-    });
+    ended(&up, &[ItemState::Done, ItemState::Done], "已上传 2 项");
     assert!(w.settle_trips());
-    assert_eq!(
-        w.receipt,
-        Some(copy_core::copy_text(
-            "rsFilewinProgress.upload.done",
-            &[("n", "2")]
-        ))
-    );
+    assert_eq!(w.receipt.as_deref(), Some("已上传 2 项"));
     let (_, up) = adopt_upload(&mut w);
     w.receipt = None;
-    up.finish(crate::transfer::DropOutcome {
-        ok: 1,
-        failed: vec![("x".into(), "盘满了".into())],
-        ..Default::default()
-    });
+    ended(
+        &up,
+        &[ItemState::Done, ItemState::Failed],
+        "上传 2 项 · 失败 ×1",
+    );
     assert!(w.settle_trips());
     assert_eq!(w.receipt, None, "上传有失败的也出了回执");
 }
@@ -3897,11 +3957,11 @@ fn the_tab_lands_each_trip_on_the_ending_the_table_shows() {
     assert_eq!(w.receipt, None);
 
     let (id, up) = adopt_upload(&mut w);
-    up.finish(crate::transfer::DropOutcome {
-        ok: 3,
-        failed: vec![("b.bin".into(), "盘满了".into())],
-        ..Default::default()
-    });
+    ended(
+        &up,
+        &[ItemState::Done, ItemState::Failed],
+        "上传 2 项 · 失败 ×1",
+    );
     assert!(w.settle_trips());
     assert_eq!(row_state(&w, id), State::Failed);
     assert_eq!(w.receipt, None, "表那一行说失败，标签页却出了成了的回执");
@@ -3914,30 +3974,16 @@ fn an_earlier_trip_landing_last_still_lands_on_its_own_tab() {
     let mut w = remote_window_with_rows("/srv/data", Vec::new());
     let (_, first) = adopt_upload(&mut w);
     let (_, second) = adopt_upload(&mut w);
-    second.finish(crate::transfer::DropOutcome {
-        ok: 1,
-        ..Default::default()
-    });
+    use cmd_wire::batch::ItemState;
+    ended(&second, &[ItemState::Done], "已上传 1 项");
     assert!(w.settle_trips());
-    assert_eq!(
-        w.receipt,
-        Some(copy_core::copy_text(
-            "rsFilewinProgress.upload.done",
-            &[("n", "1")]
-        ))
-    );
+    assert_eq!(w.receipt.as_deref(), Some("已上传 1 项"));
     w.receipt = None;
-    first.finish(crate::transfer::DropOutcome {
-        ok: 2,
-        ..Default::default()
-    });
+    ended(&first, &[ItemState::Done], "已上传 2 项");
     assert!(w.settle_trips(), "先起的那一摞落地了，这个标签页却没收场");
     assert_eq!(
-        w.receipt,
-        Some(copy_core::copy_text(
-            "rsFilewinProgress.upload.done",
-            &[("n", "2")]
-        )),
+        w.receipt.as_deref(),
+        Some("已上传 2 项"),
         "先起的那一摞的回执丢了"
     );
     assert!(!w.has_running_jobs(), "两摞都落地了，标签上还亮着忙点");
@@ -3991,10 +4037,62 @@ fn a_held_listing_lands_only_what_changed_and_the_next_ask_carries_its_held() {
         ["a", "b", "c"],
         "没变却动了那一屏"
     );
-    // 问不成 ⇒ 作废。
+    // 问不成 ⇒ 作废：手上那一份连同表头箭头（那台上一趟答的）一起。
+    assert!(l.caret.lock().unwrap().is_some(), "头来过，箭头该有");
     let (mine, _) = l.start_held();
     assert!(store_listed_if_current(&l, mine, Err("断了".into())));
     assert_eq!(l.start_held().1, None, "问不成之后还带着旧记号");
+    assert_eq!(*l.caret.lock().unwrap(), None, "问不成之后箭头还照上一趟画");
+}
+
+/// 「打不开」那一句跟判号落在同一处：落一趟打不开那类码的失败 ⇒ 当场记下那一句；
+/// 这一趟已经作废（换过目录）⇒ 同一失败不挂到新目录头上；再列成 ⇒ 那一句清掉。
+#[test]
+fn the_cannot_open_sentence_lands_with_the_epoch_check_and_never_on_a_newer_directory() {
+    use crate::find::testing::{plain_head, reply_of_rows};
+    let gone = || crate::source::Failed {
+        code: "not_found".to_string(),
+        said: "那台写好的一句".to_string(),
+        detail: "系统原话".to_string(),
+        data: None,
+    };
+    let l = Listing::default();
+    let (mine, _) = l.start_held();
+    assert!(store_listed_if_current(&l, mine, Err(gone())));
+    assert_eq!(
+        l.open_fail
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|f| f.code.as_str()),
+        Some("not_found"),
+        "打不开那一句没跟这一趟一起落下"
+    );
+    // 别的码（通道没走通）只说那一句，不记打不开。
+    let (mine, _) = l.start_held();
+    assert!(store_listed_if_current(&l, mine, Err("断了".into())));
+    assert!(
+        l.open_fail.lock().unwrap().is_none(),
+        "不是打不开却记成打不开"
+    );
+    // 旧目录那一趟在飞，换了目录（号作废）⇒ 它的打不开不挂到新目录头上。
+    let (old, _) = l.start_held();
+    l.invalidate();
+    assert!(!store_listed_if_current(&l, old, Err(gone())));
+    assert!(
+        l.open_fail.lock().unwrap().is_none(),
+        "旧目录的「打不开」挂到了新目录头上"
+    );
+    // 打不开之后再列成 ⇒ 那一句清掉。
+    let (mine, _) = l.start_held();
+    assert!(store_listed_if_current(&l, mine, Err(gone())));
+    let (mine, _) = l.start_held();
+    assert!(store_listed_if_current(
+        &l,
+        mine,
+        Ok(reply_of_rows(&[file_row("a")], plain_head(1)))
+    ));
+    assert!(l.open_fail.lock().unwrap().is_none(), "列成了还挂着打不开");
 }
 
 /// 整个 `shell` 模块（`shell.rs` ＋ `shell/` 底下按职责拆出去的那几份）的生产段，接成一份：
@@ -4015,4 +4113,214 @@ pub(crate) fn shell_module_production_code() -> String {
         .map(|(_, raw)| guard_core::production_code(raw))
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// 复制到另一台：答完那一问 ⇒ 一条寻址本机的 `transfer-copy`（from ＝ 这一台 · to ＝ 落点那台 · 带票），撤与断开都认本机；
+/// 此前寻址源那台、由壳补上源那台转给本机后端（壳不再截传输）。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn copying_to_another_machine_is_one_local_transfer_copy_from_this_one() {
+    let (mut w, log) = crate::transfer::tests::one_line_window(Default::default());
+    *w.listing.rows.lock().unwrap() = vec![Listed::from(Row {
+        name: "a.bin".into(),
+        path: "/srv/a.bin".into(),
+        is_dir: false,
+        size: 3,
+        lossy_name: false,
+    })];
+    w.machines = vec!["gpu-01".into()];
+    assert!(w.begin_cross_rows(&[0]), "那一问没摆出来");
+    w.cross_prompt.as_mut().unwrap().dir = "/home/u/in".into();
+    assert!(w.confirm_cross(None), "答完那一问没起来");
+    let (at, mut args) = crate::transfer::tests::step_of(&log, crate::transfer::CMD_TRANSFER).await;
+    assert_eq!(at, cmd_wire::LOCAL, "复制到另一台没寻址本机");
+    assert!(args["ticket"].is_string(), "没带票：{args}");
+    args.as_object_mut().unwrap().remove("ticket");
+    assert_eq!(
+        args,
+        serde_json::json!({
+            "from": w.source.label(),
+            "to": "gpu-01",
+            "items": [{ "path": "/srv/a.bin" }],
+            "to_dir": "/home/u/in",
+        })
+    );
+}
+
+/// ★ 多选三项按右键 ⇒ 通道上出现一条 `files-menu`（入参是那三行的原行 ＋ 此刻那台的样子），菜单那几项（项 · 字 · 灰着的为什么）
+/// 逐项等于本机后端照那一份入参答的成品（单栏去掉「复制到另一栏」）；窗口与 cc-monitor 断开 ⇒ 菜单只摆断开那一句。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_right_click_on_three_asks_the_local_backend_for_the_menu() {
+    use crate::find::testing::{wire_up, Declared, FakeBackend};
+    let wired = wire_up("fw-menu-three", FakeBackend::new(&[], Declared::default())).await;
+    let rows: Vec<Row> = ["a.txt", "b.txt", "c.txt"]
+        .iter()
+        .map(|n| Row {
+            name: n.to_string(),
+            path: format!("/d/{n}"),
+            is_dir: false,
+            size: 3,
+            lossy_name: false,
+        })
+        .collect();
+    let mut w = FileWindow::seeded(
+        Source::remote(synth_cfg("fw-menu-three")),
+        "/d".to_string(),
+        tokio::runtime::Handle::try_current().ok(),
+        rows,
+    );
+    w.attach_line(wired.line.clone());
+    {
+        let rows = w.listing.rows.lock().unwrap();
+        w.selection.select_all(&rows);
+    }
+    w.tally.menu_clicked = Some(0);
+    assert!(w.apply_menu_click(egui::pos2(100.0, 100.0)));
+    for _ in guard_core::wall::rounds() {
+        w.settle_menu(None);
+        if w.menu().is_some() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    let asked = wired.menus.lock().unwrap().clone();
+    assert_eq!(asked.len(), 1, "右键那一下没问本机后端要菜单：{asked:?}");
+    let req: cmd_wire::files::FilesMenuReq = serde_json::from_value(asked[0].clone()).unwrap();
+    assert_eq!(req.picked.len(), 3);
+    let want: Vec<Vec<cmd_wire::files::DeskEntry>> = backend_files::menu::desk_menu(&req)
+        .groups
+        .into_iter()
+        .map(|g| {
+            g.into_iter()
+                .filter(|e| e.item != Item::Act(Action::Across))
+                .collect::<Vec<_>>()
+        })
+        .filter(|g| !g.is_empty())
+        .collect();
+    assert_eq!(w.menu().expect("成品到了菜单要摆出来").groups, want);
+
+    w.gate.set(crate::source::LinkSeen::Severed);
+    w.tally.menu_clicked = Some(1);
+    assert!(w.apply_menu_click(egui::pos2(100.0, 100.0)));
+    let m = w.menu().expect("断开时右键照样摆一个菜单");
+    assert!(m.groups.is_empty());
+    assert_eq!(m.note, w.gate.write_refused());
+}
+
+/// ★ 本机后端没答成那一份菜单 ⇒ 右键照样摆一个菜单、只说没成的那一句（不干等）；再右键一下 ⇒ 再问一次。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_menu_the_local_backend_could_not_answer_says_why_and_asks_again() {
+    use crate::find::testing::{wire_up, Declared, FakeBackend};
+    let mut be = FakeBackend::new(&[], Declared::default());
+    be.menu_refused = Some("menu said no".into());
+    let wired = wire_up("fw-menu-refused", be).await;
+    let mut w = FileWindow::seeded(
+        Source::remote(synth_cfg("fw-menu-refused")),
+        "/d".to_string(),
+        tokio::runtime::Handle::try_current().ok(),
+        vec![Row {
+            name: "a.txt".into(),
+            path: "/d/a.txt".into(),
+            is_dir: false,
+            size: 3,
+            lossy_name: false,
+        }],
+    );
+    w.attach_line(wired.line.clone());
+    for round in 1..=2 {
+        w.tally.menu_clicked = Some(0);
+        assert!(w.apply_menu_click(egui::pos2(100.0, 100.0)));
+        for _ in guard_core::wall::rounds() {
+            w.settle_menu(None);
+            if w.menu().is_some() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        let m = w.menu().expect("没答成也要摆出一个菜单");
+        assert!(m.groups.is_empty());
+        assert!(
+            m.note
+                .as_deref()
+                .is_some_and(|n| n.contains("menu said no")),
+            "没说没成的那一句：{:?}",
+            m.note
+        );
+        assert_eq!(
+            wired.menus.lock().unwrap().len(),
+            round,
+            "第 {round} 次右键没再问"
+        );
+    }
+}
+
+/// 🔴 两趟问菜单前后脚回来、旧的那一趟晚到：晚到的不许盖掉照最后那一份入参答的成品。
+///
+/// 选中一变就再问一趟，前一趟还在飞（同一条线上两趟各在一个任务里等，谁先写回不定）。旧的那一趟晚到时
+/// 盖掉了新的 ⇒ `current()` 恒 `None`、入参没再变就不再问 ⇒ 菜单不摆、按下的那一键一直等着。
+#[test]
+fn a_late_answer_to_an_older_ask_does_not_replace_the_current_product() {
+    use cmd_wire::files::{FilesMenuReq, Here};
+    let req = |plan: Option<&str>| FilesMenuReq {
+        picked: Vec::new(),
+        here: Here {
+            offline: None,
+            unavailable: Vec::new(),
+        },
+        plan: plan.map(str::to_string),
+    };
+    let (old, new) = (req(None), req(Some("第一片")));
+    let (m_old, m_new) = (
+        backend_files::menu::desk_menu(&old),
+        backend_files::menu::desk_menu(&new),
+    );
+    assert_ne!(m_old, m_new, "两份成品一样 —— 下面那一比在空转");
+
+    // 新的先回、旧的晚到。
+    let mut now = MenuNow {
+        asked: Some(new.clone()),
+        ..Default::default()
+    };
+    now.land(new.clone(), Ok(m_new.clone()));
+    now.land(old.clone(), Ok(m_old.clone()));
+    assert_eq!(now.current(), Some(&m_new), "晚到的旧成品盖掉了新的");
+    assert_eq!(now.latest(), Some(&m_new));
+
+    // 没成那一句同理：新的没成、旧的晚到也没成 ⇒ 说的是新的那一句。
+    let mut now = MenuNow {
+        asked: Some(new.clone()),
+        ..Default::default()
+    };
+    now.land(new.clone(), Err("新的没成".into()));
+    now.land(old.clone(), Err("旧的没成".into()));
+    assert_eq!(now.failure(), Some("新的没成"));
+
+    // 新的还没回来时旧的先到：照旧记下（命令栏那几颗的字照它写），但不算此刻这一份。
+    let mut now = MenuNow {
+        asked: Some(new.clone()),
+        ..Default::default()
+    };
+    now.land(old, Ok(m_old.clone()));
+    assert_eq!(now.current(), None);
+    assert_eq!(now.latest(), Some(&m_old));
+    now.land(new.clone(), Ok(m_new.clone()));
+    assert_eq!(now.current(), Some(&m_new));
+
+    // 同一份入参两趟都在飞（往回选回来 · 换线之前那一趟晚到），一趟成、一趟没成，谁先到都一样：
+    // 成品算数，不同时说没成那一句。
+    for ok_first in [true, false] {
+        let mut now = MenuNow {
+            asked: Some(new.clone()),
+            ..Default::default()
+        };
+        let (ok, err) = (Ok(m_new.clone()), Err("没成".to_string()));
+        if ok_first {
+            now.land(new.clone(), ok);
+            now.land(new.clone(), err);
+        } else {
+            now.land(new.clone(), err);
+            now.land(new.clone(), ok);
+        }
+        assert_eq!(now.current(), Some(&m_new), "成品先到 = {ok_first}");
+        assert_eq!(now.failure(), None, "成品先到 = {ok_first}：有成品还说没成");
+    }
 }

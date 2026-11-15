@@ -144,7 +144,13 @@ fn a_background_agents_approval_says_who_asks_and_what_the_command_does() {
         json!("F=/r/tool-results/b8v1.txt; sed -n '1,40p' \"$F\" | head -5\necho done");
     let a = read(&v).unwrap();
     let label = crate::agents::asks::run_label(&parent, "a1");
-    let ask = crate::agents::asks::product_of("ask-1", &a, label.as_deref(), 1);
+    let ask = crate::agents::asks::product_of(
+        "ask-1",
+        &a,
+        FACE.stop_on_deny,
+        FACE.answers_on_screen(&a),
+        label.as_deref(),
+    );
     let run = ask.run.as_ref().expect("子 agent 发的带 run");
     assert!(
         run.text.0.contains("Audit: docs") && run.text.0.contains("Explore"),
@@ -242,7 +248,7 @@ fn auq_req() -> Value {
 #[test]
 fn a_question_reads_its_questions_and_answers_go_into_updated_input() {
     let a = read(&auq_req()).unwrap();
-    assert_eq!(a.kind, AskKind::Question);
+    assert_eq!(a.kind, AskKind::Answer);
     assert_eq!(a.questions.len(), 2);
     assert!(a.questions[1].multi);
     assert_eq!(a.questions[0].options[0].label, "Red");
@@ -273,6 +279,12 @@ fn a_question_reads_its_questions_and_answers_go_into_updated_input() {
         d["updatedInput"]["answers"],
         json!({"Which color?": "PURPLE", "Which fruits?": "Apple, Pear"})
     );
+    for req in [auq_req(), bash_req()] {
+        assert!(
+            !(FACE.cannot)(&read(&req).unwrap()),
+            "这一家提问 · 批准都经钩子答"
+        );
+    }
 }
 
 #[test]
@@ -317,10 +329,22 @@ fn the_launch_words_are_settings_with_one_exec_form_hook_that_names_command() {
     assert_eq!(w[0], "--settings");
     let s: Value = serde_json::from_str(&w[1]).unwrap();
     let hooks = &s["hooks"];
+    let mut kinds: Vec<&str> = hooks
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    kinds.sort_unstable();
     assert_eq!(
-        hooks.as_object().unwrap().len(),
-        1,
-        "只挂 PermissionRequest"
+        kinds,
+        [
+            "Notification",
+            "PermissionRequest",
+            "Stop",
+            "UserPromptSubmit"
+        ],
+        "答题那一种 ＋ 一轮的那三种"
     );
     let h = &hooks["PermissionRequest"][0]["hooks"][0];
     assert_eq!(h["type"], "command");
@@ -328,12 +352,70 @@ fn the_launch_words_are_settings_with_one_exec_form_hook_that_names_command() {
     assert_eq!(h["command"], "/h/.cc-monitor/bin/ccm");
     assert_eq!(h["args"], json!(["--", "--answer-hook", "claude"]));
     assert_eq!(h["timeout"], HOOK_TIMEOUT_SECS);
+    for k in ["UserPromptSubmit", "Stop", "Notification"] {
+        let h = &hooks[k][0]["hooks"][0];
+        assert_eq!(h["command"], "/h/.cc-monitor/bin/ccm", "{k}");
+        assert_eq!(h["args"], json!(["--", "--answer-hook", "claude"]), "{k}");
+        assert_eq!(h["timeout"], EVENT_HOOK_TIMEOUT_SECS, "{k}");
+    }
+    assert_eq!(
+        hooks["Notification"][0]["matcher"], "idle_prompt",
+        "通知只要闲着那一种"
+    );
     assert!(s.get("permissions").is_none() && s.get("disableAllHooks").is_none());
+}
+
+#[test]
+fn the_turn_hooks_read_as_the_shared_events() {
+    use crate::agents::AgentEvent as E;
+    let of = |name: &str| json!({"session_id": "s-9", "hook_event_name": name, "cwd": "/w"});
+    assert_eq!(heard(&of("Stop")), Some(("s-9".into(), E::TurnEnded)));
+    assert_eq!(
+        heard(&of("UserPromptSubmit")),
+        Some(("s-9".into(), E::PromptSubmitted))
+    );
+    let mut idle = of("Notification");
+    idle["notification_type"] = json!("idle_prompt");
+    assert_eq!(
+        heard(&idle),
+        Some(("s-9".into(), E::TurnEnded)),
+        "Esc 打断不发 Stop，闲着的通知也算一轮结束"
+    );
+    let mut perm = of("Notification");
+    perm["notification_type"] = json!("permission_prompt");
+    assert_eq!(heard(&perm), None, "批准那一种走 PermissionRequest");
+    assert_eq!(heard(&bash_req()), None, "要人答的那一种不是事件");
+    assert_eq!(
+        heard(&json!({"hook_event_name": "Stop"})),
+        None,
+        "缺会话 id"
+    );
+}
+
+#[test]
+fn a_users_own_settings_get_every_hook_appended() {
+    let user = json!({"model": "x", "hooks": {"Stop": [{"hooks": [{"type": "command", "command": "mine"}]}]}});
+    let v = merge(&user, "/ccm").unwrap();
+    assert_eq!(v["model"], "x");
+    assert_eq!(
+        v["hooks"]["Stop"].as_array().unwrap().len(),
+        2,
+        "他那一组留着、我们的接在后面"
+    );
+    assert_eq!(v["hooks"]["Stop"][0]["hooks"][0]["command"], "mine");
+    for k in ["PermissionRequest", "UserPromptSubmit", "Notification"] {
+        assert_eq!(v["hooks"][k].as_array().unwrap().len(), 1, "{k}");
+    }
+    let odd = json!({"hooks": {"Stop": "x"}});
+    let v = merge(&odd, "/ccm").expect("一轮那一种形状不对 ⇒ 只那一种不挂");
+    assert_eq!(v["hooks"]["Stop"], "x", "他那一份原样");
+    assert_eq!(v["hooks"]["PermissionRequest"].as_array().unwrap().len(), 1);
+    assert!(merge(&json!({"hooks": {"PermissionRequest": "x"}}), "/ccm").is_none());
 }
 
 /// ★ **跨语言金样**：几种请求读成的成品（`needs.ask`）== `tests/__fixtures__/needs-ask.golden.json`；
 /// 界面那一侧（`tests/frontend/ui/session-reads.vitest.ts`「答题口的成品」）解同一份 —— 两端对同一形，异源。
-/// 四种：批准一步（带两条以后不再问）· 子 agent 的批准（多一项改到终端里答）· 批计划 · 回答两道题（单选带说明 · 多选）。
+/// 四种：批准一步（带两条以后不再问）· 子 agent 的批准（挡着终端、认得出框：只给允许 · 拒绝）· 批计划 · 回答两道题（单选带说明 · 多选）。
 #[test]
 fn the_products_match_the_cross_language_golden() {
     let mut sub = bash_req();
@@ -346,11 +428,13 @@ fn the_products_match_the_cross_language_golden() {
         "tool_input": {"plan": "1. a\n2. b\n"}
     });
     let product = |id: &str, v: &Value| {
+        let a = read(v).unwrap();
         serde_json::to_value(crate::agents::asks::product_of(
             id,
-            &read(v).unwrap(),
+            &a,
+            FACE.stop_on_deny,
+            FACE.answers_on_screen(&a),
             None,
-            1_000,
         ))
         .unwrap()
     };
@@ -403,24 +487,17 @@ fn managed_policy_that_bars_session_plugins_is_recognised() {
     assert!(!policy_blocks(&json!([1])));
 }
 
-/// 装着的那一份是哪一版：原生安装（`…/versions/<版本>` 那个文件）· npm 安装（往上找那一家的 `package.json`）；认不出 ⇒ `None`。
+/// 注册表那一格插件那一路的版本门只声明：下限 2.1.280（`CLAUDE_CODE_PLUGIN_DIRS` 从这一版起认）· `PATH` 上的 `claude` · npm 包名
+/// （读法是通用的那一个，判据在 `agents_tests`）。
 #[test]
-fn the_installed_version_reads_from_the_install_layout() {
-    assert_eq!(
-        version_in_name("/home/u/.local/share/claude/versions/2.1.296"),
-        Some([2, 1, 296])
-    );
-    assert_eq!(version_in_name("/usr/bin/claude"), None);
-    assert_eq!(
-        version_in_package(r#"{"name":"@anthropic-ai/claude-code","version":"2.1.279"}"#),
-        Some([2, 1, 279])
-    );
-    assert_eq!(
-        version_in_package(r#"{"name":"other","version":"9.9.9"}"#),
-        None,
-        "别人家的 package.json 不算"
-    );
-    assert!(PLUGIN_MIN_VERSION > [2, 1, 279] && PLUGIN_MIN_VERSION <= [2, 1, 280]);
+fn the_plugin_gate_declares_the_floor_the_command_and_the_package() {
+    let gate = FACE.plugin.expect("有插件那一路").gate;
+    assert_eq!(gate.command, "claude");
+    assert_eq!(gate.package, "@anthropic-ai/claude-code");
+    assert_eq!(gate.admits(Some([2, 1, 280])), Ok(()));
+    for v in [Some([2, 1, 279]), None] {
+        assert_eq!(gate.admits(v), Err(crate::agents::asks::HookOff::Version));
+    }
 }
 
 /// 钉条那一段与消息流那一行认同一张「工具 → 主参数」表；表外的工具才按那串常见键猜。
@@ -454,4 +531,218 @@ fn ask_and_plan_tool_literals_live_only_in_asks() {
         assert!(!cards.contains(&lit), "cards.rs 不应出现 {lit} 字面量");
         assert!(!steps.contains(&lit), "steps.rs 不应出现 {lit} 字面量");
     }
+}
+
+// ── 读屏认框：挡着终端的那一条（后台子 agent 的 Bash 批准框）在屏上是不是正显示着 ──────────────────
+// 屏是真屏夹具（夹具 claude-ask-box-* `.screen.txt`）：替身 `fake-claude-ask-box.sh` 照 11-12 实测的排法在私有 tmux 里画框、
+// 照生产抓屏那一条 argv 截下；每趟重截来比的那一条住读屏驱动的判据（`control::screen_drive` 的
+// `the_ask_box_fixtures_match_what_the_stand_in_draws`，那里有抓屏的 argv）。命令与说明都是编的。
+
+/// 一份夹具那一屏（照文件名去掉 `.screen.txt` 那一截点；每一份照字面 `include_str!`，夹具守卫认得出谁在用）。
+macro_rules! screen {
+    ("wide-160") => {
+        lines(include_str!(
+            "../../../__fixtures__/claude-ask-box-wide-160.screen.txt"
+        ))
+    };
+    ("main-160") => {
+        lines(include_str!(
+            "../../../__fixtures__/claude-ask-box-main-160.screen.txt"
+        ))
+    };
+    ("other-tool-160") => {
+        lines(include_str!(
+            "../../../__fixtures__/claude-ask-box-other-tool-160.screen.txt"
+        ))
+    };
+    ("queue-first") => {
+        lines(include_str!(
+            "../../../__fixtures__/claude-ask-box-queue-first.screen.txt"
+        ))
+    };
+    ("queue-next") => {
+        lines(include_str!(
+            "../../../__fixtures__/claude-ask-box-queue-next.screen.txt"
+        ))
+    };
+    ("queue-done") => {
+        lines(include_str!(
+            "../../../__fixtures__/claude-ask-box-queue-done.screen.txt"
+        ))
+    };
+    ("wrap-60") => {
+        lines(include_str!(
+            "../../../__fixtures__/claude-ask-box-wrap-60.screen.txt"
+        ))
+    };
+    ("split-40") => {
+        lines(include_str!(
+            "../../../__fixtures__/claude-ask-box-split-40.screen.txt"
+        ))
+    };
+    ("short-80x11") => {
+        lines(include_str!(
+            "../../../__fixtures__/claude-ask-box-short-80x11.screen.txt"
+        ))
+    };
+}
+
+/// 要批的那一条：`agent_type` 给了 ⇒ 后台子 agent 发的。
+fn sub_ask(command: &str, agent_type: Option<&str>) -> AskIn {
+    let mut v = bash_req();
+    v["tool_input"] = json!({"command": command, "description": "make plum"});
+    if let Some(t) = agent_type {
+        v["agent_id"] = json!("a-9");
+        v["agent_type"] = json!(t);
+    }
+    read(&v).expect("读得出")
+}
+
+fn lines(s: &str) -> Vec<String> {
+    s.lines().map(str::to_string).collect()
+}
+
+const GP: Option<&str> = Some("general-purpose");
+const LONG_CMD: &str = "touch ./a_very_long_file_name_number_one.txt ./a_very_long_file_name_number_two.txt ./a_very_long_file_name_number_three.txt";
+
+#[test]
+fn the_box_of_this_request_is_seen_in_a_wide_a_narrow_and_a_split_window() {
+    let a = sub_ask("touch ./plum.txt", GP);
+    assert!((SCREEN.covers)(&a), "Bash 批准认得");
+    assert!(!(SCREEN.covers)(&read(&auq_req()).unwrap()), "提问框不认");
+    assert!((SCREEN.seen)(&screen!("wide-160"), &a), "宽 160");
+    assert!(
+        (SCREEN.seen)(&screen!("queue-first"), &sub_ask("touch ./pear.txt", GP)),
+        "右边带 k of n"
+    );
+    assert!(
+        (SCREEN.seen)(&screen!("queue-next"), &a),
+        "答掉一条后顶上来的那一条（2 of 2）"
+    );
+    let long = sub_ask(LONG_CMD, GP);
+    assert!(
+        (SCREEN.seen)(&screen!("wrap-60"), &long),
+        "60 宽按词折行、前面加 │"
+    );
+    assert!(
+        (SCREEN.seen)(&screen!("split-40"), &long),
+        "40 宽拆栏 · 硬折"
+    );
+    assert!(
+        (SCREEN.seen)(&screen!("main-160"), &sub_ask("touch ./plum.txt", None)),
+        "主会话的框"
+    );
+    assert_eq!(
+        SCREEN.allow,
+        crate::agents::Keystroke::Char("1"),
+        "允许按 1（头一项恒是 Yes）"
+    );
+    assert_eq!(
+        SCREEN.deny,
+        crate::agents::Keystroke::Key("esc"),
+        "拒绝按 Esc（只拒这一条）"
+    );
+}
+
+#[test]
+fn a_box_that_is_not_this_request_is_not_seen() {
+    let a = sub_ask("touch ./plum.txt", GP);
+    let no = |screen: &[String], why: &str| assert!(!(SCREEN.seen)(screen, &a), "{why}");
+    no(&screen!("main-160"), "主会话的框（不带 from）");
+    assert!(
+        !(SCREEN.seen)(
+            &screen!("wide-160"),
+            &sub_ask("touch ./plum.txt", Some("scout"))
+        ),
+        "别的 agent"
+    );
+    assert!(
+        !(SCREEN.seen)(&screen!("wide-160"), &sub_ask("touch ./pear.txt", GP)),
+        "别的命令"
+    );
+    no(&screen!("queue-first"), "1 of 2：正显示的是排着的另一条");
+    no(&screen!("other-tool-160"), "别的工具");
+    // 矮窗：框比窗高，标题 · Tip · 说明都被顶出屏外，只看得见从第一道虚线往下那一截。
+    let short = screen!("short-80x11");
+    assert!(
+        short.first().is_some_and(|l| l.starts_with('╌')),
+        "矮窗夹具从虚线起"
+    );
+    assert!(
+        !(SCREEN.seen)(&short, &sub_ask(LONG_CMD, GP)),
+        "矮窗：看不见标题"
+    );
+    // 问句下面没有 N. Yes … N. No。
+    let mut bare = screen!("wide-160");
+    bare.retain(|l| !l.trim_start().starts_with("❯ 1.") && !l.trim_start().starts_with("4. No"));
+    no(&bare, "没有 Yes / No 那几项");
+    no(&screen!("queue-done"), "屏上没有框");
+    // 主会话那一条（不带 agent_type）对上的是不带 from 的那一形。
+    let main = sub_ask("touch ./plum.txt", None);
+    assert!(
+        !(SCREEN.seen)(&screen!("wide-160"), &main),
+        "主会话那条不认子 agent 的框"
+    );
+}
+
+/// ★ 命令只差空白的两条不算同一条（屏上折行处之外的空白要对得上）；子 agent 发的却没带种类 ⇒ 认不准是谁的，不认。
+#[test]
+fn a_command_that_differs_only_in_spaces_or_an_agent_without_a_kind_is_not_seen() {
+    let wide = screen!("wide-160");
+    assert!(
+        !(SCREEN.seen)(&wide, &sub_ask("touch  ./plum.txt", GP)),
+        "多一个空格"
+    );
+    assert!(
+        !(SCREEN.seen)(&wide, &sub_ask("touch./plum.txt", GP)),
+        "少一个空格"
+    );
+    let wrap = screen!("wrap-60");
+    assert!(
+        wrap.iter()
+            .any(|l| l.trim() == "│ ./a_very_long_file_name_number_two.txt"),
+        "60 宽夹具按词折了行"
+    );
+    assert!(
+        (SCREEN.seen)(&wrap, &sub_ask(LONG_CMD, GP)),
+        "按词折行处丢掉的那个空格不算差"
+    );
+    let mut v = bash_req();
+    v["tool_input"] = json!({"command": "touch ./plum.txt"});
+    v["agent_id"] = json!("a-9");
+    let kindless = read(&v).unwrap();
+    assert!(kindless.blocks_terminal);
+    assert!(!(SCREEN.seen)(&screen!("main-160"), &kindless), "没带种类");
+}
+
+/// ★ 选项折行：续行照缩进认（比编号那一格更靠右），不照开头数字 —— 续行恰好以「3. 」打头也不算一项。
+#[test]
+fn an_option_wrapped_onto_a_line_that_starts_with_a_number_is_still_one_option() {
+    let mut s = screen!("wrap-60");
+    let at = s
+        .iter()
+        .position(|l| l.trim() == "project")
+        .expect("60 宽夹具里选项折了行");
+    s[at] = s[at].replace("project", "3. project");
+    assert!(
+        (SCREEN.seen)(&s, &sub_ask(LONG_CMD, GP)),
+        "续行被当成了一项"
+    );
+}
+
+/// ★ 屏上说还排着几条（连正显示的这一条）：`k of n` ⇒ n − k + 1；不画（只一条 · 窄窗）⇒ 不知道。
+#[test]
+fn the_box_says_how_many_are_still_queued() {
+    assert_eq!((SCREEN.queued)(&screen!("queue-first")), Some(2));
+    assert_eq!((SCREEN.queued)(&screen!("queue-next")), Some(1));
+    assert_eq!((SCREEN.queued)(&screen!("wide-160")), None);
+    assert_eq!((SCREEN.queued)(&screen!("queue-done")), None);
+}
+
+/// ★ 排着几条只读正显示的这个框的标题：40 列拆栏（标题不以 `Bash command` 起头）时，回滚区里更早那个框的 `k of n` 不算。
+#[test]
+fn the_queue_count_is_read_only_from_the_box_now_shown() {
+    let mut s = screen!("queue-first");
+    s.extend(screen!("split-40"));
+    assert_eq!((SCREEN.queued)(&s), None);
 }

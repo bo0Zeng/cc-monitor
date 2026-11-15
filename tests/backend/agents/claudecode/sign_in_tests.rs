@@ -119,6 +119,16 @@ fn the_mcp_bad_paste_line_is_recognised_and_the_face_wants_a_terminal() {
     ));
     assert_eq!((MCP_FACE.terminal, FACE.terminal), (true, false));
     assert_eq!(MCP_FACE.args, &["mcp", "login", "--no-browser"]);
-    assert_eq!(MCP_FACE.paste, crate::agents::PasteShape::RedirectUrl);
-    assert_eq!(FACE.paste, crate::agents::PasteShape::Code);
+    assert!(matches!(
+        MCP_FACE.paste,
+        crate::agents::PasteShape::RedirectUrl(_)
+    ));
+    assert!(matches!(FACE.paste, crate::agents::PasteShape::Code(_)));
+    assert!(
+        FACE.paste.pasted().is_some() && MCP_FACE.paste.pasted().is_some(),
+        "Claude 两形都粘回"
+    );
+    // 退出 · 状态 Claude 照今天不在 app 里做（两形都不声明）。
+    assert!(FACE.sign_out.is_none() && FACE.status.is_none());
+    assert!(MCP_FACE.sign_out.is_none() && MCP_FACE.status.is_none());
 }

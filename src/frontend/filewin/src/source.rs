@@ -1,11 +1,4 @@
-//! 数据面：**列一个目录**。只有一侧 —— 远端；经通道问那台机器上的后端。
-//!
-//! # 只有远端一侧
-//!
-//! 本机有操作系统的文件管理器，窗口不列本机目录（`src/doc/INVARIANTS.md` §40「天然不对称白名单」第一条：
-//! **SFTP 文件面板** —— 本地有操作系统的文件管理器，不需要它）。
-//! 上传与往外拖照旧碰本机盘（`transfer` 读本机文件、`download` 往本机盘写、`shell::local_home` 给「存到哪儿」一个缺省值）：
-//! 那是**传输**，不是文件管理器。
+//! 数据面：**列一个目录**。经通道问那台机器上的后端 —— 本机也是一台（`<local>`），同一条路。
 //!
 //! # 🔴列目录**只经通道问后端**（逐条理由住下面「窗口进程只说 `call`」那一节）
 //!
@@ -13,6 +6,7 @@
 //!
 //! 一屏的先后（四列 · 目录在前 · 反过来只反那一列）由 `files-ls` 的 `sort` 排好送来，窗口照摆、不重排。
 
+use cmd_wire::files::WirePath;
 use copy_core::copy_text;
 /// 本机时区（偏移读不出 ⇒ 按 UTC 排）：后端与壳同一份。
 use platform_core::tz;
@@ -118,18 +112,42 @@ impl Listed {
         self.class == cmd_wire::files::FileClass::Folder
     }
 
-    /// 这一行交给「能做什么」那一套（`pick-core`）的那几格。
-    pub fn pick(&self) -> pick_core::Pick<'_> {
-        pick_core::Pick {
-            name: &self.row.name,
-            is_dir: self.row.is_dir,
-            link: self.link,
-            link_dir: self.link_dir,
-            link_broken: self.link_broken,
-            lossy: self.row.lossy_name,
-            raw: self.raw_name.is_some(),
+    /// 这一行在 `files-ls` 回包里的那几格，原样交回本机后端问菜单（`files-menu`；认链接 · 断链 · 有损名在核心那一处）：
+    /// 名字的字节 · 种类 · 链接指向 · 种类 · 门 · 大小与时间那几格照收到的抄；路径与显示形是窗口拼好的那一串。
+    pub fn ls_row(&self) -> cmd_wire::files::LsEntry {
+        use cmd_wire::files::{FileKind, LinkTo, LsEntry};
+        let at = WirePath(self.row.path.as_bytes().to_vec());
+        LsEntry {
+            path: at.clone(),
+            name: WirePath(
+                self.raw_name
+                    .clone()
+                    .unwrap_or_else(|| self.row.name.as_bytes().to_vec()),
+            ),
+            kind: if self.link {
+                FileKind::Symlink
+            } else if self.row.is_dir {
+                FileKind::Dir
+            } else {
+                FileKind::File
+            },
+            size: (!self.row.is_dir).then_some(self.row.size),
+            size_text: self.size_text.clone(),
+            mtime_secs: self.mtime_secs,
+            mtime_text: self.mtime_text.clone(),
+            mtime_full: self.mtime_full.clone(),
+            link_dir: self.link.then_some(self.link_dir),
+            link_to: self.link.then_some(if self.link_broken {
+                LinkTo::Missing
+            } else if self.link_dir {
+                LinkTo::Dir
+            } else {
+                LinkTo::File
+            }),
             class: self.class,
-            gates: self.gates.as_ref(),
+            type_text: self.type_text.clone(),
+            gates: self.gates.clone(),
+            shown: at,
         }
     }
 }
@@ -148,18 +166,7 @@ impl std::ops::Deref for Listed {
     }
 }
 
-/// 这个窗口现在在看哪儿 —— **一台远端**，而且只可能是一台远端。
-///
-/// 🔴 **它是一个 newtype 而不是一个单格枚举，这一条是承重的。**
-///
-/// 「本机那一侧不存在」这件事有两种落法：① 留着枚举、把 `Local` 那一格删掉；
-/// ② 连枚举一起收成一个 newtype。两者对今天的行为**完全等价**，但可判性差一整级：
-/// 走 ① 的话 `is_remote()` 恒回 `true`、那七处 `if !is_remote() { 出声拒 }`
-/// 变成永远走不到的死支 —— 而**死支上的错误文案与一条真判据长得一模一样**
-/// （本仓那条「判据不在执行链上就等于不存在」的同形）。走 ②，
-/// 「窗口看着本机」这句话**连写都写不出来**：编译器兜着，不靠任何一条判据兜。
-/// 形状上的先例：凭据写半边只在后端链 `creds-core` 的 `harden`（壳不链它）：
-/// 「『backend 写不了这份文件』是**编译器**兜的，不是一条判据兜的」。
+/// 这个窗口现在在看哪儿 —— **一台机器**（本机也是一台：`<local>`，与远端同一条路，窗口里没有「本机那一侧」的分支）。
 ///
 /// 它装的是那台机器**寻址用的名字**（本机后端机器表里算好的那个名字，monitor 开窗时随种子交来）。
 /// 窗口只拿它取名字；「在此打开终端」由 monitor 接，所以窗口进程不认识 monitor 的配置类型
@@ -197,9 +204,23 @@ impl Source {
     }
 }
 
-// 远端路径的「上一级」与「最后一段」（`parent_dir` · `remote_basename`）逐字搬进了契约 crate `filewin-contract`：
-//   monitor 开窗入口（`filewin/entry.rs::plan_target`：「跳到这个文件」切成目录 ＋ 名字）与窗口两边都切，切法只许一份。
-pub use filewin_contract::{parent_dir, remote_basename};
+// 远端路径按字节切只住线上类型那一份（`cmd_wire::files::WirePath::{parent, tail, child}`：只认 `/`，尾 `/` 全去掉，根的上一级是根）。
+// 下面三个是窗口里持**串**那一侧的适配：合法 UTF-8 进、合法 UTF-8 出（切点都在 `/` 上，不会切进一个字符中间），自己一个字节都不切。
+
+/// 上一级目录（[`WirePath::parent`]）。到顶了回 `/`：调用方靠「回来的和给出去的相等」判断已经在顶上了。
+pub fn parent_dir(cwd: &str) -> String {
+    String::from_utf8_lossy(&WirePath::parent(cwd.as_bytes()).0).into_owned()
+}
+
+/// 最后一段（[`WirePath::tail`]）。
+pub fn remote_basename(path: &str) -> &str {
+    std::str::from_utf8(WirePath::tail(path.as_bytes())).unwrap_or_default()
+}
+
+/// 目录 ＋ 名字（[`WirePath::child`]）。
+pub fn child_of(dir: &str, name: &str) -> String {
+    String::from_utf8_lossy(&WirePath::child(dir.as_bytes(), name.as_bytes()).0).into_owned()
+}
 
 /// 一屏按哪一列排、反没反：线上那一形，窗口状态（关窗即没）。
 pub use cmd_wire::files::{LsSort as Sort, LsSortBy as SortBy};
@@ -216,13 +237,11 @@ pub fn after_click(now: Sort, by: SortBy) -> Sort {
 ///
 /// # 🔴 它为什么住在这儿（而不是 `shell.rs` 里画面包屑的那一行旁边）
 ///
-/// [`parent_dir`] / [`remote_basename`] 那一对的头注逐字说了：切远端路径的算法
-/// **多一份就多一种「Windows 上 `\` 被当分隔符」的机会**。面包屑要的是第三种切法
-/// （前缀那一摞，不是单个前缀、也不是尾段）⇒ 它**加进那一对所在的地方**，
-/// 与它们共享同一句理由：**只认 `/`，一次都不碰 `std::path`**。
+/// 切远端路径的算法**多一份就多一种「Windows 上 `\` 被当分隔符」的机会**。面包屑要的是 [`WirePath`] 那几样之外的
+/// 另一种切法（前缀那一摞，不是单个前缀、也不是尾段），守同一句：**只认 `/`，一次都不碰 `std::path`**。
 ///
 /// 盘上每一处按 `/` 切的地方由 `source_tests::every_place_that_splits_a_remote_path_is_declared`
-/// 逐条钉成一张相等的表 —— 「不许写第四份」这句话因此不再是散文。
+/// 逐条钉成一张相等的表。
 ///
 /// ⚠ 到顶（`/`）时回的是**恰好一格**（根自己）。空串同理 ——
 /// 面包屑那一行永远至少画得出一个可点的根，不会出现「一行都没有」那种空态。
@@ -247,7 +266,7 @@ pub fn breadcrumbs(path: &str) -> Vec<(String, String)> {
 //
 // 窗口里显示用的一律是有损串；**发出去的**（列目录 · 读 / 存文本 · 复制 · 算大小 · 写面的根）经 [`RemotePath::wire`]：
 // 路径是合法 UTF-8 ⇒ 字符串；不是 ⇒ `{"b16": …}`（后端 `files-*` 那一族早就收这一形）。
-// 按字节切的三个函数与 [`parent_dir`] / [`remote_basename`] / [`breadcrumbs`] 同住这里、同一个口径（恒用 `/`，尾斜杠不算一段）。
+// 上一级 · 尾段 · 拼一项照 [`WirePath`] 那一份切（恒用 `/`，尾斜杠不算一段）。
 
 /// 一条远端路径：显示串 ＋（路径不是合法 UTF-8 时）原始字节。`raw == None` ⇒ `shown` 就是真字节。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -301,19 +320,19 @@ impl RemotePath {
         cmd_wire::files::WirePath(self.bytes())
     }
 
-    /// 尾段那一格（线上类型）。
-    pub fn tail(&self) -> cmd_wire::files::WirePath {
-        cmd_wire::files::WirePath(tail_bytes(&self.bytes()).to_vec())
+    /// 尾段那一格（线上类型，[`WirePath::tail`]）。
+    pub fn tail(&self) -> WirePath {
+        WirePath(WirePath::tail(&self.bytes()).to_vec())
     }
 
-    /// 上一级（按字节切）。
+    /// 上一级（[`WirePath::parent`]）。
     pub fn parent(&self) -> Self {
-        Self::from_bytes(&parent_bytes(&self.bytes()))
+        Self::from_bytes(&WirePath::parent(&self.bytes()).0)
     }
 
-    /// 底下名叫 `name` 的那一项（按字节拼，[`child_bytes`]）。
+    /// 底下名叫 `name` 的那一项（[`WirePath::child`]）。
     pub fn child(&self, name: &[u8]) -> Self {
-        Self::from_bytes(&child_bytes(&self.bytes(), name))
+        Self::from_bytes(&WirePath::child(&self.bytes(), name).0)
     }
 
     /// 这条路径是有损的（显示串寻址不到真字节）。
@@ -325,46 +344,6 @@ impl RemotePath {
 /// 字节 → 发出去的那一形：合法 UTF-8 ⇒ 字符串；否则 ⇒ `{"b16": …}`（小写十六进制）。
 pub fn wire_bytes(b: &[u8]) -> serde_json::Value {
     serde_json::json!(cmd_wire::files::WirePath::from(b))
-}
-
-fn trim_slashes(b: &[u8]) -> &[u8] {
-    let mut end = b.len();
-    while end > 0 && b[end - 1] == b'/' {
-        end -= 1;
-    }
-    &b[..end]
-}
-
-/// 目录 ＋ `/` ＋ 名字（按字节；目录尾巴的 `/` 不重复，根上就是 `/名字`）。窗口里拼路径只这一处；
-/// 名字合不合法不在这里判（交那台：写面带 `single`）。
-pub fn child_bytes(dir: &[u8], name: &[u8]) -> Vec<u8> {
-    let mut b = trim_slashes(dir).to_vec();
-    b.push(b'/');
-    b.extend_from_slice(name);
-    b
-}
-
-/// [`child_bytes`] 的串版（两头都是合法 UTF-8）。
-pub fn child_of(dir: &str, name: &str) -> String {
-    String::from_utf8_lossy(&child_bytes(dir.as_bytes(), name.as_bytes())).into_owned()
-}
-
-/// [`parent_dir`] 的字节版（同一个口径：根的上一级是根）。
-pub fn parent_bytes(b: &[u8]) -> Vec<u8> {
-    let t = trim_slashes(b);
-    match t.iter().rposition(|x| *x == b'/') {
-        Some(0) | None => b"/".to_vec(),
-        Some(i) => t[..i].to_vec(),
-    }
-}
-
-/// [`remote_basename`] 的字节版。
-pub fn tail_bytes(b: &[u8]) -> &[u8] {
-    let t = trim_slashes(b);
-    match t.iter().rposition(|x| *x == b'/') {
-        Some(i) => &t[i + 1..],
-        None => t,
-    }
 }
 
 /// 一格 `mtime_secs` 画出来是什么：列里那一格（短）与悬停 / 属性里的完整时间。
@@ -492,8 +471,8 @@ pub fn home_from_reply(r: cmd_wire::files::FilesPathReply) -> Result<String, Str
 //
 // # ⚠ 各条路走哪
 //
-// - **跨机传输**：上传 / 下载是窗口说 `transfer-upload` / `transfer-download` ＋ 订阅 `transfer/<id>`（取消 = 停订），
-//   monitor 只中继，SFTP 住本机常驻后端；往 OS 拖出去不做。窗口进程零 SFTP。
+// - **跨机传输**：上传 / 下载 / 复制到另一台是寻址本机的一组 `transfer-copy` ＋ 订阅 `files-batch/<票>`（撤 = `files-batch-stop`），
+//   编排与 SFTP 住本机常驻后端；往 OS 拖出去不做。窗口进程零 SFTP。
 //   「读一份文本进编辑器」问后端 `files-read-text`。
 // - **同机复制**问后端 `files-copy`。
 // - **开窗时解 home** 问后端 `files-home`（[`home_from_reply`]），monitor 那一侧开窗不拨 SFTP。
@@ -532,44 +511,66 @@ pub fn home_from_reply(r: cmd_wire::files::FilesPathReply) -> Result<String, Str
 /// （两侧不同源），与表里声明的那一摞**逐格相等**；右栏那句「怎么来的」
 /// 每一行各挂一条**行为**断言。加一格 / 丢一格 / 说法漂了，三种都红。
 pub fn row_from_ls_entry(v: &cmd_wire::files::LsEntry) -> Listed {
-    // 链接 · 断链 · 有损名那几格与手机同一处认（`pick-core`）；名字那一段的字节留着寻址（有损名的路径由窗口按当前目录的字节拼）。
-    let f = pick_core::PickIn::of_ls(v);
+    // 画链接 · 断链 · 有损名照那一行那几格（`kind` · `link_dir` · `link_to` · 名字的字节）；能做什么由本机后端照原行判（`files-menu`）。
+    // 名字那一段的字节留着寻址（有损名的路径由窗口按当前目录的字节拼）。
+    use cmd_wire::files::{FileKind, LinkTo};
+    let link = v.kind == FileKind::Symlink;
+    let lossy = std::str::from_utf8(v.name.bytes()).is_err();
     Listed {
         row: Row {
             path: String::from_utf8_lossy(&v.path.0).to_string(),
-            is_dir: f.is_dir,
+            is_dir: v.kind == FileKind::Dir,
             size: v.size.unwrap_or(0),
-            lossy_name: f.lossy,
-            name: f.name,
+            lossy_name: lossy,
+            name: String::from_utf8_lossy(v.name.bytes()).into_owned(),
         },
-        link: f.link,
-        link_dir: f.link_dir,
+        link,
+        link_dir: link && v.link_dir == Some(true),
         // 🔴 原样带上来。缺了就是 `None`（＝**后端没送**）—— 不许兜底成 0，
         //    那是 1970-01-01，一个看起来很像真读数的假时间。
         mtime_secs: v.mtime_secs,
         mtime_text: v.mtime_text.clone(),
         mtime_full: v.mtime_full.clone(),
-        raw_name: f.raw.then(|| v.name.0.clone()),
-        link_broken: f.link_broken,
+        raw_name: lossy.then(|| v.name.0.clone()),
+        link_broken: link && v.link_to == Some(LinkTo::Missing),
         class: v.class,
         type_text: v.type_text.clone(),
-        gates: f.gates,
+        gates: v.gates.clone(),
         size_text: v.size_text.clone(),
     }
 }
 
-/// 一屏之外的那两格：被截断了吗 · 有几项读不出来（后端照数、没列出）。
+/// 一屏之外的那几格：被截断了吗 · 有几项读不出来（后端照数、没列出）· 是不是家 / 顶。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Cut {
     pub truncated: bool,
     pub unreadable: u64,
     /// 目录里一共读到几项（含没回送的；后端没给 ⇒ 0）。
     pub total: u64,
+    /// 列的这一级就是那台的家目录（后端判的 `at_home`；左栏「家」那一项照它亮）。
+    pub at_home: bool,
+    /// 列的这一级到顶了（后端答的 `up` 为空；左栏「根」那一项照它亮）。
+    pub at_root: bool,
+    /// 表头箭头画在哪一列、朝哪（回包头答的 `by` · `descending`）；头还没到过 ⇒ `None`，不画箭头。
+    pub caret: Option<Caret>,
+}
+
+/// 表头上的箭头：那台实际排的那一列 ＋ 那一列是不是从大到小（都照回包头，窗口不自己算）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Caret {
+    pub by: SortBy,
+    pub descending: bool,
 }
 
 /// 一个标签页手上那一份目录：上一次回包的记号 ＋ 排好的那几行（线上那一形，[`cmd_wire::sync::Hand`]）。
 /// 不带记号问 ⇒ 整份；带着它问 ⇒ 没变 / 只给变了的那几行（判在那台后端，这里只照回包机械地换）。
 pub type Shown = cmd_wire::sync::Hand<cmd_wire::files::LsHead, cmd_wire::files::LsEntry>;
+
+/// 列的这一级在那台上的绝对路径（回包面包屑最后一段，那台展开 `~`、按它的规则切好的）；还没到过头 · 不是 UTF-8 ⇒ `None`。
+pub fn landed_dir(h: &Shown) -> Option<String> {
+    let last = h.head.as_ref()?.info.crumbs.last()?;
+    String::from_utf8(last.path.0.clone()).ok()
+}
 
 /// 手上那一份 → **一屏**（后端排好的先后照摆）＋ 截断那几格（头还没到过 ⇒ 全是 0）。
 pub fn screen_of(h: &Shown) -> (Vec<Listed>, Cut) {
@@ -577,6 +578,12 @@ pub fn screen_of(h: &Shown) -> (Vec<Listed>, Cut) {
         truncated: hd.info.truncated,
         unreadable: hd.info.unreadable,
         total: hd.info.total,
+        at_home: hd.info.at_home,
+        at_root: hd.info.up.is_none(),
+        caret: Some(Caret {
+            by: hd.info.by,
+            descending: hd.info.descending,
+        }),
     });
     (h.in_order().map(row_from_ls_entry).collect(), cut)
 }
@@ -630,26 +637,12 @@ pub async fn list_via_backend_at(
     ask_typed(line, origin, &req, std::time::Duration::from_secs(20)).await
 }
 
-/// 目录打不开的那几种（后端的码；界面按它说一句、给出路）。
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum OpenFail {
-    NotFound,
-    Denied,
-    NotDir,
-    Other,
-}
+/// 目录打不开的那几个码（后端 `files-ls` 拒时给的）：是 ⇒ 列表顶上那一条带出路「回上一级 · 回主目录」；那一句照后端写好的画，不按码另挑。
+pub const OPEN_FAIL_CODES: &[&str] = &["not_found", "denied", "not_dir", "unreadable"];
 
-impl OpenFail {
-    /// 后端拒绝时给的码 → 哪一种（不是这几个码 ⇒ `None`：那不是「打不开」，是别的失败）。
-    pub fn of_code(code: &str) -> Option<Self> {
-        Some(match code {
-            "not_found" => Self::NotFound,
-            "denied" => Self::Denied,
-            "not_dir" => Self::NotDir,
-            "unreadable" => Self::Other,
-            _ => return None,
-        })
-    }
+/// 这一趟列不出来是不是「目录打不开」（给两颗出路）；别的码（入参不对 · 通道没走通 …）只说那一句。
+pub fn opens_fail(code: &str) -> bool {
+    OPEN_FAIL_CODES.contains(&code)
 }
 
 /// 一屏最多要多少行。
@@ -757,7 +750,7 @@ fn now_stamp() -> String {
 }
 
 /// 一趟 `call` 没成的复制详情：对端拒了、那台写了详情 ⇒ 原样（远端时「本机」那一行 monitor 的通道宿主已补）；
-/// 别的（通道没走通 · 对端不认 · 本侧）⇒ 窗口进程写时刻 · 机器（没发出去标「未连上」）· 本机 · 命令 · 断在 · 码
+/// 别的（通道没走通 · 对端不认 · 本侧）⇒ 窗口进程写时刻 · 机器（没够着那台标「未连接」）· 本机 · 命令 · 断在 · 码
 /// （取法住通信层 `HopFacts`，排法住 `copy_core::detail::channel`，与 monitor 壳同一份）。
 pub fn detail_of(at: &Origin, cmd: &str, e: &comms_inward::chan::wire::CallError) -> String {
     let origin = &at.to_string();
@@ -782,7 +775,7 @@ pub fn detail_of(at: &Origin, cmd: &str, e: &comms_inward::chan::wire::CallError
     copy_core::detail::channel(
         &now_stamp(),
         origin,
-        f.not_sent,
+        f.unreached,
         local_line_for(at).as_deref(),
         cmd,
         f.hop.as_deref(),
@@ -831,53 +824,20 @@ pub async fn ask_typed<C: cmd_wire::Call>(
         )
     })?;
     let d = ask_coded(line, origin, C::NAME, &args, t).await?;
-    reply_of::<C>(d).map_err(|e| {
-        failed_here(
-            copy_text("reason.content.unparsable", &[]),
-            origin,
-            C::NAME,
-            Some(&e),
-        )
-    })
+    reply_of::<C>(d).map_err(|e| unparsable(origin, C::NAME, &e))
 }
 
-/// 一组只一项那几条（复制 · 删除 · 改权限）：做成了 ⇒ 那一项的结局；没做成 ⇒ 那一项的码与那一句（复制详情是那一项的原话）。
-pub async fn ask_one<C: cmd_wire::Call<Reply = cmd_wire::batch::BatchReply>>(
-    line: &Line,
-    origin: &Origin,
-    req: &C,
-    t: std::time::Duration,
-) -> Result<cmd_wire::batch::BatchOutcome, Failed> {
-    one_of(ask_typed(line, origin, req, t).await?)
+/// `cmd` 那一条的回包解不出来（`why` ＝ 解码器那一句，进复制详情不进句子）。
+pub fn unparsable(origin: &Origin, cmd: &str, why: &str) -> Failed {
+    failed_here(
+        copy_text("reason.content.unparsable", &[]),
+        origin,
+        cmd,
+        Some(why),
+    )
 }
 
-/// 开单一组只一项的回包 → 那一项的传输单 id ＋ 暂存件的键（上传才有）；没开成 ⇒ 那一项的码与那一句。
-pub fn opened_one(
-    r: cmd_wire::transfer::TransferOpened,
-) -> Result<(String, Option<String>), Failed> {
-    use cmd_wire::transfer::OpenState;
-    let Some(o) = r.items.into_iter().next() else {
-        return Err(Failed::local(copy_text("reason.content.unparsable", &[])));
-    };
-    match (o.state, o.id) {
-        (OpenState::Opened, Some(id)) => Ok((id, o.staged)),
-        _ => {
-            let detail = o.detail.unwrap_or_default();
-            let (said, rest) = match detail.split_once('\n') {
-                Some((a, b)) => (a.to_string(), b.to_string()),
-                None => (detail, String::new()),
-            };
-            Err(Failed {
-                code: Failed::code_or_fallback(o.code),
-                said,
-                detail: rest,
-                data: None,
-            })
-        }
-    }
-}
-
-/// 一组只一项的回包 → 那一项（同 [`ask_one`]）。
+/// 一组只一项的回包 → 那一项：做成了 ⇒ 那一项的结局；没做成 ⇒ 那一项的码与那一句（复制详情是那一项的原话）。
 pub fn one_of(r: cmd_wire::batch::BatchReply) -> Result<cmd_wire::batch::BatchOutcome, Failed> {
     use cmd_wire::batch::ItemState;
     let Some(o) = r.outcomes.into_iter().next() else {
@@ -1104,113 +1064,25 @@ async fn watch_link_until(line: &Line, origin: &Origin, mut on: impl FnMut(LinkS
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// 🔴窗口进程里说 `subscribe` 的**唯一一处**：看一趟传输
-// ═══════════════════════════════════════════════════════════════════════
-
-/// 进度流一开始给的 credit（格数）。之后每吃一格还一格。
+/// 订阅流一开始给的 credit（格数）。之后每吃一格还一格。
 ///
-/// ⚠ 格子是**整份快照**（传输台那一侧合并中间几格不丢信息）⇒ credit 小也不会漏读数，
+/// ⚠ 格子是**整份快照**（那一侧合并中间几格不丢信息）⇒ credit 小也不会漏读数，
 /// 它只决定「窗口一口气最多攒几格没画」。
 pub const WATCH_CREDIT: u32 = 8;
 
-/// 看一趟传输（`kind` = `transfer/<id>`）到收场。回传完的字节数；失败 / 撤 ⇒ 那句原话。
-///
-/// - `stop` 被拨下 ⇒ **停订**（`Sub::stop`）⇒ 传输台那一侧「停订即撤」；本函数回「撤了」。
-/// - 每一格进度交给 `on(已传, 总共)`。
-///
-/// 🔴 **窗口进程里说 `subscribe` 的只有这一处**。
-/// ⚠ `subscribe` 没有期限参数（订阅是长期意向）—— 这一趟多久算完由传输台说了算，
-/// 窗口能做的是撤。
-pub async fn watch(
-    line: &Line,
-    origin: &Origin,
-    kind: &str,
-    stop: &comms_inward::chan::wire::CancelToken,
-    on: impl FnMut(u64, u64),
-) -> Result<Watched, Failed> {
-    watch_coded(line, origin, kind, stop, on).await
+/// 分块读写那一圈（`chunk_core`：存盘 · 看图）问那台的那一口：经通道 [`ask_typed`]，每问 [`CHUNK_BUDGET`]。
+pub struct Over<'a> {
+    pub line: &'a Line,
+    pub origin: &'a Origin,
 }
 
-/// 同 [`watch`]（名字留着：上传据失败里的码 `sftp_home_mismatch` 换路）。失败带传输台说的码与复制详情
-/// （传输台写了 ⇒ 原样；没写 · 这一侧收场的 ⇒ 窗口进程自己写）。
-pub async fn watch_coded(
-    line: &Line,
-    origin: &Origin,
-    kind: &str,
-    stop: &comms_inward::chan::wire::CancelToken,
-    mut on: impl FnMut(u64, u64),
-) -> Result<Watched, Failed> {
-    let plain = Failed::local;
-    use comms_inward::chan::wire::{By, Comms, Item, Kind, Sub};
-    use futures::StreamExt as _;
-    let mut sub = line.subscribe(origin, &Kind(kind.to_string()), None, WATCH_CREDIT);
-    loop {
-        let next = tokio::select! {
-            i = sub.next() => i,
-            () = stop.cancelled() => {
-                sub.stop();
-                return Err(plain(super::transfer::CANCELLED.to_string()));
-            }
-        };
-        let Some(item) = next else {
-            return Err(plain(copy_text("rsFilewinSource.watch.cutShort", &[])));
-        };
-        match item {
-            // 进度格是传输台那一帧原样（`cmd_wire::frame::Transfer`）：按类型解，缺一格 ⇒ 这一趟当场失败（不补 0）。
-            Item::Frame { body, .. } => {
-                match serde_json::from_slice::<cmd_wire::frame::Transfer>(&body.0) {
-                    Ok(t) => on(t.got, t.total),
-                    Err(e) => {
-                        sub.stop();
-                        // 解码器那一句不进句子，进详情。
-                        return Err(failed_here(
-                            copy_text("rsFilewinSource.ask.unreadable", &[]),
-                            origin,
-                            kind,
-                            Some(&e.to_string()),
-                        ));
-                    }
-                }
-                sub.want(1);
-            }
-            Item::Gap { .. } | Item::Seen { .. } => sub.want(1),
-            Item::Unseen { .. } => {
-                return Err(plain(copy_text("rsFilewinSource.watch.hostGone", &[])))
-            }
-            Item::Closed { by: By::Ours(why) } => {
-                return Err(plain(copy_text(
-                    "rsFilewinSource.watch.localBreak",
-                    &[("why", &format!("{:?}", why))],
-                )))
-            }
-            // 收场那一格按 `cmd_wire::frame::TransferEnd` 解；解不出的是宿主原位说的拒绝（`{"code","said"}`）。
-            Item::Closed { by: By::Peer(body) } => {
-                use cmd_wire::frame::TransferEnd;
-                return match serde_json::from_slice::<TransferEnd>(&body.0) {
-                    Ok(TransferEnd::Done { bytes, sha256 }) => Ok(Watched { bytes, sha256 }),
-                    // 传输台写了详情 ⇒ 原样；没写 ⇒ 这一侧补上（码照传输台的）。
-                    Ok(TransferEnd::Failed(f)) if f.detail.trim().is_empty() => Err(Failed {
-                        code: f.code,
-                        ..failed_here(f.said, origin, kind, None)
-                    }),
-                    Ok(TransferEnd::Failed(f)) => Err(f),
-                    Ok(TransferEnd::Cancelled) => {
-                        Err(plain(super::transfer::CANCELLED.to_string()))
-                    }
-                    Err(_) => {
-                        let v = serde_json::from_slice::<serde_json::Value>(&body.0)
-                            .unwrap_or_default();
-                        Err(plain(comms_inward::chan::said::refused(
-                            v.get("said")
-                                .and_then(serde_json::Value::as_str)
-                                .unwrap_or(""),
-                            origin,
-                        )))
-                    }
-                };
-            }
-        }
+/// 一块的往返上限（与写面一趟同一个上界）。
+pub const CHUNK_BUDGET: std::time::Duration = super::writeops::WRITE_BUDGET;
+
+impl chunk_core::Ask for Over<'_> {
+    type Err = Failed;
+    async fn ask<C: cmd_wire::Call + Sync>(&self, req: &C) -> Result<C::Reply, Self::Err> {
+        ask_typed(self.line, self.origin, req, CHUNK_BUDGET).await
     }
 }
 
@@ -1412,13 +1284,6 @@ pub async fn kick_link(line: &Line, origin: &Origin) {
     {
         tracing::warn!("machine-wake not delivered: {}", why.said);
     }
-}
-
-/// 一趟传输看完了（[`watch`] 的成功那一形）：字节数 ＋上传那一路的整份摘要（提交时的 `expect`）。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Watched {
-    pub bytes: u64,
-    pub sha256: Option<String>,
 }
 
 /// 对端拒了的那一形里，它带的 `data`（`exists` ⇒ 同名清单）。别的形一律 `None`。

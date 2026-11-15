@@ -1,18 +1,17 @@
-//! **契约取值集的生成物 ＋ 标识符 · 上游地址那几条判定的金样**。
+//! **契约取值集的生成物 ＋ 标识符那几条判定的金样**。
 //!
 //! 生成物 `src/frontend/ui/generated/judgment-rules.ts` 装两样：账号种类取值集（J16，`acct_core::AUTH_KINDS`），
 //! 界面拿它派生 `AuthKind` 这个类型；机器键里不能当名字的那几个（`cmd_wire::machine::KEYS_NOT_NAMES`），`machineName` 照它挑。账号名（J18）与上游 base URL（J9）界面不判：新建账号表单把原样打的字
 //! 交那台后端预演（`accounts-add` 带 `dryRun`），只画它拒的那一句；模型名（J17）同样只在后端写口与起会话时判。
 //!
-//! 三件事：
+//! 两件事：
 //! 1. [`export_bindings_judgment_rules`]：`npm run gen:types`（= `cargo test --lib export_bindings`）重写生成物；
 //!    门禁 `generated` 格（`generated-drift.sh`）盖住它 ⇒ 改了取值集不重跑生成就红。
 //!    ⚠ 刻意**没有**「盘上那份 == 现算的」那条读回判据：同一趟 `cargo test` 里生成器与它并行跑，读到的可能是写到一半的文件
 //!    —— 「生成物不陈旧」只交给门禁那一格的 `git diff`。
 //! 2. [`the_shared_golden_agrees_with_the_one_rule`]：金样 `tests/__fixtures__/identifier-rules.golden.json`
 //!    的每一条都喂给 Rust 那一份（`session_id_ok` · `model_name_ok` · `account_name_ok`），期望是金样里**手写**的。
-//! 3. [`the_upstream_url_golden_agrees_with_the_one_rule`]：金样 `tests/__fixtures__/upstream-url.golden.json` 逐条喂 `upstream_url_core::usable`。
-//!    ⚠ 这两份金样今天只有 Rust 一侧在读，住这里是历史位置：它们该住各自的 core crate 自己的判据里。
+//!    ⚠ 这份金样今天只有 Rust 一侧在读，住这里是历史位置：它该住它那几个判定所在 crate 自己的判据里。
 
 /// 生成物的头。`generated-boundary-guard.vitest.ts` 认两样东西：「谁生成的」那一行 ＋「不许手改」那句话。
 const HEADER: &str = "\
@@ -42,7 +41,30 @@ fn render_judgment_rules() -> String {
     let local = serde_json::to_string(cmd_wire::machine::LOCAL).expect("字符串序列化不会失败");
     s.push_str("\n/** 本机那台的机器键 —— 契约常量住 `cmd_wire::machine::LOCAL`。 */\n");
     s.push_str(&format!("export const LOCAL = {local};\n"));
+    // 说在等人的那几颗点（标签页 · 状态一句 · 呼吸灯 · 历史行的徽标照它查，界面不另判）。
+    let waiting =
+        serde_json::to_string(&cmd_wire::frame::SessionDot::WAITING).expect("枚举序列化不会失败");
+    s.push_str("\nimport type { SessionDot } from \"./SessionDot\";\n");
+    s.push_str(
+        "/** 说在等人的那几颗点 —— 契约常量住 `cmd_wire::frame::SessionDot::WAITING`。 */\n",
+    );
+    s.push_str(&format!(
+        "export const WAITING_DOTS: readonly SessionDot[] = {waiting};\n"
+    ));
     s
+}
+
+/// 生成物里恰有一行 `WAITING_DOTS`，取值 == `SessionDot::WAITING` 的线上名（期望手写，不从代码里取）。
+#[test]
+fn the_rules_carry_the_waiting_dots() {
+    let out = render_judgment_rules();
+    let line = "export const WAITING_DOTS: readonly SessionDot[] = [\"asks\",\"needs-you\"];\n";
+    assert_eq!(
+        out.matches(line).count(),
+        1,
+        "生成的 judgment-rules.ts 里 `{}` 不是恰一行：\n{out}",
+        line.trim_end()
+    );
 }
 
 /// 生成物里恰有一行 `LOCAL`，值与 `cmd_wire::machine::LOCAL` 逐字节相同（线上字面量写死，不从代码里取）。
@@ -100,26 +122,6 @@ fn the_shared_golden_agrees_with_the_one_rule() {
     assert_eq!(wrong, Vec::<String>::new(), "Rust 那一份与共用金样对不上");
 }
 
-/// 金样 `tests/__fixtures__/upstream-url.golden.json` 逐条：`upstream_url_core::usable` 的结论 == 手写的 want。
-#[test]
-fn the_upstream_url_golden_agrees_with_the_one_rule() {
-    let raw = include_str!("../../__fixtures__/upstream-url.golden.json");
-    let g: serde_json::Value = serde_json::from_str(raw).expect("金样不是合法 JSON");
-    let cases = g["cases"].as_array().expect("金样缺 cases");
-    assert!(cases.len() > 40, "金样只有 {} 条 —— 读坏了", cases.len());
-    let mut wrong = Vec::new();
-    for c in cases {
-        let url = c["url"].as_str().expect("url 是字符串");
-        let got = upstream_url_core::usable(url)
-            .err()
-            .map(upstream_url_core::Unusable::code);
-        if got != c["want"].as_str() {
-            wrong.push(format!("{url:?}：得 {got:?}，金样 {:?}", c["want"]));
-        }
-    }
-    assert_eq!(wrong, Vec::<String>::new(), "Rust 那一份与共用金样对不上");
-}
-
 /// ★★★ E4 ＋ E9：**monitor 生产树里零上游选择、零路由语法、零门牌字面量**。
 ///
 /// 守的要求：必须拆 1（`APIKEY_TABLE_AGENT` · `AGENTS_WITH_DEFAULT_UPSTREAM` · 路由前缀 · 段闸 · 端口两边各一份）·
@@ -139,11 +141,11 @@ fn us1_the_monitor_holds_no_upstream_selection_and_no_route_grammar() {
     let words: [(&str, &str); 8] = [
         (
             "APIKEY_TABLE_AGENT",
-            "src/backend/accounts/upstream_select/mod.rs::CREDENTIALS_FILE_AGENT",
+            "src/backend/accounts/upstream_select/mod.rs::file_agent",
         ),
         (
             "AGENTS_WITH_DEFAULT_UPSTREAM",
-            "src/backend/agents/mod.rs::default_upstreams",
+            "src/backend/agents/upstream_face.rs::default_upstreams",
         ),
         (
             "apikey_endpoint_for",

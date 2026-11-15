@@ -1,4 +1,5 @@
 use super::*;
+use crate::agents::drift::DriftFaceWord;
 
 /// 在这台后端的漂移账里找一条记账（全局账本，只找「我这条」）。
 fn ledger_entry(
@@ -25,7 +26,7 @@ fn parse_line_feeds_the_drift_ledger() {
     let unknown = r#"{"type":"u-cc1-seam-probe","agentId":"a1"}"#;
     let r = parse_line(&crate::agents::Line::new(unknown, 0)).expect("合法 JSON 不该 Err");
     assert!(
-        matches!(r, Some(JsonlRecord::Unrecognized { .. })),
+        matches!(r, Some(JsonlRecord::CcMonitorUnrecognized { .. })),
         "抢救行为变了 —— 本条只该记账，不该改行为"
     );
     // 已知 type 但字段坏（`user` 缺 uuid/timestamp）
@@ -102,10 +103,10 @@ fn unknown_type_is_salvaged_never_leaves_as_unknown() {
     .expect("合法 JSON 必须留下");
     assert!(
         !matches!(r, JsonlRecord::Unknown),
-        "Unknown 不得出 parse_line，应被抢救成 Unrecognized"
+        "Unknown 不得出 parse_line，应被抢救成 CcMonitorUnrecognized"
     );
     match &r {
-        JsonlRecord::Unrecognized {
+        JsonlRecord::CcMonitorUnrecognized {
             original_type,
             raw,
             reason,
@@ -117,7 +118,7 @@ fn unknown_type_is_salvaged_never_leaves_as_unknown() {
             assert!(raw.contains("\"foo\":42"), "原文必须一字节不改地留着");
             assert!(uuid.is_none(), "本样本无 uuid");
         }
-        other => panic!("期望 Unrecognized，得到 {other:?}"),
+        other => panic!("期望 CcMonitorUnrecognized，得到 {other:?}"),
     }
     // 没有链身份 ⇒ 不出链事实（它不进链，断不了链；「不静默」归 drift_ledger）；带身份的那一形见下一条。
     assert!(
@@ -141,7 +142,7 @@ fn unknown_type_with_chain_identity_keeps_uuid_and_parent() {
     .unwrap()
     .unwrap();
     match &r {
-        JsonlRecord::Unrecognized {
+        JsonlRecord::CcMonitorUnrecognized {
             uuid,
             parent_uuid,
             timestamp,
@@ -151,7 +152,7 @@ fn unknown_type_with_chain_identity_keeps_uuid_and_parent() {
             assert_eq!(parent_uuid.as_deref(), Some("u8"), "链上的身份必须留住");
             assert_eq!(timestamp.as_deref(), Some("t9"));
         }
-        other => panic!("期望 Unrecognized，得到 {other:?}"),
+        other => panic!("期望 CcMonitorUnrecognized，得到 {other:?}"),
     }
     assert!(
         super::super::chain::chain_fact(&crate::agents::Line::new(r#"{"type":"brand-new-2027","uuid":"u9","parentUuid":"u8","timestamp":"t9","payload":{"a":1}}"#, 0))
@@ -173,7 +174,7 @@ fn known_type_parse_failure_is_salvaged_with_identity() {
     .unwrap()
     .expect("合法 JSON 必须留下，不得静默丢");
     match &r {
-        JsonlRecord::Unrecognized {
+        JsonlRecord::CcMonitorUnrecognized {
             uuid,
             parent_uuid,
             original_type,
@@ -188,7 +189,7 @@ fn known_type_parse_failure_is_salvaged_with_identity() {
                 "reason 要带 serde 原文，便于诊断：{reason}"
             );
         }
-        other => panic!("期望 Unrecognized，得到 {other:?}"),
+        other => panic!("期望 CcMonitorUnrecognized，得到 {other:?}"),
     }
 }
 
@@ -237,11 +238,11 @@ fn zero_information_loss_over_mixed_fixture() {
                 );
                 if *expect == "salvaged" {
                     assert!(
-                        matches!(r, JsonlRecord::Unrecognized { .. }),
+                        matches!(r, JsonlRecord::CcMonitorUnrecognized { .. }),
                         "该行应被抢救：{line}"
                     );
                     // 抢救出来的：带链身份 ⇔ 进链（无身份的元数据不进链）
-                    let ident = matches!(&r, JsonlRecord::Unrecognized { uuid, parent_uuid, .. } if uuid.is_some() || parent_uuid.is_some());
+                    let ident = matches!(&r, JsonlRecord::CcMonitorUnrecognized { uuid, parent_uuid, .. } if uuid.is_some() || parent_uuid.is_some());
                     assert_eq!(
                         super::super::chain::chain_fact(&crate::agents::Line::new(line, 0))
                             .is_some(),
@@ -296,7 +297,8 @@ fn every_timed_record_carries_its_at_and_no_clock_face_out_of_the_parse() {
             .unwrap()
             .unwrap()
             .record
-            .expect("进界面的一条");
+            .expect("进界面的一条")
+            .rec;
         assert!(r.time_text.is_none() && r.at_ms.is_none(), "{l}");
         assert_eq!(r.at.as_deref(), Some(ts), "{l}");
     }
@@ -308,7 +310,8 @@ fn every_timed_record_carries_its_at_and_no_clock_face_out_of_the_parse() {
     .unwrap()
     .unwrap()
     .record
-    .unwrap();
+    .unwrap()
+    .rec;
     assert_eq!(bad.at.as_deref(), Some("soon"));
     assert!(bad.time_text.is_none());
 }

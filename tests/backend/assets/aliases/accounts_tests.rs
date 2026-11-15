@@ -8,9 +8,25 @@ fn names(b: &Book) -> Vec<&str> {
     b.profiles.iter().map(|p| p.name.as_str()).collect()
 }
 
+/// 号表里只有缺省那一家的号（清单那一格缺席）。
+fn owners(accounts: &[&str]) -> Vec<AliasOwner> {
+    accounts
+        .iter()
+        .map(|s| AliasOwner {
+            name: s.to_string(),
+            agent: None,
+        })
+        .collect()
+}
+
 fn merged(user: &str, accounts: &[&str], tmux: bool) -> Book {
-    let accounts: Vec<String> = accounts.iter().map(|s| s.to_string()).collect();
-    with_builtins(parse_book(user), &accounts, tmux, &|a, b| a == b)
+    with_builtins(
+        crate::agents::REGISTRY,
+        parse_book(user),
+        &owners(accounts),
+        tmux,
+        &|a, b| a == b,
+    )
 }
 
 #[test]
@@ -60,9 +76,13 @@ fn a_user_profile_of_the_same_name_overrides_the_builtin_one() {
     let b = merged("[cch]\nbogus = 1\n", &[], true);
     assert!(b.find("cch").is_none_or(|p| !p.builtin));
     // 「同名」照那种 shell 的规矩：不分大小写的那种里 `[CC]` 就盖着内置的 `cc`，不另出一条。
-    let b = with_builtins(parse_book("[CC]\ncwd = \"/w\"\n"), &[], true, &|a, b| {
-        a.eq_ignore_ascii_case(b)
-    });
+    let b = with_builtins(
+        crate::agents::REGISTRY,
+        parse_book("[CC]\ncwd = \"/w\"\n"),
+        &[],
+        true,
+        &|a, b| a.eq_ignore_ascii_case(b),
+    );
     assert_eq!(names(&b), ["CC", "cct", "cch"]);
     // 基于 `cc` 的内置那几条照用户那段的名字基于它，合得下来。
     assert_eq!(b.find("cct").unwrap().from.as_deref(), Some("CC"));
@@ -103,4 +123,22 @@ fn the_account_form_is_own_account_plus_maybe_tmux_or_hosted_judged_on_the_merge
     assert_eq!(form("talk"), None);
     assert_eq!(form("cct"), None);
     assert_eq!(form("cch"), None);
+}
+
+/// 每号那三条照那个号那一家起：号表里一个号写着认不出的家 ⇒ 它那三条不出（不拿缺省那一家的 wrapper 冒充）。
+#[test]
+fn an_account_of_an_unknown_family_gets_no_builtin_aliases() {
+    let mut accounts = owners(&["lab"]);
+    accounts.push(AliasOwner {
+        name: "odd".into(),
+        agent: Some("nobody".into()),
+    });
+    let b = with_builtins(
+        crate::agents::REGISTRY,
+        parse_book(""),
+        &accounts,
+        true,
+        &|a, b| a == b,
+    );
+    assert_eq!(names(&b), ["cc", "cct", "cch", "labcc", "labcct", "labcch"]);
 }

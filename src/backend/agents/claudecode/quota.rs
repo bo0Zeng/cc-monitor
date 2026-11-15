@@ -10,15 +10,14 @@
 //! | `<窗口>-utilization` · `<窗口>-reset` · `<窗口>-surpassed-threshold` | 小数 · unix 秒 · 小数 | 一个 [`QuotaWindow`]；窗口见 [`WINDOWS`] |
 //! | `overage-status` · `overage-reset` · `overage-disabled-reason` · `overage-in-use` | 三值 · unix 秒 · 原值 · `true` | `overage` |
 //!
-//! | `<窗口>-status`（`overage` 段除外） | 三值 | 不另记：被拒时说 `rejected` 的那几窗拉长被拒（见下） |
+//! | `<窗口>-status`（`overage` 段除外） | 三值 | 不另记：限流器说 `rejected` 时，说 `rejected` 的那几窗拉长 `resets_at`（见下） |
 //!
-//! 被拒 ＝ 429 且限流器明说 `rejected`：卡在哪照头说；被拒到 `reset` 与说 `rejected` 的那几窗各自的重置里晚的那个
-//! （某一窗单独被拒、用量没到 100 也一样）；都没有 ⇒ 看 `retry-after`（秒）；也没说 ⇒
-//! [`REFUSED_BRIEFLY`] 秒之后。被拒的快照恒带回来的时刻。
-//! 限流器没说话的 429（短时限流；API key 号的回包永远没有这一族）不是用满 ⇒ 什么都不读：不记被拒、不换号、不停发，
-//! 上游那一发原样交下去（claude 自己退避）。429 而限流器说没拒 ⇒ 照常读数。`status = rejected` 但回的是 200（超额兜着）不算被拒。
+//! 被拒与否不在这里判（通用层 [`crate::agents::judged`] 一处判）。这里只把读数写准：限流器说 `rejected` 时，
+//! `resets_at` ＝ `reset` 与说 `rejected` 的那几窗各自的重置里晚的那个（某一窗单独被拒、用量没到 100 也一样）。
+//! 限流器没说话的 429（短时限流；API key 号的回包永远没有这一族）⇒ 什么都不读：不记被拒、不换号、不停发，
+//! 上游那一发原样交下去（claude 自己退避）。
 
-use crate::agents::{LimitReply, QuotaOverage, QuotaReading, QuotaStatus, QuotaWindow};
+use crate::agents::{header, LimitReply, QuotaOverage, QuotaReading, QuotaStatus, QuotaWindow};
 use cmd_wire::quota::{SLOT_5H, SLOT_7D};
 
 const PREFIX: &str = "anthropic-ratelimit-unified-";
@@ -30,11 +29,6 @@ pub(crate) const WINDOWS: &[(&str, &str)] = &[
     ("seven_day_overage_included", "7d_oi"),
     ("overage", "overage"),
 ];
-
-const REFUSED: u16 = 429;
-
-/// 被拒却没说几点能再用（没有 `reset`、没有 `retry-after`）⇒ 当它这么多秒之后回来。
-pub(crate) const REFUSED_BRIEFLY: u64 = 60;
 
 /// 窗口名 → 语义位：5 小时那一个是 `5h`；7 天那几个（含分模型的）是 `7d`；超额那一档没有语义位。
 pub fn slot_of(name: &str) -> Option<&'static str> {
@@ -73,14 +67,6 @@ fn name_of_key(key: &str) -> Option<String> {
     }
 }
 
-fn header<'h>(headers: &'h [(String, String)], name: &str) -> Option<&'h str> {
-    headers
-        .iter()
-        .find(|(k, _)| k.eq_ignore_ascii_case(name))
-        .map(|(_, v)| v.trim())
-        .filter(|v| !v.is_empty())
-}
-
 fn unified<'h>(headers: &'h [(String, String)], tail: &str) -> Option<&'h str> {
     header(headers, &format!("{PREFIX}{tail}"))
 }
@@ -103,16 +89,20 @@ fn status_of(v: Option<&str>) -> Option<QuotaStatus> {
     }
 }
 
-/// 注册表 `DefaultUpstream.quota` 那一格。
+/// 读数过通用层的被拒判法（[`crate::agents::quota_read_of`] 交出去的就是这一形）：金样与上层判据照它读。
+#[cfg(any(test, feature = "test-support"))]
 pub fn read(status: u16, headers: &[(String, String)], now: u64) -> Option<QuotaReading> {
+    crate::agents::judged(reading, status, headers, now)
+}
+
+/// 注册表 `DefaultUpstream.quota` 那一格：只读数，被拒与否由通用层判（[`crate::agents::judged`]）。
+pub(crate) fn reading(
+    _status: u16,
+    headers: &[(String, String)],
+    _now: u64,
+) -> Option<QuotaReading> {
     // 限流器没说话（短时限流的 429 也是这样）⇒ 什么都不记：不是用满，上游那一发原样交下去、claude 自己退避。
     let said = status_of(Some(unified(headers, "status")?));
-    let refused = status == REFUSED && said == Some(QuotaStatus::Rejected);
-    let retry_at = || {
-        refused.then(|| {
-            now.saturating_add(instant(header(headers, "retry-after")).unwrap_or(REFUSED_BRIEFLY))
-        })
-    };
     let windows = WINDOWS
         .iter()
         .filter_map(|(name, tag)| {
@@ -135,8 +125,8 @@ pub fn read(status: u16, headers: &[(String, String)], now: u64) -> Option<Quota
         (o.status.is_some() || o.resets_at.is_some() || o.disabled.is_some() || o.in_use)
             .then_some(o)
     };
-    // 被拒时卡到被拒的那几窗都重置为止：总的 `reset` 与各窗 `<段>-status: rejected` 的重置取晚的。
-    let held = refused
+    // 限流器说被拒时卡到被拒的那几窗都重置为止：总的 `reset` 与各窗 `<段>-status: rejected` 的重置取晚的。
+    let held = (said == Some(QuotaStatus::Rejected))
         .then(|| {
             WINDOWS
                 .iter()
@@ -149,12 +139,10 @@ pub fn read(status: u16, headers: &[(String, String)], now: u64) -> Option<Quota
                 .max()
         })
         .flatten();
-    let resets_at = instant(unified(headers, "reset"))
-        .max(held)
-        .or_else(retry_at);
+    let resets_at = instant(unified(headers, "reset")).max(held);
     Some(QuotaReading {
         status: said,
-        refused,
+        refused: false,
         limiting: unified(headers, "representative-claim").map(str::to_string),
         resets_at,
         windows,

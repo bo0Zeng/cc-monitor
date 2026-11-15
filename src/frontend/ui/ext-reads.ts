@@ -58,33 +58,50 @@ function askTyped<T>(go: (budget: Budget) => Promise<T>, ms: number): Promise<T>
   return go(budgetWithin(ms));
 }
 
+/** 装 · 卸问的是哪一个条目：种类 · 名字 ＋ 行上的家（`agent`；默认那一家那一行没有它）＋ 行上的来源（同名插件几个来源各一行）。 */
+export type ExtWhich = Pick<ExtRow, "kind" | "name" | "agent" | "source">;
+
+/** 入参里那一格家：行上有才带（默认那一家那一行发出去与只有一家时逐字相同）。 */
+function familyOf(agent: string | undefined): { agent?: string } {
+  return agent === undefined ? {} : { agent };
+}
+
+/** 入参里那一格来源键：行上有才带（没有来源的那几行发出去与没有这一格时逐字相同）。 */
+function sourceOf(r: ExtWhich): { source?: string } {
+  return r.source === undefined ? {} : { source: r.source.key };
+}
+
 /** 「装到 N 台」那一张卡：勾上的几台（`null` = 本机后端自己）＋ 用户选的那一处（没选 ⇒ 后端建议）。 */
-export function extHubPreview(kind: ExtKind, name: string, to: (string | null)[], place: ExtLoc | null): Promise<ExtManyCard> {
-  return askTyped((budget) => callTyped(LOCAL, "ext-hub-preview", { kind, name, to, place }, budget), WRITE_BUDGET_MS);
+export function extHubPreview(r: ExtWhich, to: (string | null)[], place: ExtLoc | null): Promise<ExtManyCard> {
+  const args = { kind: r.kind, name: r.name, ...familyOf(r.agent), ...sourceOf(r), to, place };
+  return askTyped((budget) => callTyped(LOCAL, "ext-hub-preview", args, budget), WRITE_BUDGET_MS);
 }
 
 /** 装到那几台：卡上那一处 ＋ 各台卡上的记号原样交回；`fill` 只填一次。 */
-export function extHubApply(kind: ExtKind, name: string, card: ExtManyCard, fill: Record<string, Record<string, string>>): Promise<ExtManyDone> {
+export function extHubApply(r: ExtWhich, card: ExtManyCard, fill: Record<string, Record<string, string>>): Promise<ExtManyDone> {
   const tokens: Record<string, ExtTokens> = {};
   for (const m of card.machines) if (m.card) tokens[m.to ?? ""] = m.card.tokens;
   const to = card.machines.map((m) => m.to);
-  return askTyped((budget) => callTyped(LOCAL, "ext-hub-apply", { kind, name, to, place: card.place, tokens, fill }, budget), WRITE_BUDGET_MS);
+  const args = { kind: r.kind, name: r.name, ...familyOf(r.agent), ...sourceOf(r), to, place: card.place, tokens, fill };
+  return askTyped((budget) => callTyped(LOCAL, "ext-hub-apply", args, budget), WRITE_BUDGET_MS);
 }
 
 /** 卸之前那张卡（问被卸的那一台）。 */
-export function extUninstallPreview(on: Machine, kind: ExtKind, name: string, at: ExtLoc): Promise<ExtUninstallCard> {
-  return askTyped((budget) => callTyped(on, "ext-uninstall-preview", { kind, name, at }, budget), WRITE_BUDGET_MS);
+export function extUninstallPreview(on: Machine, r: ExtWhich, at: ExtLoc): Promise<ExtUninstallCard> {
+  const args = { kind: r.kind, name: r.name, ...familyOf(r.agent), ...sourceOf(r), at };
+  return askTyped((budget) => callTyped(on, "ext-uninstall-preview", args, budget), WRITE_BUDGET_MS);
 }
 
-/** 卸：卡上的记号原样交回。 */
-export function extUninstallApply(on: Machine, card: ExtUninstallCard, at: ExtLoc): Promise<ExtDone> {
-  const args = { kind: card.kind, name: card.name, at, token: card.token };
+/** 卸：同一行（种类 · 名字 · 家 · 来源）＋ 卡上的记号原样交回。 */
+export function extUninstallApply(on: Machine, r: ExtWhich, card: ExtUninstallCard, at: ExtLoc): Promise<ExtDone> {
+  const args = { kind: r.kind, name: r.name, ...familyOf(r.agent), ...sourceOf(r), at, token: card.token };
   return askTyped((budget) => callTyped(on, "ext-uninstall-apply", args, budget), WRITE_BUDGET_MS);
 }
 
-/** 写 / 改 / 清（空串）一个条目的备注（记进本机后端的目录，随目录同步到别的后端）：回现在生效的那一份（清掉了 ⇒ `null`）。 */
-export async function extNoteSet(kind: ExtKind, name: string, text: string): Promise<string | null> {
-  const got = await askTyped((budget) => callTyped(LOCAL, "ext-note-set", { kind, name, text }, budget), LIST_BUDGET_MS);
+/** 写 / 改 / 清（空串）一行的备注（记进本机后端的目录，随目录同步到别的后端；照行上的家）：回现在生效的那一份（清掉了 ⇒ `null`）。 */
+export async function extNoteSet(r: ExtWhich, text: string): Promise<string | null> {
+  const args = { kind: r.kind, name: r.name, ...familyOf(r.agent), text };
+  const got = await askTyped((budget) => callTyped(LOCAL, "ext-note-set", args, budget), LIST_BUDGET_MS);
   return got.note;
 }
 

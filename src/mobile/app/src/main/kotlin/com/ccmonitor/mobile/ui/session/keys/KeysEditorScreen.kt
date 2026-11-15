@@ -53,7 +53,6 @@ import androidx.compose.ui.zIndex
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.KeyGroup
 import com.ccmonitor.mobile.core.data.db.TermKey
-import com.ccmonitor.mobile.core.data.db.cap
 import com.ccmonitor.mobile.core.data.db.resetPreview
 import com.ccmonitor.mobile.core.data.repo.SettingsRepository
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
@@ -114,7 +113,7 @@ fun KeysEditorScreen(onBack: () -> Unit) {
         EditorTopBar(
             title = copyText("mobKeys.action.editKeys"),
             onBack = onBack,
-            menu = { close -> ResetMenuItem(!resetPreview(state.groups, state.keys).pristine, close) { overlay = Overlay.Reset } },
+            menu = { close -> ResetMenuItem(!resetPreview(state.groups, state.keys, commonGroupName()).pristine, close) { overlay = Overlay.Reset } },
         )
         if (state.loaded && state.groups.isEmpty()) {
             EmptyGroups { overlay = Overlay.NewGroup }
@@ -217,7 +216,7 @@ private fun EditorOverlay(
                 onDone()
             }
         Overlay.Reset ->
-            ResetDialog(resetLines(resetPreview(state.groups, state.keys)), onDone) {
+            ResetDialog(resetLines(resetPreview(state.groups, state.keys, commonGroupName())), onDone) {
                 scope.launch { ops.restoreDefaults() }
                 onDone()
             }

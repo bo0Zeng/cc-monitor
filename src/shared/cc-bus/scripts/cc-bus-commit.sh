@@ -13,7 +13,7 @@ SELFDIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
 . "$SELFDIR/cc-bus-lib.sh"
 
 [ $# -eq 2 ] && [ -n "$1" ] && [ -n "$2" ] || { echo "用法: cc-bus commit <id> <令牌>" >&2; exit 2; }
-ccbus_ask commit "$(jq -cn --arg id "$1" --arg t "$2" '{id:$id, token:$t}')" && exit 0
+ccbus_ask bus-commit "$(jq -cn --arg id "$1" --arg t "$2" '{id:$id, token:$t}')" && exit 0
 case "$CCBUS_CODE" in
   stale) exit 11 ;;
   changed) exit 12 ;;

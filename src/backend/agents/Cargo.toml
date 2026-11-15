@@ -20,7 +20,6 @@ ts = ["dep:ts-rs", "cmd-wire/ts"]
 [dependencies]
 backend-common = { path = "../common" }
 backend-platform = { path = "../platform" }
-acct-core = { path = "../../common/acct-core" }
 cmd-wire = { path = "../../common/cmd-wire" }
 # 认不出那一行的句子（`face_core::record::unread_body`）：手机核心解不开的那一条同一份。
 face-core = { path = "../../common/face-core" }
@@ -35,6 +34,8 @@ serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
 walkdir.workspace = true
+# 一家的配置是 TOML 时按节读 · 改（Codex 的 MCP 面），不手写解析；与 backend-assets 同一份。
+toml_edit.workspace = true
 ts-rs = { workspace = true, optional = true }
 
 [dev-dependencies]

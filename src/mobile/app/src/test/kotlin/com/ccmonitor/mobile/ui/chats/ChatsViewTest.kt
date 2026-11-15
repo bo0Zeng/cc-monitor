@@ -78,6 +78,7 @@ class ChatsViewTest {
         origin = LOCAL,
         reveal = false,
         deleteAsk = "",
+        archive = null,
     )
 
     private fun group(
@@ -90,6 +91,7 @@ class ChatsViewTest {
         projectPath = key,
         projectDir = key,
         count = 1,
+        countText = "会话 1（核心那一格）",
         hasLive = false,
         starred = false,
         atText = "09:00",
@@ -118,7 +120,7 @@ class ChatsViewTest {
         face: String,
     ) = EMPTY_BOOK.copy(live = mapOf(sid to liveSeat(sid, Faces.of(face))))
 
-    /** 成品带上条那一格（`deploy::machine::strip` 写的语气）· 名字旁那个词 · 算不算离线。 */
+    /** 成品带上条那一格（`copy_core::machine::strip` 写的语气）· 名字旁那个词 · 算不算离线。 */
     private fun LinkLine.striped(
         tone: Tone?,
         progress: Boolean = false,
@@ -347,11 +349,11 @@ class ChatsViewTest {
         val p = hostPart(snap(got = Fetched.Got(page(row("P", "今天", 90), row("F", "昨天", 50, parent = "P"), row("G", "昨天", 40, parent = "X")))))
         val shut = view(p)
         assertEquals(listOf("P", "G"), shut.rows.map { it.sessionId })
-        assertEquals(Nest(forks = 1), shut.rows[0].nest)
+        assertEquals(Nest(forks = 1, forksText = copyText("history.row.forks", "n" to 1)), shut.rows[0].nest)
         assertEquals(Nest(orphan = true), shut.rows[1].nest)
         val open = view(p, open = setOf("h1" to "P"))
         assertEquals(listOf("P", "F", "G"), open.rows.map { it.sessionId })
-        assertEquals(Nest(forks = 1, forksOpen = true), open.rows[0].nest)
+        assertEquals(Nest(forks = 1, forksOpen = true, forksText = copyText("history.row.forks", "n" to 1)), open.rows[0].nest)
         assertEquals(Nest(child = true), open.rows[1].nest)
         assertEquals("子行跟着父，不另起「昨天」那一段", listOf(listOf("P", "F"), listOf("G")), open.sections.map { s -> s.rows.map { it.sessionId } })
         assertEquals("别的台的同名会话不算展开", listOf("P", "G"), view(p, open = setOf("h2" to "P")).rows.map { it.sessionId })

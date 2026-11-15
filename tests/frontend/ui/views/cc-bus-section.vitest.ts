@@ -21,6 +21,7 @@ const ROSTER = {
     { id: "proj_cc", title: "占位标题甲", unread: 2, live: false },
     { id: "KVM_cc", title: "占位标题乙", unread: 0, live: true },
   ],
+  summary: "名单那一句（夹具）",
 };
 
 /** 等微任务队列排空（section 内部是 async 通道链）。 */
@@ -126,9 +127,8 @@ describe("登记 ≠ 在线", () => {
     expect(ops("bus-list")).toHaveLength(1);
     const states = [...s.element.querySelectorAll(".cc-bus-online")].map((e) => e.textContent);
     expect(states).toEqual([copyText("ccBus.row.onlineUnknown"), copyText("ccBus.row.onlineUnknown")]);
-    const txt = s.element.querySelector(".cc-bus-status")?.textContent ?? "";
-    expect(txt).toContain(copyText("ccBus.summary.registered", { n: "2" }));
-    expect(txt).toContain(copyText("ccBus.summary.notOnline"));
+    // 名单上方那一句由后端写好（登记几个 · 登记的不一定在线），界面照抄。
+    expect(s.element.querySelector(".cc-bus-status")?.textContent).toBe("名单那一句（夹具）");
   });
 
   it("点某一行的「检查」只改那一行", async () => {
@@ -212,7 +212,7 @@ describe("收件箱", () => {
   it("收件箱按需读，一次一个 agent", async () => {
     const s = await readOnce((op) =>
       op === "bus-inbox"
-        ? { messages: [env({ from: "KVM-cc", title: "A 好了" })], skipped: 0, truncated: false }
+        ? { messages: [env({ from: "KVM-cc", title: "A 好了", line: "KVM-cc · A 好了（夹具）" })], skipped: 0, truncated: false }
         : ROSTER,
     );
     const row = s.element.querySelector<HTMLElement>(".cc-bus-row")!;
@@ -223,11 +223,11 @@ describe("收件箱", () => {
     expect(row.querySelector(".cc-bus-detail")?.textContent).toContain("A 好了");
   });
 
-  it("收件箱一行的拼法走文案表：时刻 · 发信方 · 动作 · 标题 · 正文，缺值写「—」", async () => {
+  it("收件箱一行照抄后端写好的那一行（时刻 · 发信方 · 动作 · 标题 · 正文由后端拼）", async () => {
     const s = await readOnce((op) =>
       op === "bus-inbox"
         ? {
-            messages: [env({ act: "ask", act_said: "SAID-ask", title: "要不要合", text: "hello" }), env({ from: "", ts: "", title: "只有标题" })],
+            messages: [env({ act: "ask", act_said: "SAID-ask", title: "要不要合", text: "hello", line: "第一行（夹具）" }), env({ from: "", ts: "", title: "只有标题", line: "第二行（夹具）" })],
             skipped: 0,
             truncated: false,
           }
@@ -237,11 +237,7 @@ describe("收件箱", () => {
     (row.querySelector(".cc-bus-inbox") as HTMLButtonElement).click();
     await flush();
     const lines = [...row.querySelectorAll(".cc-bus-msg-line")].map((l) => l.textContent);
-    const none = copyText("acct.val.none");
-    expect(lines).toEqual([
-      copyText("ccBus.inbox.line", { ts: "2026-07-26T12:06:19Z", from: "peer-a", act: "SAID-ask", title: "要不要合", text: "hello" }),
-      copyText("ccBus.inbox.line", { ts: none, from: none, act: "SAID-inform", title: "只有标题", text: "" }),
-    ]);
+    expect(lines).toEqual(["第一行（夹具）", "第二行（夹具）"]);
   });
 
   it("空收件箱要说「空」，不能留个空白让人以为坏了", async () => {

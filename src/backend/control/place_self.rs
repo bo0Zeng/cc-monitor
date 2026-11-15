@@ -52,7 +52,7 @@ pub fn run(own: &Own) -> i32 {
             0
         }
         Err(said) => {
-            let code = said.code_or_fallback().to_string();
+            let code = cmd_wire::failed::Failed::code_or_fallback(said.code.clone());
             crate::wire::detail::emit_err(CMD, &code, said)
         }
     }
@@ -66,7 +66,7 @@ pub fn run_unplace(own: &Own) -> i32 {
             0
         }
         Err(said) => {
-            let code = said.code_or_fallback().to_string();
+            let code = cmd_wire::failed::Failed::code_or_fallback(said.code.clone());
             crate::wire::detail::emit_err(UNPLACE_CMD, &code, said)
         }
     }

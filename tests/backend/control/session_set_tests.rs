@@ -208,7 +208,6 @@ fn opened(sid: Option<&str>) -> cmd_wire::session::Opened {
     cmd_wire::session::Opened {
         landed: cmd_wire::session::Landed::Started,
         session: Some("t".into()),
-        host: Some(crate::wire::TerminalHost::Tmux),
         at: None,
         line: None,
         sid: sid.map(str::to_string),
@@ -466,4 +465,49 @@ fn the_launch_result_carries_its_sentence_and_one_line_per_failure() {
             &[("alias", "look"), ("why", "b 需登录")]
         )
     );
+}
+
+/// 家名里有非 UTF-8 的字节（替身家）⇒ `~` 起头的目录展开写不成字、比不了：不拿原写法去比——
+/// 两行同写 `~/x` 不被说成「和第 1 行重」，原写法相同的活会话不算已有；两行都照展开那一句拒、一个都不起。
+#[cfg(unix)]
+#[test]
+fn dirs_under_a_non_utf8_home_are_not_compared_by_their_raw_spelling() {
+    use std::os::unix::ffi::OsStrExt as _;
+    let home = std::path::Path::new(std::ffi::OsStr::from_bytes(b"/home/p\xffi"));
+    let book = parse_book(BOOK);
+    let p = plan_rows(
+        &[row("~/x", "dev", 1), row("~/x", "dev", 1)],
+        &book,
+        &[live("s1", "~/x", Some("dev"))],
+        Some(home),
+        &every_dir,
+    );
+    let why = crate::platform::paths::expand_tilde_text("~/x", Some(home)).unwrap_err();
+    for r in &p.rows {
+        assert_eq!(r.blocked.as_deref(), Some(why.as_str()));
+        assert_eq!((r.have, r.more), (0, 0));
+    }
+    assert_eq!(p.more, 0);
+    assert!(members(
+        &row("~/x", "dev", 1),
+        &[live("s1", "~/x", Some("dev"))],
+        Some(home)
+    )
+    .is_empty());
+    // 按替换符拼出来的那一串也不算已有；不带 `~` 的那一行跟家无关，照常起。
+    assert!(members(
+        &row("~/x", "dev", 1),
+        &[live("s2", "/home/p\u{FFFD}i/x", Some("dev"))],
+        Some(home)
+    )
+    .is_empty());
+    let p = plan_rows(
+        &[row("/srv/a", "dev", 1)],
+        &book,
+        &[],
+        Some(home),
+        &every_dir,
+    );
+    assert!(p.rows[0].blocked.is_none(), "{p:?}");
+    assert_eq!(p.more, 1);
 }

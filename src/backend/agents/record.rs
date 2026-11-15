@@ -12,6 +12,7 @@
 //! 形状住 `cmd-wire`（[`cmd_wire::record`]，手机按同一份解）；这里是后端在它上面做的事（造记录 · 类别；钟面由出口那一层写，`wire::stamp`）；认不出那一行的一句住 `face_core::record`（手机解不开的那一条也写这一句），摘录的截法跟形状一起住 `cmd-wire`。
 
 pub use cmd_wire::record::excerpt_of;
+use cmd_wire::record::UserText;
 pub use cmd_wire::record::{Block, Body, Record, ReplyError, TitleBy, UnreadWhy};
 pub use face_core::record::unread_body;
 
@@ -40,17 +41,80 @@ pub fn prose(text: &str) -> Block {
     )
 }
 
+/// **后端的行**：线上那一形（[`Record`]）＋ 只给后端看、出口那一下写字用的那几格。适配层造它，帧（`wire::Frame`）
+/// 带着它一路传到出口；出口那一下（`wire::stamp::RecordExt::stamp`）写好字、交出线上那一形，私有那一半就此丢掉。
+#[derive(Debug, Clone, PartialEq)]
+pub struct BackRecord {
+    pub rec: Record,
+    /// 重试那一条的原因 · 次数（[`Body::Retry`] 才有）：出口照它写那一行。缺 ⇒ 那一行原样（不是重试 · 已写好的）。
+    pub retry: Option<RetryFacts>,
+}
+
+/// 一次要重试的上游失败：原因 · 第几次 · 最多几次（次数那一家没写 ⇒ 缺）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RetryFacts {
+    pub reason: crate::agents::ApiReason,
+    pub attempt: Option<u32>,
+    pub max: Option<u32>,
+}
+
+/// 不带私有格的那一行（不是重试 · 那一行已写好的）。
+impl From<Record> for BackRecord {
+    fn from(rec: Record) -> Self {
+        BackRecord { rec, retry: None }
+    }
+}
+
+/// 只为出方向通道按字节记账（`observe::watcher` 的 `wire_bytes`）：数的是线上那一形。上线只经出口交出的线上帧，不经它。
+impl serde::Serialize for BackRecord {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        self.rec.serialize(s)
+    }
+}
+
+/// 只给判据用（夹具按线上那一形手写帧、解成后端里传的帧）：包成不带私有格的那一行，写好的字出口不再写一遍。
+/// 生产段不解帧（别台那一行原样转发），发布构建里没有它。
+#[cfg(any(test, feature = "test-support"))]
+impl<'de> serde::Deserialize<'de> for BackRecord {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        Record::deserialize(d).map(BackRecord::from)
+    }
+}
+
 /// 造一条通用记录（两家适配层都经它）：画成哪一形（[`Draw`]）· 人说没说，从这条的类与格算一次，界面照摆。
-/// 钟面那两格留给出口（`wire::stamp::RecordExt::stamp`，帧面那一层）。
+/// 钟面那两格留给出口（`wire::stamp::RecordExt::stamp`，帧面那一层）。重试那一条经 [`retry`] 造。
 pub fn record(agent: cmd_wire::AgentKind, id: String, at: Option<String>, body: Body) -> Record {
-    let body = said_doc(body);
+    made(agent, id, at, body, None)
+}
+
+/// 造重试那一条（「重试中 N/M」那条细条）：原因与次数进后端的行（[`BackRecord::retry`]），那一行字由出口写。
+pub fn retry(
+    agent: cmd_wire::AgentKind,
+    id: String,
+    at: Option<String>,
+    facts: RetryFacts,
+) -> BackRecord {
+    BackRecord {
+        rec: made(agent, id, at, Body::Retry { text: None }, Some(&facts)),
+        retry: Some(facts),
+    }
+}
+
+fn made(
+    agent: cmd_wire::AgentKind,
+    id: String,
+    at: Option<String>,
+    body: Body,
+    retry: Option<&RetryFacts>,
+) -> Record {
+    let body = said_title(body);
     Record {
         agent,
         id,
         at,
         time_text: None,
         at_ms: None,
-        draw: draw_of(&body),
+        draw: draw_of(&body, retry),
         human: human_of(&body),
         body,
     }
@@ -80,9 +144,51 @@ pub fn reply_error(reason: crate::agents::ApiReason, status: Option<u32>) -> Rep
     }
 }
 
-/// 来话（agent 交回 · 途中来话 · 另一个会话 · 主会话后来的话）的正文解析成块树，两家适配层都经它（解析只有 `md_core::parse` 一处）；
-/// 另一个会话的来话顺手写好抬头那一句。
-fn said_doc(mut body: Body) -> Body {
+/// **后端判过的「谁说的」**：线上那一形（[`UserText`]）＋ 只给后端看的来话原文。两家适配层判「谁说的」交它；
+/// 适配层交出线上那一形（造记录用）之前经 [`Heard::said`] 把原文解成块树，原文就此丢掉（全局搜索经 [`super::user_text_of`] 按原文认 agent 回报）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Heard {
+    pub who: UserText,
+    /// 来话（agent 交回 · 途中来话 · 另一个会话 · 主会话后来的话）的正文：记录级 `origin.body`，没有就取框里那段；
+    /// 剥过两头空白。不是来话 · 没有正文 ⇒ 缺。
+    pub body: Option<String>,
+}
+
+/// 不带原文的那几种（不是来话）。
+impl From<UserText> for Heard {
+    fn from(who: UserText) -> Self {
+        Heard { who, body: None }
+    }
+}
+
+impl Heard {
+    /// 来话那一形：说话的是谁 ＋ 正文原文（`doc` 留给 [`Heard::said`] 解）。
+    pub fn of(speaker: cmd_wire::record::Speaker, body: Option<String>) -> Self {
+        Heard {
+            who: UserText::of(speaker),
+            body,
+        }
+    }
+
+    /// 线上那一形：来话的正文解析成块树，两家适配层都经它（解析只有 `md_core::parse` 一处）。
+    pub fn said(self) -> UserText {
+        use cmd_wire::record::Speaker;
+        let Heard { mut who, body } = self;
+        if let (
+            Speaker::AgentMessage { doc, .. }
+            | Speaker::PeerSession { doc, .. }
+            | Speaker::Coordinator { doc },
+            Some(text),
+        ) = (&mut who.speaker, body)
+        {
+            *doc = Some(md_core::parse(&text));
+        }
+        who
+    }
+}
+
+/// 另一个会话的来话写好抬头那一句。
+fn said_title(mut body: Body) -> Body {
     use cmd_wire::record::Speaker;
     if let Body::Said { who, .. } = &mut body {
         if let Speaker::PeerSession { from, title, .. } = &mut who.speaker {
@@ -90,23 +196,6 @@ fn said_doc(mut body: Body) -> Body {
                 "speaker.peer.title",
                 &[("from", from.as_deref().unwrap_or("?"))],
             )));
-        }
-        if let Speaker::AgentMessage {
-            body: Some(text),
-            doc,
-            ..
-        }
-        | Speaker::PeerSession {
-            body: Some(text),
-            doc,
-            ..
-        }
-        | Speaker::Coordinator {
-            body: Some(text),
-            doc,
-        } = &mut who.speaker
-        {
-            *doc = Some(md_core::parse(text));
         }
     }
     body
@@ -123,7 +212,7 @@ fn human_of(body: &Body) -> bool {
 }
 
 /// 画成哪一形。思考的空串是「没写进记录」（线上约定），照画成一步；空的正文不算。
-fn draw_of(body: &Body) -> Draw {
+fn draw_of(body: &Body, retry: Option<&RetryFacts>) -> Draw {
     use cmd_wire::record::{Speaker, ToolCard};
     let some = |b: bool| if b { Draw::Card } else { Draw::None };
     match body {
@@ -196,7 +285,7 @@ fn draw_of(body: &Body) -> Draw {
                 Draw::None
             }
         }
-        Body::Retry { attempt, .. } => face_core::record::retry_draw(*attempt),
+        Body::Retry { .. } => face_core::record::retry_draw(retry.and_then(|r| r.attempt)),
         Body::Unread { .. } => Draw::Card,
         Body::Title { .. } => Draw::None,
     }

@@ -128,10 +128,13 @@ fn the_declared_error_codes_are_not_ghosts() {
         e.said,
         copy_core::copy_text(
             "beFilesRead.ls.unreadable",
-            &[(
-                "kind",
-                &copy_core::io_reason(std::io::ErrorKind::NotADirectory)
-            )]
+            &[
+                ("name", "f.txt"),
+                (
+                    "kind",
+                    &copy_core::io_reason(std::io::ErrorKind::NotADirectory)
+                ),
+            ]
         )
     );
     let raw = e.raw.clone().unwrap_or_default();
@@ -148,8 +151,7 @@ fn the_declared_error_codes_are_not_ghosts() {
             Err(s) if s.code.as_deref() == Some("denied") => {}
             other => panic!("没权限没回 `denied`：{other:?}"),
         }
-        std::fs::set_permissions(base.join("locked"), std::fs::Permissions::from_mode(0o755))
-            .unwrap();
+        test_home::set_dir_mode(&base.join("locked"), 0o755);
     }
     std::fs::remove_dir_all(&base).ok();
 }

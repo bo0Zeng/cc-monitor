@@ -13,7 +13,7 @@
 //!           ⑤ 等 ack：连上了才算起来；不成 ⇒ 原话回、不进账（口随链路那一侧一起放掉）
 //!           ⑥ 进账：一个任务读「接进了第 n 条连接」那几行，计数照抄
 //!  界面 ── forward-stop {id} ──▶ 从账上摘掉 ⇒ 那个任务被收 ⇒ 链路被丢 ⇒ 放掉本地口、收掉在飞隧道
-//!  界面 ── forward-list ──▶ {forwards:[{id, origin, localPort, remoteHost, remotePort, state, connCount}]}
+//!  界面 ── forward-list ──▶ {forwards:[{id, origin, localPort, remoteHost, remotePort, state, said}]}
 //! ```
 //!
 //! **账是本进程一张**（不是每条流连接一张）：常驻后端活得比界面长，界面重开之后列得出、停得掉上次开的转发。
@@ -347,9 +347,8 @@ pub(crate) struct ForwardRow {
     /// `running`（链路还在）· `error`（链路自己收工了，留在账上等人停）。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "\"running\" | \"error\""))]
     pub(crate) state: &'static str,
-    /// 累计接进的连接数。
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-    pub(crate) conn_count: u64,
+    /// 列表里那一行给人看的字（那台 · 本机口 → 远端 · 连接数），界面照抄。
+    pub(crate) said: String,
 }
 
 /// `forward-list` 的应答。
@@ -365,18 +364,30 @@ pub(crate) fn list_with(ledger: &Ledger) -> Forwards {
     let forwards = ledger
         .rows()
         .iter()
-        .map(|(n, e)| ForwardRow {
-            id: id_text(*n),
-            origin: cmd_wire::Machine::named(e.spec.origin.clone()),
-            local_port: e.spec.local_port,
-            remote_host: e.spec.remote_host.clone(),
-            remote_port: e.spec.remote_port,
-            state: if e.pump.0.is_finished() {
-                "error"
-            } else {
-                "running"
-            },
-            conn_count: e.conn_count.load(Ordering::Relaxed),
+        .map(|(n, e)| {
+            let conn_count = e.conn_count.load(Ordering::Relaxed);
+            ForwardRow {
+                id: id_text(*n),
+                origin: cmd_wire::Machine::named(e.spec.origin.clone()),
+                local_port: e.spec.local_port,
+                remote_host: e.spec.remote_host.clone(),
+                remote_port: e.spec.remote_port,
+                state: if e.pump.0.is_finished() {
+                    "error"
+                } else {
+                    "running"
+                },
+                said: copy_core::copy_text(
+                    "portForward.reload.row",
+                    &[
+                        ("origin", &e.spec.origin),
+                        ("localPort", &e.spec.local_port.to_string()),
+                        ("remoteHost", &e.spec.remote_host),
+                        ("remotePort", &e.spec.remote_port.to_string()),
+                        ("connCount", &conn_count.to_string()),
+                    ],
+                ),
+            }
         })
         .collect();
     Forwards { forwards }

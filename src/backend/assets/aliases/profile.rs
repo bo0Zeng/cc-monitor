@@ -42,7 +42,7 @@ const ROW_TAB_GROUP: &str = "tab-group";
 pub const ROW_MAX: u8 = 9;
 pub const SET_MAX: u32 = 12;
 
-/// 能写进配置的 ccm 词。不收的（`new` · `--attach` · `--hosts` · `--ccm-*` 诊断口 · `--ccm-sid` · `--account-dir` · `--no-rotation`）每次取值都不同或是一次性的动作
+/// 能写进配置的 ccm 词。不收的（`new` · `--attach` · `--hosts` · `--ccm-*` 诊断口 · `--account-dir` · `--no-rotation`）每次取值都不同或是一次性的动作
 /// （`--no-rotation` 是给程序起的那一发用的；常用的会话不轮换在轮换设置里定），写成固定配置没意义；它们照样能在命令行 `--` 右边当场给。
 pub const PROFILE_FLAGS: &[&str] = &[
     flag::CWD,
@@ -501,22 +501,29 @@ fn row_of(t: &dyn toml_edit::TableLike, line: usize) -> Result<SetRow, String> {
     Ok(row)
 }
 
-/// 配置文件在这台机器上的路径。
-pub fn path_in(home: &str) -> String {
-    crate::common::door::join_under(home, relay_route_core::PROFILES_REL)
+/// 配置文件在这台机器上的路径（唯一一种拼法）：家照原样拼（家名不是 UTF-8 也不转字符串一道）；
+/// 家说不出 ⇒ 照实拒（判只在 `platform::paths::under_home`），不拿根目录兜底成 `/.cc-monitor/profiles.toml`。
+pub fn path_in(home: impl AsRef<std::path::Path>) -> Result<std::path::PathBuf, String> {
+    crate::platform::paths::under_home(Some(home.as_ref()), relay_route_core::PROFILES_REL)
 }
 
 /// ccm 那一趟直接读（一次性模式不经文件管理面），合上内置那几段（`aliases::book_in`）：不在 ⇒ 只有内置的；读不了 ⇒ 那一句。
-pub fn read_at(home: &str) -> Result<Book, String> {
-    let path = path_in(home);
+/// 路径照 [`path_in`]；合内置那几段也照那个家原样读账号表。
+pub fn read_at(home: &std::path::Path) -> Result<Book, String> {
+    let path = path_in(home)?;
     if matches!(Ro::metadata(&path), Err(e) if e.kind() == std::io::ErrorKind::NotFound) {
         return Ok(super::book_in(home, None));
     }
     Ro::read_string_capped(&path, PROFILES_CAP)
         .map(|t| super::book_in(home, Some(&t)))
         .map_err(|e| {
-            e.wrap(|why| copy_text("reason.fs.readFailed", &[("path", &path), ("why", why)]))
-                .into_note()
+            e.wrap(|why| {
+                copy_text(
+                    "reason.fs.readFailed",
+                    &[("path", &path.display().to_string()), ("why", why)],
+                )
+            })
+            .into_note()
         })
 }
 

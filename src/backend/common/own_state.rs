@@ -5,7 +5,8 @@
 //! - 读：[`Doc::read`] / [`Doc::read_with`] / [`Doc::read_stream`] 交三态 —— 不在 / 读得到 / 读不出来。只读常规文件、限量读。
 //!   **状态**读不出来 ⇒ `Unreadable`（调用方不覆盖、照实说出来）；**缓存**读不出来 ⇒ 当没有（`Absent`，记一行日志）。
 //! - 版本（从表取的、格式是 JSON 的那几份；[`Doc::read`] · [`Doc::read_as`]）：顶层整数 `version`，缺了当 1。
-//!   比声明新 ⇒ 读不出来（状态不覆盖、缓存当没有）；比下限老 ⇒ 当没有；中间的依次过升级步；`version` 那一格摘掉再交给 `T`。
+//!   比声明新 ⇒ 读不出来（状态不覆盖、缓存当没有）；比下限老 ⇒ 当没有（同一份只记一行日志；要照实说的调用方经 [`Doc::read_noting_older`] 拿 [`Older`]）；
+//!   中间的依次过升级步；`version` 那一格摘掉再交给 `T`。
 //!   流式读写的大缓存不经 `Value`：自己核顶层 `version`，值取 [`Doc::version`]。
 //! - 写：[`Doc::write`] 整份写、顶层自动带 `version`；盘上那份状态比声明新 · 在却读不懂 ⇒ 拒（与读那一侧同一句；
 //!   要盖由调用方先删再写）；盖旧版 ⇒ 原文先照字节留成 `<名>.v<N>`。
@@ -139,6 +140,7 @@ impl<T> Doc<T> {
         mut v: serde_json::Value,
         version: u32,
         floor: u32,
+        older: &mut Option<Older>,
     ) -> Read<serde_json::Value> {
         let found = match on_disk_version(path, &v) {
             Ok(n) => n,
@@ -148,10 +150,16 @@ impl<T> Doc<T> {
             return Read::Unreadable(newer(path, found, version));
         }
         if found < u64::from(floor) {
-            tracing::warn!(
-                "{} is format {found}, older than this backend reads ({floor}..={version}); treated as absent",
-                path.display()
-            );
+            let o = Older {
+                found,
+                floor,
+                version,
+            };
+            // 现读的那几份（偏好每次用都读）同一份只记一次，不每读一回刷一行。
+            if first_time_older(path) {
+                tracing::warn!("{} is {o}; treated as absent", path.display());
+            }
+            *older = Some(o);
             return Read::Absent;
         }
         let from = (found - u64::from(floor)) as usize;
@@ -186,16 +194,65 @@ impl<T> Doc<T> {
 impl<T: serde::de::DeserializeOwned> Doc<T> {
     /// 读整份并按 JSON 解成 `T`（JSON 那几份照版本，见模块头）。
     pub fn read(&self, path: &Path) -> Read<T> {
+        self.read_noting_older(path).0
+    }
+
+    /// 盘上那一份是不是读得懂的旧版（下限 ≤ 盘上那一版 ＜ 这一版）：常驻起来时把它写回成这一版的那一步先问它。
+    /// 不在 · 读不懂 · 已是这一版 · 比下限还老 · 不带版本的格式 ⇒ `false`。只读、不写盘。
+    pub fn behind(&self, path: &Path) -> bool {
+        let Format::Json { version, floor } = self.format else {
+            return false;
+        };
+        let Read::Present(v) = read_json::<serde_json::Value>(path, self.cap) else {
+            return false;
+        };
+        on_disk_version(path, &v)
+            .is_ok_and(|found| found >= u64::from(floor) && found < u64::from(version))
+    }
+
+    /// 同 [`Doc::read`]，另交「当没有」是不是因为比下限老（[`Older`]）：要把这一种照实说出来的调用方用它，不自己再判一遍。
+    pub fn read_noting_older(&self, path: &Path) -> (Read<T>, Option<Older>) {
+        let mut older = None;
         let got = match self.format {
             Format::Json { version, floor } => read_json::<serde_json::Value>(path, self.cap)
-                .and_then(|v| self.current(path, v, version, floor))
+                .and_then(|v| self.current(path, v, version, floor, &mut older))
                 .and_then(|v| match serde_json::from_value::<T>(v) {
                     Ok(t) => Read::Present(t),
                     Err(e) => Read::Unreadable(not_json(path, e)),
                 }),
             Format::Foreign => read_json(path, self.cap),
         };
-        self.settle(path, got)
+        (self.settle(path, got), older)
+    }
+}
+
+/// 盘上那一份比下限老、读口当没有：盘上第几版 · 这一版读得懂的那一段（`floor..=version`）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Older {
+    pub found: u64,
+    pub floor: u32,
+    pub version: u32,
+}
+
+impl Older {
+    /// 读得懂的那一段，写给人看（只一版 ⇒ 那一版；否则 `floor–version`）。
+    pub fn readable(&self) -> String {
+        if self.floor == self.version {
+            self.version.to_string()
+        } else {
+            format!("{}–{}", self.floor, self.version)
+        }
+    }
+}
+
+impl std::fmt::Display for Older {
+    /// 原话那一截（复制详情里的）。
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "format {}, older than this backend reads ({}..={})",
+            self.found, self.floor, self.version
+        )
     }
 }
 
@@ -271,6 +328,15 @@ fn on_disk_version(path: &Path, v: &serde_json::Value) -> Result<u64, Said> {
             .as_u64()
             .ok_or_else(|| not_json(path, format!("`{VERSION_KEY}` is not an integer: {n}"))),
     }
+}
+
+/// 这一份「比下限老、当没有」是不是本进程头一回见（是 ⇒ 记下、该记那一行日志）。
+fn first_time_older(path: &Path) -> bool {
+    static SEEN: std::sync::Mutex<std::collections::BTreeSet<std::path::PathBuf>> =
+        std::sync::Mutex::new(std::collections::BTreeSet::new());
+    SEEN.lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .insert(path.to_path_buf())
 }
 
 /// 比这一版新的那一句（读 · 写同一句）。

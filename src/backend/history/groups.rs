@@ -95,15 +95,19 @@ pub(crate) fn seen_from(
         .collect()
 }
 
-/// 清单里没有的那一条（记录已不在 · 还没落盘）：样子照活会话表，标题照注解（没有 ⇒ 清单那一句「没名字」）。
-pub fn unlisted(entry: Option<&cmd_wire::listing::Entry>, life: WireLife) -> Seen {
+/// 清单里没有的那一条（记录已不在 · 还没落盘）：样子照活会话表 ＋ 它住在哪（`housed`，判不出 ⇒ 缺），标题照注解（没有 ⇒ 清单那一句「没名字」）。
+pub fn unlisted(
+    entry: Option<&cmd_wire::listing::Entry>,
+    life: WireLife,
+    housed: Option<&crate::wire::SessionContainer>,
+) -> Seen {
     let label = super::search_rules::session_label(&super::search_rules::LabelFacts {
         custom: entry.and_then(|e| e.custom_title.clone()),
         ..Default::default()
     })
     .0;
     (
-        SessionFace::of(crate::wire::Life::of_wire(&life)),
+        SessionFace::listed(&life, housed),
         MemberFacts {
             title: Words(label),
             cwd: None,
@@ -118,7 +122,7 @@ pub fn unlisted(entry: Option<&cmd_wire::listing::Entry>, life: WireLife) -> See
 /// 这台的组那一半此刻的记号（不看样子与那几格）：watcher 重读注解文件时照它判「组那一半变了没有」、变了才推 `changed {groups}`。
 pub fn mark(table: &Table, book: &Book) -> u64 {
     let half = here_of(table, book, |_| {
-        unlisted(None, WireLife::Ended { by: None })
+        unlisted(None, WireLife::Ended { by: None }, None)
     });
     let bytes = serde_json::to_vec(&half).unwrap_or_default();
     crate::common::digest::Fnv::default().part(&bytes).value()
@@ -132,16 +136,19 @@ fn here_now() -> Result<GroupsHere, String> {
             &[("env", relay_route_core::DATA_DIR_ENV)],
         ))
     })?;
-    // 清单读不了 ⇒ 每条照活会话表画、那几格缺（组照出，组员不漏）。
-    let rows = super::history_list::machine_listing()
+    // 清单读不了 ⇒ 每条照活会话表画、那几格缺（组照出，组员不漏）。活会话住哪清单与清单外那几条共用一份（名单只列一次）。
+    let housing = crate::host::Housing::here();
+    let rows = super::history_list::machine_listing_in(&housing)
         .map(|l| l.rows)
         .unwrap_or_default();
     let seen = seen_from(rows, &table);
-    let live = super::live_table::now(&super::listing::agent_home());
+    let live = super::live_table::now(&crate::agents::local_homes());
     Ok(here_of(&table, &book, |sid| {
-        seen.get(sid)
-            .cloned()
-            .unwrap_or_else(|| unlisted(table.get(sid), live.life_of(sid)))
+        seen.get(sid).cloned().unwrap_or_else(|| {
+            let life = live.life_of(sid);
+            let housed = housing.live(sid, &life);
+            unlisted(table.get(sid), life, housed.as_ref())
+        })
     }))
 }
 
@@ -429,7 +436,7 @@ pub(crate) async fn read_with(
                 Err(s) => match k.get(&key) {
                     Some((h, at_ms)) => {
                         let at = crate::common::time::history_at_text(*at_ms, now_ms, tz);
-                        let offline = Words(comms_inward::chan::said::offline(&origin.to_string()));
+                        let offline = Words(copy_core::offline(&origin.to_string()));
                         (
                             Half::Before {
                                 here: h.clone(),

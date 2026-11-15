@@ -52,7 +52,7 @@ class ProductsTest {
         assertNull(book.face("zz"))
         assertEquals(setOf("a", "w", "d", "c"), book.faces().keys)
         val needs = book.face("a")!!.can
-        assertEquals("先答完需手动", needs.model.blocked())
+        assertEquals("请求未答 · 答完再换", needs.model.blocked())
     }
 
     @Test
@@ -123,6 +123,19 @@ class ProductsTest {
         )
 
     @Test
+    fun `history-list：认不出是哪一家的行不带 agent、恢复那一项是 no ⇒ 照收，家那一格缺`() {
+        // 照后端成品的形：恢复 `no` 时那一句（`resumeWhy`）由后端写好，与家名小牌同一句。
+        val why = "无法识别是哪一家的"
+        val can = mapOf("resume" to "no", "resumeWhy" to why, "accounts" to false, "fork" to false, "delete" to "yes")
+        val row = Fixtures.historyRow("can" to can, "agentTag" to why) - "agent"
+        val got = HistoryList.of(whole(listOf(row)))?.rows?.single()
+        assertNotNull("不带 agent 的行照收", got)
+        assertNull(got!!.agent)
+        assertEquals("no", got.can.resume.wire)
+        assertEquals("恢复不给时那一句照收", why, got.can.resumeWhy)
+    }
+
+    @Test
     fun `history-list：行上隐藏那一格照收（后端写好的那一句）`() {
         val rows = listOf(Fixtures.historyRow("hidden" to mapOf("by" to "child", "said" to "由 a 启动 · 子会话默认隐藏")))
         assertEquals(
@@ -167,14 +180,14 @@ class ProductsTest {
                         ),
                     ),
             )
-        val rows = SessionsNeeds.of(data)!!
+        val rows = sessionRows(data)!!
         assertEquals(listOf("b", "a"), rows.map { it.sid })
         assertEquals("等批准 · Bash", rows[0].needs.text)
         assertEquals("已等那一格读毫秒（手机按此刻走表），不抄收到那一刻写好的字", 180_000L, rows[0].needs.waitedMs)
         assertEquals(null, rows[1].needs.waitedMs)
-        assertEquals(emptyList<NeedsRow>(), SessionsNeeds.of(mapOf("items" to sessionItems(emptyList()), "ended" to emptyList<Any>())))
-        assertNull("缺 text ⇒ 契约对不上", SessionsNeeds.of(mapOf("items" to sessionItems(listOf(mapOf("sid" to "a", "label" to "标题 a", "face" to Fixtures.face("live-needs-you-tmux"), "needs" to mapOf("kind" to "x", "head" to "需手动", "tone" to "need", "rank" to 0.0)))))))
-        assertNull("缺 head（钉条第一行）⇒ 契约对不上", SessionsNeeds.of(mapOf("items" to sessionItems(listOf(mapOf("sid" to "a", "label" to "标题 a", "face" to Fixtures.face("live-needs-you-tmux"), "needs" to mapOf("kind" to "x", "text" to "需手动", "tone" to "need", "rank" to 0.0)))))))
+        assertEquals(emptyList<NeedsRow>(), sessionRows(mapOf("items" to sessionItems(emptyList()), "ended" to emptyList<Any>())))
+        assertNull("缺 text ⇒ 契约对不上", sessionRows(mapOf("items" to sessionItems(listOf(mapOf("sid" to "a", "label" to "标题 a", "face" to Fixtures.face("live-needs-you-tmux"), "needs" to mapOf("kind" to "x", "head" to "需手动", "tone" to "need", "rank" to 0.0)))))))
+        assertNull("缺 head（钉条第一行）⇒ 契约对不上", sessionRows(mapOf("items" to sessionItems(listOf(mapOf("sid" to "a", "label" to "标题 a", "face" to Fixtures.face("live-needs-you-tmux"), "needs" to mapOf("kind" to "x", "text" to "需手动", "tone" to "need", "rank" to 0.0)))))))
     }
 
     @Test

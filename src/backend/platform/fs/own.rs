@@ -95,17 +95,15 @@ impl Own {
     }
 
     /// 家目录底下的 `rel`（`relay_route_core` 那张表的写法）：必须以 `.cc-monitor` 那一段打头、往下全是普通名字。
-    /// 家目录那一层本身不给（`.cc-monitor` 之外一个字节都写不到）。没有家目录 ⇒ 拒。
+    /// 家目录那一层本身不给（`.cc-monitor` 之外一个字节都写不到）。家说不出（没有 · 空串；判只在 `platform::paths::under_home`）⇒ 拒。
     pub fn at_home(&self, rel: &str) -> Result<OwnPath, Said> {
-        let home = self
-            .home
-            .as_ref()
-            .ok_or_else(|| Said::from(copy_text("beOwnState.path.noHome", &[])))?;
         let first = Path::new(rel).components().next();
         if !relative_ok(rel) || first != Some(Component::Normal(HOME_DIR_NAME.as_ref())) {
             return Err(copy_text("beOwnState.path.notRelative", &[("rel", rel)]).into());
         }
-        Ok(OwnPath(crate::platform::paths::home_join(home, rel)))
+        crate::platform::paths::under_home(self.home.as_deref(), rel)
+            .map(OwnPath)
+            .map_err(|_| Said::from(copy_text("beOwnState.path.noHome", &[])))
     }
 
     /// 家目录底下后端那一层本身（`~/.cc-monitor`）。
@@ -289,15 +287,27 @@ impl Own {
 }
 
 /// **订阅号凭据的窄句柄**：一个号的配置目录里那一份凭据文件 ＋ 那一家写它、续它时拿的几把 `mkdir` 锁目录
-/// （续期：配置目录里一把 · 旁边一把；整份写：配置目录里一把；续某一条 MCP 登录：配置目录里按那一条起名的一把）。
+/// （续期：配置目录里一把 · 旁边一把；整份写：配置目录里一把）。
 /// 能写的只有这几处：整份原子写那份文件（要配置目录的跨进程锁）· 建 / 删那几把锁目录。配置目录本身与里面别的文件一个都碰不到。
 /// 只能由 [`Own::account_creds`] 造（写自家状态的句柄才铸得出它）；名字由登记那一家的那一形给（一段名字，不许带分隔符）。
 pub struct AccountCreds {
     dir: PathBuf,
     file: PathBuf,
-    inside: PathBuf,
+    inside: Option<PathBuf>,
     beside: Option<PathBuf>,
-    write: Option<PathBuf>,
+    write: Option<(PathBuf, WriteLockForm)>,
+}
+
+/// 整份写锁是哪一形：`mkdir` 锁目录 · 那份文件上的排他文件锁。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WriteLockForm {
+    Dir,
+    File,
+}
+
+/// 持着的那把文件锁（[`AccountCreds::try_file_lock`] · [`McpLoginsFile::try_file_lock`]）：落地即放（关掉描述符，系统放锁）。
+pub struct FileLockHeld {
+    _file: std::fs::File,
 }
 
 /// 配置目录的跨进程锁（[`AccountCreds::lock`]）：写那份凭据要它。
@@ -312,10 +322,8 @@ pub enum RenewLock {
     Inside,
     /// 配置目录旁边那一把续期锁（`<目录><beside>`）。
     Beside,
-    /// 配置目录里那一把整份写锁（`<目录>/<write>`）。
+    /// 配置目录里那一把整份写锁（`<目录>/<write>`；`mkdir` 那一形才建 / 删，文件锁那一形经 [`AccountCreds::try_file_lock`]）。
     Write,
-    /// 配置目录里续某一条登录时那一家拿的那一把（`<目录>/<名字>`；名字必须是一段名字）。
-    OneLogin(String),
 }
 
 /// 一段名字：非空、只一段普通名字（没有分隔符 · `..` · `.`）。
@@ -331,12 +339,15 @@ impl Own {
         &self,
         dir: &Path,
         file: &str,
-        inside: &str,
+        inside: Option<&str>,
         beside: Option<&str>,
-        write: Option<&str>,
+        write: Option<(&str, WriteLockForm)>,
     ) -> Result<AccountCreds, Said> {
         let bad = |n: &str| Said::from(copy_text("beOwnState.path.notRelative", &[("rel", n)]));
-        for n in [file, inside].into_iter().chain(write) {
+        for n in [Some(file), inside, write.map(|(n, _)| n)]
+            .into_iter()
+            .flatten()
+        {
             if !one_name(n) {
                 return Err(bad(n));
             }
@@ -349,13 +360,13 @@ impl Own {
         Ok(AccountCreds {
             dir: dir.to_path_buf(),
             file: dir.join(file),
-            inside: dir.join(inside),
+            inside: inside.map(|n| dir.join(n)),
             beside: beside.map(|sfx| {
                 let mut s = dir.as_os_str().to_os_string();
                 s.push(sfx);
                 PathBuf::from(s)
             }),
-            write: write.map(|n| dir.join(n)),
+            write: write.map(|(n, form)| (dir.join(n), form)),
         })
     }
 }
@@ -369,10 +380,9 @@ impl AccountCreds {
     /// 那一把锁目录在哪（读它的修改时刻用；没登记 · 名字不是一段名字 ⇒ `None`）。
     pub fn lock_path(&self, which: &RenewLock) -> Option<PathBuf> {
         match which {
-            RenewLock::Inside => Some(self.inside.clone()),
+            RenewLock::Inside => self.inside.clone(),
             RenewLock::Beside => self.beside.clone(),
-            RenewLock::Write => self.write.clone(),
-            RenewLock::OneLogin(n) => one_name(n).then(|| self.dir.join(n)),
+            RenewLock::Write => self.write.as_ref().map(|(p, _)| p.clone()),
         }
     }
 
@@ -383,25 +393,30 @@ impl AccountCreds {
         })
     }
 
-    /// 建那一把锁目录：建成 ⇒ `true`（持有）；已在 ⇒ `false`；那一把没登记 ⇒ `false`；名字不是一段名字 ⇒ `Err`。
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "凭据窄句柄续期那把 `mkdir` 锁：建一层锁目录（那一家定的锁协议）"
-    )]
+    /// 建那一把锁目录：建成 ⇒ `true`（持有）；已在 ⇒ `false`；那一把没登记 ⇒ `false`；整份写锁登记的是文件锁那一形 ⇒ `Err`。
     pub fn make_lock(&self, which: &RenewLock) -> std::io::Result<bool> {
-        if let RenewLock::OneLogin(n) = which {
-            if !one_name(n) {
-                return Err(std::io::Error::from(std::io::ErrorKind::InvalidInput));
-            }
+        // 文件锁那一形不建目录（建了就成了那一家认不得的东西）。
+        if *which == RenewLock::Write && self.write_lock_form() == Some(WriteLockForm::File) {
+            return Err(std::io::Error::from(std::io::ErrorKind::InvalidInput));
         }
         let Some(p) = self.lock_path(which) else {
             return Ok(false);
         };
-        match std::fs::create_dir(p) {
-            Ok(()) => Ok(true),
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
-            Err(e) => Err(e),
-        }
+        make_lock(&p)
+    }
+
+    /// 整份写锁登记的是哪一形；没登记 ⇒ `None`。
+    pub fn write_lock_form(&self) -> Option<WriteLockForm> {
+        self.write.as_ref().map(|(_, f)| *f)
+    }
+
+    /// 拿整份写锁（文件锁那一形）：那份锁文件不在就建（只给本人），拿排他锁、不等。
+    /// 拿到 ⇒ `Some`（落地即放）；别人持着 ⇒ `None`；没登记 · 登记的是 `mkdir` 那一形 ⇒ `Err(InvalidInput)`。
+    pub fn try_file_lock(&self) -> std::io::Result<Option<FileLockHeld>> {
+        let Some((p, WriteLockForm::File)) = &self.write else {
+            return Err(std::io::Error::from(std::io::ErrorKind::InvalidInput));
+        };
+        try_lock_file(p)
     }
 
     /// 删那一把锁目录（只删空目录）。
@@ -417,8 +432,145 @@ impl AccountCreds {
     }
 
     /// 整份原子写那份凭据（出生即只给本人）。`held` 是配置目录那一把（[`AccountCreds::lock`]）。
+    /// 那份是符号链接 ⇒ 写到它指着的那一份，链接原样留着（[`link_target`]）。
     pub fn write(&self, _held: &CredsLock, body: &[u8]) -> Result<(), Said> {
-        atomic_write(&self.file, body)
+        atomic_write(&link_target(&self.file), body)
+    }
+}
+
+/// **MCP 登录文件的窄句柄**：一个号的配置目录里那一份 MCP 登录文件（那一家登记的 `McpLogins.file`）＋ 这一下要拿的那几把锁
+/// （铸的那一下就定死：`mkdir` 锁目录是配置目录里一段名字；文件锁是配置目录里一段名字，或一层子目录里的一段名字）。
+/// 能写的只有这几处：整份原子写那份文件（要配置目录的跨进程锁）· 建 / 删铸时登记的那几把锁目录 · 建铸时登记的那几份锁文件
+/// （与它们那一层子目录）。配置目录本身与里面别的文件一个都碰不到。只能由 [`Own::mcp_logins_file`] 造；锁按登记的序号点。
+pub struct McpLoginsFile {
+    dir: PathBuf,
+    file: PathBuf,
+    locks: Vec<(PathBuf, LoginLockForm)>,
+}
+
+/// MCP 登录文件那一把锁是哪一形：`mkdir` 锁目录 · 一份文件上的排他文件锁。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LoginLockForm {
+    Dir,
+    File,
+}
+
+/// 一把文件锁的相对名字：一段名字，或「一层子目录 / 一段名字」。
+fn lock_rel(n: &str) -> bool {
+    let parts: Vec<&str> = n.split('/').collect();
+    !n.contains('\\') && (1..=2).contains(&parts.len()) && parts.iter().all(|p| one_name(p))
+}
+
+impl Own {
+    /// 铸一个号的 MCP 登录文件窄句柄：`dir` 是那个号的配置目录，`file` 是那一家登记的文件名（一段名字），
+    /// `locks` 是这一下要拿的那几把（相对名字 ＋ 形；`mkdir` 那一形只许一段名字）。名字不合 ⇒ 拒。
+    pub fn mcp_logins_file(
+        &self,
+        dir: &Path,
+        file: &str,
+        locks: &[(String, LoginLockForm)],
+    ) -> Result<McpLoginsFile, Said> {
+        let bad = |n: &str| Said::from(copy_text("beOwnState.path.notRelative", &[("rel", n)]));
+        if !one_name(file) {
+            return Err(bad(file));
+        }
+        for (n, form) in locks {
+            let ok = match form {
+                LoginLockForm::Dir => one_name(n),
+                LoginLockForm::File => lock_rel(n),
+            };
+            if !ok {
+                return Err(bad(n));
+            }
+        }
+        Ok(McpLoginsFile {
+            dir: dir.to_path_buf(),
+            file: dir.join(file),
+            locks: locks.iter().map(|(n, f)| (dir.join(n), *f)).collect(),
+        })
+    }
+}
+
+impl McpLoginsFile {
+    /// 那份 MCP 登录文件（读用）。
+    pub fn file(&self) -> &Path {
+        &self.file
+    }
+
+    /// 铸时登记的第 `i` 把锁在哪、是哪一形（读它的修改时刻用；没有这一把 ⇒ `None`）。
+    pub fn lock_at(&self, i: usize) -> Option<(&Path, LoginLockForm)> {
+        self.locks.get(i).map(|(p, f)| (p.as_path(), *f))
+    }
+
+    /// 拿配置目录的跨进程锁（阻塞到拿到为止）。
+    pub fn lock(&self) -> Result<CredsLock, Said> {
+        Ok(CredsLock {
+            _held: hold(&self.dir)?,
+        })
+    }
+
+    /// 第 `i` 把那一形不对 / 没有这一把 ⇒ `Err(InvalidInput)`。
+    fn form_at(&self, i: usize, want: LoginLockForm) -> std::io::Result<&Path> {
+        match self.lock_at(i) {
+            Some((p, f)) if f == want => Ok(p),
+            _ => Err(std::io::Error::from(std::io::ErrorKind::InvalidInput)),
+        }
+    }
+
+    /// 建第 `i` 把 `mkdir` 锁：建成 ⇒ `true`（持有）；已在 ⇒ `false`。
+    pub fn make_dir_lock(&self, i: usize) -> std::io::Result<bool> {
+        make_lock(self.form_at(i, LoginLockForm::Dir)?)
+    }
+
+    /// 删第 `i` 把 `mkdir` 锁（只删空目录）。
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "MCP 登录文件窄句柄：那一家定的 `mkdir` 锁，删空的锁目录"
+    )]
+    pub fn drop_dir_lock(&self, i: usize) -> std::io::Result<()> {
+        std::fs::remove_dir(self.form_at(i, LoginLockForm::Dir)?)
+    }
+
+    /// 拿第 `i` 把文件锁、不等：子目录不在就建（只给本人），锁文件不在就建（只给本人、不截断）。
+    /// 拿到 ⇒ `Some`（落地即放）；别人持着 ⇒ `None`。
+    pub fn try_file_lock(&self, i: usize) -> std::io::Result<Option<FileLockHeld>> {
+        let p = self.form_at(i, LoginLockForm::File)?;
+        if let Some(sub) = p.parent().filter(|d| *d != self.dir) {
+            match create_dir_private(sub) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(e) => return Err(e),
+            }
+        }
+        try_lock_file(p)
+    }
+
+    /// 整份原子写那份文件（出生即只给本人）。`held` 是配置目录那一把（[`McpLoginsFile::lock`]）。
+    /// 那份是符号链接 ⇒ 写到它指着的那一份，链接原样留着（[`link_target`]）。
+    pub fn write(&self, _held: &CredsLock, body: &[u8]) -> Result<(), Said> {
+        atomic_write(&link_target(&self.file), body)
+    }
+}
+
+/// 打开（不在就建、只给本人、不截断）一份锁文件，拿排他锁、不等：拿到 ⇒ `Some`（落地即放）；别人持着 ⇒ `None`。
+/// 两只凭据 · 登录窄句柄的文件锁都经这一处。
+#[expect(
+    clippy::disallowed_methods,
+    reason = "凭据窄句柄 · MCP 登录文件窄句柄的文件锁：打开（不在就建、0600、不截断）那一份锁文件，拿排他锁（那一家定的锁协议）"
+)]
+fn try_lock_file(p: &Path) -> std::io::Result<Option<FileLockHeld>> {
+    let mut o = std::fs::OpenOptions::new();
+    o.read(true).write(true).create(true).truncate(false);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        o.mode(0o600);
+    }
+    let file = o.open(p)?;
+    match file.try_lock() {
+        Ok(()) => Ok(Some(FileLockHeld { _file: file })),
+        Err(std::fs::TryLockError::WouldBlock) => Ok(None),
+        Err(std::fs::TryLockError::Error(e)) => Err(e),
     }
 }
 
@@ -523,6 +675,19 @@ fn create_dir_private(dir: &Path) -> std::io::Result<()> {
     platform_core::dir::private_dir(dir)
 }
 
+/// 建一把 `mkdir` 锁目录（那一家定的锁协议）：建成 ⇒ `true`（持有）；已在 ⇒ `false`。两只凭据 · 登录窄句柄都经这一处。
+#[expect(
+    clippy::disallowed_methods,
+    reason = "凭据窄句柄 · MCP 登录文件窄句柄那几把 `mkdir` 锁：建一层锁目录（那一家定的锁协议）"
+)]
+fn make_lock(p: &Path) -> std::io::Result<bool> {
+    match std::fs::create_dir(p) {
+        Ok(()) => Ok(true),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
+        Err(e) => Err(e),
+    }
+}
+
 /// **后端自家目录**（一处实现）：建一层，建的那一下 0700；已在 ⇒ 核它是本人的真目录：`lstat` 不是链接（定死这一条：
 /// 不认「解开后仍在家下」）· 是目录 · 属主是本人；组 / 他人有权 ⇒ 当场收回 0700（自家目录，收紧不丢东西）。
 /// 链接 · 不是目录 · 不是本人的 ⇒ 拒、出声，盘上一个字节不改。
@@ -606,6 +771,29 @@ pub fn inside_own_dir(at: &Path) -> bool {
 fn hold(dir: &Path) -> Result<crate::platform::lock::DirLock, Said> {
     crate::platform::lock::hold(dir)
 }
+
+/// 一个号的凭据 · MCP 登录文件真正落在哪：不是链接（含不在）⇒ 它自己；是链接 ⇒ 一跳跳解到不是链接的那一份
+/// （相对链接照链接所在目录解；指着的那一份不在 ⇒ 就写那里）。原子写换的是那一份，号目录里的链接不动。
+/// 解不动（读不出链接 · 跳满 [`LINK_HOPS`] 还是链接，多半成环）⇒ 停在那一跳，原子写照常写或照实报错。
+fn link_target(path: &Path) -> PathBuf {
+    let mut at = path.to_path_buf();
+    for _ in 0..LINK_HOPS {
+        if !Ro::symlink_metadata(&at).is_ok_and(|m| m.file_type().is_symlink()) {
+            break;
+        }
+        let Ok(to) = Ro::read_link(&at) else {
+            break;
+        };
+        at = match at.parent() {
+            Some(dir) if to.is_relative() => dir.join(to),
+            _ => to,
+        };
+    }
+    at
+}
+
+/// 解链接最多跳几跳（同 Linux 解路径的上限）。
+const LINK_HOPS: usize = 40;
 
 /// 进程内序号：同一线程连写两次也换一个旁名。
 static SEQ: AtomicU64 = AtomicU64::new(0);

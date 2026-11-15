@@ -99,15 +99,16 @@ class TerminalOps(
         return SessionOpenFacts.pick(agents, row.agent)?.models.orEmpty()
     }
 
-    /** 给名叫 [name] 的那个终端里跑着的会话换模型（`session-model`）。换成了 ⇒ `Ok(那一句)`；没成 ⇒ 失败（那一句）。 */
+    /** 给名叫 [name] 的那个终端里跑着的会话换模型（`session-model`）。没失败（换成了 · 已发出）⇒ `Ok(那一句)`；被拒 · 结果未知 ⇒ 失败（那一句）。 */
     suspend fun switchModel(
         name: String,
         model: String,
+        effort: String?,
     ): Result<String> =
         list().mapCatching { rows ->
             val sid = rows.firstOrNull { it.name == name }?.sid ?: throw Problem(copyText("sessionHead.attach.none", "machine" to machine()))
-            val r = ask(SessionModel.COMMAND, SessionModel.args(sid, model), SessionModel::of).getOrThrow()
-            if (r.result != ModeSwitchResult.DONE) throw Problem(r.said.orEmpty())
+            val r = ask(SessionModel.COMMAND, SessionModel.args(sid, model, effort), SessionModel::of).getOrThrow()
+            if (r.result == ModeSwitchResult.REFUSED || r.result == ModeSwitchResult.UNSURE) throw Problem(r.said.orEmpty())
             r.said.orEmpty()
         }
 

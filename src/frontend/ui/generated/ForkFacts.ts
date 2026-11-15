@@ -21,4 +21,8 @@ turn: number | null,
 /**
  * 那一轮那句在看的那一台钟上的（请求的 `tz`） `HH:MM`（说不出 ⇒ `null`）。
  */
-startText: string | null, };
+startText: string | null, 
+/**
+ * 框顶那一句：「分叉自「{源会话的标题}」 · 轮次 n · 钟面」；说不出第几轮 ⇒ 只「分叉自「{标题}」」。标题照这台的规则取（改过的名 ＞ 记录里的标题），出口照抄。
+ */
+fromText: string, };

@@ -26,7 +26,7 @@ use cmd_wire::files::{self as cwf, WirePath};
 use cmd_wire::transfer::TransferCopyReq;
 use copy_core::{copy_text, io_reason, Discard, Why};
 
-use crate::common::batch_book::{choice_of, key_of, minted, ticketed, Run};
+use crate::common::batch_book::{choice_of, key_of, ticketed, Run};
 use crate::common::root_path::{walk_in_root, Last};
 use crate::common::said::Said;
 use crate::common::staging::{self, Content, LandErr, Was};
@@ -103,6 +103,15 @@ fn sep_of(dir: &[u8]) -> u8 {
     }
 }
 
+/// 是不是绝对路径（照字节看，哪一台的写法都认）：`/…` · `X:\…` / `X:/…` · `\\…`。
+fn absolute(p: &[u8]) -> bool {
+    match p {
+        [b'/', ..] | [b'\\', b'\\', ..] => true,
+        [d, b':', b'\\' | b'/', ..] => d.is_ascii_alphabetic(),
+        _ => false,
+    }
+}
+
 fn join(dir: &[u8], name: &[u8]) -> Vec<u8> {
     let sep = sep_of(dir);
     let mut out = dir.to_vec();
@@ -130,10 +139,7 @@ fn base(path: &[u8]) -> &[u8] {
 /// 保留两份另起的名（`名 (k).ext`；名字不是 UTF-8 ⇒ 整段后面接 ` (k)`）。
 fn minted_name(name: &[u8], k: u32) -> Vec<u8> {
     match std::str::from_utf8(name) {
-        Ok(s) => minted(Path::new(s), k)
-            .to_string_lossy()
-            .into_owned()
-            .into_bytes(),
+        Ok(s) => batch_core::minted(s, k).into_bytes(),
         Err(_) => {
             let mut out = name.to_vec();
             out.extend_from_slice(format!(" ({k})").as_bytes());
@@ -175,11 +181,12 @@ impl Step {
 }
 
 fn missed(key: &str, s: Said) -> BatchOutcome {
-    let code = s.code_or_fallback();
+    let code = cmd_wire::failed::Failed::code_or_fallback(s.code.clone());
     BatchOutcome {
-        code: Some(code.to_string()),
-        reason: Some(copy_core::code_reason(code, s.raw.as_deref())),
-        detail: Some(match &s.raw {
+        reason: Some(copy_core::code_reason(&code, s.raw.as_deref())),
+        code: Some(code),
+        // 那一边是别台时它写好的那一份详情在先（转回那一跳带回的，[`Said::written`]），不然是下层原话。
+        detail: Some(match s.written.as_ref().or(s.raw.as_ref()) {
             Some(r) => format!("{}\n{r}", s.said),
             None => s.said.clone(),
         }),
@@ -205,6 +212,12 @@ pub(crate) fn copy_with(
 ) -> Result<BatchReply, CopyErr> {
     let on_exists = req.on_exists.unwrap_or_default();
     let to_dir = req.to_dir.0.clone();
+    // 落点目录只认绝对路径：相对的会照那台后端进程的工作目录解，落到谁也没选的地方。
+    if !absolute(&to_dir) {
+        return Err(CopyErr::BadArgs(crate::common::contract::malformed(
+            "`to_dir` must be an absolute path",
+        )));
+    }
     let decide = req.decide;
     let mut probed: Vec<Probed> = Vec::with_capacity(req.items.len());
     let mut ask: Vec<Conflict> = Vec::new();
@@ -238,7 +251,7 @@ pub(crate) fn copy_with(
                     there: kind(there_dir),
                     there_size_text: None,
                     there_mtime_text: None,
-                    answers: crate::common::batch_book::answers_of(src_dir || there_dir, true),
+                    answers: batch_core::answers_of(src_dir || there_dir, true),
                 });
             }
             (choice, src_dir || there_dir)
@@ -330,7 +343,7 @@ fn plan(
             }
             Some((Some(Decide::Overwrite), false)) => overwrite = true,
             Some((Some(Decide::KeepBoth), _)) => {
-                let free = (2..=crate::common::batch_book::MINT_TRIES)
+                let free = (2..=batch_core::MINT_TRIES)
                     .map(|k| ends.landing_name(&minted_name(&name, k)))
                     .find(|n| rt.block_on(ends.there(to_dir, n)).is_none());
                 match free {
@@ -864,6 +877,13 @@ impl chunk_core::Sink for ToFile {
 /// 列一层要的条数上限（一次往返整份回来；比它多 ⇒ 那一层截掉的不搬，那一份照列到的做）。
 const LS_ALL: u64 = 1_000_000;
 
+/// SFTP 起始目录就是那台后端的家吗（照字节比，尾巴上的 `/` 不算）。家名不是 UTF-8 ⇒ 跟 SFTP 那一串（字）
+/// 字节上对不上，不算（不先有损转字再比：会把两个不同的目录判成一样）。
+fn start_dir_is_home(sftp_start: &str, home: &[u8]) -> bool {
+    std::str::from_utf8(home)
+        .is_ok_and(|h| super::transfer::start_dir_mismatch(sftp_start, h).is_none())
+}
+
 /// 远端：元数据都问那台后端；搬字节每份选一条腿（[`Self::sftp`] 在 ⇒ 那台 SFTP 起始目录就是它后端的家）。
 pub(crate) struct There {
     face: Face,
@@ -899,8 +919,7 @@ impl There {
         let h = ask(far.as_ref(), &cwf::HomeReq {})
             .await
             .map_err(|s| CopyErr::Unreachable(s.said))?;
-        let home = lossy(h.path.bytes());
-        let sftp = sftp.filter(|s| super::transfer::start_dir_mismatch(s.home(), &home).is_none());
+        let sftp = sftp.filter(|s| start_dir_is_home(s.home(), h.path.bytes()));
         Ok(There { face, far, sftp })
     }
 

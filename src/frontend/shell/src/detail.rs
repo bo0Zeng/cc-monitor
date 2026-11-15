@@ -91,7 +91,7 @@ pub(crate) fn of_channel(origin: &crate::origin::Origin, op: &str, e: &w::CallEr
     copy_core::detail::channel(
         &now(),
         &name,
-        f.not_sent,
+        f.unreached,
         local.as_deref(),
         op,
         f.hop.as_deref(),
@@ -103,18 +103,10 @@ pub(crate) fn of_channel(origin: &crate::origin::Origin, op: &str, e: &w::CallEr
 /// 壳问后端一条命令（`command`）没成：后端答了失败 ⇒ 它交来的那一份原样（码 · 复制详情 · `data`；那一句取调用方照分流定的 `said`，
 /// 对端的句子空着时那里补「原因不明」那一句）；没走到那台（断了 · 超时 · 不认这条 …）⇒ 壳自己的错，码进详情，命令就是问的那一条。
 pub(crate) fn of_call(said: String, command: &str, e: &crate::inbound_client::CallError) -> Failed {
-    use crate::inbound_client::CallError;
-    let code = match e {
-        CallError::Remote(f) => return Failed { said, ..f.clone() },
-        CallError::Unavailable { code, .. } => code.as_str(),
-        CallError::Differs { .. } => "backend_differs",
-        CallError::Unsupported { .. } => "unsupported",
-        CallError::TooManyPending => "too_many_pending",
-        CallError::Disconnected => "disconnected",
-        CallError::Cancelled => "cancelled",
-        CallError::Timeout { .. } => "timeout",
-    };
-    Said::from(said).coded(code).named(command)
+    if let crate::inbound_client::CallError::Remote(f) = e {
+        return Failed { said, ..f.clone() };
+    }
+    Said::from(said).coded(e.code()).named(command)
 }
 
 /// 壳自己的错（`copy_core::said::Said`）在壳里的那几口：出句、接手下层、投出去。
@@ -169,7 +161,7 @@ impl Shell for Said {
             self.raw.as_deref(),
         );
         Failed {
-            code: self.code_or_fallback().to_string(),
+            code: cmd_wire::failed::Failed::code_or_fallback(self.code.clone()),
             said: self.said,
             detail,
             data: self.data,

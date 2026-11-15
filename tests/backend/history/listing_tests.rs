@@ -115,9 +115,15 @@ fn analyze_session_detects_bg_kind() {
 #[test]
 fn list_sessions_rejects_path_traversal() {
     let tmp = std::env::temp_dir();
-    assert!(list_sessions_for(&tmp, "../escape", None).is_err());
-    assert!(list_sessions_for(&tmp, "a/b", None).is_err());
-    assert!(list_sessions_for(&tmp, r"a\b", None).is_err());
+    assert!(list_here(&tmp, "../escape").is_err());
+    assert!(list_here(&tmp, "a/b").is_err());
+    assert!(list_here(&tmp, r"a\b").is_err());
+}
+
+/// 照这台的注册表列 `home` 家下一个项目目录的会话。
+fn list_here(home: &Path, dir: &str) -> Result<Vec<SessionRow>, String> {
+    let homes = crate::agents::IntoHomes::into_homes(home);
+    list_sessions_among(crate::agents::REGISTRY, &homes, dir, None)
 }
 
 #[test]
@@ -134,7 +140,7 @@ fn list_sessions_rejects_symlink_escape() {
     // projects/sneaky -> ../outside（名字合法、无分隔符、无 ..，旧 string 校验放行）
     symlink(&outside, projects.join("sneaky")).unwrap();
     // canonicalize 前缀校验解析 symlink 后落在 projects/ 外 → 拒绝
-    assert!(list_sessions_for(&tmp, "sneaky", None).is_err());
+    assert!(list_here(&tmp, "sneaky").is_err());
     std::fs::remove_dir_all(&tmp).ok();
 }
 
@@ -249,7 +255,7 @@ fn a_machine_without_a_projects_dir_lists_nothing_and_an_unreadable_one_says_so_
         // root 跑测试时权限位拦不住读 —— 那一格判不了，如实跳过而不是假绿（同 `tasks_query_tests`）。
         let perms_bite = std::fs::File::open(&root).is_err();
         let got = list_projects(&tmp);
-        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o755)).unwrap();
+        test_home::set_dir_mode(&root, 0o755);
         if perms_bite {
             let e = got.expect_err("读不了的记录树却列成功了");
             let path = root.display().to_string();
@@ -738,4 +744,33 @@ fn two_threads_asking_for_one_record_scan_it_once() {
         "两条线程一齐要这一份，清单扫描读了 {read} 字节（记录 {len}）"
     );
     std::fs::remove_dir_all(&tmp).ok();
+}
+
+/// ★ 照路径认不出是哪一家的那份记录（替身家：记录根不在任何历史根底下、文件名谁都不认）⇒ 行照出、只数行（空行不算），
+/// 会话级那几格不问哪一家（摘录 · 目录都缺，不照哪一家的格式硬读）。
+#[test]
+fn a_record_of_an_unknown_family_is_still_listed_and_only_counted() {
+    let tmp =
+        std::env::temp_dir().join(format!("ccm-unknown-family-listing-{}", std::process::id()));
+    let dir = tmp.join("p");
+    std::fs::create_dir_all(&dir).unwrap();
+    let p = write_jsonl(
+        &dir,
+        "sess-x.ndjson",
+        &[
+            r#"{"type":"user","cwd":"/w/a","message":{"role":"user","content":"说了一句"}}"#,
+            "",
+            r#"{"type":"assistant"}"#,
+        ],
+    );
+    assert_eq!(
+        crate::agents::record_kind_of(&p),
+        None,
+        "夹具要的是照路径认不出"
+    );
+    let v = analyze_session(&p);
+    assert_eq!(v["messageCountApprox"], 2);
+    assert_eq!(v["firstUserExcerpt"], "");
+    assert!(v["cwd"].is_null());
+    let _ = std::fs::remove_dir_all(&tmp);
 }

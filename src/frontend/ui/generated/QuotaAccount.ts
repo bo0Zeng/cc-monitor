@@ -8,11 +8,16 @@ import type { QuotaWarm } from "./QuotaWarm";
 import type { SlotShow } from "./SlotShow";
 import type { Usage } from "./Usage";
 import type { WindowShow } from "./WindowShow";
+import type { Words } from "./Words";
 
 /**
  * 出过数的一个号：账上那一条的原数 ＋ 显示态（`AccountHead`）＋ 照它写好的几格。
  */
-export type QuotaAccount = { rows: Array<Array<QuotaCell>>, warm: QuotaWarm, agent: AgentKind, account: string, kind: QuotaKind, state: QuotaState, 
+export type QuotaAccount = { rows: Array<Array<QuotaCell>>, 
+/**
+ * 几点采的那一句（「采样于 12:03」）：不成行，出口放进这个号的悬停提示。
+ */
+sampled: Words, warm: QuotaWarm, agent: AgentKind, account: string, kind: QuotaKind, state: QuotaState, 
 /**
  * 最后一次看到距今超过 30 分钟（与 `state` 叠着画）。
  */

@@ -34,6 +34,7 @@ import com.ccmonitor.mobile.core.ui.icon.PhIconButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
+import com.ccmonitor.mobile.ssh.machineNameOf
 import org.koin.compose.koinInject
 
 /**
@@ -62,7 +63,8 @@ fun SessionTabsSheet(
     // 编号按「类型 ＋ 名字」做（类型是行首那颗图标，不进字）。
     val labels =
         remember(sessions, hosts) {
-            val bases = sessions.map { s -> tabBaseLabel(s, hosts.firstOrNull { it.id == s.hostId }?.label ?: s.hostId) }
+            val name = machineNameOf(hosts)
+            val bases = sessions.map { s -> tabBaseLabel(s, name(s.hostId)) }
             val numbered = numberDuplicates(sessions.mapIndexed { i, s -> "${s.target is SessionTabManager.TabTarget.Files}\u0000${bases[i]}" })
             numbered.map { it.substringAfter('\u0000') }
         }

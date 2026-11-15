@@ -154,7 +154,9 @@ async fn s6_resident_answered_means_every_machine_else_this_machine_only() {
 fn s7_the_real_chain_from_this_process_finds_the_session_whose_pidfile_names_an_ancestor() {
     let home = std::env::temp_dir().join(format!("ccm-session-self-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&home);
-    let sessions = crate::agents::pidfile_dir(&home);
+    let sessions = crate::agents::IntoHomes::into_homes(&home)[0]
+        .pidfile_dir()
+        .unwrap();
     std::fs::create_dir_all(&sessions).unwrap();
     let parent = crate::platform::proc::parent_of(std::process::id()).expect("读得出父进程号");
     assert_eq!(

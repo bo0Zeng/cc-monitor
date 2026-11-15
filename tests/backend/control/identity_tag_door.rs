@@ -17,7 +17,8 @@ impl Drop for Isolated {
     }
 }
 
-/// 本线程的 `tag` 改起 `script`（经 `/bin/sh`）。
+/// 本线程的 `tag` 改起 `script`（经 `/bin/sh` 读它、不 exec 它：注入的几处判据各自在本进程里写脚本，
+/// 写完马上 exec 撞 ETXTBSY，理由见 `test_home::write_exe`）。
 pub fn isolate_with(script: &std::path::Path) -> Isolated {
     FAKE_TMUX.with(|f| *f.borrow_mut() = Some(script.to_path_buf()));
     Isolated(())
@@ -27,7 +28,7 @@ pub fn isolate_with(script: &std::path::Path) -> Isolated {
 pub fn isolate() -> Isolated {
     let p = std::env::temp_dir().join(format!("ccm-resync-mute-tmux-{}", std::process::id()));
     if !p.exists() {
-        // 同进程并发写同一份内容，谁赢都一样；经 `/bin/sh` 读，不 exec 它（理由见 `identity_tag_tests::fake_cmd`）。
+        // 同进程并发写同一份内容，谁赢都一样；经 `/bin/sh` 读，不 exec 它（见 [`isolate_with`]）。
         std::fs::write(&p, "#!/bin/sh\nexit 1\n").expect("写假 tmux");
     }
     isolate_with(&p)

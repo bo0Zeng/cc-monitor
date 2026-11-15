@@ -32,7 +32,7 @@ const settle = async () => {
   for (let i = 0; i < 8; i++) await tick();
 };
 
-const ACCOUNT = { kind: "account" as const, agent: "claude", account: "t1" };
+const ACCOUNT = { kind: "account" as const, account: "t1" };
 const MCP = { kind: "mcp" as const, agent: "claude", account: "w1", server: "s1", projectDir: null };
 const started = (over: Record<string, unknown> = {}) => ({ job: "job-1", url: "https://login.example/x?state=s", paste: "code", auto: true, opened: false, ...over });
 
@@ -112,6 +112,34 @@ describe("开抽屉 ＝ 起登录", () => {
     await open(MCP, "gpu-01" as Machine);
     expect(drawer()!.querySelector('[data-part="auto"]')).toBeNull();
     expect(drawer()!.querySelector('[data-part="paste"] label')?.textContent).toBe(copyText("login.paste.redirectUrl"));
+  });
+
+  it("★ paste: showCode ⇒ 链接下面摆那段码 ＋［复制码］、不出粘贴那一格；推来 done ⇒ 抽屉自己关", async () => {
+    answer["login-start"] = () => started({ paste: "showCode", code: "ABCD-1234", auto: true });
+    await open(ACCOUNT, "gpu-01" as Machine);
+    expect(drawer()!.querySelector('[data-part="code-text"]')?.textContent).toBe("ABCD-1234");
+    expect(drawer()!.querySelector('[data-part="paste"]'), "显示码不粘回").toBeNull();
+    expect(act("login-submit"), "没有［提交］").toBeNull();
+    act("login-copy-code").click();
+    await settle();
+    expect(clip).toBe("ABCD-1234");
+    const feed = pushes.find((p) => p.origin === "gpu-01");
+    feed!.onChanged("gpu-01", "login", { cells: [{ key: "job-1", rev: null, body: { state: "done" } }], all: false });
+    await settle();
+    expect(drawer()).toBeNull();
+  });
+
+  it("★ paste: noPaste ⇒ 不出粘贴那一格；auto 真 ⇒「登录页完成后自动结束」；后端给了 elsewhere ⇒ 照摆那一句", async () => {
+    answer["login-start"] = () => started({ paste: "noPaste", auto: true });
+    await open();
+    expect(drawer()!.querySelector('[data-part="paste"]')).toBeNull();
+    expect(drawer()!.querySelector('[data-part="auto"]')).not.toBeNull();
+    expect(drawer()!.querySelector('[data-part="elsewhere"]')).toBeNull();
+    answer["login-start"] = () => started({ paste: "noPaste", auto: false, elsewhere: "后端·需在那一台完成" });
+    await open(ACCOUNT, "gpu-01" as Machine);
+    expect(drawer()!.querySelector('[data-part="paste"]')).toBeNull();
+    expect(drawer()!.querySelector('[data-part="auto"]')).toBeNull();
+    expect(drawer()!.querySelector('[data-part="elsewhere"]')?.textContent, "照摆后端那一句").toBe("后端·需在那一台完成");
   });
 
   it("★ opened 真（那一家自己在这台开了登录页）⇒ 那一颗成了［再打开一次］、不当主动作，点了才开第二页", async () => {

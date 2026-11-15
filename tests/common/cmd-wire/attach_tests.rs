@@ -1,8 +1,8 @@
-//! 握手那两行的线上字节：attach 行只认五格、`attach` 恒为 `true`、`watch` 与 `stream-watch` 的入参同形；回话没带 `mine` 时与只回「可以」那一行逐字节相同。
+//! 握手那两行的线上字节：attach 行只认六格、`attach` 恒为 `true`、`watch` 与 `stream-watch` 的入参同形；回话没带 `mine` 时与只回「可以」那一行逐字节相同。
 use super::*;
 
 #[test]
-fn the_attach_line_is_five_cells_and_nothing_else() {
+fn the_attach_line_is_six_cells_and_nothing_else() {
     let l = AttachLine {
         attach: Yes,
         tz: Some("Asia/Shanghai".into()),
@@ -16,10 +16,11 @@ fn the_attach_line_is_five_cells_and_nothing_else() {
             }],
             ..Default::default()
         }),
+        folded: true,
     };
     assert_eq!(
         l.line(),
-        "{\"attach\":true,\"tz\":\"Asia/Shanghai\",\"mine\":\"p1a-x\",\"deflate\":true,\"watch\":{\"sids\":[\"s1\"],\"branch\":[{\"sid\":\"s1\",\"at\":0}]}}\n"
+        "{\"attach\":true,\"tz\":\"Asia/Shanghai\",\"mine\":\"p1a-x\",\"deflate\":true,\"watch\":{\"sids\":[\"s1\"],\"branch\":[{\"sid\":\"s1\",\"at\":0}]},\"folded\":true}\n"
     );
     assert_eq!(
         serde_json::from_str::<AttachLine>(r#"{"attach":true,"watch":{"sids":[]}}"#)
@@ -43,6 +44,7 @@ fn the_attach_line_is_five_cells_and_nothing_else() {
         r#"{"attach":true,"flags":[]}"#,
         r#"{"attach":true,"watch":{"sids":[],"extra":1}}"#,
         r#"{"attach":true,"deflate":"yes"}"#,
+        r#"{"attach":true,"folded":1}"#,
     ] {
         assert!(serde_json::from_str::<AttachLine>(bad).is_err(), "{bad}");
     }

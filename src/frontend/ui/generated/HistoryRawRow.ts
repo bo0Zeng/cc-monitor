@@ -2,11 +2,16 @@
 import type { AgentKind } from "./AgentKind";
 import type { LaunchTab } from "./LaunchTab";
 import type { Life } from "./Life";
+import type { SessionContainer } from "./SessionContainer";
 
 /**
  * 清单里的一行（这台判过活、注解格先按没有填）。
  */
-export type HistoryRawRow = { agent: AgentKind, sessionId: string, projectPath: string, projectName: string, aiTitle: string | null, firstUserExcerpt: string, 
+export type HistoryRawRow = { 
+/**
+ * 哪一家的（照记录文件落在哪棵树下认）；认不出是哪一家的 ⇒ 缺。
+ */
+agent?: AgentKind, sessionId: string, projectPath: string, projectName: string, aiTitle: string | null, firstUserExcerpt: string, 
 /**
  * 显示标题（用户改过的另在 `customTitle`）：与全文搜索同一条规则。
  */
@@ -14,7 +19,16 @@ title: string, startedAt: number, updatedAt: number, jsonlPath: string,
 /**
  * 这台判的这条会话的一生（判不了：合成历史没有 pidfile ⇒ 说不清）。
  */
-life: Life, messageCountApprox: number, isBg: boolean, starred: boolean, customTitle: string | null, 
+life: Life, 
+/**
+ * 这台判的它住在哪（活着、这台名单里挂着它才有）；缺 ⇒ 不知道。看的那一台照它造这一行的脸（不另判）。
+ */
+housed?: SessionContainer, 
+/**
+ * 这台判的：这条会话挂着的那一条此刻在界面里答得了（登记表里最早挂上的那一条，后端 `wire::answerable`）。
+ * 看的那一台照它造这一行的脸（在等人 ⇒ 待答请求），不查自己的登记表（远端那台的请求只挂在那台）。缺 ⇒ 不是。
+ */
+asks: boolean, messageCountApprox: number, isBg: boolean, starred: boolean, customTitle: string | null, 
 /**
  * 起会话时给了 `--tab` 的那一格（那台的启动台账）；没给 ⇒ 缺。
  */

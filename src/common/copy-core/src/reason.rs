@@ -9,8 +9,10 @@ pub fn io_reason(kind: std::io::ErrorKind) -> String {
     match kind {
         K::PermissionDenied => copy_text("reason.io.denied", &[]),
         K::NotFound => copy_text("reason.io.notFound", &[]),
+        K::NotADirectory => copy_text("reason.io.notDir", &[]),
         K::StorageFull | K::QuotaExceeded => copy_text("reason.io.full", &[]),
         K::ResourceBusy => copy_text("reason.io.busy", &[]),
+        K::Unsupported => copy_text("machineState.word.unsupported", &[]),
         K::AlreadyExists => copy_text("beFiles.batch.mintSpent", &[]),
         _ => copy_text("reason.io.unknown", &[]),
     }
@@ -33,7 +35,7 @@ pub fn sftp_status_reason(code: u32) -> String {
         3 => io_reason(std::io::ErrorKind::PermissionDenied),
         5 => copy_text("reason.code.bug", &[]),
         6 | 7 => copy_text("reason.link.lost", &[]),
-        8 => copy_text("machineState.word.unsupported", &[]),
+        8 => io_reason(std::io::ErrorKind::Unsupported),
         _ => io_reason(std::io::ErrorKind::Other),
     }
 }
@@ -45,10 +47,9 @@ pub fn code_reason(code: &str, raw: Option<&str>) -> String {
         "exists" => io_reason(std::io::ErrorKind::AlreadyExists),
         "refused" | "bad_path" => copy_text("reason.code.refused", &[]),
         "stale" => copy_text("reason.code.stale", &[]),
-        "no_unix_mode" => copy_text("machineState.word.unsupported", &[]),
+        "no_unix_mode" => io_reason(std::io::ErrorKind::Unsupported),
         "bad_name" => copy_text("reason.code.badName", &[]),
         "busy" => io_reason(std::io::ErrorKind::ResourceBusy),
-        "too_many_transfers" => copy_text("reason.code.overLimit", &[]),
         _ => io_reason(os_kind(raw.unwrap_or_default())),
     }
 }

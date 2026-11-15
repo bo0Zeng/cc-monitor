@@ -23,13 +23,12 @@ use super::write::{
     WriteRefusal,
 };
 use crate::common::batch_book::{
-    cancel_rest, choice_of, key_of, minted, moment_text, mtime_secs, ticketed, Run,
+    cancel_rest, choice_of, key_of, moment_text, mtime_secs, ticketed, Run,
 };
 use crate::common::said::Said;
 use crate::platform::fs::{Face, Ro};
-use batch_core::said_of;
+use batch_core::{said_of, MINT_TRIES};
 
-use crate::common::batch_book::MINT_TRIES;
 /// 递归删一棵树一段删几条（段与段之间看撤的旗、报进度）。
 const DELETE_STRIDE: usize = 256;
 
@@ -37,13 +36,14 @@ const DELETE_STRIDE: usize = 256;
 
 /// 一项没成 ⇒ 那一项的结局（码 · 原因词 · 那一句与原话进复制详情）。
 fn failed(key: &str, f: Said) -> BatchOutcome {
-    let reason = copy_core::code_reason(f.code_or_fallback(), f.raw.as_deref());
+    let code = cmd_wire::failed::Failed::code_or_fallback(f.code.clone());
+    let reason = copy_core::code_reason(&code, f.raw.as_deref());
     let detail = match &f.raw {
         Some(r) => format!("{}\n{r}", f.said),
         None => f.said.clone(),
     };
     BatchOutcome {
-        code: Some(f.code_or_fallback().to_string()),
+        code: Some(code),
         reason: Some(reason),
         detail: Some(detail),
         ..BatchOutcome::bare(key, ItemState::Failed)
@@ -165,7 +165,7 @@ pub fn copy(
                     there,
                     there_size_text: there_size.map(copy_core::size_text),
                     there_mtime_text: moment_text(there_mtime, tz),
-                    answers: crate::common::batch_book::answers_of(dir_into, true),
+                    answers: batch_core::answers_of(dir_into, true),
                 });
             }
             clashes.push(Some(Clash { choice, dir_into }));
@@ -301,7 +301,10 @@ fn copy_item(
         }) => {
             let mut last = None;
             for k in 2..=MINT_TRIES {
-                let at = minted(to, k);
+                let at = to.with_file_name(batch_core::minted(
+                    &to.file_name().unwrap_or_default().to_string_lossy(),
+                    k,
+                ));
                 if lexical_in_root(root, &at)
                     .ok()
                     .and_then(|p| look(&p))

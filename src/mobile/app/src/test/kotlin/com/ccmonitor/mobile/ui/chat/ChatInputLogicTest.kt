@@ -28,6 +28,17 @@ class ChatInputLogicTest {
     }
 
     @Test
+    fun `推理档：模型有 efforts ⇒ 点了升起选档那一屏，各档照那台的先后与字、勾 defaultEffort；没有 ⇒ 不出那一屏`() {
+        val efforts = listOf(AgentPick("medium", "中"), AgentPick("high", "高"), AgentPick("low", "低"))
+        val opus = AgentPick("opus", "Opus", efforts = efforts, defaultEffort = "high")
+        assertEquals(InputSheet.Efforts(opus), afterModelPick(opus))
+        assertEquals(listOf(efforts[0] to false, efforts[1] to true, efforts[2] to false), effortRows(opus))
+        assertNull("没档 ⇒ 当场换", afterModelPick(AgentPick("sonnet", "Sonnet")))
+        assertNull("档是空的 ⇒ 当场换", afterModelPick(AgentPick("sonnet", "Sonnet", efforts = emptyList())))
+        assertEquals("没说缺省 ⇒ 一档都不勾", listOf(efforts[0] to false, efforts[1] to false, efforts[2] to false), effortRows(opus.copy(defaultEffort = null)))
+    }
+
+    @Test
     fun `面板下面两行：那份清单给了哪一个画哪一个，说的那一句与先不先确认照它；命令行尾照那台写好的标`() {
         val compact = SessionAct("/compact", false)
         val clear = SessionAct("/clear", true)

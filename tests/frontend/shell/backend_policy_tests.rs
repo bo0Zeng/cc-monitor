@@ -56,7 +56,7 @@ fn the_monitor_keeps_no_copy_of_the_exit_value() {
 fn the_exit_answer_is_read_from_the_backend_shape_and_nothing_else() {
     use cmd_wire::exit_policy::ExitPolicy;
     use serde_json::json;
-    let full = |kill: serde_json::Value| json!({ "state": "chosen", "killOnExit": kill, "reason": null, "detail": null, "path": null, "said": "s" });
+    let full = |kill: serde_json::Value| json!({ "state": "ok", "killOnExit": kill, "reason": null, "detail": null, "path": null, "said": "s" });
     let ok: ExitPolicy = serde_json::from_value(full(json!(true))).expect("后端那一形");
     assert!(ok.kill_on_exit);
     for bad in [json!({}), full(json!("true")), json!(null)] {

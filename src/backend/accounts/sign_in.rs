@@ -10,9 +10,9 @@
 //! - 粘回来的东西不进 argv · 日志 · 应答；链接里的 `state` 也不进日志。
 //! - 帧那一侧递一个「结束了」回调（推一帧给发起它的那条连接、敲需手动的铃），本模块不认帧。
 
-use crate::agents::SignInFace;
+use crate::agents::{PasteShape, SignInFace};
 use crate::common::said::Said;
-use crate::platform::child::{Child, Conversation, Heard};
+use crate::platform::child::{Child, Conversation, Deadline, Heard};
 use copy_core::{Discard, Why};
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -33,6 +33,13 @@ pub(crate) const START_WITHIN: Duration = Duration::from_millis(30_000);
 pub(crate) const FINISH_WITHIN: Duration = Duration::from_millis(60_000);
 /// 失败时原话里带它最后说的几行。
 const TAIL_LINES: usize = 12;
+/// 显示码那一形：交链接之前读码时看它说过的最后这么多行。
+const SHOWN_LINES: usize = 64;
+/// 退出 · 问状态那一条子命令至多跑这么久（它只改 · 读那个号自己的配置目录，至多问一次服务端）。
+const ONCE_WITHIN: Deadline = Deadline::secs(30);
+
+/// 读线程交给 `start` 的：登录链接 ＋ 显示码那一形的码。
+type Shown = (String, Option<String>);
 
 /// 一份作业怎么收的（交给「结束了」回调；也是 `login-finish` 等到的那一件）。
 #[derive(Debug, Clone, PartialEq)]
@@ -60,11 +67,12 @@ pub struct SignInAsk<'a> {
     pub path: Option<String>,
 }
 
-/// 起好了：作业号 ＋ 登录链接。
+/// 起好了：作业号 ＋ 登录链接 ＋ 显示码那一形印的那段码（别的形 ⇒ `None`）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Started {
     pub job: String,
     pub url: String,
+    pub code: Option<String>,
 }
 
 /// `finish` 不成。
@@ -118,32 +126,15 @@ fn new_job_id() -> String {
 /// 起不来 · 没给出链接就退了 · 等不到链接 ⇒ `Err(那一句 ＋ 原话)`。给了链接 ⇒ 回链接，哪怕它随后（`start` 醒来之前）就退了：结局走「结束了」回调。
 pub fn start(a: &SignInAsk, on_end: OnEnd) -> Result<Started, Said> {
     let f = a.face;
-    let failed = |why: &str| {
-        copy_core::copy_text(
-            "beLogin.start.failed",
-            &[("program", f.program), ("why", why)],
-        )
-    };
-    let at = crate::platform::shell::agent_launch(f.program, a.path.as_deref())
-        .map_err(|why| Said::from(failed(&why)))?;
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "在 app 里登录一个号：起那一家官方登录子命令（适配层登记的那一形，argv 不过 shell，stdin 只写人粘回来的码）；令牌由官方客户端写进那个号自己的配置目录，后端不写"
-    )]
-    let mut child = Child::new(at.program)
-        .args(at.lead)
-        .args(f.args)
-        .args(a.then);
-    child = match a.dir {
-        Some(d) => child.env(f.dir_env, d),
-        None => child.env_remove(f.dir_env),
-    };
-    for k in f.env_remove {
-        child = child.env_remove(k);
-    }
-    if let Some(d) = &a.cwd {
-        child = child.current_dir(d);
-    }
+    let failed = |why: &str| start_failed(&f, why);
+    let child = child_of(
+        &f,
+        f.args,
+        a.then,
+        a.dir,
+        a.cwd.as_deref(),
+        a.path.as_deref(),
+    )?;
     let conv = if f.terminal {
         child.converse_in_terminal()
     } else {
@@ -154,30 +145,43 @@ pub fn start(a: &SignInAsk, on_end: OnEnd) -> Result<Started, Said> {
         .take_heard()
         .ok_or_else(|| Said::from(copy_core::copy_text("beLogin.start.noLink", &[])))?;
     let job = new_job_id();
-    let (link_tx, link_rx) = mpsc::channel::<Result<String, String>>();
-    // 先替掉同一个目标的旧作业（它的读线程看到作业不在了就不出声）。
-    let old: Vec<Job> = {
+    let (link_tx, link_rx) = mpsc::channel::<Result<Shown, String>>();
+    let fresh = Job {
+        conn: a.conn,
+        target: a.target.to_string(),
+        secrets: Vec::new(),
+        conv,
+        face: f,
+        url: String::new(),
+        waiter: None,
+    };
+    // 发起它的那条连接已经撤了（读循环先读到 EOF、先收了作业）⇒ 不留：这份当场收（杀它），回「本次登录不存在」。
+    //   撤与登记在同一把锁里判：留下的作业握着那条连接的应答那一路，流读到 EOF 后等它交应答才收场。
+    // 留得下才替掉同一个目标的旧作业（它的读线程看到作业不在了就不出声）：撤了的连接上晚到的这一份不碰别人的。
+    //   收掉的（替掉的旧作业 · 晚到的这一份）都在锁外落（落下就杀子进程）。
+    let (old, late): (Vec<Job>, Option<Job>) = {
         let mut t = jobs();
-        let ids: Vec<String> = t
-            .iter()
-            .filter(|(_, j)| j.target == a.target)
-            .map(|(id, _)| id.clone())
-            .collect();
-        ids.into_iter().filter_map(|id| t.remove(&id)).collect()
+        if withdrawn().contains(&a.conn) {
+            (Vec::new(), Some(fresh))
+        } else {
+            let ids: Vec<String> = t
+                .iter()
+                .filter(|(_, j)| j.target == a.target)
+                .map(|(id, _)| id.clone())
+                .collect();
+            let old = ids.into_iter().filter_map(|id| t.remove(&id)).collect();
+            t.insert(job.clone(), fresh);
+            (old, None)
+        }
     };
     drop(old);
-    jobs().insert(
-        job.clone(),
-        Job {
-            conn: a.conn,
-            target: a.target.to_string(),
-            secrets: Vec::new(),
-            conv,
-            face: f,
-            url: String::new(),
-            waiter: None,
-        },
-    );
+    if late.is_some() {
+        drop(late);
+        return Err(Said::from(copy_core::copy_text(
+            "beLogin.finish.noJob",
+            &[],
+        )));
+    }
     {
         let job = job.clone();
         std::thread::spawn(move || listen(&job, f, &heard, link_tx, on_end));
@@ -187,7 +191,7 @@ pub fn start(a: &SignInAsk, on_end: OnEnd) -> Result<Started, Said> {
         reason = "`login-start` 等登录子命令打印链接的一次有界等待：它要先问一次服务端拿登录参数，网络卡住时没有它这条命令就一直挂着"
     )]
     let got = match link_rx.recv_timeout(START_WITHIN) {
-        Ok(Ok(url)) => Ok(url),
+        Ok(Ok(shown)) => Ok(shown),
         Ok(Err(tail)) => Err(Said::with_raw(
             copy_core::copy_text("beLogin.start.exited", &[]),
             &tail,
@@ -202,7 +206,116 @@ pub fn start(a: &SignInAsk, on_end: OnEnd) -> Result<Started, Said> {
     };
     // 有没有链接只看它说过的（读线程收到链接时已把它记进作业）：链接给了、它在这条线程醒来之前就退了 ⇒ 照样回链接，
     //   结局由「结束了」回调报，两边说的是同一件事（不看醒来时作业还在不在，不比谁先醒）。
-    Ok(Started { job, url: got? })
+    let (url, code) = got?;
+    Ok(Started { job, url, code })
+}
+
+/// 「起 {program} 登录失败 · {why}」那一句。
+fn start_failed(f: &SignInFace, why: &str) -> String {
+    copy_core::copy_text(
+        "beLogin.start.failed",
+        &[("program", f.program), ("why", why)],
+    )
+}
+
+/// 那一家的一条登录子命令（登录 · 退出 · 状态都从这里起）：程序照 `path`（`None` ⇒ 起会话那个 shell 的）找，
+/// 号的配置目录交 `dir_env`（账号 0 ⇒ 摘掉），摘掉 `env_remove`。
+fn child_of(
+    f: &SignInFace,
+    args: &[&str],
+    then: &[String],
+    dir: Option<&str>,
+    cwd: Option<&std::path::Path>,
+    path: Option<&str>,
+) -> Result<Child, Said> {
+    let at = crate::platform::shell::agent_launch(f.program, path)
+        .map_err(|why| Said::from(start_failed(f, &why)))?;
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "在 app 里登录 · 退出 · 问状态：起那一家官方登录子命令（适配层登记的那一形，argv 不过 shell，stdin 只写人粘回来的码）；令牌由官方客户端写进那个号自己的配置目录，后端不写"
+    )]
+    let mut child = Child::new(at.program).args(at.lead).args(args).args(then);
+    child = match dir {
+        Some(d) => child.env(f.dir_env, d),
+        None => child.env_remove(f.dir_env),
+    };
+    for k in f.env_remove {
+        child = child.env_remove(k);
+    }
+    if let Some(d) = cwd {
+        child = child.current_dir(d);
+    }
+    Ok(child)
+}
+
+/// 一个号要退出 · 问状态时交的：号的配置目录（账号 0 ⇒ `None`）· 工作目录 · `PATH`（判据交；生产 ⇒ `None`）。
+pub struct OnceAsk {
+    pub face: SignInFace,
+    pub dir: Option<String>,
+    pub cwd: Option<std::path::PathBuf>,
+    pub path: Option<String>,
+}
+
+/// 跑一次那一条（[`ONCE_WITHIN`] 为限）⇒ 退出码 ＋ 它说的几行（stdout 在前）。
+fn run_once(a: &OnceAsk, args: &[&str]) -> Result<(Option<i32>, Vec<String>), Said> {
+    let f = a.face;
+    let out = child_of(
+        &f,
+        args,
+        &[],
+        a.dir.as_deref(),
+        a.cwd.as_deref(),
+        a.path.as_deref(),
+    )?
+    .run(ONCE_WITHIN)
+    .map_err(|e| e.into_cmd_said("failed", |why| start_failed(&f, why)).1)?;
+    let lines = [&out.stdout, &out.stderr]
+        .iter()
+        .flat_map(|b| {
+            String::from_utf8_lossy(b)
+                .lines()
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    Ok((out.status.code(), lines))
+}
+
+/// 退出一个号的登录：跑那一家声明的那一条（[`SignInFace::sign_out`]），退 0 ⇒ 成。没声明 ⇒ `Ok(false)`（帧面答「不支持」）；
+/// 起不来 · 退非 0 ⇒ `Err`（那一句 ＋ 它最后说的几行）。令牌由那一家自己删，核心不碰。
+pub fn sign_out(a: &OnceAsk) -> Result<bool, Said> {
+    let Some(args) = a.face.sign_out else {
+        return Ok(false);
+    };
+    let (code, lines) = run_once(a, args)?;
+    if code == Some(0) {
+        return Ok(true);
+    }
+    Err(Said::with_raw(
+        copy_core::copy_text("beLogin.out.failed", &[]),
+        &tail_of(&lines),
+    ))
+}
+
+/// 问一个号登没登：跑那一家声明的那一条（[`SignInFace::status`]），照它的读法读。没声明 ⇒ `Ok(None)`（帧面答「不支持」）；
+/// 起不来 · 读不出 ⇒ `Err`（那一句 ＋ 它最后说的几行）。
+pub fn status(a: &OnceAsk) -> Result<Option<bool>, Said> {
+    let Some(s) = a.face.status else {
+        return Ok(None);
+    };
+    let (code, lines) = run_once(a, s.args)?;
+    match (s.read)(code, &lines) {
+        Some(b) => Ok(Some(b)),
+        None => Err(Said::with_raw(
+            copy_core::copy_text("beLogin.status.unreadable", &[]),
+            &tail_of(&lines),
+        )),
+    }
+}
+
+/// 原话里带的最后 [`TAIL_LINES`] 行。
+fn tail_of(lines: &[String]) -> String {
+    lines[lines.len().saturating_sub(TAIL_LINES)..].join("\n")
 }
 
 /// 一份作业的读线程：认链接（交给 `start`）· 认「码不对」（交给正在等的 `finish`）· 它退了 ⇒ 收作业、交结局。
@@ -210,11 +323,15 @@ fn listen(
     job: &str,
     f: SignInFace,
     heard: &mpsc::Receiver<Heard>,
-    link_tx: mpsc::Sender<Result<String, String>>,
+    link_tx: mpsc::Sender<Result<Shown, String>>,
     on_end: OnEnd,
 ) {
     let mut tail: std::collections::VecDeque<String> = std::collections::VecDeque::new();
+    // 链接（与显示码那一形的码）交给 `start` 了没有。
     let mut linked = false;
+    let mut link: Option<String> = None;
+    // 显示码那一形：交链接之前它说过的几行（读码用；够不着码的长输出只留最后 [`SHOWN_LINES`] 行）。
+    let mut shown: Vec<String> = Vec::new();
     let push = |tail: &mut std::collections::VecDeque<String>, l: &str| {
         if tail.len() == TAIL_LINES {
             tail.pop_front();
@@ -225,17 +342,39 @@ fn listen(
         match heard.recv() {
             Ok(Heard::Out(l) | Heard::Err(l)) => {
                 if !linked {
-                    if let Some(url) = (f.link_in)(&l) {
-                        linked = true;
-                        if let Some(j) = jobs().get_mut(job) {
+                    let fresh = link.is_none();
+                    if fresh {
+                        link = (f.link_in)(&l);
+                        if let (Some(url), Some(j)) = (&link, jobs().get_mut(job)) {
                             j.url = url.clone();
                         }
+                    }
+                    let shown_code = match f.paste {
+                        PasteShape::ShowCode(read) => {
+                            if shown.len() == SHOWN_LINES {
+                                shown.remove(0);
+                            }
+                            shown.push(l.clone());
+                            Some(read(&shown))
+                        }
+                        _ => None,
+                    };
+                    // 链接有了；显示码那一形还要等到码。
+                    let ready = match (&link, &shown_code) {
+                        (Some(url), None) => Some((url.clone(), None)),
+                        (Some(url), Some(Some(c))) => Some((url.clone(), Some(c.clone()))),
+                        _ => None,
+                    };
+                    if let Some(got) = ready {
+                        linked = true;
                         // `login-start` 等链接已过期限放手 ⇒ 这条链接没人收（作业已收）
-                        link_tx.send(Ok(url)).discard(Why::PeerGone);
+                        link_tx.send(Ok(got)).discard(Why::PeerGone);
+                    }
+                    if fresh && link.is_some() {
                         continue;
                     }
                 }
-                if (f.said_bad_paste)(&l) {
+                if f.paste.pasted().is_some_and(|p| (p.said_bad)(&l)) {
                     if let Some(w) = jobs().get_mut(job).and_then(|j| j.waiter.take()) {
                         // `login-finish` 等结局已过期限、回了「暂无答复」⇒ 没人收（作业还在，可再粘）
                         w.send(Waited::BadPaste).discard(Why::PeerGone);
@@ -291,7 +430,13 @@ pub fn finish(job: &str, pasted: &str) -> Result<String, FinishFail> {
         let mut t = jobs();
         let j = t.get_mut(job).ok_or(FinishFail::NoJob)?;
         let pasted = pasted.trim();
-        if !(j.face.paste_fits)(pasted, &j.url) {
+        // 不粘回的那两形没有判法（`PasteShape::pasted` 为 `None`）⇒ 不往它 stdin 里写任何东西。
+        if !j
+            .face
+            .paste
+            .pasted()
+            .is_some_and(|p| (p.fits)(pasted, &j.url))
+        {
             return Err(FinishFail::BadPaste);
         }
         j.secrets.extend(secret_pieces(pasted));
@@ -347,10 +492,27 @@ pub fn cancel(job: &str) -> bool {
     j.is_some()
 }
 
-/// 一条连接发起的全部作业：连接断了就收（[`Desk`] 的 `Drop`）。
+/// 撤过的连接（最近 [`WITHDRAWN_KEEP`] 条）：撤了之后才来登记的作业当场收（[`start`]）。锁的次序：先作业表、后它。
+fn withdrawn() -> std::sync::MutexGuard<'static, std::collections::VecDeque<u64>> {
+    static WITHDRAWN_CONNS: Mutex<std::collections::VecDeque<u64>> =
+        Mutex::new(std::collections::VecDeque::new());
+    WITHDRAWN_CONNS.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+/// 撤过的连接记几条（再早撤的那条连接上还有作业起来 ⇒ 认不出，照常登记）。
+const WITHDRAWN_KEEP: usize = 256;
+
+/// 一条连接发起的全部作业：连接断了就收（[`Desk`] 的 `Drop`）；记下它撤过。
 fn withdraw_conn(conn: u64) {
     let gone: Vec<Job> = {
         let mut t = jobs();
+        {
+            let mut w = withdrawn();
+            w.push_back(conn);
+            while w.len() > WITHDRAWN_KEEP {
+                w.pop_front();
+            }
+        }
         let ids: Vec<String> = t
             .iter()
             .filter(|(_, j)| j.conn == conn)

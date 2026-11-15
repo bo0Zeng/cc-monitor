@@ -106,7 +106,7 @@ export class TabSessionActions {
     if (gone.length === 0) return;
     toast(
       copyText("sessionState.pinGone.title"),
-      copyText("sessionState.pinGone.body", { n: gone.length, names: gone.map((t) => t.title).join(", ") }),
+      copyText("sessionState.pinGone.body", { n: gone.length, names: gone.map((t) => t.title).join(copyText("kit.text.sep")) }),
       { level: "info", onClick: () => gone.forEach((t) => unpin(t.sessionId)) },
     );
   }

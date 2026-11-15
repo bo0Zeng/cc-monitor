@@ -123,7 +123,7 @@ fn no_home_and_no_override_is_still_none() {
 
 /// 🔴 **那个出口真的盖住了 monitor 这一侧的全部** —— monitor 经 `config.rs` 转交共享那一份规则、只读一处 env。
 ///
-/// ⚠ 判源码是**代理**（同族先例 `transfer_tests::the_real_adapters_speak_only_through_the_channel`）。
+/// ⚠ 判源码是**代理**。
 /// 「没人自己拼那条路径」那一半挪进 [`the_data_dir_is_spelled_in_one_place`]（全 `src/` 生产段，不只 monitor 这棵树）。
 #[test]
 fn nothing_else_in_the_monitor_tree_builds_that_path_itself() {

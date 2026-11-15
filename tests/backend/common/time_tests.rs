@@ -12,6 +12,8 @@
 //! | T9 | 历史页回包出口那一遍：行添 `atText` · `sectionText` · `spanText`，按各自那一刻的偏移排；没有时刻的格不添 | 真值 |
 //! | T10 | 文件的修改时间（本地钟秒数）：列里那一格（今天 `HH:MM` · 今年 `MM-DD` · 往年带年）· 完整那一格 `YYYY-MM-DD HH:MM:SS` | 真值 |
 //! | T11 | 看的那一台的时区（[`Tz`]）：IANA 名认得 ⇒ 那个时区；认不得 · 不是串 · 缺 ⇒ UTC；夏令时按**那一刻**算（同一个时区冬夏两个偏移） | 真值 ＋ 反空真 |
+//! | T14 | 「明天」：照看的那一台的本地日期直接比（跨年 · 换时区同一刻不同天）；钟面照那一台的时区 | 真值 |
+//! | T15 | 窗口时长 ⇒ 窗口键：整天写天 · 整点写小时 · 否则写分钟 | 真值 |
 //! | T4 | 换算常量 `719_468` 在后端生产段只住本模块 | 文本，零命中 ＋ 正控 |
 
 use super::*;
@@ -391,4 +393,39 @@ fn t11b_the_name_handed_to_another_machine_is_always_said() {
             .viewer_zone()
             .unwrap_or_else(|| "UTC".to_string())
     );
+}
+
+/// T14 ★「明天」照看的那一台的本地日期直接比（不靠拨钟看字）：东八区 23:30 看次日 00:10 是明天、当天 23:50 是今天；
+/// 同一刻按 UTC 看（那时 UTC 还是当天下午）就是今天；跨年同样只看日期。钟面照那一台的时区写。
+#[test]
+fn t14_tomorrow_is_the_next_local_date() {
+    // 2026-12-31 23:30 东八区 ＝ 15:30 UTC。
+    let now = u64::try_from(lt(2026, 12, 31, 23, 30) - 8 * 3_600).unwrap();
+    let at = |mins: u64| now + mins * 60;
+    let east = TextClock::new(now, &sh());
+    assert_eq!(east.days_from_today(at(20)), 0, "23:50 当天");
+    assert_eq!(east.days_from_today(at(40)), 1, "次日 00:10 是明天（跨年）");
+    assert_eq!(east.days_from_today(at(40 + 24 * 60)), 2);
+    assert_eq!(east.days_from_today(now - 24 * 3_600), -1);
+    assert_eq!(east.face(at(40)).0, "00:10");
+    let utc = TextClock::new(now, &Tz::default());
+    assert_eq!(utc.days_from_today(at(40)), 0, "同一刻 UTC 那边还是当天");
+    assert_eq!(utc.face(at(40)).0, "16:10");
+}
+
+/// T15 ★ 窗口时长写成窗口键（唯一写法）：整天写天 · 整点写小时 · 否则写分钟；不是正数 ⇒ 没有键。
+#[test]
+fn t15_a_window_length_is_keyed_by_days_hours_or_minutes() {
+    for (m, want) in [
+        (300, "5h"),
+        (10_080, "7d"),
+        (1_440, "1d"),
+        (60, "1h"),
+        (90, "90m"),
+        (43_200, "30d"),
+    ] {
+        assert_eq!(span_key(m).as_deref(), Some(want), "{m}");
+    }
+    assert_eq!(span_key(0), None, "说不出长短的不成键");
+    assert_eq!(span_key(-5), None);
 }

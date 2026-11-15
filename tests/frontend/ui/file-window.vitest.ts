@@ -24,10 +24,11 @@ const plainToast = vi.fn();
 vi.mock("../../../src/frontend/ui/kit/toast", () => ({ failToast: (...a: unknown[]) => toastMock(...a), toast: (...a: unknown[]) => plainToast(...a) }));
 
 import { openFileWindow, fileWindowTheme } from "../../../src/frontend/ui/file-window";
+import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 import { THEME_TOKENS } from "../../../src/frontend/ui/generated/filewin-theme-tokens";
 import { TabSessionActions } from "../../../src/frontend/ui/tab-session-actions";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
-import { productionTsFiles } from "../../test-support/production-sources";
+import { productionTsFiles, sourceFiles } from "../../test-support/production-sources";
 import { stripComments } from "../../test-support/strip-comments";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 
@@ -86,6 +87,16 @@ describe("F7b 开口：三种落点 → open_file_window 的实参", () => {
     expect(opts.fact).toBe(CFG);
   });
 
+  it("本机也开文件窗口：本机与远端同一条路（open_file_window 寻址本机），不交系统文件管理器", async () => {
+    invokeMock.mockResolvedValue(1);
+    await openFileWindow(LOCAL, { revealFile: "/home/u/a.md" });
+    await openFileWindow(LOCAL, { dir: "/home/u" });
+    expect(invokeMock.mock.calls).toEqual([
+      ["open_file_window", { origin: LOCAL, path: "", revealFile: "/home/u/a.md", theme: fileWindowTheme() }],
+      ["open_file_window", { origin: LOCAL, path: "/home/u", revealFile: null, theme: fileWindowTheme() }],
+    ]);
+  });
+
   it("★ 远端会话「打开工作目录」⇒ 只凭那台名字开文件窗口落在那个目录，不读机器表、不出「远端目录无法在本机打开」（A2-17-7-5）", async () => {
     invokeMock.mockResolvedValue(1);
     plainToast.mockReset();
@@ -96,13 +107,13 @@ describe("F7b 开口：三种落点 → open_file_window 的实参", () => {
   });
 });
 
-/** 生产树里（剥掉注释）每一处 `openFileWindow(…)` · `openOnMachine(…)`（本机 / 远端各走各的那一路）的 (文件, 落点)。 */
+/** 生产树里（剥掉注释）每一处 `openFileWindow(…)` 的 (文件, 落点)。 */
 function entryCensus(): string[] {
   const out: string[] = [];
   for (const { file, text } of productionTsFiles("src")) {
     if (file === "src/frontend/ui/file-window.ts") continue; // 开口自己（声明处）不是入口
     const code = stripComments(text, "ts");
-    for (const m of code.matchAll(/\b(?:openFileWindow|openOnMachine)\(([^)]*)\)/g)) {
+    for (const m of code.matchAll(/\bopenFileWindow\(([^)]*)\)/g)) {
       const arg = m[1];
       const kind = /\brevealFile\b/.test(arg) ? "定位文件" : /\bdir\b/.test(arg) ? copyText("gridMonitor.fact.dir") : "home";
       out.push(`${file} · ${kind}`);
@@ -116,22 +127,31 @@ function entryCensus(): string[] {
  */
 const ENTRIES: readonly string[] = [
   "src/frontend/ui/cards/index.ts · 定位文件", // 会话工具卡上的文件链接（定位到文件，F54）
-  `src/frontend/ui/settings/ext-section.ts · ${copyText("gridMonitor.fact.dir")}`, // 扩展页抽屉：远端那台上一个 skill 的目录「在文件窗口里打开」
-  "src/frontend/ui/settings/data-page.ts · 定位文件", // 「待办」点开一件：远端那台上要改的那份文件「打开这份文件」
-  `src/frontend/ui/settings/accounts-section.ts · ${copyText("gridMonitor.fact.dir")}`, // 账号页：远端那台一个号的账号目录「在文件窗口里打开」
+  `src/frontend/ui/settings/ext-section.ts · ${copyText("gridMonitor.fact.dir")}`, // 扩展页抽屉：那台（本机远端一样）上一个 skill 的目录「在文件窗口里打开」
+  "src/frontend/ui/settings/data-page.ts · 定位文件", // 「待办」点开一件：那台上要改的那份文件「打开这份文件」
+  "src/frontend/ui/settings/data-page.ts · 定位文件", // 「cc-monitor 的文件」远端那台那几份「在文件窗口里打开」
+  `src/frontend/ui/settings/accounts-section.ts · ${copyText("gridMonitor.fact.dir")}`, // 账号页：那台（本机远端一样）一个号的账号目录「在文件窗口里打开」（详情那一颗）
+  `src/frontend/ui/settings/accounts-section.ts · ${copyText("gridMonitor.fact.dir")}`, // 同上，那一行「⋯」菜单里那一项
+  `src/frontend/ui/settings/diagnostics-section.ts · ${copyText("gridMonitor.fact.dir")}`, // 诊断页：本机日志目录「在文件窗口里打开」
   "src/frontend/ui/settings/machine-card.ts · home", // 机器页「文件」按钮
-  "src/frontend/ui/rot-mount.ts · 定位文件", // 轮换提示「看代码」· 旧格式那几份：那份策略文件（openOnMachine：本机在文件夹中显示、远端文件窗口）
+  "src/frontend/ui/rot-mount.ts · 定位文件", // 轮换提示「看代码」· 旧格式那几份：那份策略文件（本机远端都开文件窗口）
   // 顶栏远端文件那两处随选主机小单从 `src/frontend/ui/main.ts` 搬进 `src/frontend/ui/sftp-host-picker.ts`。
   "src/frontend/ui/sftp-host-picker.ts · home", // 顶栏 / 命令面板：只有一台远端时直开
   "src/frontend/ui/sftp-host-picker.ts · home", // 顶栏 / 命令面板：多台时选单里点一台
   // 住址随会话动作从 `src/frontend/ui/tabs.ts` 搬到 `src/frontend/ui/tab-session-actions.ts`（openTabCwd 逐字随行）。
   `src/frontend/ui/tab-session-actions.ts · ${copyText("gridMonitor.fact.dir")}`, // 远端会话「打开工作目录」（直接进目录，F78）
-  `src/frontend/ui/machine-commands.ts · ${copyText("gridMonitor.fact.dir")}`, // 命令面板打中一台 ›「文件」：落在那台主目录（`dir` 空）
+  "src/frontend/ui/machine-commands.ts · home", // 命令面板打中一台 ›「文件」：落在那台主目录
 ];
 
 describe("F7b 入口人群", () => {
   it("生产树里调开口的 (文件, 落点) == 入口全表（两向）", () => {
     expect(entryCensus()).toEqual([...ENTRIES].sort());
+  });
+
+  it("开口只有一个名字：转调的那一层（旧名）全仓零命中，各页直接调 openFileWindow", () => {
+    const gone = ["open", "On", "Machine"].join(""); // 拼出来，免得这一行自己命中
+    const all = [...sourceFiles("src", { ext: ".ts", tests: true }), ...sourceFiles("tests", { ext: ".ts", tests: true })];
+    expect(all.filter(({ text }) => text.includes(gone)).map(({ file }) => file)).toEqual([]);
   });
 
   it("`open_file_window` 在包装层之外恰好一处 —— 就是那个开口", () => {

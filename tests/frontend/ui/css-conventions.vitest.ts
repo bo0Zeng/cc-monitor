@@ -302,6 +302,10 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
     "单个页 `single`（`s.nsPage`，同上）—— 一组页露着时收起",
   "src/frontend/ui/new-session.ts::agentRow.root":
     "「agent」那一行 `agentRow.root`（`s.nsRow`）—— 建时收起（那台能起的多于一家才出）",
+  "src/frontend/ui/new-session.ts::modelRow.root":
+    "「模型」那一行 `modelRow.root`（`s.nsRow`）—— 建时收起（那一家列了模型才出）",
+  "src/frontend/ui/new-session.ts::effortRow.root":
+    "「推理档」那一行 `effortRow.root`（`s.nsRow`）—— 建时收起（选的模型分档才出）",
   "src/frontend/ui/new-session.ts::rotRow.root":
     "「轮换」那一行 `rotRow.root`（`s.nsRow`）—— 建时收起（读得到那台的策略目录才出）",
   "src/frontend/ui/new-session.ts::note":

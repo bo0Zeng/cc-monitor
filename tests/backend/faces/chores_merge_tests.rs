@@ -9,7 +9,7 @@ use serde_json::json;
 
 fn report(badge: usize) -> DataReport {
     serde_json::from_value(json!({
-        "home": "/h", "changedFiles": [], "todo": [], "tmux": true,
+        "changedFiles": [], "todo": [], "tmux": true,
         "counts": {"badge": badge, "open": badge, "must": badge, "decide": 0, "install": 0, "optional": 0, "done": 1},
         "rank": 0, "own": [],
     }))
@@ -63,4 +63,43 @@ async fn the_local_backend_asks_each_machine_its_data_report_and_adds_the_counts
             "本机那几条事实不交给别的台"
         );
     }
+}
+
+#[tokio::test]
+async fn a_machine_in_the_table_that_is_not_connected_is_listed_unasked_with_its_offline_line() {
+    use crate::dial::remote_ask::test_peers::{add, host};
+    let peers = Peers::new(&[("devbox", serde_json::to_string(&report(2)).unwrap())]);
+    let t = Peers::table(&["devbox"]);
+    let mut off = host("pi");
+    off.connect = false;
+    add(&t, off);
+    let got = chores_merge_with(
+        &t.asked(),
+        std::future::ready(Ok(report(3))),
+        &Default::default(),
+        until(9_000),
+        &t,
+        &peers,
+    )
+    .await
+    .expect("合得出");
+    let v = serde_json::to_value(&got).unwrap();
+    let rows = v["machines"].as_array().unwrap();
+    let origins: Vec<&str> = rows.iter().map(|r| r["origin"].as_str().unwrap()).collect();
+    assert_eq!(
+        origins,
+        [cmd_wire::LOCAL, "devbox", "pi"],
+        "机器表里每一台都在：{v}"
+    );
+    assert!(rows[2].get("report").is_none(), "{v}");
+    assert_eq!(
+        rows[2]["said"],
+        json!(copy_core::offline("pi")),
+        "没连的那台带离线那一句"
+    );
+    assert_eq!(v["total"]["badge"], json!(5), "没连的那台件数不计");
+    assert!(
+        peers.asked().iter().all(|(c, _)| !c.contains("pi")),
+        "没连的那台不去问"
+    );
 }

@@ -61,7 +61,7 @@ pub const KEYS: &[(&str, &str)] = &[
 
 /// 送不了 / 结束不了的原因：线上形住 `cmd-wire::session`（手机端也吃这两格）。
 pub use cmd_wire::session::Refused;
-use cmd_wire::session::{HolderWho, InputHolder, SentAct, TermInput};
+use cmd_wire::session::{InputHolder, SentAct, TermInput};
 
 /// 这台已经没有它的终端（名单里没有 · 送的那一刻没了 · 窗格里只剩 shell）：输入队投递那一下恢复再送，换模型 / 权限档记下等恢复，同这一判。
 pub fn terminal_gone(why: Option<Refused>) -> bool {
@@ -105,7 +105,7 @@ pub(crate) fn input_of_row(input: &crate::host::Input, requester: Option<&str>) 
     match input {
         Input::Shared => TermInput::Shared,
         Input::Held(by) => {
-            use crate::host::managed::{hold, wire::WhoKind};
+            use crate::host::managed::{hold, hold::HolderWho, wire::WhoKind};
             let (who, mine) = match by {
                 None => (HolderWho::None, false),
                 Some(HeldBy::Terminal) => (hold::who_of(WhoKind::Terminal, None), false),
@@ -117,7 +117,6 @@ pub(crate) fn input_of_row(input: &crate::host::Input, requester: Option<&str>) 
             };
             TermInput::Held {
                 holder: InputHolder {
-                    who,
                     mine,
                     said: hold::said_of(who, mine),
                 },
@@ -174,41 +173,81 @@ pub(crate) fn terminal_json(
         clients: clients
             .iter()
             .filter(|(id, _, _)| *id == row.id)
-            .map(|(_, since, last)| Attached {
+            .map(|(_, since, _)| Attached {
                 kind: "terminal-window".to_string(),
                 since: *since,
-                last_activity: *last,
             })
             .collect(),
         input: input_of_row(&row.input, requester),
         state,
-        last_activity: row.activity,
         // 抓屏不过身份门、恒可用 ⇒ 不在这里占一格（`can` 只放会随调用方 / 此刻变的能力）。
         can: TerminalCan { input, end },
     }
 }
 
-/// `terminals-list` 的成品构造器（纯）。
+/// 名单里的一个终端，后端自己用的那一份：线上那一行 ＋ 最近动静（秒；终端板排先后、写行尾时刻用，不上线）。
+#[derive(Debug, Clone)]
+pub struct TermRowed {
+    pub item: TerminalItem,
+    pub last_activity: u64,
+}
+
+/// 这台的终端名单，后端自己用的那一份（[`TermRowed`] 一个终端一条 · 有没有问全）。
+#[derive(Debug, Clone)]
+pub struct TermRows {
+    pub rows: Vec<TermRowed>,
+    pub complete: bool,
+}
+
+impl TermRows {
+    /// 线上那一份（`terminals-list` 的回包）：去掉不上线的格。
+    pub fn wire(self) -> TerminalsList {
+        TerminalsList {
+            terminals: self.rows.into_iter().map(|r| r.item).collect(),
+            complete: self.complete,
+        }
+    }
+}
+
+/// 名单的成品构造器（纯，唯一一处）：每个终端一条（[`terminal_json`] ＋ 它的最近动静）。
+pub fn rows_reply(
+    rows: &[TermRow],
+    clients: &[(String, u64, u64)],
+    complete: bool,
+    requester: Option<&str>,
+) -> TermRows {
+    TermRows {
+        rows: rows
+            .iter()
+            .map(|r| TermRowed {
+                item: terminal_json(r, clients, requester),
+                last_activity: r.activity,
+            })
+            .collect(),
+        complete,
+    }
+}
+
+/// `terminals-list` 的成品构造器（纯）：[`rows_reply`] 的线上那一份。
 pub fn list_reply(
     rows: &[TermRow],
     clients: &[(String, u64, u64)],
     complete: bool,
     requester: Option<&str>,
 ) -> TerminalsList {
-    TerminalsList {
-        terminals: rows
-            .iter()
-            .map(|r| terminal_json(r, clients, requester))
-            .collect(),
-        complete,
-    }
+    rows_reply(rows, clients, complete, requester).wire()
 }
 
-/// `terminals-list` 的本体。`client`（自报的前端）决定每一行的 `mine` 与 `can`。
-pub fn list_on(on: On<'_>, req: &TerminalsListReq) -> Result<TerminalsList, Said> {
+/// 这台的终端名单（后端自己用的那一份）。`client`（自报的前端）决定每一行的 `mine` 与 `can`。
+pub fn listed_on(on: On<'_>, req: &TerminalsListReq) -> Result<TermRows, Said> {
     let requester = gate::requester(req.client.as_deref())?;
     let (rows, clients, complete) = crate::host::list(on)?;
-    Ok(list_reply(&rows, &clients, complete, requester.as_deref()))
+    Ok(rows_reply(&rows, &clients, complete, requester.as_deref()))
+}
+
+/// `terminals-list` 的本体：[`listed_on`] 那一份的线上那一份。
+pub fn list_on(on: On<'_>, req: &TerminalsListReq) -> Result<TerminalsList, Said> {
+    listed_on(on, req).map(TermRows::wire)
 }
 
 /// 目标怎么指：恰好给一个（`terminal` 句柄 · `sid` 会话 ID）。
@@ -709,15 +748,16 @@ pub(crate) enum Input {
 }
 
 /// 送什么：`text`（＋ `enter`，缺省 `true`）与 `key` 恰给一个；键只认键表里的名字。
-pub(crate) fn input_of(req: &TerminalInputReq) -> Result<Input, Said> {
+/// `pastes` ＝ `text` 之前各单独粘一次的那几段（只有输入队投递那一道带，[`say_on`]；线上没有这一格）。
+pub(crate) fn input_of(req: &TerminalInputReq, pastes: &[String]) -> Result<Input, Said> {
     let bad = |m: &str| crate::wire::spec::fail("bad_args", crate::common::contract::malformed(m));
     match (&req.text, &req.key) {
         (Some(t), None) => {
             // 只带附件、没写字（输入队投递那一支）⇒ 正文可以是空的，粘的那几段照同一把尺子量。
-            for p in &req.pastes {
+            for p in pastes {
                 super::launch::check_input_text(p)?;
             }
-            if !(t.is_empty() && !req.pastes.is_empty()) {
+            if !(t.is_empty() && !pastes.is_empty()) {
                 super::launch::check_input_text(t)?;
             }
             Ok(Input::Text {
@@ -771,7 +811,7 @@ fn refused(why: Refused) -> Sent {
 /// 送不了的（不在名单 · 别的前端的 · 不归我们管 · 画面变了 · 已经没了）回 `result: "refused"` ＋ `why`，不是错；
 /// 形状不对才是错（`bad_target` · `bad_args`）。
 pub(crate) fn input_on(on: On<'_>, req: &TerminalInputReq) -> Result<Sent, Said> {
-    send_on(on, req, Via::Typed)
+    send_on(on, req, &[], Via::Typed)
 }
 
 /// 送字走哪一道。
@@ -796,8 +836,9 @@ impl Via {
 /// 往一条会话送进一句（输入队投递那一下的送字，`faces/session_send.rs`）：同 [`input_on`]，过了身份门再多一道 —— 挂着它的那个窗格此刻前台是不是 agent
 /// （名单那一刻的 `#{pane_current_command}`，同名单里「程序已退出」那一处：[`agent_in_front`]）。
 /// 不是（agent 退了，或前台换成了别的程序）⇒ 一个字都不送，回「已经没了」（`ended`）：话是说给 agent 的，送进 shell 就成了一行命令。
-pub(crate) fn say_on(on: On<'_>, req: &TerminalInputReq) -> Result<Sent, Said> {
-    send_on(on, req, Via::Queued)
+/// `pastes` ＝ 正文之前各单独粘一次的那几段（带附件那一句的图片绝对路径，由这台按附件编号写好；不上线）。
+pub(crate) fn say_on(on: On<'_>, req: &TerminalInputReq, pastes: &[String]) -> Result<Sent, Said> {
+    send_on(on, req, pastes, Via::Queued)
 }
 
 /// 这个窗格前台是不是某一家 agent 的进程（[`crate::agents::is_agent_process`]，与 `sessions-where` 认窗格同一个判法）。
@@ -856,16 +897,16 @@ pub fn say_target_on(
     )
 }
 
-/// [`input_on`] · [`say_on`] 的本体：`via` 答走哪一道（[`Via`]）。
+/// [`input_on`] · [`say_on`] 的本体：`via` 答走哪一道（[`Via`]），`pastes` 见 [`say_on`]。
 #[expect(
     clippy::disallowed_methods,
     reason = "往名单里那个终端送字送键（经 `control/launch.rs` 的 `send-keys` / 粘贴）、送完不成再探一次还在不在：只改 tmux server 的运行期状态、不写文件，送之前过身份门"
 )]
-fn send_on(on: On<'_>, req: &TerminalInputReq, via: Via) -> Result<Sent, Said> {
+fn send_on(on: On<'_>, req: &TerminalInputReq, pastes: &[String], via: Via) -> Result<Sent, Said> {
     let target = target(req.terminal.as_deref(), req.sid.as_deref())?;
-    let input = input_of(req)?;
+    let input = input_of(req, pastes)?;
     if let Some(row) = managed_row(&target)? {
-        return send_managed(&row, req, &input, via);
+        return send_managed(&row, req, pastes, &input, via);
     }
     let seen = req.seen_screen.clone();
     let at = match admit_on(on, &target, req.client.as_deref(), |r| via.takes(r))? {
@@ -884,14 +925,9 @@ fn send_on(on: On<'_>, req: &TerminalInputReq, via: Via) -> Result<Sent, Said> {
     }
     let tmux = |a: &[&str]| super::launch::ran(crate::host::tmux::child(on.socket), a);
     let sent = match &input {
-        Input::Text { text, enter } => super::launch::type_literal(
-            &at,
-            &req.pastes,
-            text,
-            *enter,
-            &tmux,
-            &super::launch::settle,
-        )?,
+        Input::Text { text, enter } => {
+            super::launch::type_literal(&at, pastes, text, *enter, &tmux, &super::launch::settle)?
+        }
         Input::Key(k) => super::launch::press_key(&at, k, &tmux)?,
     };
     if sent.ok {
@@ -1057,7 +1093,7 @@ pub(crate) fn interrupt_on(on: On<'_>, sid: &str, client: Option<&str>) -> Resul
         client: client.map(str::to_string),
         ..TerminalInputReq::default()
     };
-    send_on(on, &req, Via::Queued)
+    send_on(on, &req, &[], Via::Queued)
 }
 
 /// 后端替哪个前端持有：请求自报的那个；没报 ⇒ 桌面（手机恒自报 `mobile`）。
@@ -1127,6 +1163,7 @@ pub(crate) fn managed_bytes(input: &Input, pastes: &[String]) -> Vec<u8> {
 fn send_managed(
     row: &TermRow,
     req: &TerminalInputReq,
+    pastes: &[String],
     input: &Input,
     via: Via,
 ) -> Result<Sent, Said> {
@@ -1140,7 +1177,7 @@ fn send_managed(
         return Ok(refused(Refused::Ended));
     }
     if via == Via::Queued {
-        return Ok(say_managed(&row.id, input, &req.pastes));
+        return Ok(say_managed(&row.id, input, pastes));
     }
     let front = front_of(requester.as_deref());
     use crate::host::managed::hold;
@@ -1163,7 +1200,7 @@ fn send_managed(
             ));
         }
     }
-    match hold::send(&row.id, &managed_bytes(input, &req.pastes)) {
+    match hold::send(&row.id, &managed_bytes(input, pastes)) {
         Ok(true) => Ok(input_reply(SentResult::Delivered, None, None)),
         Ok(false) => Ok(refused(Refused::HeldElsewhere)),
         Err(_) => Ok(input_reply(SentResult::Unsure, None, None)),

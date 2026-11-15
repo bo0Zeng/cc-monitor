@@ -3,6 +3,8 @@ package com.ccmonitor.mobile.di
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import com.ccmonitor.mobile.cache.LocalCache
+import com.ccmonitor.mobile.core.data.db.CommonGroupName
+import com.ccmonitor.mobile.core.data.db.MachineNamer
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.dev.DevSeeder
 import com.ccmonitor.mobile.link.BackendFiles
@@ -12,6 +14,9 @@ import com.ccmonitor.mobile.link.PendingResend
 import com.ccmonitor.mobile.link.hostOutbox
 import com.ccmonitor.mobile.service.KeepAliveWork
 import com.ccmonitor.mobile.ssh.HostConnector
+import com.ccmonitor.mobile.ssh.machineName
+import com.ccmonitor.mobile.ssh.machineNames
+import com.ccmonitor.mobile.ssh.observeMachineNames
 import com.ccmonitor.mobile.ui.chat.ChatController
 import com.ccmonitor.mobile.ui.chat.ChatOpen
 import com.ccmonitor.mobile.ui.chat.ChatViewModel
@@ -31,6 +36,7 @@ import com.ccmonitor.mobile.ui.needs.NeedsSource
 import com.ccmonitor.mobile.ui.session.SessionTabManager
 import com.ccmonitor.mobile.ui.session.SessionViewModel
 import com.ccmonitor.mobile.ui.session.keys.KeysEditorViewModel
+import com.ccmonitor.mobile.ui.session.keys.commonGroupName
 import com.ccmonitor.mobile.ui.session.systemClipboard
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -44,6 +50,10 @@ import java.io.File
 /** :app 的 Koin 模块（ViewModel + dev seeder）。 */
 val appModule =
     module {
+        // 状态库 23→24 那一跳给跳板取名照核心那一份（core-data 只声明这一口）。
+        single { MachineNamer(::machineNames) }
+        // 新装种默认按键时「常用」那个组名照文案表（core-data 只收成品）。
+        single { CommonGroupName(::commonGroupName) }
         // 聊天 VM 是薄壳，真身是 `ChatController`（single）持有的 `ChatSession`：下行不挂在 viewModelScope 上，
         // 离开聊天屏不会断。`key` 决定是哪个对话，同一对话在不同屏、不同 VM 实例之间必须给同一个 key。
         // 参数按类型取一件 `ChatOpen`，不按位置取几个裸串。
@@ -99,7 +109,7 @@ val appModule =
             val cache = get<LocalCache>()
             HostBackends(
                 get(),
-                labelOf = { id -> hosts.get(id)?.label ?: id },
+                labelOf = { id -> hosts.machineName(id) },
                 keptOf = cache::batches,
                 saves = TreeFolder(androidContext().contentResolver),
                 backendSlots = files::slots,
@@ -117,11 +127,12 @@ val appModule =
                 CoroutineScope(SupervisorJob() + Dispatchers.Default),
             ) { chats.held }
         }
-        // 跨会话的需手动板（进程级）：对起着的每条常驻流各问一份，总览 · 聊天屏入口 · 聊天屏那一块都读它。
+        // 跨会话的需手动板（进程级）：对起着的每条常驻流问一圈（逐台问 ＋ 合在核心），总览 · 聊天屏入口 · 聊天屏那一块都读它。
         single {
             NeedsBoard(
-                get<HostBackends>().feeds.map { m -> m.mapValues { (_, f) -> NeedsSource(f, f.changed) } },
+                get<HostBackends>().feeds.map { m -> m.mapValues { (_, f) -> NeedsSource(f, f.changed, f::handle) } },
                 CoroutineScope(SupervisorJob() + Dispatchers.Default),
+                CoreResident::needsAll,
             )
         }
         // 会话屏：参数 ＝ `parametersOf(当前那台)`；机器表照库里的先后。
@@ -129,9 +140,9 @@ val appModule =
             val make = hostChats(get(), get())
             ChatsBoard(
                 params.get(0),
-                get<HostRepository>().observeAll().map { hs -> hs.map { HostName(it.id, it.label.ifBlank { it.id }) } },
+                get<HostRepository>().observeMachineNames(),
                 make,
-                CoreResident::searchMerge,
+                CoreResident::searchAll,
                 empty = get<HostBackends>().empty,
             )
         }

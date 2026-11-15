@@ -27,7 +27,6 @@ fn base_spec() -> CliSpec<'static> {
         container: Container::None,
         cwd: None,
         account: base(),
-        ccm_sid: None,
         model: None,
         launcher: "claude",
         default_launcher: "claude",
@@ -42,8 +41,7 @@ fn base_spec() -> CliSpec<'static> {
 /// 判据自带的无条件能力清单（不复用 `CLI_REQUIRED_CAPS`）。
 const STATIC_CAPS_EXPECTED: &[&str] = &["new", "resume", "cwd", "launcher"];
 /// 用到才要的那几条（容器 · 接回 · 维度各自声明的）。
-const CONDITIONAL_CAPS_EXPECTED: &[&str] =
-    &["tmux", "attach", "ccm-sid", "agent", "account", "model"];
+const CONDITIONAL_CAPS_EXPECTED: &[&str] = &["tmux", "attach", "agent", "account", "model"];
 
 fn caps_all() -> BTreeSet<String> {
     STATIC_CAPS_EXPECTED
@@ -95,15 +93,6 @@ fn unconditional_caps_are_always_required_and_conditional_ones_only_when_used() 
     assert_eq!(
         render_ccm_invocation(&attach, &caps_without("attach")),
         Err(Refusal::MissingCap("attach".into()))
-    );
-    let mut ident = base_spec();
-    ident.ccm_sid = Some("s1");
-    assert_eq!(
-        render_ccm_invocation(&ident, &caps_without("ccm-sid")),
-        Err(Refusal::DimensionNeedsCap {
-            dim: "identity".into(),
-            cap: "ccm-sid".into()
-        })
     );
 }
 
@@ -215,7 +204,6 @@ fn a_fully_loaded_invocation_emits_every_part_in_registry_order() {
         container: Container::Tmux { name: "cc-s1" },
         cwd: Some("/w d"),
         account: picked("z"),
-        ccm_sid: Some("s1"),
         model: Some("opus"),
         launcher: "ccr code",
         default_launcher: "claude",
@@ -227,12 +215,52 @@ fn a_fully_loaded_invocation_emits_every_part_in_registry_order() {
     };
     assert_eq!(
         render(&spec).unwrap(),
-        "ccm --resume s1 --model opus --verbose -- --ccm-tmux=cc-s1 --ccm-sid=s1 --ccm-agent claude --account z \
+        "ccm --resume s1 --model opus --verbose -- --ccm-tmux=cc-s1 --ccm-agent claude --account z \
              --cwd '/w d' --launcher 'ccr code'".to_string()
     );
 }
 
-/// 拼进命令之前每一格各过各的那一条：sid · 身份标记 · 模型 · 账号名 · 账号目录 · 身份 token · 会话名 · cwd · 透传参数 · 接回目标。
+/// ★ 模型那一维照那一家的 `model_args` 出（不认哪一家：注册表里由我们起的每一家都过一遍）：argv 里模型参数恰出现一次、
+/// 恰是那一家给的那几个；那一家起会话选不了模型 ⇒ 整条拒（说不出那一维），不渲一条丢了模型的命令。
+#[test]
+fn the_model_dimension_speaks_each_agents_own_model_args_exactly_once() {
+    let kinds = crate::agents::launchable_kinds();
+    assert!(!kinds.is_empty());
+    for kind in kinds {
+        let (_, face) = crate::agents::pick_kind(Some(kind)).unwrap();
+        let spec = CliSpec {
+            agent: kind,
+            action: Action::Resume { sid: "s1" },
+            model: Some("m1"),
+            launcher: face.default_launcher,
+            default_launcher: face.default_launcher,
+            ..base_spec()
+        };
+        let got = ccm_argv(&spec, &caps_all());
+        let Some(args) = face.model_args else {
+            assert_eq!(
+                got,
+                Err(Refusal::DimensionCannotSpeak("model".into())),
+                "{kind}"
+            );
+            continue;
+        };
+        let want = args("m1", None);
+        let argv = got.unwrap_or_else(|r| panic!("{kind}: {r:?}"));
+        let hits = argv
+            .windows(want.len())
+            .filter(|w| *w == want.as_slice())
+            .count();
+        assert_eq!(hits, 1, "{kind}: {argv:?} 里 {want:?} 不是恰一次");
+        assert_eq!(
+            argv.iter().filter(|a| *a == "m1").count(),
+            1,
+            "{kind}: 模型出了不止一遍"
+        );
+    }
+}
+
+/// 拼进命令之前每一格各过各的那一条：sid · 模型 · 账号名 · 账号目录 · 身份 token · 会话名 · cwd · 透传参数 · 接回目标。
 #[test]
 fn every_value_is_judged_before_it_becomes_a_ccm_argument() {
     let cases: Vec<(CliSpec, &str)> = vec![
@@ -242,13 +270,6 @@ fn every_value_is_judged_before_it_becomes_a_ccm_argument() {
                 ..base_spec()
             },
             "IdentifierRefused { slot: Sid",
-        ),
-        (
-            CliSpec {
-                ccm_sid: Some("a b"),
-                ..base_spec()
-            },
-            "IdentifierRefused { slot: CcmSid",
         ),
         (
             CliSpec {
@@ -310,19 +331,6 @@ fn every_value_is_judged_before_it_becomes_a_ccm_argument() {
     }
 }
 
-/// argv 的 quote：允许集里的字符裸写，其余（含空串）包单引号。
-#[test]
-fn argv_leaves_the_allowed_characters_bare_and_quotes_the_rest() {
-    const ARGV_BARE_CHARS: &str = "_@%+=:,./-";
-    for c in ARGV_BARE_CHARS.chars() {
-        let t = format!("a{c}b");
-        assert_eq!(argv(&t), t, "{c:?} 被引上了");
-    }
-    for t in ["", "a b", "a'b", "a$b", "文"] {
-        assert_eq!(argv(t), shell_quote_core::posix_quote(t), "{t:?}");
-    }
-}
-
 /// 按会话的那一家渲：resume 用那一家的写法（Codex 是子命令 `resume <sid>`），`--ccm-agent` 恒显式（Claude 也写）。
 /// 旧形（不说是哪一家、一律 `--resume`）在这里不可能再渲出来。
 #[test]
@@ -361,37 +369,39 @@ fn resume_is_written_the_way_that_agent_resumes_and_the_agent_is_always_said() {
     }
 }
 
-/// 没有账号这一维的那一家（Codex）：具名账号 ⇒ 拒、明说；`--base` / 继承照常渲。Claude 选号照旧。
+/// 具名账号照「这一家有没有账号这一维」认，不写死哪一家：声明了账号面的每一家 ⇒ 那一行带 `--account <名>`；
+/// 没声明的 ⇒ 拒、明说。继承（没说）每一家都照常渲、不带号。
 #[test]
-fn an_agent_without_accounts_refuses_a_named_account_and_says_so() {
-    let mut s = base_spec();
-    s.agent = "codex";
-    s.action = Action::Resume { sid: "s1" };
-    {
-        let named = picked("z");
-        s.account = named;
+fn a_named_account_follows_whether_that_agent_has_accounts() {
+    let mut with_accounts = 0;
+    for kind in crate::agents::REGISTRY.iter().map(|a| a.kind) {
+        let mut s = base_spec();
+        s.agent = kind;
+        s.account = picked("z");
         let r = render(&s);
+        if crate::agents::account_env_of(kind).is_some() {
+            with_accounts += 1;
+            assert_eq!(
+                r,
+                Ok(format!("ccm -- new --ccm-agent {kind} --account z")),
+                "{kind}"
+            );
+        } else {
+            assert!(
+                matches!(r, Err(Refusal::AgentNoAccounts { .. })),
+                "{kind} 没有账号面，具名号该被拒：{r:?}"
+            );
+        }
+        s.account = inherit();
         assert_eq!(
-            r,
-            Err(Refusal::AgentNoAccounts {
-                agent: "Codex".into()
-            })
-        );
-        assert_eq!(
-            r.unwrap_err().reason(),
-            copy_core::copy_text(
-                "rsCcmInvocation.refusal.agentNoAccounts",
-                &[("agent", "Codex")]
-            )
+            render(&s),
+            Ok(format!("ccm -- new --ccm-agent {kind}")),
+            "{kind}"
         );
     }
-    s.account = inherit();
-    assert_eq!(render(&s).unwrap(), "ccm resume s1 -- --ccm-agent codex");
-    s.agent = "claude";
-    s.account = picked("z");
-    assert_eq!(
-        render(&s).unwrap(),
-        "ccm --resume s1 -- --ccm-agent claude --account z"
+    assert!(
+        with_accounts > 0,
+        "注册表里一家声明了账号面的都没有 —— 上面带号那一半空转着绿"
     );
 }
 
@@ -440,7 +450,7 @@ fn every_rendered_ccm_line_is_accepted_by_the_ccm_argv() {
     );
 }
 
-/// Windows 本机：没有 tmux ⇒ 说了建进 tmux 也走直路（不带会话名、不打身份标记），那一行是 PowerShell 那一形；
+/// Windows 本机：没有 tmux ⇒ 说了建进 tmux 也走直路（不带会话名），那一行是 PowerShell 那一形；
 /// 接回只会是托管终端（A3-3-34）⇒ `ccm -- --attach <名>` 那一行，瘦客户端接得上。
 #[test]
 fn windows_launches_go_the_direct_way_and_attach_is_the_thin_client() {
@@ -450,7 +460,6 @@ fn windows_launches_go_the_direct_way_and_attach_is_the_thin_client() {
     let caps = caps_without_one(None);
     let mut l = launch("claude", Act::Resume("s1".into()));
     l.tmux = Some("cc-x".into());
-    l.ccm_sid = Some("s1".into());
     let line = line_of(&l, &Settled::Base, win, &caps, "C:/cc/ccm.exe").unwrap();
     assert!(
         line.starts_with("& 'C:/cc/ccm.exe' --resume s1 -- "),
@@ -528,4 +537,75 @@ fn an_alias_goes_right_after_the_entry_and_is_a_literal_in_powershell() {
     assert!(ps.contains(" '@dev' "), "{ps}");
     let sh = render_ccm_invocation(&spec, &caps_all()).unwrap();
     assert!(sh.starts_with("ccm @dev "), "{sh}");
+}
+
+/// 起会话那一行的渲染也只问注册表那一格：喂一行没声明号载体的替身 ⇒ 具名号拒、明说；同一行声明了 ⇒ 带 `--account <名>`。
+#[test]
+fn a_stand_in_without_an_account_carrier_refuses_a_named_account_in_the_line() {
+    let kind = crate::agents::fake::AGENT_KIND;
+    let with = crate::agents::fake::full_row(|| None);
+    let bare = crate::agents::Adapter {
+        account_env: None,
+        ..crate::agents::fake::full_row(|| None)
+    };
+    let mut s = base_spec();
+    s.agent = kind;
+    s.account = picked("z");
+    assert!(
+        matches!(
+            ccm_argv_among(std::slice::from_ref(&bare), &s, &caps_all()),
+            Err(Refusal::AgentNoAccounts { .. })
+        ),
+        "没有号载体的替身，具名号该被拒"
+    );
+    let line = ccm_argv_among(std::slice::from_ref(&with), &s, &caps_all()).expect("照收");
+    assert!(
+        line.windows(2).any(|w| w[0] == "--account" && w[1] == "z"),
+        "{line:?}"
+    );
+}
+
+/// 认是哪一家只问传进来的那份注册表：替身注册表里只有替身那一家时，说不出是哪一家（空 · 带空白 · 没有这一家）
+/// ⇒ 拒的那句列的是替身那一家，不是生产注册表里的几家。
+#[test]
+fn an_unknown_agent_is_refused_listing_the_registry_that_was_passed_in() {
+    let reg = [crate::agents::fake::full_row(|| None)];
+    for bad in ["", " fake", "gemini"] {
+        let mut s = base_spec();
+        s.agent = bad;
+        match ccm_argv_among(&reg, &s, &caps_all()) {
+            Err(Refusal::UnknownAgent(said)) => {
+                assert!(
+                    said.contains(crate::agents::fake::AGENT_KIND),
+                    "{bad:?}：{said}"
+                );
+                assert!(!said.contains("claude"), "{bad:?} 列了生产注册表：{said}");
+            }
+            other => panic!("{bad:?} 没被拒：{other:?}"),
+        }
+    }
+}
+
+/// 模型那一维照传进来那份注册表里那一家的 `model_args` 出：替身注册表里的替身那一家 ⇒ 那一行带替身给的模型参数。
+#[test]
+fn the_model_dimension_speaks_the_passed_registrys_model_args() {
+    let row = crate::agents::fake::full_row(|| None);
+    let face = row.launch.expect("替身由我们起");
+    let want = (face.model_args.expect("替身选得了模型"))("m1", None);
+    let spec = CliSpec {
+        agent: crate::agents::fake::AGENT_KIND,
+        model: Some("m1"),
+        launcher: face.default_launcher,
+        default_launcher: face.default_launcher,
+        ..base_spec()
+    };
+    let argv = ccm_argv_among(std::slice::from_ref(&row), &spec, &caps_all())
+        .unwrap_or_else(|r| panic!("替身那一家带模型该照收：{r:?}"));
+    assert_eq!(
+        argv.windows(want.len())
+            .filter(|w| *w == want.as_slice())
+            .count(),
+        1,
+        "{argv:?} 里 {want:?} 不是恰一次"
+    );
 }

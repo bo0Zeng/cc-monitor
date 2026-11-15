@@ -37,7 +37,7 @@ function tab(sid: string, origin: string, over: Partial<Tab> = {}): Tab {
     origin,
     forkedLine: null,
     writers: [],
-    unread: 0,
+    unreadSaid: null,
     needs: null,
     autoAnswer: null,
     autoAnswerChoices: [],

@@ -10,7 +10,7 @@
 import { build, createServer, preview } from "vite";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { backendPool, SHOTS_NOW_MS } from "../real/pool.mjs";
+import { backendPool, buildBins, SHOTS_NOW_MS } from "../real/pool.mjs";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const port = Number(process.argv[2]);
@@ -39,8 +39,14 @@ const disks = (recipe) => {
   return made.get(recipe);
 };
 
-// 真后端池（`../real/pool.mjs`）：`REAL_OPS` 那几条帧命令由它答；二进制要先编好（`cd src/backend && cargo build --features shots --target-dir ../../.build/backend-shots`，同截图台架那一份）。
-const pool = backendPool({ repo, sandbox: process.env.CCM_SHOTS_SANDBOX ?? path.join(repo, ".build/perf-sandbox"), disks });
+// 真后端池（`../real/pool.mjs`）：`REAL_OPS` 那几条帧命令由它答。二进制与截图入口同一处编（`buildBins`，增量编），后端用发布档（量的是用户手上那一份的快慢）：
+// 树里留着的旧后端 / 旧无头壳不悄悄拿来量；编不出来 ⇒ 照实说、不起。
+const broken = buildBins({ repo, backend: "release" });
+if (broken) {
+  console.error(`性能台架起不来：${broken}`);
+  process.exit(1);
+}
+const pool = backendPool({ repo, sandbox: process.env.CCM_SHOTS_SANDBOX ?? path.join(repo, ".build/perf-sandbox"), disks, backend: "release" });
 process.on("exit", () => pool.close());
 
 const base = { root: repo, configFile: path.join(repo, "vite.config.ts"), plugins: [injectFake, pool.plugin], cacheDir, logLevel: "warn", clearScreen: false };

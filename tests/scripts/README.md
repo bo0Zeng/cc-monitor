@@ -12,6 +12,7 @@
 | [`base.sh`](base.sh) | 「这棵树自己改了哪些」的起点：HEAD 与分支上游（没设上游就 origin/main，再没有就 main）的 merge-base。quick-check 挑段、gate-affected 挑格都用它 |
 | [`bless-golden.sh`](bless-golden.sh) | 重打金样的唯一入口：金样判据只比不写，红时把现打的那份落在 `.build/golden/<仓相对路径>`（`tests/backend/golden.rs`）；对过之后跑它，逐份拷回仓里原处 |
 | [`generated-drift.sh`](generated-drift.sh) | 生成物有没有落在提交外：每个 `generated/` 目录下与 HEAD 不同或没跟踪的文件逐份印出、退 1。quick-check 末尾与门禁 `generated` 格调它（cargo test 现写生成物，只在工作树里对、没提交的，合并以后才红） |
+| [`worktree-ro.sh`](worktree-ro.sh) | 测试不往仓工作树里写：bwrap 把仓只读挂载（只放开跟踪着的 `.gitignore` 挡着的 · `generated/` 下跟踪着的每一份），在 strace 底下跑两棵树的 `cargo test --workspace --lib` 与整套 vitest，写了又删 · 吞了错也认得出；退出 1 有写仓（点名路径与测试）· 2 判不了 · 3 别的红挡着。眼下单独跑，不在快检与门禁里 |
 | [`gate-affected.sh`](gate-affected.sh) | 跑门禁的唯一入口，默认按改动挑格：`git diff <基>...HEAD`（基默认取 `base.sh`，`--base` 可指）改到的路径照 [`gate-affected/map`](gate-affected/map)（路径 → 格组，每行带理由）挑格，挑格那一半是 [`gate-affected/plan.py`](gate-affected/plan.py)（`--dry-run` 只印计划；表与 `gate.sh` 对不上就停）。`--trust-ci` 是合并用的工作树推候选分支之前那一趟：CI 会跑的格交给 CI，只跑恒跑的便宜格 ＋ 被改到的本机才有的格 ＋ 被改到被测对象的 e2e 套件；`--full` 是打发版标签前的全量（不挑格，`GATE: OK` 才打）。经 `heavy.sh`（摘会话变量）排门禁锁跑 `gate.sh`，拿到锁时负载高于核数 × 0.6 就串跑。挑格的裁决恒是 PARTIAL，末行 `AFFECTED: OK` / `AFFECTED: 红`；`AFFECTED: OK` 时在判的那个提交上记一条本机门禁记录（git notes `refs/notes/ccm-gate`，不推远端），`--recorded <提交>` 读它 |
 | [`heavy.sh`](heavy.sh) | 重活（cargo 编测 · quick-check · 门禁 · gradle · 截图台架）一律经它跑：起命令前经 `session-scrub.sh` 摘掉会话变量；每份一个 `systemd-run --user --scope`、封顶内存，同时最多 `HEAVY_SLOTS` 份、多的按先来后到排队（排最前的那一个才去问槽位）；已经在一份重活里面（外层经它跑的）就直接跑，不再排槽位。没有 `systemd-run --user` 的机器（CI · Windows · 没有 user session）不封顶、直接跑，并说一声 |
 | [`push-candidate.sh`](push-candidate.sh) | 推送：`w8/<名>` 强推到候选分支 `next` → 用 `gh` 等 CI 跑完 → 全绿才在主工作树上把 `main` 快进过去并推；有红就停、印红的 job 与失败日志，`main` 不动；推之前先跑 `dep-advisories.mjs`，判的是要推的那个提交里的锁；那个提交上没有本机门禁绿过的记录（trust-ci · affected · full）就拒推；next 早已是这个提交时认它上面那一趟 CI，没绿就 `gh run rerun --failed` 再等 |
@@ -35,7 +36,7 @@
 | 推候选分支前 | `gate-affected.sh --trust-ci` | 恒跑的便宜格 ＋ 被改到的本机才有的格（改了 `src/mobile/` 就含 `android-device`）＋ 被改到被测对象的 e2e 套件 | CI 会跑的格 |
 | 发版前 | `gate-affected.sh --full` | `gate.sh` 每一格，含 `android-device`：模拟器上的设备测（androidTest，见下） | 只能手跑的那几样 |
 | CI | `.github/workflows/ci.yml` | 两棵树 cargo · clippy · vitest · 覆盖率 · e2e · 手机 JVM 单测与 release 构建 · Windows 真测 | 设备测（runner 上没有 KVM 模拟器） |
-| 只能手跑（登记着理由） | 各自的入口 | `RustTransportTest`（要一台私起的 sshd，冒烟台架 `tests/mobile-smoke/rig.sh`；不给 `sshHost` · `sshKey` 就整份跳过）· `f40-suite` / `graylight-suite`（要 Xvfb 上真开着的窗口）· 容器台架 `tests/e2e/local-backend-container/` · 速度台 `tests/benches/`（读数，不进门禁）· 截图台架 `tests/shots/run.mjs`（发版前与合并时手跑） | — |
+| 只能手跑（登记着理由） | 各自的入口 | `RustTransportTest`（要一台私起的 sshd，冒烟台架 `tests/mobile-smoke/rig.sh`；不给 `sshHost` · `sshKey` 就整份跳过）· `f40-suite` / `graylight-suite`（要 Xvfb 上真开着的窗口）· 容器台架 `tests/e2e/local-backend-container/` · 速度台 `tests/benches/`（读数，不进门禁）· 截图台架 `tests/shots/run.mjs`（发版前与合并时手跑）· `worktree-ro.sh`（要 bwrap 与 strace，接进快检之前单独跑） | — |
 
 **设备测那一格（`android-device`，10-11 起）**：经 `tests/mobile-smoke/emu.sh` 起一台无头 KVM 模拟器（自己一个 `systemd-run --user --scope`，MemoryMax 10G，不设 MemoryHigh，不占 heavy 的槽位；adb 用私有端口，不碰本机正在跑的 adb 与真手机），
 跑设备测唯一的入口 `src/mobile/scripts/android-test.sh`（gradle 一律 `--no-daemon`：先装上 app、`pm clear` 清它的数据 —— 退出码 0 且回 `Success` 才往下跑，清不掉就红；

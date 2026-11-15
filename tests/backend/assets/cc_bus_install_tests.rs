@@ -72,7 +72,11 @@ fn an_install_over_identical_files_refreshes_a_stale_record() {
     let ledger = t.0.join(relay_route_core::SKILL_LEDGER_REL);
     let own = crate::platform::fs::Own::issue_at(&t.0);
     let rec = |a: &crate::assets::skill_ledger::RecordReq| {
-        crate::assets::skill_ledger::record_at(&own, Some(&skills), a)
+        crate::assets::skill_ledger::record_at(
+            &own,
+            crate::assets::skill_install::Roots::here_with(Some(&skills)),
+            a,
+        )
     };
     install_at(&FilesHere, &skills, &rec).expect("装");
     let mut l = crate::assets::skill_ledger::load_at(&ledger).unwrap();
@@ -350,14 +354,13 @@ fn a_regular_file_at_the_destination_is_not_installed_and_gets_backed_up() {
 #[cfg(unix)]
 #[test]
 fn an_unwritable_skills_dir_fails_loudly() {
-    use std::os::unix::fs::PermissionsExt;
     let d = tmpdir("ro-skills");
     let skills = d.0.join("skills");
     std::fs::create_dir_all(&skills).unwrap();
-    std::fs::set_permissions(&skills, std::fs::Permissions::from_mode(0o555)).unwrap();
+    test_home::set_dir_mode(&skills, 0o555);
     let r = install(&d.0);
     // 先恢复权限再断言 —— 否则失败时 `TmpDir::drop` 删不掉，留一地垃圾。
-    std::fs::set_permissions(&skills, std::fs::Permissions::from_mode(0o755)).unwrap();
+    test_home::set_dir_mode(&skills, 0o755);
     let e = r
         .expect_err("`skills/` 不可写时必须报错，不许返回「写了 0 个」的 Ok")
         .said;

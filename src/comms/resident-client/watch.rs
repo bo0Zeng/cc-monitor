@@ -2,7 +2,7 @@
 //!
 //! - 新连接：attach 行带上此刻的名单（[`Desk::ask_for_attach`]），那台从第一帧起照它发；接上之后（[`Desk::up`]）带过的那份与此刻的不一样
 //!   （握手中变了 · 这条载体没有 attach 行）⇒ 当场在它上面整份报一次（`stream-watch`）。
-//! - 名单变了 ⇒ 在当前连接上整份报；一台只一个发送任务，手里只留最新一份，同一台按序报、不后发先到；报没成不重试，下一条连接照样带上。
+//! - 名单变了 ⇒ 在当前连接上整份报；一台只一个发送任务，手里只留最新一份，同一台按序报、不后发先到；报成了才记成那条连接已经知道，报没成这一趟不重试、照实留着没报，下一次要报（名单变了 · [`Desk::set_and_hear`] · 下一条连接）再报。
 //! - 应答 `from[]`（刚进名单的会话从第几行起上流）原样交宿主，由看着那一条的去补 `[已有, seq)`。
 //!
 //! 名单从空开始（一条都还没人看 ⇒ 那台一条都不发）。宿主经 `held` 交回手上各份主线外清单有什么，那台只补缺的（桌面照手上那份交；手机不留那一份、每条都交 `at: 0`，那台发整份）。
@@ -49,9 +49,9 @@ struct Now {
     kept: BTreeSet<String>,
     /// 当前那条连接（弱引用：连接走了就不报）。
     link: Weak<InboundClient>,
-    /// 那条连接已经知道的那一份（attach 行带过的 · 报过的：在看的 ＋ 手上留着的）；`None` ＝ 它还什么都不知道（全发）。
+    /// 那条连接已经知道的那一份（attach 行带过的 · 报成了的：在看的 ＋ 手上留着的）；`None` ＝ 它还什么都不知道（全发）。
     told: Option<(BTreeSet<String>, BTreeSet<String>)>,
-    /// 等「这一份报上去了」的那几位（[`Desk::set_and_hear`]）：报完交那一趟的 `from[]`；没有连接 · 已经知道 ⇒ 交空的。
+    /// 等「这一份报上去了」的那几位（[`Desk::set_and_hear`]）：报完交那一趟的 `from[]`；没有连接 · 已经知道 · 报没成 ⇒ 交空的。
     waiting: Vec<tokio::sync::oneshot::Sender<Vec<WatchFrom>>>,
 }
 
@@ -104,7 +104,7 @@ impl Desk {
     }
 
     /// 同 [`Desk::set`]，回一个收端：这一份报上去那一趟的 `from[]`（刚进名单的那几条从第几行起上流）；
-    /// 当前连接已经知道这一份 · 此刻没有连接 ⇒ 交空的（下一条连接的 attach 行照样带上这一份）。
+    /// 当前连接已经知道这一份 · 此刻没有连接 · 报没成 ⇒ 交空的（没报成的下一次要报再报，下一条连接的 attach 行照样带上这一份）。
     pub fn set_and_hear(
         &self,
         watched: BTreeSet<String>,
@@ -160,7 +160,7 @@ impl Desk {
         }
     }
 
-    /// 当前连接还不知道此刻的名单 ⇒ 报到它知道为止（报的时候又变了 ⇒ 接着报最新那份）。
+    /// 当前连接还不知道此刻的名单 ⇒ 报；报成了才记成它知道了（报的时候又变了 ⇒ 接着报最新那份），报没成这一趟就停。
     async fn flush(&self) {
         loop {
             let (client, now, waiting) = {
@@ -178,10 +178,10 @@ impl Desk {
                     }
                     return;
                 }
-                n.told = Some(now.clone());
                 (client, now, std::mem::take(&mut n.waiting))
             };
-            let args = serde_json::to_value(self.ask(now.0, now.1)).unwrap_or_default();
+            let args =
+                serde_json::to_value(self.ask(now.0.clone(), now.1.clone())).unwrap_or_default();
             let answer = match &self.at {
                 None => client.call(WATCH_CMD, args, WATCH_BUDGET).await,
                 Some(m) => {
@@ -189,6 +189,14 @@ impl Desk {
                     client.call_at(m, WATCH_CMD, args, None, deadline).await
                 }
             };
+            let told = answer.is_ok();
+            if told {
+                // 报成了才记；报的时候换了连接（`up` 已照新那条记过）⇒ 不动。
+                let mut n = lock(&self.now);
+                if std::ptr::eq(n.link.as_ptr(), Arc::as_ptr(&client)) {
+                    n.told = Some(now);
+                }
+            }
             let from = match answer {
                 Ok(data) => match data.map(serde_json::from_value::<WatchReply>) {
                     Some(Ok(r)) => r.from,
@@ -208,6 +216,9 @@ impl Desk {
             }
             if !from.is_empty() {
                 (self.from)(from);
+            }
+            if !told {
+                return;
             }
         }
     }

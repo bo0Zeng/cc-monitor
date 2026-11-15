@@ -45,12 +45,8 @@ pub struct SessionHits {
 pub struct SearchHit {
     /// 消息 uuid：打开查看器后据此滚动定位、高亮。
     pub uuid: String,
-    /// 那条记录的时刻（毫秒；后端写 `tsText` 用，不上线）。
-    #[serde(skip)]
-    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
-    pub ts_ms: i64,
-    /// `user` · `assistant` · `tool` · `report`。
-    pub kind: String,
+    /// 谁说的（那台写好的那个词：用户 · 那一家 · 工具 · agent 回报），出口照摆。
+    pub who: String,
     pub before: String,
     pub matched: String,
     pub after: String,
@@ -120,8 +116,15 @@ pub struct Merged {
     pub notes: Vec<String>,
     /// 没答上的那几台（它们的会话没搜到）：哪台 · 那一句。
     pub down: Vec<SearchDown>,
-    /// 结果头那一句（搜的词 · 命中几处 · 几个会话；截过 ⇒ 截过那一句）：两端照摆。
-    pub summary: String,
+    /// 结果头那一句（搜的词 · 命中几处 · 几个会话；截过 ⇒ 截过那一句）：两端照摆；一台都没答上 ⇒ 缺（没问到不当没有，两端不出结果头）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub summary: Option<String>,
+    /// 一行都没有时空态那一句：一台都没答上 ⇒ 搜不了那一句（没问到不当没有）；答了、一处没中 ⇒ 没有匹配那一句；有行 ⇒ 缺。
+    /// 两端照摆，不再按 `sessions` 为空自己挑字。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub empty: Option<String>,
 }
 
 /// 合好的一行：那台答的那一行 ＋ 哪台。
@@ -140,6 +143,10 @@ pub struct MergedRow {
     pub reveal: bool,
     /// 删除确认的正文：同上，合的那一步只放缺省（空），本机后端合完补（`face_core::history_asks::delete_ask`）。
     pub delete_ask: Words,
+    /// 「+N 处」那颗的字（还有没摆出来的命中才有，`moreHits` 为 0 ⇒ 缺）：合的那一步写好，界面照抄。
+    #[serde(default)]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
+    pub more_text: Option<String>,
 }
 
 /// 没答上的一台：哪台 · 那一句（够不着 · 那台常驻不在 · 那台答了失败 …）。
@@ -168,10 +175,10 @@ pub struct HistorySearchReq {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub scope: Option<SearchScope>,
-    /// 只要这一刻（毫秒）之后的。
+    /// 只要最近几天的（同清单的 `within_days`）：那台照自己的钟换成时刻。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
-    pub after_ms: Option<u64>,
+    pub within_days: Option<u64>,
     /// 全局片段上限（没给的照样记进 `moreHits`）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]

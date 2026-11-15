@@ -69,18 +69,44 @@ sealed interface AgentsItem {
         val text: String,
     ) : AgentsItem
 
+    /** 一行：第几层（第一层 0）· 有没有开合 · 此刻开着没有 · 收着时写的那一句（那台写好的 `kids_text`）。 */
     data class Row(
         val info: RunInfo,
+        val depth: Int = 0,
+        val fold: Boolean = false,
+        val open: Boolean = false,
+        val below: String? = null,
     ) : AgentsItem
+}
+
+/**
+ * 一行连它底下看得见的那几行：开不开照那台给的 `kids_open`，在 [flipped] 里的反过来（手动开合过的）；开着才往下走，走过的不再走。
+ */
+private fun branch(
+    r: RunInfo,
+    depth: Int,
+    byRun: Map<String, RunInfo>,
+    flipped: Set<String>,
+    seen: MutableSet<String>,
+): List<AgentsItem.Row> {
+    if (!seen.add(r.run)) return emptyList()
+    val kids = r.kids.orEmpty().mapNotNull { byRun[it] }
+    val fold = kids.isNotEmpty()
+    val open = fold && ((r.kidsOpen == true) != (r.run in flipped))
+    val me = AgentsItem.Row(r, depth, fold, open, r.kidsText.takeIf { fold && !open })
+    return if (open) listOf(me) + kids.flatMap { branch(it, depth + 1, byRun, flipped, seen) } else listOf(me)
 }
 
 /**
  * 列表照 `groups` 排：三组各带组头，空的那一组不出；`groups` 里点到运行表里没有的不出行。
  * 更早那一组的组头字照那台写好的 `older_text`；收着（[olderOpen] 假）只出组头，开合是界面记的。
+ * 三组只列第一层，每行底下挂它派出的那几个（`kids`，那台排好先后）；第一层开、第二层起收照那台的 `kids_open`，
+ * [flipped] 是这一屏手动开合过的（不存：屏关了再开回默认）；下层有事也不自动开。
  */
 fun agentsList(
     t: SessionRuns,
     olderOpen: Boolean,
+    flipped: Set<String> = emptySet(),
 ): List<AgentsItem> {
     val byRun = t.runs.associateBy { it.run }
     val groups =
@@ -90,7 +116,7 @@ fun agentsList(
             Triple(RunGroup.OLDER, t.groups.older, t.groups.olderText.orEmpty()),
         )
     return groups.flatMap { (g, ids, text) ->
-        val rows = ids.mapNotNull { byRun[it] }.map { AgentsItem.Row(it) }
+        val rows = ids.mapNotNull { byRun[it] }.flatMap { branch(it, 0, byRun, flipped, mutableSetOf()) }
         when {
             rows.isEmpty() -> emptyList()
             g == RunGroup.OLDER && !olderOpen -> listOf(AgentsItem.Head(g, text))
@@ -116,7 +142,9 @@ fun AgentsScreen(
     val feed = remember(hostId) { backends.of(hostId) }
     val table by feed.table.collectAsState()
     var olderOpen by rememberSaveable(sid) { mutableStateOf(false) }
-    val items = table.runs[sid]?.let { agentsList(it, olderOpen) }.orEmpty()
+    // 手动开合不记住：只活在这一屏（不进 saveable），屏关了再开回那台给的默认。
+    var flipped by remember(sid) { mutableStateOf(emptySet<String>()) }
+    val items = table.runs[sid]?.let { agentsList(it, olderOpen, flipped) }.orEmpty()
     Scaffold(topBar = { AgentsTopBar(copyText("beProfile.slot.agent"), table.runs[sid]?.summary.orEmpty(), onBack) }) { inner ->
         Column(Modifier.fillMaxSize().padding(inner)) {
             MachineBar(hostId)
@@ -129,7 +157,10 @@ fun AgentsScreen(
                     items(items, key = { it.key() }) { item ->
                         when (item) {
                             is AgentsItem.Head -> GroupHead(item, olderOpen) { olderOpen = !olderOpen }
-                            is AgentsItem.Row -> RunRowView(item.info) { onOpen(item.info) }
+                            is AgentsItem.Row ->
+                                TreeRow(item, onToggle = { flipped = if (item.info.run in flipped) flipped - item.info.run else flipped + item.info.run }) {
+                                    onOpen(item.info)
+                                }
                         }
                     }
                 }
@@ -164,6 +195,36 @@ private fun GroupHead(
             PhIcon(if (olderOpen) Ph.CaretDown else Ph.CaretRight, contentDescription = null, size = Touch.iconInline, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Text(head.text, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** 树里的一行：按层缩进；有派出的头上一枚开合（尖朝右 ⇒ 收着），收着时行下写那台给的汇总。点开合只开合，点行进 agent 屏。 */
+@Composable
+private fun TreeRow(
+    row: AgentsItem.Row,
+    onToggle: () -> Unit,
+    onClick: () -> Unit,
+) {
+    Row(Modifier.fillMaxWidth().padding(start = (row.depth * 16).dp), verticalAlignment = Alignment.CenterVertically) {
+        if (row.fold) {
+            val label = if (row.open) copyText("kit.dock.close") else copyText("askBlock.fold.expand")
+            IconButton(onClick = onToggle, modifier = Modifier.semantics { contentDescription = label }) {
+                PhIcon(if (row.open) Ph.CaretDown else Ph.CaretRight, contentDescription = null, size = Touch.iconInline, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Column(Modifier.weight(1f)) {
+            RunRowView(row.info, onClick)
+            row.below?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 34.dp, bottom = 6.dp),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
     }
 }
 

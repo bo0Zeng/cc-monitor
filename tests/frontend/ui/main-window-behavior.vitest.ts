@@ -100,6 +100,7 @@ import type { TabStore } from "../../../src/frontend/ui/tab-store";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { openSftpFromTopbar } from "../../../src/frontend/ui/sftp-host-picker";
 import { sessionCommands } from "../../../src/frontend/ui/session-commands";
+import { noteMachine } from "../../../src/frontend/ui/ipc/chan-caller";
 import { renderMessage, type RenderContext } from "../../../src/frontend/ui/cards/index";
 import type { LineRecord } from "../../../src/frontend/ui/generated/LineRecord";
 import type { RunInfo } from "../../../src/frontend/ui/generated/RunInfo";
@@ -441,6 +442,14 @@ describe("命令面板：远端会话的机器名只出一次", () => {
     const [cmd] = sessionCommands(tm.tabsInOrder(), () => {}, () => undefined);
     expect(cmd.session?.machine).toBe("pi");
     expect(`${cmd.title} ${cmd.session?.title}`, cmd.title).not.toContain("pi");
+  });
+
+  it("徽标那一格照那台的名字（机器成品里的 `name`），不照它的键", () => {
+    noteMachine("gpu-01" as never, { name: "〈gpu-01 的名字〉", offlineSaid: "" });
+    const tm = makeTabs(["g"], "gpu-01");
+    const [cmd] = sessionCommands(tm.tabsInOrder(), () => {}, () => undefined);
+    expect(cmd.session?.machine).toBe("〈gpu-01 的名字〉");
+    expect(cmd.session?.origin, "挑会话那一格仍是键").toBe("gpu-01");
   });
 });
 

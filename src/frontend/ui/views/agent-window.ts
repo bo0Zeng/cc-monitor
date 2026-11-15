@@ -19,7 +19,7 @@ import { markRunCard, markRunWindow } from "../cards/subagent";
 import { REVEAL_RUN_EVENT } from "../cards/speaker-bar";
 import { followSession, type FollowEvent } from "../events";
 import { fetchList, type HistoryRow } from "../history-list-reads";
-import { isLocalOrigin, type Machine } from "../ipc/origin";
+import type { Machine } from "../ipc/origin";
 import { button } from "../kit/button";
 import { banner } from "../kit/banner";
 import { detailOf } from "../kit/detail";
@@ -213,11 +213,6 @@ export class AgentWindow {
     const r = this.row;
     if (!r) return "";
     return r.label;
-  }
-
-  /** 标题里那台的名字：本机不写（`agentWindowTitle` 的 `machine` 缺 ＝ 本机那一句）。 */
-  private machineLabel(): Machine | null {
-    return isLocalOrigin(this.origin) ? null : this.origin;
   }
 
   /** 顶上那一条；`detail`（出错那一端写的复制详情）非空 ⇒ 带［复制详情］。 */
@@ -425,13 +420,13 @@ export class AgentWindow {
     this.crumbs.replaceChildren(...parts);
 
     // 系统标题 · 状态栏
-    if (this.row) void getCurrentWindow().setTitle(agentWindowTitle(r, this.sessionName(), this.machineLabel())).catch(() => {});
+    if (this.row) void getCurrentWindow().setTitle(agentWindowTitle(r, this.sessionName(), this.origin)).catch(() => {});
     this.status.textContent = this.live && this.following ? copyText("agentWindow.status.live") : copyText("agentWindow.status.plain");
   }
 
   /** 开另一个子运行的窗口（在这扇窗右下错开；已开着 ⇒ 拉到前面）。 */
   private async open(r: RunInfo): Promise<void> {
-    await openAgentWindow({ origin: this.origin, sid: this.sid, run: r, session: this.sessionName(), machine: this.machineLabel() });
+    await openAgentWindow({ origin: this.origin, sid: this.sid, run: r, session: this.sessionName() });
   }
 
   /** 回到派出它的地方：父 agent 的窗口（没开就开）或主窗口，滚到派出它的那张卡。 */

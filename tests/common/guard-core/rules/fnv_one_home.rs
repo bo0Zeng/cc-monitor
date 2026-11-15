@@ -56,6 +56,8 @@ fn fnv_lives_only_in_cmd_wire() {
             .under(&["src"], &["rs", "ts", "kt", "kts"])
             .into_iter()
             .filter(|f| f.rel != HOME)
+            // 开发调度：独立工作区、按设计不链产品包（引不到 cmd-wire::fnv）；它里面只住 wire 一份，由它自己守。
+            .filter(|f| !f.rel.starts_with("src/devsched/"))
             .filter_map(|f| {
                 let code = if f.rel.ends_with(".rs") {
                     f.prod()

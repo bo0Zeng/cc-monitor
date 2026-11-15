@@ -185,7 +185,7 @@ mod tests {
             if prod.contains(locate.as_str()) && rel != "agents/claudecode/paths.rs" {
                 locators.insert(rel.clone());
             }
-            if prod.contains(port.as_str()) && rel != "agents/mod.rs" {
+            if prod.contains(port.as_str()) && rel != "agents/record_face.rs" {
                 port_users.insert(rel);
             }
         }
@@ -246,6 +246,43 @@ mod tests {
         }
     }
 
+    /// 归档 · 取消归档是两条写命令（改那一家的状态）：都在命令表上，都**只收 sid**（同删会话那一条的裁决）、不拿文件管理写句柄
+    /// （后端不碰记录文件，跑的是那一家自己的命令）。
+    #[test]
+    fn archive_commands_take_only_a_sid_and_no_face() {
+        for name in [
+            <cmd_wire::files::FilesArchiveSessionReq as cmd_wire::Call>::NAME,
+            <cmd_wire::files::FilesUnarchiveSessionReq as cmd_wire::Call>::NAME,
+        ] {
+            let spec = crate::stream::inbound::REGISTRY
+                .iter()
+                .find(|s| s.name == name)
+                .unwrap_or_else(|| panic!("命令表上没有 `{name}`"));
+            assert!(
+                !spec.run.face,
+                "`{name}` 拿了文件管理写句柄 —— 它不该碰记录文件"
+            );
+        }
+        let keys = |v: serde_json::Value| -> Vec<String> {
+            v.as_object().expect("对象").keys().cloned().collect()
+        };
+        let sid = || "abc".to_string();
+        assert_eq!(
+            keys(
+                serde_json::to_value(cmd_wire::files::FilesArchiveSessionReq { sid: sid() })
+                    .unwrap()
+            ),
+            vec!["sid".to_string()]
+        );
+        assert_eq!(
+            keys(
+                serde_json::to_value(cmd_wire::files::FilesUnarchiveSessionReq { sid: sid() })
+                    .unwrap()
+            ),
+            vec!["sid".to_string()]
+        );
+    }
+
     /// 🔴🔴 **文件管理写面不再问「这是不是一份会话记录」。**
     ///
     /// 要求「**文件管理器全部都可以改. 不需要任何围栏**」；
@@ -255,9 +292,9 @@ mod tests {
     ///
     /// 人群：后端生产树里**调**会话形状判定（`is_session_record_path(` / `is_session_record_file(`，
     /// 不算定义行）的 `(文件, 所在函数)`，逐行现打。
-    /// 期望：删历史会话那一条要的三处 —— 写面 `fenced_session_file`（「要删的必须**是**会话」；经门递进来的 `SessionPort.is_record` 问）·
+    /// 期望：删历史会话那一条要的四处 —— 写面 `fenced_session_file`（「要删的必须**是**会话」；经门递进来的 `SessionPort.is_record` 问）·
     /// 适配层 `session_file_for_delete_in`（按 sid 找到之后再判一次形状）· 适配层 `is_session_record_path`
-    /// （`&Path` 门面，调字符串那一份）。期望取自 `files-delete-session` 那条既有裁决（RW1「只收 sid」），
+    /// （`&Path` 门面，调字符串那一份）· 注册表 `is_session_record`（按那一家声明的删文件那一形递那一家的判定）。期望取自 `files-delete-session` 那条既有裁决（RW1「只收 sid」），
     /// 不从判定本家现推（异源）。
     /// 多一处 ⇒ 有人把会话文件围栏接回了文件管理写面（或别的面）；少一处 ⇒ 删会话那一条的形状变了，
     /// 那条命令不在 FN1 射程里，先去看是谁动的。
@@ -328,6 +365,7 @@ mod tests {
         let want: std::collections::BTreeSet<(String, String)> = [
             ("agents/claudecode/paths.rs", "is_session_record_path"),
             ("agents/claudecode/paths.rs", "session_file_for_delete_in"),
+            ("agents/record_face.rs", "is_session_record"),
             ("files/write.rs", "fenced_session_file"),
         ]
         .iter()
@@ -336,7 +374,7 @@ mod tests {
         assert_eq!(
             found,
             want,
-            "\n🔴 后端里问「这是不是一份会话记录」的地方，不再恰是删历史会话那一条要的三处。\n\
+            "\n🔴 后端里问「这是不是一份会话记录」的地方，不再恰是删历史会话那一条要的四处。\n\
              多出来的（⇒ 有人把会话文件围栏接回了文件管理写面或别处，而要求是\n\
              「文件管理器全部都可以改. 不需要任何围栏」）：{:?}\n\
              少了的（⇒ 删会话那一条的形状变了；它不在 FN1 射程里，先去看是谁动的）：{:?}",
@@ -815,7 +853,8 @@ mod error_envelope_registry {
 ///   〔这一条自己就是本仓最高频那族的活体：**把「我没做」写成了「做不到」**。〕
 /// - **按「crate 名 + 段」认**：同一条依赖换版本 / 换 feature 集合不会红。
 ///   唯一的例外是那条**有写面**的（它的签字前提由本模块单独一条判据钉着）。
-/// - 它读的是**本半自己那份清单**（编译期 `include_str!`），不跨半边、不新增跨界编译边。
+/// - 它读的是**本半自己那棵 workspace 的清单**：根清单编译期 `include_str!`，各成员清单照 `members` 运行时读；
+///   分母与仓内 crate 的源码住址都从声明那条依赖的成员清单取。不跨半边、不新增跨界编译边。
 #[cfg(test)]
 mod g6_dependency_signoff {
     /// 本 crate 的清单。**编译期读**，而且是本半自己那一份。
@@ -942,19 +981,6 @@ mod g6_dependency_signoff {
             "帧命令两端对上的形状（机器名 `Machine` · typed 命令的形状指纹表 · 账号库那几条的入参与成品），纯数据；仓内 crate，现打 0 处写面",
         ),
         (
-            // 同一个依赖在测试构建里多开 `ts`（入参 · 成品的 TS 派生，形状指纹与生成类型用）。
-            "cmd-wire",
-            DEV_DEPS,
-            MEASURED_CLEAN,
-            "同上一行那个仓内 crate，测试构建多开 `ts` feature（多出来的只是类型的 TS 派生），0 处写面",
-        ),
-        (
-            "cmd-wire",
-            DEV_DEPS,
-            MEASURED_CLEAN,
-            "同一个 crate 在测试档多开 `ts`（typed 命令线上类型的 TS 派生 · 形状指纹），只多一个 codegen 派生；现打 0 处写面",
-        ),
-        (
             "face-core",
             DEPS,
             MEASURED_CLEAN,
@@ -968,12 +994,6 @@ mod g6_dependency_signoff {
              —— 钥匙文件 · 绑口 · 期限都在本 crate 的 `relay/`（宿主）里；它只写交给它的 socket",
         ),
         (
-            "comms-outward",
-            DEV_DEPS,
-            MEASURED_CLEAN,
-            "同上一行那个仓内 crate，测试构建多开 `test-support`（只把内部件再导出给组合判据），0 处写面",
-        ),
-        (
             "ssh-dial",
             DEPS,
             MEASURED_WRITES_ON_PURPOSE,
@@ -981,14 +1001,6 @@ mod g6_dependency_signoff {
              （`src/backend` 下全部 `.rs` ＋ 人群里的兄弟包），与本 crate 自己的代码同一套判准。本机写面现打 0 处：认下的 host key 交回宿主\
              （`dial/known_hosts.rs`，经启动时装的写句柄 `known_hosts::Writer` 记）。**远端**写面就是它的本职（`russh-sftp` 那一格搬到这里）⇒ 就是要它写。\
              谁划边界：只住它的 `sftp.rs` 一份、规矩由宿主装（本后端装部署那两处，`dial/mod.rs::host`）、每处先过 `fenced_remote`。\
-             边界判据：`the_remote_write_lives_in_exactly_one_file_and_its_root_is_exactly_staging`",
-        ),
-        (
-            "ssh-dial",
-            DEV_DEPS,
-            MEASURED_WRITES_ON_PURPOSE,
-            "同上一行那个仓内 crate，测试构建多开 `test-support`（测试档不许出网那句断言 · 拨了必被拒的本机口 · 合成 SFTP 服务端），\
-             多出来的 0 处写面；远端写面同上一行。\
              边界判据：`the_remote_write_lives_in_exactly_one_file_and_its_root_is_exactly_staging`",
         ),
         (
@@ -1007,12 +1019,6 @@ mod g6_dependency_signoff {
              源码在本护栏的人群里。现打 0 处写面：不开文件、不碰盘、不读环境（描述由宿主照它的环境造好装进来）",
         ),
         (
-            "egress",
-            DEV_DEPS,
-            MEASURED_CLEAN,
-            "同上一行那个仓内 crate，测试构建多开 `test-support`（测试档不许出网那句断言住它真开 TCP 的那一处），多出来的 0 处写面",
-        ),
-        (
             "resident-client",
             DEPS,
             MEASURED_CLEAN,
@@ -1023,26 +1029,8 @@ mod g6_dependency_signoff {
             "comms-inward",
             DEPS,
             MEASURED_CLEAN,
-            "通信层（仓内 crate）：本后端只取它那一句（`chan::said::offline`，那台离线那一句由连接层写）；\
+            "通信层（仓内 crate）：本后端只取它的有上限读一行 · 读全（`line::read_capped_*`，读 stdin · 子进程输出那几处）；\
              现打 0 处写面（`std::fs` · `tokio::fs` · 起进程一处都没有）",
-        ),
-        (
-            "resident-client",
-            DEV_DEPS,
-            MEASURED_CLEAN,
-            "同上面 `[dependencies]` 那一行的仓内 crate：帧面零件那个包（`backend-wire`）的判据拿它对拍客户端那一侧（握手行的读法），多出来的 0 处写面",
-        ),
-        (
-            "face-core",
-            DEV_DEPS,
-            MEASURED_CLEAN,
-            "同上面 `[dependencies]` 那一行的仓内 crate：帧面零件那个包（`backend-wire`）的判据拿它对拍会话簿「那台看不见」那一张（桌面与手机核心同一处），多出来的 0 处写面",
-        ),
-        (
-            "comms-inward",
-            DEV_DEPS,
-            MEASURED_CLEAN,
-            "同上面 `[dependencies]` 那一行的仓内 crate：帧面零件那个包的判据拿它对拍握手行的读法与离线那一句，多出来的 0 处写面",
         ),
         (
             GATED_CRATE,
@@ -1050,11 +1038,11 @@ mod g6_dependency_signoff {
             MEASURED_WRITES_ON_PURPOSE,
             "第三方 API key 的唯一住址（装它的类型 / 落盘格式 / 权限判断）。\
              ★ **它自己有一处写面**：`perm.rs` 的 `create_private`（建一个只给本人的新文件），在那个 feature 后面。\
-本清单**开了**它：远端那台机器上的 key 只能由那台的后端写\
+             后端 platform · accounts · relay · faces 四层开了它（`creds_guard` 两向相等钉）：远端那台机器上的 key 只能由那台的后端写\
              （上游选择自己的状态文件，`accounts/upstream_select/file_face.rs` 经 `platform::fs::Own` 写），\
              「出生即只给本人」只有 `create_private` 这一份实现 ⇒ 就是要它写。\
-             「写不了」不由编译器保证，由下面这条判据保证：写半边在本 crate 生产段的引用处 == 那一份。\
-             边界判据：`the_credentials_write_half_is_reached_only_from_the_account_file_face`",
+             「写不了」不由编译器保证，由下面这条判据保证：写半边在后端生产段只经 `platform/fs/own.rs`（`Own` 原子写）一处。\
+             边界判据：`the_credentials_write_half_is_reached_only_from_the_own_state_layer`",
         ),
         (
             "copy-core",
@@ -1069,6 +1057,14 @@ mod g6_dependency_signoff {
             MEASURED_CLEAN,
             "一组一条命令的全过程与它的字（结局那一句 `said_of` · 标题 · 没成的那几行 · 同名那一行的说明）：\
              与文件窗口、手机嵌的核心共用同一份；纯计算 ＋ 问法由调用方给，仓内 crate，现打 0 处写面",
+        ),
+        (
+            "pick-core",
+            DEPS,
+            UNMEASURED,
+            "选中这几项 ⇒ 能做什么（种类 · 做不了的为什么 · 一件事的字）：桌面那一份菜单成品（`files/menu.rs`）照它判，\
+             与手机嵌的核心共用同一份；纯函数、无 IO，只引 cmd-wire · copy-core。\
+             只由 `backend-files` 引（根清单里没有它那一行 ⇒ 本判据重扫够不着，先按用法签）",
         ),
         (
             "chunk-core",
@@ -1092,7 +1088,7 @@ mod g6_dependency_signoff {
             MEASURED_WRITES,
             "源码扫描型判据的共用剥法与住址（`addr`）。现打 0 处写盘、1 处起进程：`addr::tracked_under` 起一个只读的 \
              `git ls-files` 问索引。进不了发布二进制：它只在各包的 `[dev-dependencies]`，本行的段与清单逐条对拍 \
-             （`every_dependency_this_manifest_declares_carries_a_signature`），挪进 `[dependencies]` 就红",
+             （`every_dependency_a_member_manifest_declares_carries_a_signature`），挪进 `[dependencies]` 就红",
         ),
         (
             "libc",
@@ -1155,13 +1151,6 @@ mod g6_dependency_signoff {
              写不写盘：本 crate 对它的用法一条写路径都不经它（用法签字，没扫它的源码）",
         ),
         (
-            "ring",
-            DEV_DEPS,
-            UNMEASURED,
-            "同上一行那一份，只在测试档：足迹判据照中转的派生法现算直通那一把（`ring::hmac` 纯内存算 HMAC-SHA256）。\
-             写不写盘：判据对它的用法一条写路径都不经它（用法签字，没扫它的源码）",
-        ),
-        (
             "rustls",
             DEPS,
             UNMEASURED,
@@ -1182,24 +1171,6 @@ mod g6_dependency_signoff {
              但那是**用法**上的签字，不是对它源码的读数。\
              ⇒ 要升到 `已量·未见写面` 得真去扫它那棵树，还没做。\
              链的是 crates.io 上游那一份（仓内不留副本）",
-        ),
-        (
-            "russh",
-            DEV_DEPS,
-            UNMEASURED,
-            "同上面 `[dependencies]` 那一行：拨号那一侧的包（`backend-dial`）的判据拿它造替身服务端\
-             （`russh::server::Handler`）、读它的错误类型与鉴权结果，只在测试档，写面同上",
-        ),
-        (
-            "russh-sftp",
-            DEPS,
-            MEASURED_WRITES_ON_PURPOSE,
-            "SFTP 客户端：用户「SFTP 进本机常驻后端，只写暂存区」（＋ 自部署目录）。\
-             **本机**写面现打 0 处（3.0.0 源码里 `std::fs` 只出现在 `protocol/open.rs` 一个 `From<OpenFlags> for \
-             fs::OpenOptions` 的转换里 —— 造选项、不开文件；它的 `tokio` 没开 `fs` / `net`）；\
-             **远端**写面就是它的本职（`SSH_FXP_OPEN` 带写标志 · `REMOVE` · `RENAME` · `MKDIR` …）⇒ 就是要它写。\
-             谁划边界：只许 `ssh-dial/sftp.rs` 一份文件持有它的会话、写根 == 暂存区与部署目录、每处先过 `fenced_remote`。\
-             边界判据：`the_remote_write_lives_in_exactly_one_file_and_its_root_is_exactly_staging`",
         ),
         (
             "serde",
@@ -1223,16 +1194,10 @@ mod g6_dependency_signoff {
         ),
         (
             "test-home",
-            DEV_DEPS,
-            UNMEASURED,
-            "测试档一起来就把真家换成沙箱（仓内 crate `src/common/test-home`，`main` 之前设 `HOME` 等变量、建一个临时目录）。\
-             **只在测试期链接**，不进发布二进制",
-        ),
-        (
-            "test-home",
             DEPS,
             UNMEASURED,
-            "同上面 `[dev-dependencies]` 那一行：宿主口那个包（`backend-host`）的 `[dependencies]` 里是 optional，\
+            "测试档一起来就把真家换成沙箱（仓内 crate `src/common/test-home`，`main` 之前设 `HOME` 等变量、建一个临时目录）。\
+             宿主口那个包（`backend-host`）的 `[dependencies]` 里是 optional，\
              只由它的 `test-support` 开（托管终端的夹具把数据目录建在测试进程的沙箱根底下）；\
              开它的只有上层的 `[dev-dependencies]` ⇒ 照样只在测试期链接，不进发布二进制",
         ),
@@ -1245,40 +1210,12 @@ mod g6_dependency_signoff {
              读文件的是判据自己",
         ),
         (
-            "tar",
-            DEV_DEPS,
-            UNMEASURED,
-            "判据手铺 tar 包（解压的命令面 · 文件管理帧面）：只用 `Builder` 往内存里的 `Vec` 写。**只在测试期链接**，\
-             与发布那一份同一个包（文件管理那一块解压用它），不新增包",
-        ),
-        (
-            "libc",
-            DEV_DEPS,
-            UNMEASURED,
-            "覆盖写写到一半被收掉那一条认子进程收到的 `SIGXFSZ`（只读一个常量）。**只在测试期链接**，与平台层那一份同一个包，不新增包",
-        ),
-        (
-            "ts-rs",
-            DEV_DEPS,
-            UNMEASURED,
-            "记录的线上形状（`agents/claudecode/schema.rs`）导出 TS 类型用（`#[cfg_attr(test, derive(ts_rs::TS))]`）。\
-             **只在测试期链接**，不进发布二进制；写面只有 `cargo test` 里 `export_bindings_*` 往 `src/frontend/ui/generated/` 写生成物 —— \
-             与 monitor 那一侧同一个用法（C01），版本是 monitor 那份 lock 早已解析的 `12.0.1`",
-        ),
-        (
             "ts-rs",
             DEPS,
             UNMEASURED,
             "拆出去的那几层（`backend-*`）被上层线上类型嵌着的类型导出 TS 用：`optional`，只在它们自己的 `ts` feature 下编进来，\
              而开 `ts` 的只有上层的 `[dev-dependencies]`（`members_write_third_party_dependencies_only_through_the_workspace_table` 钉）\
-             ⇒ 不进发布二进制；写面同上一行（`cargo test` 往 `src/frontend/ui/generated/` 写生成物）",
-        ),
-        (
-            "tokio",
-            DEV_DEPS,
-            UNMEASURED,
-            "测试档多开 `test-util`（停着的钟，`advance` 才走）：判「挂着的提问自己带的期限」· 保活几轮判死不按墙钟等。\
-             同一个包（`[dependencies]` 里那一条），**只在测试期多一个特性**，不进发布二进制",
+             ⇒ 不进发布二进制；写面只有 `cargo test` 里 `export_bindings_*` 往 `src/frontend/ui/generated/` 写生成物（与 monitor 那一侧同一个用法）",
         ),
         (
             "shell-quote-core",
@@ -1366,19 +1303,6 @@ mod g6_dependency_signoff {
             UNMEASURED,
             "只开 `env-filter`。日志去向由本 crate 自己给的 writer 定（今天是标准错误）——\
              落盘那一形要另一条 crate，而本清单上没有",
-        ),
-        (
-            "tracing",
-            DEV_DEPS,
-            UNMEASURED,
-            "量具包 `test-meters` 的 `heard`（听本线程上一段代码期间说了什么）用它装一个临时的订阅者。\
-             量具包只在各成员的 `[dev-dependencies]`，**只在测试期链接**；与 `[dependencies]` 里那一条同一个包",
-        ),
-        (
-            "tracing-subscriber",
-            DEV_DEPS,
-            UNMEASURED,
-            "同上一行（`heard` 的订阅者把字写进内存里的一块缓冲，不落盘）。**只在测试期链接**；与 `[dependencies]` 里那一条同一个包",
         ),
         (
             "mimalloc",
@@ -1499,9 +1423,12 @@ mod g6_dependency_signoff {
         })
     }
 
+    /// 一个成员：`(目录（相对根清单）, 包名, 只在 dev 侧, 清单原文)`。
+    type Member = (String, String, bool, String);
+
     /// 本判据管的成员：后端那棵 workspace 的 `members` 去掉 [`NOT_COVERED`]（主 crate 与拆出来的 `backend-*` · 量具包）。
-    /// `(目录（相对根清单）, 包名, 只在 dev 侧, 清单原文)`；读不到就点名红，不静默少一份。
-    fn covered_members() -> Vec<(String, String, bool, String)> {
+    /// [`Member`] 一份一个；读不到就点名红，不静默少一份。
+    fn covered_members() -> Vec<Member> {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let members_line = guard_core::strip_hash_comment_lines(MANIFEST)
             .lines()
@@ -1552,7 +1479,11 @@ mod g6_dependency_signoff {
     /// 只在 dev 侧的成员（量具包）的 `[dependencies]` 记进 [`DEV_DEPS`] —— 它自己只许被别的成员写在 `[dev-dependencies]` 里
     /// （[`members_write_third_party_dependencies_only_through_the_workspace_table`] 钉）。
     fn declared_all() -> Vec<(String, String, String)> {
-        let members = covered_members();
+        declared_of(&covered_members())
+    }
+
+    /// [`declared_all`] 的本体。**纯函数**，能喂合成的几份清单。
+    fn declared_of(members: &[Member]) -> Vec<(String, String, String)> {
         let names: Vec<&str> = members.iter().map(|(_, n, ..)| n.as_str()).collect();
         let mut out: Vec<(String, String, String)> = members
             .iter()
@@ -1571,6 +1502,25 @@ mod g6_dependency_signoff {
         out.sort();
         out.dedup();
         out
+    }
+
+    /// 一条仓内 crate 的住址（相对根清单所在目录）：取声明它的头一份成员清单里那一行的 `path`，照那份清单所在目录解析。
+    /// `None` = 没有一份成员清单把它写成 `path =`（第三方 crate，源码不在树里）。**纯函数**。
+    fn dep_path_in(members: &[Member], name: &str) -> Option<String> {
+        members.iter().find_map(|(dir, _, _, text)| {
+            let rel = dep_path_of(text, name)?;
+            let mut parts: Vec<&str> = Vec::new();
+            for seg in dir.split('/').chain(rel.split('/')) {
+                match seg {
+                    "" | "." => {}
+                    ".." if parts.last().is_some_and(|p| *p != "..") => {
+                        parts.pop();
+                    }
+                    _ => parts.push(seg),
+                }
+            }
+            Some(parts.join("/"))
+        })
     }
 
     /// 清单的依赖段里某一条依赖的**那一行原文**（`None` = 那一段里没有这条依赖）。
@@ -1692,13 +1642,16 @@ mod g6_dependency_signoff {
 
     /// 没签字的那些（诊断用的住址表）。**纯函数** —— 能直接喂合成清单，
     /// 否则「今天零条未签字」这个读数与「这把尺子根本不报」在终端上没有区别。
+    /// [`DEV_DEPS`] 里的一条，同名在 [`DEPS`] 那一档签过 ⇒ 不另签（只进测试二进制）。
+    /// 放行只认名字、不认 feature：dev 侧多开 feature（`test-support` · `ts` · `test-util` …）多出来的写面不另签。
+    /// 只在 dev 侧出现、[`DEPS`] 那一档没签过的照样要签。
     fn unsigned_of(declared: &[(String, String, String)]) -> Vec<String> {
         declared
             .iter()
             .filter(|(sect, name, _)| {
-                !SIGNED
-                    .iter()
-                    .any(|(n, s, ..)| *n == name.as_str() && *s == sect.as_str())
+                !SIGNED.iter().any(|(n, s, ..)| {
+                    *n == name.as_str() && (*s == sect.as_str() || (sect == DEV_DEPS && *s == DEPS))
+                })
             })
             .map(|(sect, name, _)| format!("  {sect} 里的 {name}"))
             .collect()
@@ -1801,12 +1754,13 @@ mod g6_dependency_signoff {
     fn split_by_reachability(
         names: &[&'static str],
     ) -> (Vec<(&'static str, String, std::path::PathBuf)>, Vec<String>) {
+        let members = covered_members();
         let mut ok = Vec::new();
         let mut out_of_reach = Vec::new();
         for name in names {
-            match dep_path_of(MANIFEST, name) {
+            match dep_path_in(&members, name) {
                 None => out_of_reach.push(format!(
-                    "  {name}：清单那一行没有 `path =` ⇒ 它不是仓内 crate，源码不在树里"
+                    "  {name}：没有一份成员清单把它写成 `path =` ⇒ 它不是仓内 crate，源码不在树里"
                 )),
                 Some(rel) => {
                     let dir = crate_src_dir(&rel);
@@ -1859,12 +1813,12 @@ mod g6_dependency_signoff {
 
     /// ★ 正题：**清单上每一条依赖都得有一行签字**，而带依赖的段本身也钉住。
     #[test]
-    fn every_dependency_this_manifest_declares_carries_a_signature() {
+    fn every_dependency_a_member_manifest_declares_carries_a_signature() {
         let declared = declared_all();
         // 抽取器自检：分母塌了下面两条一起零命中地绿。
         assert!(
-            declared.len() >= 15,
-            "清单的依赖段里只抽出 {} 条依赖（09-04 现打 18）—— 抽取坏了，本条在空转：{declared:?}",
+            declared.len() >= 60,
+            "各成员清单的依赖段里只抽出 {} 条依赖（11-11 现打 87）—— 抽取坏了，本条在空转：{declared:?}",
             declared.len()
         );
         let mut sections: Vec<String> = declared.iter().map(|(s, ..)| s.clone()).collect();
@@ -1943,8 +1897,8 @@ mod g6_dependency_signoff {
     /// ★★ 那条**有写面**的签字，它的前提是「那个 feature 本清单开着、而且就是要它写」—— 把前提钉住。
     ///
     /// 这一条是本模块里唯一**不只钉「说得出来」**的判据：它钉的是那句话赖以成立的那个事实。
-    /// 前提是「开了、写面就是账号域那一份要用的」（`已量·有写面·就是要它写`），
-    /// 不是「那个 feature 本清单没开 ⇒ 编不进来」（`已量·有写面`）。
+    /// 前提是「开了、写面就是 `Own` 原子写那一处要用的」（`已量·有写面·就是要它写`），
+    /// 不是「那个 feature 没开 ⇒ 编不进来」（`已量·有写面`）。
     /// ⇒ 两个方向都钉：feature 被关掉了而签字还说「就是要它写」⇒ 红；
     ///   `已量·有写面`（「凭什么进不来」那一档）今天只有 guard-core —— 有人把它签回那一档而 feature 还开着 ⇒ 红。
     /// 本仓最高频的病是「代码订正了，盘没跟着改」，这一条挡的正是它的反面：
@@ -1968,31 +1922,40 @@ mod g6_dependency_signoff {
             .filter(|(_, _, v, _)| *v == MEASURED_WRITES_ON_PURPOSE)
             .map(|(n, ..)| *n)
             .collect();
-        // +`russh-sftp`（SFTP 进本机常驻后端）。它的前提不是一个 feature，
-        //   是「只许一份文件持有它的会话、写根 == 暂存区一处」—— 那一条由它签字里点名的边界判据钉（远端写那一层），
+        // +`ssh-dial`（拨号核心，SFTP 客户端只住它的 `sftp.rs`）：前提不是一个 feature，
+        //   是「只许一份文件持有 SFTP 会话、写根 == 暂存区与部署目录」—— 由它签字里点名的边界判据钉（远端写那一层），
         //   本条只钉 `creds-core` 那一条的前提（feature 开着）。
-        // +`ssh-dial` 两行（拨号核心，远端写那一格随 SFTP 客户端搬进去）：前提同 `russh-sftp`，由同一条边界判据钉。
         // +`platform-core`（本机自家状态的建目录与原子写）：前提是「后端只经 `platform/fs/own.rs` 叫它」，由它签字里点名的边界判据钉。
         assert_eq!(
             purposeful,
-            vec!["ssh-dial", "ssh-dial", GATED_CRATE, "russh-sftp", "platform-core"],
+            vec!["ssh-dial", GATED_CRATE, "platform-core"],
             "「就是要它写」那一档的成员变了：{purposeful:?}\n\
              本条只钉得住 `{GATED_CRATE}` 那一条的前提（feature 开着）；新来的成员要在签字里点名它自己的边界判据。"
         );
         // 针**运行时拼**：清单的注释里逐字写着这个词，而下面只看那一行、不看注释。
         let feature = format!("har{}", "den");
-        let line = dep_line(MANIFEST, GATED_CRATE).unwrap_or_else(|| {
-            panic!(
-                "清单的依赖段里找不到 `{GATED_CRATE}` —— 签字的对象没了，回来重判 `SIGNED`\
-                 （而不是把本条删掉）"
-            )
-        });
+        // 开它的那几层（`[dependencies]` 段里 `creds-core` 那一行）：至少一层开着。哪几层该开由 `creds_guard` 那条两向相等钉。
+        let lines: Vec<String> = covered_members()
+            .iter()
+            .flat_map(|(dir, _, _, text)| {
+                dep_entries(text)
+                    .into_iter()
+                    .filter(|(s, n, _)| s == DEPS && n == GATED_CRATE)
+                    .map(move |(_, _, l)| format!("{dir}：{l}"))
+            })
+            .collect();
         assert!(
-            guard_core::contains_word(&line, &feature),
-            "本清单没给 `{GATED_CRATE}` 开 `{feature}`：{line}\n\
-             ⇒ 签字说「就是要它写」（账号域那一份写口要 `create_private`），而 feature 关着 —— \
+            !lines.is_empty(),
+            "各成员清单的 `{DEPS}` 里找不到 `{GATED_CRATE}` —— 签字的对象没了，回来重判 `SIGNED`\
+             （而不是把本条删掉）"
+        );
+        assert!(
+            lines.iter().any(|l| guard_core::contains_word(l, &feature)),
+            "没有一层给 `{GATED_CRATE}` 开 `{feature}`：\n{}\n\
+             ⇒ 签字说「就是要它写」（`Own` 原子写那一处要 `create_private`），而 feature 关着 —— \
              要么写口已经退役（那就回来把签字降回 `已量·有写面` 并答「凭什么进不来」），\
-             要么这一行被改坏了（那么后端根本编不过）。**这不是改个断言的事**：回来重签。"
+             要么这一行被改坏了（那么后端根本编不过）。**这不是改个断言的事**：回来重签。",
+            lines.join("\n")
         );
         // 反空真：探针对「开着」的写法必须认得出来，否则上面那条零命中断言什么也不说明。
         //
@@ -2014,7 +1977,7 @@ mod g6_dependency_signoff {
     }
 
     /// 🔴 **`creds-core` 那条「就是要它写」的边界判据**：它的写半边
-    /// （`perm::create_private`）在本 crate 生产段里的引用处，
+    /// （`perm::create_private`）在后端生产段里的引用处，
     /// **恰好**是原子写那一处 `platform/fs/own.rs`（两向集合相等）。
     ///
     /// # 它顶替的是哪一格
@@ -2033,7 +1996,7 @@ mod g6_dependency_signoff {
     /// 经宏 / 别名间接够到那个函数的写法（`use creds_core::perm::create_private as c;` 之后只写 `c(`）——
     /// `use` 那一行本身带着名字，所以「引入」这件事照样看得见；再往外一层的重导出看不见。
     #[test]
-    fn the_credentials_write_half_is_reached_only_from_the_account_file_face() {
+    fn the_credentials_write_half_is_reached_only_from_the_own_state_layer() {
         let root = guard_core::addr::backend_src_root();
         let needles = [format!("create_{}", "private")];
         let mut found: std::collections::BTreeSet<String> = Default::default();
@@ -2061,8 +2024,8 @@ mod g6_dependency_signoff {
             ["platform/fs/own.rs".to_string()].into_iter().collect();
         assert_eq!(
             found, want,
-            "`creds-core` 的写半边（建私有文件 / 收窄权限）在本 crate 生产段里的引用处对不上：\n\
-             应当**恰好**是账号域那一份（写经 `Own` 的订阅号凭据窄句柄）。多出来的 = 写凭据的能力扩散了；\n\
+            "`creds-core` 的写半边（建私有文件 / 收窄权限）在后端生产段里的引用处对不上：\n\
+             应当**恰好**是 `platform/fs/own.rs`（`Own` 原子写）。多出来的 = 写凭据的能力扩散了；\n\
              少了 = 那一份不再用它（写口被换掉了？那就回来重签 `{GATED_CRATE}`）。"
         );
         let sample = "let f = creds_core::perm::create_private(&tmp)?;";
@@ -2136,6 +2099,45 @@ mod g6_dependency_signoff {
              而它自己就是「在 vendor 里写盘、判据看不见」的那一个 —— 本条要求那时候当场点名它。\
              同时它反向证明另一半：已经签过字的 `serde` / `guard-core` 不许被误报成没签字。"
         );
+    }
+
+    /// ★★ 分母与源码住址都从**各成员清单**取：一条只写在某层清单里的依赖，没签字要点名、是仓内 crate 要找得到它的源码。
+    ///
+    /// 主清单不再替各层抄一遍它们的依赖 ⇒ 这两样只看根清单的话，那一层新引的 crate 两头都漏。
+    #[test]
+    fn a_dependency_written_only_in_a_member_manifest_is_counted_and_located() {
+        let engine = "some-engine";
+        let probe = "some-dev-probe";
+        let root = format!(
+            "[package]\nname = \"主\"\n\n{DEPS}\nserde.workspace = true\nbackend-某层 = {{ path = \"layer\" }}\n"
+        );
+        let layer = format!(
+            "[package]\nname = \"backend-某层\"\n\n{DEPS}\n{engine} = {{ path = \"../../common/{engine}\" }}\n\
+             backend-lower = {{ path = \"../lower\" }}\n\n{DEV_DEPS}\nserde.workspace = true\n\
+             {probe} = {{ path = \"../../common/{probe}\", features = [\"test-support\"] }}\n"
+        );
+        let lower = "[package]\nname = \"backend-lower\"\n".to_string();
+        let members: Vec<Member> = vec![
+            (".".into(), "主".into(), false, root),
+            ("layer".into(), "backend-某层".into(), false, layer),
+            ("lower".into(), "backend-lower".into(), false, lower),
+        ];
+        let declared = declared_of(&members);
+        assert_eq!(
+            unsigned_of(&declared),
+            vec![
+                format!("  {DEPS} 里的 {engine}"),
+                format!("  {DEV_DEPS} 里的 {probe}")
+            ],
+            "只写在成员清单里的那两条没被点名（成员之间的互引不算依赖；`serde` 签过、dev 段同名不另签；\
+             只在 dev 段、`{DEPS}` 那一档没签过的照样要签）：{declared:?}"
+        );
+        assert_eq!(
+            dep_path_in(&members, engine).as_deref(),
+            Some(format!("../common/{engine}").as_str()),
+            "仓内 crate 的住址要照声明它的那份成员清单所在目录解析（相对根清单）"
+        );
+        assert_eq!(dep_path_in(&members, "serde"), None, "第三方依赖没有住址");
     }
 
     /// ★★ 正题：`已量·未见写面` 那一档的判决，**每一趟都重打一遍**。
@@ -2229,38 +2231,12 @@ mod g6_dependency_signoff {
             "`{MEASURED_WRITES}` / `{MEASURED_WRITES_ON_PURPOSE}` 这两档今天一条成员都没有 —— 上面那条零命中断言从此没有对照，\
              它是「真干净」还是「尺子瞎了」分不出来了。回来重挑对照。"
         );
-        // 对照只取**仓内**那几条：`russh-sftp`（第四档，外部 crate）的源码不在树里，
-        //   本尺子够不着 —— 它的写面由签字里点名的边界判据在**用法**一侧钉（只许 `ssh-dial/sftp.rs` 一份持有）。
-        //   够不着的只许是这一形：第四档、名字落在远端写协议词表上；别的形照旧红。
+        // 对照那两档今天全是仓内 crate（源码在树里）⇒ 够不着的一条都不许有。
         let (scannable, out_of_reach) = split_by_reachability(&with_surface);
-        let external_ok: Vec<&str> = SIGNED
-            .iter()
-            .filter(|(n, _, v, why)| {
-                *v == MEASURED_WRITES_ON_PURPOSE
-                    && why.contains(BOUNDARY_TAG)
-                    && super::remote_write_layer::REMOTE_WRITE_PROTOCOL_WORDS
-                        .iter()
-                        .any(|(w, _)| n.contains(w))
-            })
-            .map(|(n, ..)| *n)
-            .collect();
-        let stray: Vec<&String> = out_of_reach
-            .iter()
-            .filter(|line| {
-                !(line.contains("没有 `path =`")
-                    && external_ok
-                        .iter()
-                        .any(|n| line.trim_start().starts_with(&format!("{n}："))))
-            })
-            .collect();
         assert!(
-            stray.is_empty(),
+            out_of_reach.is_empty(),
             "对照那一档里有本尺子够不着的条目：\n{}",
-            stray
-                .iter()
-                .map(|s| s.as_str())
-                .collect::<Vec<_>>()
-                .join("\n")
+            out_of_reach.join("\n")
         );
         assert!(
             !scannable.is_empty(),
@@ -3000,6 +2976,11 @@ backend 今天**只在一处**开子系统（`ssh-dial/sftp.rs`，SFTP 住本机
         format!("const STAGING_{}: &str =", "ROOT")
     }
 
+    /// 写根那一行取值的来处：契约 crate 的暂存区常量（运行时拼，免得本文件自己也命中）。
+    fn roots_source() -> String {
+        format!("relay_route_core::STAGING_{}", "DIR_REL")
+    }
+
     /// 围栏调用的针（远端那一道）。
     fn fence_needle() -> String {
         format!("fenced_{}(", "remote")
@@ -3121,7 +3102,15 @@ backend 今天**只在一处**开子系统（`ssh-dial/sftp.rs`，SFTP 住本机
             REMOTE_WRITE_MODULE.0,
             rows.len()
         );
-        let got: std::collections::BTreeSet<String> = quoted(rows[0]).into_iter().collect();
+        // 写根那一行只许取契约那一份（家目录相对路径那一张表），不许在拨号核心里另写一个字面量。
+        let source = roots_source();
+        assert!(
+            rows[0].contains(source.as_str()) && quoted(rows[0]).is_empty(),
+            "写根那一行该写成取自 `{source}`、不带字面量，实为：{}",
+            rows[0].trim()
+        );
+        let got: std::collections::BTreeSet<String> =
+            [relay_route_core::STAGING_DIR_REL.to_string()].into();
         let want_roots: std::collections::BTreeSet<String> =
             EXPECTED_WRITE_ROOTS.iter().map(|r| r.to_string()).collect();
         assert_eq!(

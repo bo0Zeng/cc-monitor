@@ -186,6 +186,25 @@ fn the_product_matches_the_cross_language_golden() {
     );
 }
 
+/// 这份二进制所在那台的系统名：与远端部署收了记进成品的同一个词（`deploy_contract::Os::label`）。
+fn this_os() -> String {
+    deploy_contract::Key::this_machine()
+        .expect("这份二进制所在的系统不在表 A 里")
+        .os
+        .label()
+        .to_string()
+}
+
+/// ★ 本机那一行带系统名（与远端同一格 `os`）：界面机器页只照成品写系统，不再自己抄一张系统名表。
+#[test]
+fn the_local_row_names_its_os() {
+    let got = read_in(&[], &Links::new());
+    let local = got
+        .get(cmd_wire::machine::LOCAL)
+        .expect("机器状态里没有本机那一行");
+    assert_eq!(local.os, Some(this_os()), "本机那一行没带系统名");
+}
+
 /// 本机就是一台远端：本机后端在答 ⇒ 它自己那一行（键 `<local>`）由它出，与远端各台同一份成品，名字在这里取一次；
 /// 机器表里没有它，也照样带出。
 #[test]
@@ -205,12 +224,13 @@ fn the_local_row_comes_from_this_backend() {
             version: Some(shipped_version()),
         },
     );
-    let want = product(
-        &e,
-        &copy_core::copy_text("detail.label.local", &[]),
-        true,
-        true,
+    fold(
+        &mut e,
+        Fact::Deployed {
+            os: Some(this_os()),
+        },
     );
+    let want = product(&e, &copy_core::local_machine(), true, true);
     assert_eq!(
         local.version,
         Some(shipped_version()),

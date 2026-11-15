@@ -27,9 +27,7 @@ android {
 }
 
 dependencies {
-    implementation(project(":core-copy")) // 上屏句子从文案表取（取文口住 core-copy）
-    implementation(project(":core-data"))
-    // 连接走手机嵌的 Rust 核心（拨号核心 ssh-dial 的 FFI 外壳）：[RustTransport]。
+    // 连接走手机嵌的 Rust 核心（拨号核心 ssh-dial 的 FFI 外壳）：[RustTransport]；钥匙生成（[SshKeyGenerator]）的公钥那一行 · Ed25519 · 取文也在它。
     implementation(project(":core-rs"))
     // 核心交上来的拨号 ack · 阶段 · ssh_config 那几行照线上类型解（生成的类住 core-wire，拨号请求也照它写）。
     implementation(project(":core-wire"))

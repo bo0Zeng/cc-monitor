@@ -226,16 +226,82 @@ impl OwnBin {
         Ok(self.dir.join(name))
     }
 
+    /// 把一份马上要起的程序写到 `tmp`（建或截断、写满、落盘）。
+    ///
+    /// unix：本进程只写旁稿 `.<名>.<pid>.src.partial`（从不被起），`tmp` 由 `cp` 子进程写，删旁稿，只读打开落盘。
+    /// 本进程里开着 `tmp` 的写端时别的线程正 fork，子进程在 fork 到 exec 之间也攥着那份写端（`O_CLOEXEC` 到 exec 才生效），
+    /// 这时起 `tmp` ＝ ETXTBSY；写旁稿再改名没用（同一个 inode）。⇒ 本进程从不开 `tmp` 的写端。做法同 `test_home::write_exe`
+    /// （壳生产段链不到 test-home）。旁稿没删掉的那份照 `.partial` 结尾，一天后由放置时的清扫收。
+    #[cfg(unix)]
+    fn write_exe_body(&self, name: &str, tmp: &Path, bytes: &[u8]) -> Result<()> {
+        let side = self
+            .dir
+            .join(format!(".{name}.{}.src.partial", std::process::id()));
+        let copied = create_private(&side)
+            .and_then(|f| fill(f, bytes))
+            .map_err(|e| at_path(&side, &e))
+            .and_then(|()| {
+                let mut cp = crate::spawn_managed::spawn_managed_with(
+                    "cp",
+                    crate::spawn_managed::ConsolePolicy::Hidden,
+                    crate::spawn_managed::Lifetime::JobKillOnClose,
+                    crate::spawn_managed::StderrSink::Captured,
+                    |c| {
+                        c.arg("--").arg(&side).arg(tmp);
+                    },
+                )
+                .map_err(|e| at_path(tmp, &e))?;
+                // cp 说了什么只进错误原话：读到上界为止，超了就不带（cp 的报错是一两行）。
+                let said = match cp.stderr.take().map(|err| {
+                    cap_core::read_capped_from(
+                        err,
+                        cap_core::Cap {
+                            bytes: 4 * 1024,
+                            over: cap_core::Over::Reject,
+                        },
+                    )
+                }) {
+                    Some(Ok(cap_core::CappedAll::All(b))) => {
+                        String::from_utf8_lossy(&b).into_owned()
+                    }
+                    _ => String::new(),
+                };
+                let st = cp.wait_for_status().map_err(|e| at_path(tmp, &e))?;
+                if st.success() {
+                    Ok(())
+                } else {
+                    Err(Error::other(format!(
+                        "{}: cp {st}: {}",
+                        tmp.display(),
+                        said.trim()
+                    )))
+                }
+            });
+        remove_file(&side).discard(Why::CleanupAfterFailure);
+        copied?;
+        std::fs::File::open(tmp)
+            .and_then(|f| f.sync_all())
+            .map_err(|e| at_path(tmp, &e))
+    }
+
+    /// Windows：没有 ETXTBSY 那个窗口，本进程写。
+    #[cfg(not(unix))]
+    fn write_exe_body(&self, _name: &str, tmp: &Path, bytes: &[u8]) -> Result<()> {
+        create_private(tmp)
+            .and_then(|f| fill(f, bytes))
+            .map_err(|e| at_path(tmp, &e))
+    }
+
     /// 写一份暂存件 `.<名>.<pid>.partial`（只给本人、已置可执行位），回它的路径；还没上位。
+    /// 写好就会被起（问放不放 · 上位后起它）：unix 上本进程只写旁稿，暂存件由 `cp` 子进程写（`write_exe_body`）。
     pub fn stage(&self, name: &str, bytes: &[u8]) -> Result<PathBuf> {
         self.named(name)?;
         private_dir(&self.dir)?;
         let tmp = self
             .dir
             .join(format!(".{name}.{}.partial", std::process::id()));
-        let ready = create_private(&tmp)
-            .and_then(|f| fill(f, bytes))
-            .map_err(|e| at_path(&tmp, &e))
+        let ready = self
+            .write_exe_body(name, &tmp, bytes)
             .and_then(|()| super::fs::make_executable(&tmp).map_err(|s| s.into_io()));
         if let Err(e) = ready {
             remove_file(&tmp).discard(Why::CleanupAfterFailure);

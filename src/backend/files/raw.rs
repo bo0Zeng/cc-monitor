@@ -17,7 +17,7 @@ pub fn path_bytes(p: &std::path::Path) -> &[u8] {
     p.as_os_str().as_encoded_bytes()
 }
 
-// 字节还原成 `PathBuf` 住 `common/path_wire.rs`：文件管理与原生那一块（传输台 `control/transfer.rs`）都要它，
+// 字节还原成 `PathBuf` 住 `common/path_wire.rs`：文件管理与原生那一块（两台之间复制 `control/transfer_copy.rs`）都要它，
 // 两块之间零互相依赖（文件管理那一块是独立的包，只引纯工具与平台两层），共用的只许住 `common/`。
 pub use crate::common::path_wire::to_path_buf;
 

@@ -1,7 +1,7 @@
 //! **起一个会话的那一行** —— 这台后端出成品，界面只把那一行交给 monitor 开终端跑。
 //!
 //! 起会话只有 `ccm` 一处：每一条起会话 / 接回 / 换号重启 / 分叉交给终端的都只是一行 `ccm …`
-//! （[`ccm_invocation`] 渲），环境、中转地址、身份标记由那台机器上的 `ccm` 自己做。
+//! （[`ccm_invocation`] 渲），环境、中转地址由那台机器上的 `ccm` 自己做。
 //! 「起什么」只有一份 [`Launch`]（`session-open` 一族拼它），变成渲染器那份 spec 只有一处映射（本机与远端的三处差别都写在那里）。
 
 pub mod ccm_invocation;
@@ -35,8 +35,6 @@ pub struct Launch {
     /// 建进哪个 tmux 会话（接回 ⇒ 接进哪个）；`None` ＝ 直路。
     pub tmux: Option<String>,
     pub cwd: Option<String>,
-    /// 身份标记（打在建出来的 tmux 会话上；Windows 上没有 tmux ⇒ 不打）。
-    pub ccm_sid: Option<String>,
     /// 显式指定的模型（压过号带来的那一个）。
     pub model: Option<String>,
     pub launcher: String,
@@ -163,7 +161,6 @@ fn spec_with<T>(
         },
         cwd: l.cwd.as_deref().filter(|c| !c.is_empty() && !local_direct),
         account,
-        ccm_sid: l.ccm_sid.as_deref().filter(|_| !windows),
         model: l.model.as_deref().or(picked_model),
         launcher: if launcher.is_empty() {
             &l.default_launcher

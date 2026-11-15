@@ -1,6 +1,6 @@
 use super::*;
 use crate::detail::Shell as _;
-use cmd_wire::deploy::{ActionTag, DeployInstallReq, DeployUninstallReq};
+use cmd_wire::deploy::{DeployInstallReq, DeployUninstallReq};
 
 // 删远端会话文件经远端后端（`files-delete-session`，只收 sid）：「只收 sid · 落点由后端按 sid 找」的判据住后端。
 
@@ -357,17 +357,20 @@ fn the_landing_constant_is_the_backend_one_and_no_entry_is_made_here() {
 }
 
 /// **界面那一侧对着真后端 ＋ 真 sshd**：装 · 卸经本机常驻后端（`deploy-install` · `deploy-uninstall`，只交名字；带着的那一格落在被测后端家目录的槽里）、
-/// 传输经中继（`transfer_relay::transfer_call` / `watch_ticket`），全程界面进程零 SSH。
+/// 传输是寻址本机的一条 `transfer-copy`，全程界面进程零 SSH。
 ///
-/// 只由 `tests/evidence/sftp-loopback.py --monitor` 带 `SR1B_LOOPBACK`
+/// 只由 `tests/evidence/sftp-loopback.py` 带 `SR1B_LOOPBACK`
 /// （`{host,port,user,key_path,backend,home,rhome,up,dl_remote,dl_local}`）来跑；那台 sshd 的 sftp 起始目录是临时的 `rhome`，
 /// 写不到真 home。买到：部署判定四形（缺 ⇒ 部署 · 装完 ⇒ 那台 sshd 上真扫出戳、跳过 · 截成 0 字节 ⇒ 重部署 ·
 /// 无戳的文件 ⇒ 显式失败不覆盖；三行入口那种旧文件也一样）·
-/// 卸载按钮删后端那一份 · 上传 / 下载经中继走完、最后一格是后端那一帧的终局。
+/// 卸载按钮删后端那一份 · 上传 / 下载各一条 `transfer-copy` 走完、落地逐字节对。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "要真 sshd ＋ 真后端二进制：由 tests/evidence/sftp-loopback.py --monitor 带环境变量来跑"]
+#[ignore = "要真 sshd ＋ 真后端二进制：由 tests/evidence/sftp-loopback.py 带环境变量来跑"]
 async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
-    use futures::StreamExt;
+    // 起真后端必经 shim：拿不到就停（排在一切 spawn 之前）。后端裸调的 tmux 经它强插 `-L`，只连得到私有那台。
+    let shim = crate::local_backend_host::tests::demand_tmux_shim(
+        "本条起真后端，它裸调的 tmux 要落在私有那台",
+    );
     let _local = crate::inbound_client::local_origin_test_lock();
     let raw = std::env::var("SR1B_LOOPBACK").expect("没有 SR1B_LOOPBACK —— 这条只该由读数脚本来跑");
     let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
@@ -388,8 +391,12 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     let mut child = std::process::Command::new(s("backend"))
         .args(crate::local_backend::LOCAL_STREAM_ARGS) // 生产起本机流后端那一份起参（零参数是「起会话」）
         .env("HOME", &home)
-        .env("TMUX_TMPDIR", &home)
+        .env(
+            "PATH",
+            format!("{shim}:{}", std::env::var("PATH").unwrap_or_default()),
+        )
         .env_remove("TMUX")
+        .env_remove("TMUX_PANE")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .spawn()
@@ -440,7 +447,13 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
             machine: cfg.clone(),
         })
         .await
-        .map(|i| i.action)
+        .map(|i| i.said)
+    };
+    // 做了哪一样只写在那一句里：照文案键认（装上了 · 已是这一版）。
+    let did = |r: &Result<String, _>| match r {
+        Ok(s) if copy_core::copy_matches("rsSftp.deploy.done", s) => "deploy",
+        Ok(s) if copy_core::copy_matches("rsSftp.deploy.upToDate", s) => "skip",
+        _ => "other",
     };
     let uninstall = || async {
         ask_backend(&DeployUninstallReq {
@@ -479,23 +492,22 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     );
     let msg = uninstall().await.expect("卸载（出路）");
     assert!(msg.starts_with("已删除 ~/.cc-monitor/bin/ccm"), "{msg}");
-    assert_eq!(decide().await, Ok(ActionTag::Deploy), "落点缺 ⇒ 该装");
+    let d1 = decide().await;
+    assert_eq!(did(&d1), "deploy", "落点缺 ⇒ 该装：{d1:?}");
     assert_eq!(
         std::fs::read(&backend_path).unwrap(),
         me,
         "盘上那份不是送去的字节"
     );
+    let d2 = decide().await;
     assert_eq!(
-        decide().await,
-        Ok(ActionTag::Skip),
-        "装完 ⇒ 该跳过（那台上那份的戳没被扫出来就不会是这一格）"
+        did(&d2),
+        "skip",
+        "装完 ⇒ 该跳过（那台上那份的戳没被扫出来就不会是这一句）：{d2:?}"
     );
     std::fs::write(&backend_path, b"").unwrap();
-    assert_eq!(
-        decide().await,
-        Ok(ActionTag::Deploy),
-        "截成 0 字节 ⇒ 该重装"
-    );
+    let d0 = decide().await;
+    assert_eq!(did(&d0), "deploy", "截成 0 字节 ⇒ 该重装：{d0:?}");
     // 落点上是一份不说自己是谁的东西 ⇒ 显式失败、不覆盖（盘上那份原样）。
     std::fs::write(&backend_path, b"#!/bin/sh\necho not ours\n").unwrap();
     let d3 = decide().await;
@@ -508,61 +520,55 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     let msg = uninstall().await.expect("卸载");
     assert!(msg.starts_with("已删除 ~/.cc-monitor/bin/ccm"), "{msg}");
     assert!(!std::path::Path::new(&backend_path).exists());
-    // ⑤ 上传经中继：开单 → 订阅即起跑 → 终局 Done，暂存件逐字节等于本机那份
-    let origin = crate::origin::Origin::named(cfg.clone());
+    // ⑤ 上传：寻址本机的一条 `transfer-copy`（本机 → 那台的 `rhome`），落地那份逐字节等于本机那份
     let up = s("up");
-    let r = crate::transfer_relay::transfer_call(
-        cfg.clone(),
-        crate::transfer_relay::TRANSFER_UPLOAD,
-        &serde_json::json!({ "items": [{ "local_path": up }], "remote_dir": "/tmp" }),
-    )
+    let done = |r: &cmd_wire::batch::BatchReply| {
+        r.outcomes
+            .iter()
+            .all(|o| o.state == cmd_wire::batch::ItemState::Done)
+    };
+    let one = |path: &str, name: Option<&str>| cmd_wire::transfer::CopyFrom {
+        path: cmd_wire::files::WirePath::from(path),
+        name: name.map(cmd_wire::files::WirePath::from),
+    };
+    let r = ask_backend(&cmd_wire::transfer::TransferCopyReq {
+        from: cmd_wire::Machine::local(),
+        to: cmd_wire::Machine::named(cfg.clone()),
+        items: vec![one(&up, None)],
+        to_dir: cmd_wire::files::WirePath::from(rhome.as_str()),
+        on_exists: Some(cmd_wire::batch::OnExists::Overwrite),
+        decide: None,
+        ticket: None,
+    })
     .await
-    .expect("开单（上传）");
-    let (id, key) = (
-        r["items"][0]["id"].as_str().unwrap(),
-        r["items"][0]["staged"].as_str().unwrap(),
-    );
-    let last = crate::transfer_relay::watch_ticket(&origin, id)
-        .expect("订阅")
-        .collect::<Vec<_>>()
-        .await
-        .pop()
-        .unwrap();
-    let want = std::fs::read(&up).unwrap();
-    // 上传那一路的传完带整份摘要（64 位十六进制；算法对不对由后端那一侧对拍 `sha2`）。
+    .expect("上传");
+    assert!(done(&r), "{r:?}");
+    let name = std::path::Path::new(&up)
+        .file_name()
+        .unwrap()
+        .to_string_lossy();
     assert!(
-        matches!(crate::transfer_relay::end_of(&last), Some(crate::transfer_relay::End::Done { bytes, sha256: Some(h) })
-            if *bytes == want.len() as u64 && h.len() == 64),
-        "{last:?}"
+        std::fs::read(format!("{rhome}/{name}")).unwrap() == std::fs::read(&up).unwrap(),
+        "上传落地的字节不对"
     );
-    let staged = std::fs::read(format!("{rhome}/.cc-monitor/staging/{key}.part")).unwrap();
-    assert!(staged == want, "暂存件不是本机那份的字节");
-    // ⑥ 下载经中继
+    // ⑥ 下载：同一条，那台 → 本机
     let dl_local = s("dl_local");
-    let r = crate::transfer_relay::transfer_call(
-        cfg.clone(),
-        crate::transfer_relay::TRANSFER_DOWNLOAD,
-        &serde_json::json!({
-            "items": [{ "remote_path": s("dl_remote"), "name": std::path::Path::new(&dl_local).file_name().unwrap().to_string_lossy() }],
-            "local_dir": std::path::Path::new(&dl_local).parent().unwrap().to_string_lossy(),
-            "on_exists": "overwrite",
-        }),
-    )
+    let dl = std::path::Path::new(&dl_local);
+    let r = ask_backend(&cmd_wire::transfer::TransferCopyReq {
+        from: cmd_wire::Machine::named(cfg.clone()),
+        to: cmd_wire::Machine::local(),
+        items: vec![one(
+            &s("dl_remote"),
+            dl.file_name().and_then(|n| n.to_str()),
+        )],
+        to_dir: cmd_wire::files::WirePath::from(dl.parent().unwrap().to_string_lossy().as_ref()),
+        on_exists: Some(cmd_wire::batch::OnExists::Overwrite),
+        decide: None,
+        ticket: None,
+    })
     .await
-    .expect("开单（下载）");
-    let last = crate::transfer_relay::watch_ticket(&origin, r["items"][0]["id"].as_str().unwrap())
-        .expect("订阅")
-        .collect::<Vec<_>>()
-        .await
-        .pop()
-        .unwrap();
-    assert!(
-        matches!(
-            crate::transfer_relay::end_of(&last),
-            Some(crate::transfer_relay::End::Done { .. })
-        ),
-        "{last:?}"
-    );
+    .expect("下载");
+    assert!(done(&r), "{r:?}");
     assert!(
         std::fs::read(&dl_local).unwrap() == std::fs::read(s("dl_remote")).unwrap(),
         "下载落地的字节不对"
@@ -583,12 +589,10 @@ async fn ask_backend<C: cmd_wire::Call>(req: &C) -> Result<C::Reply, cmd_wire::f
         .map_err(|said| Said::from(said).named(cmd))?;
     let deadline = tokio::time::Instant::now() + guard_core::wall::CEILING;
     let got = client.ask(None, req, None, deadline).await.map_err(|e| {
-        use crate::backend_route::{route_call_error, Routed};
-        let said = match route_call_error(&e, &copy_core::local_machine(), |_code, message| {
+        use crate::backend_route::route_call_error;
+        let said = route_call_error(&e, &copy_core::local_machine(), |_code, message| {
             message.to_string()
-        }) {
-            Routed::NoChannel(s) | Routed::Refused(s) => s,
-        };
+        });
         crate::detail::of_call(said, cmd, &e)
     })?;
     got.map_err(|e| Said::with_raw(e.to_string(), e).named(cmd))

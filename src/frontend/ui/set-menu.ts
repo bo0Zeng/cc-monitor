@@ -1,15 +1,13 @@
 /**
- * **起一组会话的入口**：栏顶拆分按钮「＋ ⌄」与它那张组菜单 · 命令面板「起一组…」开的同一张菜单。
+ * **起一组会话的入口**：栏顶「存好的几组」那一颗（`tab-bar-head.ts`，在栏上或在 ⋯ 里）与命令面板「起一组…」开的同一张菜单。
  *
- * - 左半「＋」＝ 新建会话…（开全产品那一个框）；右半「⌄」＝ 这台存好的几组（`profiles-read` 的 `sets`）。窄栏只剩「＋」，点了开同一张菜单。
+ * - 菜单头一项「新建会话…」（开全产品那一个框）；其下是这台存好的几组（`profiles-read` 的 `sets`）。
  * - 每组一项：名字 · 右侧「再起 N / 已齐」· 第二行那台的短句（几个目录 · 几个会话 · 几行起不了）· 悬停侧卡逐行「目录 组名 已有/要的」（起不了的那行写原因）—— 这几句都是那台 `set-plan` 写好的，
  *   答回来之前转圈。一组写错 · 那台答不了 ⇒ 那一项灰着、第二行写为什么。点一项 ＝ 起那一组（`set-start.ts`）：不弹框。
  * - 判定（已有几个 · 再起几个 · 组名 · 起不了的原因）与那几句全在那台后端，这里只排版。
  */
 import { copyText } from "./copy-table";
-import { icon } from "./kit/icon";
 import { openMenu, updateMenuItem, type MenuItem } from "./kit/menu";
-import { attachTooltip } from "./kit/tooltip";
 import { saidOf } from "./kit/detail";
 import { readProfiles } from "./profiles-reads";
 import { planSet, type SetPlan } from "./set-reads";
@@ -81,32 +79,6 @@ export async function openSetMenu(anchor: HTMLElement, origin: Machine, host: Se
       (e: unknown) => updateMenuItem(itemId(x.name), setItem(x, { kind: "failed", said: saidOf(e) }, start(x.name))),
     );
   }
-}
-
-/** 栏顶那排里的一颗图标按钮（同栏顶别的入口：`styles.css` 的 `.tab-bar-icon`）。 */
-function headIcon(cls: string, role: string, name: Parameters<typeof icon>[0], label: string): HTMLButtonElement {
-  const b = document.createElement("button");
-  b.type = "button";
-  b.className = `tab-bar-icon ${cls}`;
-  b.dataset.role = role;
-  b.setAttribute("aria-label", label);
-  b.appendChild(icon(name));
-  attachTooltip(b, () => label);
-  return b;
-}
-
-/** 栏顶拆分按钮「＋ ⌄」（两半贴着，样子在 `styles.css` 的 `.tab-bar-split`）。`origin` 现取（起在哪台跟着宿主此刻的那台）。 */
-export function newSessionSplit(origin: () => Machine, host: SetMenuHost): HTMLElement {
-  const root = document.createElement("span");
-  root.className = "tab-bar-split";
-  root.dataset.role = "new-split";
-  const plus = headIcon("tab-bar-split-plus", "new-session", "plus", copyText("main.cmd.newSession"));
-  const caret = headIcon("tab-bar-split-caret", "set-menu", "caretDown", copyText("setMenu.open.label"));
-  // 「＋」永远开新建框（窄栏也是）；组菜单只在「⌄」与命令面板「起一组…」。
-  plus.addEventListener("click", () => host.newSession());
-  caret.addEventListener("click", () => void openSetMenu(caret, origin(), host));
-  root.append(plus, caret);
-  return root;
 }
 
 /** 命令面板「起一组…」：开栏顶那张组菜单（同一份菜单、同一个起法），锚在 `anchor()` 交的那颗按钮上。 */

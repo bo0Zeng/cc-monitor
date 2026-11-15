@@ -168,7 +168,10 @@ fn cancel_only_takes_what_is_not_delivered() {
     assert!(delivered(&o, &sid(), "b").unwrap());
     let gone = cancel(&o, &sid(), "b", T0 + 3).unwrap();
     assert!(!gone.cancelled, "送过的撤不了");
-    assert!(!cancel(&o, &sid(), "nope", T0 + 3).unwrap().cancelled);
+    assert_eq!(gone.said, copy_text("beQueue.cancel.sent", &[]));
+    let unseen = cancel(&o, &sid(), "nope", T0 + 3).unwrap();
+    assert!(unseen.cancelled, "没见过的记作撤过（先撤后到不再送）");
+    assert_eq!(unseen.said, copy_text("beQueue.cancel.done", &[]));
     // 撤掉的 id 重发不复活。
     let again = put(&o, &req("a", "desk", None, T0), T0 + 4).unwrap();
     assert_eq!(again.outcome, O::Seen);
@@ -196,6 +199,44 @@ fn session_end_marks_whatever_is_left_undelivered() {
     assert!(
         cancel(&o, &sid(), "a", T0 + 4).unwrap().cancelled,
         "撤掉才消失"
+    );
+}
+
+/// ★ 盘上没存原因的未送达（这一格加进来之前标的那一形）不画空：照实说原因未留存（同手机待发那一形一把键）。
+#[test]
+fn an_undelivered_line_without_a_stored_reason_says_so_not_blank() {
+    let h = home("no-why");
+    let o = own(&h);
+    put(&o, &req("a", "desk", None, T0), T0).unwrap();
+    assert!(give_up(&o, SID, "a", "附件已不在".into()).unwrap());
+    let file = h.join(DIR_REL).join(format!("{SID}.json"));
+    let mut v: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    let items = v["items"].as_array_mut().expect("items 一格");
+    assert!(
+        items[0].as_object_mut().unwrap().remove("why").is_some(),
+        "夹具没摘到原因那一格：{items:?}"
+    );
+    std::fs::write(&file, serde_json::to_string(&v).unwrap()).unwrap();
+    let l = read(&o, &sid(), T0 + 1).unwrap();
+    assert_eq!(l.items[0].state, S::Undelivered);
+    let want = copy_core::copy_text("beQueue.said.noWhy", &[]);
+    assert!(!want.contains('〔'), "键不在文案表里：{want}");
+    assert_eq!(l.items[0].said, want, "没存原因的那一条画成了空");
+}
+
+/// ★ 会话结束标的未送达，每一条都说会话已结束（不是笼统的兜底那一句）；收着的那一条也一样。
+#[test]
+fn session_end_says_the_session_ended_on_every_line() {
+    let o = own(&home("end-said"));
+    put(&o, &req("a", "desk", None, T0), T0).unwrap();
+    put(&o, &req("h", "phone", Some(5), T0), T0 + 1).unwrap();
+    let q = end(&o, &sid(), T0 + 2).unwrap();
+    let want = copy_core::copy_text("beQueue.said.ended", &[]);
+    assert!(!want.contains('〔'), "键不在文案表里：{want}");
+    assert_eq!(
+        q.items.iter().map(|i| i.said.as_str()).collect::<Vec<_>>(),
+        vec![want.as_str(), want.as_str()]
     );
 }
 
@@ -290,12 +331,14 @@ fn the_delivery_side_lists_queues_and_names_touched_ones() {
 fn a_refused_line_is_kept_as_undelivered_and_a_held_one_says_when_it_is_due() {
     let o = own(&home("giveup"));
     put(&o, &req("a", "desk", None, T0), T0).unwrap();
-    assert!(give_up(&o, SID, "a", None).unwrap());
-    assert!(!give_up(&o, SID, "a", None).unwrap(), "不在排着 ⇒ 不动");
-    assert_eq!(
-        ids(&read(&o, &sid(), T0).unwrap()),
-        vec![("a", Some(1), S::Undelivered)]
+    assert!(give_up(&o, SID, "a", "附件已不在".into()).unwrap());
+    assert!(
+        !give_up(&o, SID, "a", "又一句".into()).unwrap(),
+        "不在排着 ⇒ 不动"
     );
+    let l = read(&o, &sid(), T0).unwrap();
+    assert_eq!(ids(&l), vec![("a", Some(1), S::Undelivered)]);
+    assert_eq!(l.items[0].said, "附件已不在", "投递交的那一句原样进名单");
     put(&o, &req("h", "deskB", Some(2), T0), T0 + 5).unwrap();
     let d = due(&o, SID, T0 + 6).unwrap();
     assert_eq!((d.item, d.held_until), (None, Some(T0 + 5 + HOLD_MS)));
@@ -378,7 +421,7 @@ fn each_item_says_what_it_waits_for_not_its_place() {
         .all(|s| *s == confirming));
 }
 
-/// 瘦客户端底行那一句（会话那台写）：排着 · 收着合计 N 条；未送达的不算；一条都没在等 ⇒ 没有。
+/// 排队那一句（状态行 `queue` 那一格，会话那台写）：排着 · 收着合计 N 条；未送达的不算；一条都没在等 ⇒ 没有。
 #[test]
 fn the_waiting_line_counts_queued_and_held_but_not_undelivered() {
     let o = own(&home("waiting"));
@@ -414,7 +457,7 @@ fn host_own(tag: &str) -> Own {
     })
 }
 
-/// ★ 瘦客户端底行那一句跟着会话那台的名单走：打标前投的两条，打标那一下现读 ⇒「排队 2 条」；撤一条 ⇒「排队 1 条」；撤完 ⇒ 没有。
+/// ★ 托管终端排队那一句照会话那台的名单写：打标前投的两条，没打标 ⇒ 没有；打标之后现读 ⇒「排队 2 条」；撤一条 ⇒「排队 1 条」；撤完 ⇒ 没有。
 #[test]
 fn the_host_line_follows_the_owners_list_from_tag_to_empty() {
     use crate::host::managed::home::{Facts, Home};
@@ -427,31 +470,17 @@ fn the_host_line_follows_the_owners_list_from_tag_to_empty() {
         ..Facts::default()
     };
     home.write_facts(&facts).unwrap();
-    let (tx, rx) = std::sync::mpsc::channel();
-    let tx = std::sync::Mutex::new(tx);
-    let _ears = host_line_ears(
-        &o,
-        id,
-        Box::new(move |l| {
-            let _ = tx.lock().unwrap().send(l);
-        }),
-    )
-    .expect("挂上");
-    let next = || {
-        rx.recv_timeout(guard_core::wall::CEILING)
-            .expect("等到下一句")
-    };
     let waiting = |n: usize| Some(copy_text("beQueue.said.waiting", &[("n", &n.to_string())]));
     let now = || crate::common::time::now_ms() as i64;
-    assert_eq!(next(), None, "还没打标 ⇒ 没有");
     put(&o, &req("a", "mobile", None, T0), now()).unwrap();
     put(&o, &req("b", "mobile", None, T0), now()).unwrap();
+    assert_eq!(line_of_host(&o, id), None, "还没打标 ⇒ 没有");
     facts.sid = SID.into();
     home.write_facts(&facts).unwrap();
-    assert_eq!(next(), waiting(2), "打标那一下现读");
+    assert_eq!(line_of_host(&o, id), waiting(2), "打标那一下现读");
     cancel(&o, SID, "a", now()).unwrap();
-    assert_eq!(next(), waiting(1));
+    assert_eq!(line_of_host(&o, id), waiting(1));
     cancel(&o, SID, "b", now()).unwrap();
-    assert_eq!(next(), None, "撤完 ⇒ 没有");
+    assert_eq!(line_of_host(&o, id), None, "撤完 ⇒ 没有");
     home.clear();
 }

@@ -8,8 +8,8 @@
 //! 读：不拿锁（每份都是整份原子换的，读到的总是某一份完整的）。
 
 use super::rules::Ledger;
+use super::wire::BusEnvelope;
 use crate::common::said::Said;
-use crate::control::cc_bus_wire::BusEnvelope;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 

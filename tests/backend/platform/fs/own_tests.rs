@@ -40,8 +40,7 @@ fn w2_dirs_are_born_private_and_existing_ones_are_left_alone() {
     assert_eq!(mode(fresh.as_path()), 0o700);
     own.ensure_dir(&fresh).expect("已在不算错");
     std::fs::create_dir(base.join("old")).expect("预置");
-    std::fs::set_permissions(base.join("old"), std::fs::Permissions::from_mode(0o755))
-        .expect("chmod");
+    test_home::set_dir_mode(&base.join("old"), 0o755);
     own.ensure_dir(&own.path("old").expect("名")).expect("已在");
     assert_eq!(mode(&base.join("old")), 0o755, "已在的那一层被改了权限");
     assert!(
@@ -143,24 +142,31 @@ fn w6_the_account_creds_handle_reaches_one_file_and_its_lock_dirs() {
     let own = Own::for_tests();
     for bad in ["", "../x", "a/b", ".."] {
         assert!(
-            own.account_creds(&acct, bad, ".lock", None, None).is_err(),
+            own.account_creds(&acct, bad, Some(".lock"), None, None)
+                .is_err(),
             "文件名 {bad:?} 收下了"
         );
         assert!(
-            own.account_creds(&acct, ".credentials.json", bad, None, None)
+            own.account_creds(&acct, ".credentials.json", Some(bad), None, None)
                 .is_err(),
             "锁名 {bad:?} 收下了"
         );
     }
     assert!(
-        own.account_creds(&acct, ".credentials.json", ".lock", Some("/x"), None)
+        own.account_creds(&acct, ".credentials.json", Some(".lock"), Some("/x"), None)
             .is_err(),
         "旁边那把的后缀带分隔符也收下了"
     );
     for bad in ["", "../x", "a/b"] {
         assert!(
-            own.account_creds(&acct, ".credentials.json", ".lock", None, Some(bad))
-                .is_err(),
+            own.account_creds(
+                &acct,
+                ".credentials.json",
+                Some(".lock"),
+                None,
+                Some((bad, WriteLockForm::Dir))
+            )
+            .is_err(),
             "写锁名 {bad:?} 收下了"
         );
     }
@@ -168,9 +174,9 @@ fn w6_the_account_creds_handle_reaches_one_file_and_its_lock_dirs() {
         .account_creds(
             &acct,
             ".credentials.json",
-            ".lock",
             Some(".lock"),
-            Some(".w.lock"),
+            Some(".lock"),
+            Some((".w.lock", WriteLockForm::Dir)),
         )
         .expect("合法的那一形");
     let held = c.lock().expect("目录锁");
@@ -183,26 +189,102 @@ fn w6_the_account_creds_handle_reaches_one_file_and_its_lock_dirs() {
     assert!(!c.make_lock(&RenewLock::Inside).unwrap(), "已在 ⇒ 没建");
     assert!(c.make_lock(&RenewLock::Beside).unwrap(), "旁边那把建成");
     assert!(c.make_lock(&RenewLock::Write).unwrap(), "写锁建成");
-    let entry = RenewLock::OneLogin("mcp-x.lock.lock".into());
-    assert!(c.make_lock(&entry).unwrap(), "按条起名的那把建成");
-    for bad in ["../x", "a/b", ""] {
-        assert!(
-            c.make_lock(&RenewLock::OneLogin(bad.into())).is_err(),
-            "条锁名 {bad:?} 收下了"
-        );
-    }
     assert!(base.join("acct.lock").is_dir() && acct.join(".lock").is_dir());
-    assert!(acct.join(".w.lock").is_dir() && acct.join("mcp-x.lock.lock").is_dir());
-    for w in [
-        RenewLock::Inside,
-        RenewLock::Beside,
-        RenewLock::Write,
-        entry,
-    ] {
+    assert!(acct.join(".w.lock").is_dir());
+    for w in [RenewLock::Inside, RenewLock::Beside, RenewLock::Write] {
         c.drop_lock(&w).unwrap();
     }
     assert!(!base.join("acct.lock").exists() && !acct.join(".lock").exists());
-    assert!(!acct.join(".w.lock").exists() && !acct.join("mcp-x.lock.lock").exists());
+    assert!(!acct.join(".w.lock").exists());
+    // 那一家续期不拿锁（里面那把没登记）⇒ 那一把无处可建、无处可删。
+    let bare = own
+        .account_creds(&acct, ".credentials.json", None, None, None)
+        .expect("不登记续期锁的那一形");
+    assert_eq!(bare.lock_path(&RenewLock::Inside), None);
+    assert!(
+        !bare.make_lock(&RenewLock::Inside).unwrap(),
+        "没登记 ⇒ 没建"
+    );
+    assert!(side_files(&acct).is_empty(), "号目录里留了旁名");
+    std::fs::remove_dir_all(&base).ok();
+}
+
+/// MCP 登录文件的窄句柄：文件名只认一段名字；锁在铸的那一下登记（`mkdir` 那一形只认一段名字，文件锁认一段名字或
+/// 「一层子目录 / 一段名字」），之后只按登记的序号点、形不对就拒；文件锁的子目录不在就建；同一份锁文件第二个人拿 ⇒ 没拿到；
+/// 写只落那一份文件。
+#[cfg(unix)]
+#[test]
+fn the_mcp_logins_handle_reaches_one_file_and_its_declared_locks() {
+    use crate::platform::fs::LoginLockForm::{Dir, File};
+    let base = test_home::scratch("mcp-logins-handle");
+    let acct = base.join("acct");
+    std::fs::create_dir_all(&acct).unwrap();
+    let own = Own::for_tests();
+    for bad in ["", "../x", "a/b", ".."] {
+        assert!(
+            own.mcp_logins_file(&acct, bad, &[]).is_err(),
+            "文件名 {bad:?} 收下了"
+        );
+    }
+    for bad in ["../x", "a/b", ""] {
+        assert!(
+            own.mcp_logins_file(&acct, "l.conf", &[(bad.into(), Dir)])
+                .is_err(),
+            "mkdir 锁名 {bad:?} 收下了"
+        );
+    }
+    for bad in ["../x", "a/b/c", "", "a/../b"] {
+        assert!(
+            own.mcp_logins_file(&acct, "l.conf", &[(bad.into(), File)])
+                .is_err(),
+            "文件锁名 {bad:?} 收下了"
+        );
+    }
+    let f = own
+        .mcp_logins_file(
+            &acct,
+            "logins.conf",
+            &[("w.lock".into(), Dir), ("locks/k.lock".into(), File)],
+        )
+        .expect("合法的那一形");
+    let held = f.lock().expect("目录锁");
+    f.write(&held, b"login k {}\n").expect("写");
+    assert_eq!(
+        std::fs::read(acct.join("logins.conf")).unwrap(),
+        b"login k {}\n"
+    );
+    assert!(f.make_dir_lock(0).unwrap(), "mkdir 锁建成");
+    assert!(!f.make_dir_lock(0).unwrap(), "已在 ⇒ 没建");
+    assert!(f.make_dir_lock(1).is_err(), "拿文件锁那一把当 mkdir 建了");
+    assert!(f.make_dir_lock(2).is_err(), "没登记的那一把也建了");
+    f.drop_dir_lock(0).unwrap();
+    assert!(!acct.join("w.lock").exists());
+    assert!(f.try_file_lock(0).is_err(), "拿 mkdir 那一把当文件锁开了");
+    let first = f.try_file_lock(1).unwrap();
+    assert!(first.is_some(), "文件锁拿到");
+    assert!(acct.join("locks/k.lock").is_file(), "子目录与锁文件建好");
+    assert!(
+        f.try_file_lock(1).unwrap().is_none(),
+        "我方持着再拿还拿到了"
+    );
+    drop(first);
+    // 本进程放了之后马上再拿不判：旁边别的判据线程 fork 出的子进程在 fork 到 exec 之间还攥着那份 fd（锁跟着它）。
+    // 「放了 ⇒ 拿到」由真子进程来持、来放（它 `flock` 是等着拿的，本进程漏出去的那几份关了才拿上）。
+    let forks = test_home::forking(4);
+    for i in 0..300 {
+        let theirs = test_home::held_elsewhere(&acct, "locks/k.lock");
+        assert!(
+            f.try_file_lock(1).unwrap().is_none(),
+            "第 {i} 次：别人持着还拿到了"
+        );
+        test_home::let_go(theirs);
+        assert!(
+            f.try_file_lock(1).unwrap().is_some(),
+            "第 {i} 次：放了还拿不到"
+        );
+    }
+    drop(forks);
+    drop(held);
     assert!(side_files(&acct).is_empty(), "号目录里留了旁名");
     std::fs::remove_dir_all(&base).ok();
 }
@@ -319,7 +401,7 @@ fn o1_born_private_existing_left_alone_missing_parent_refused() {
     create_dir_private(&fresh).expect("再建一次（已在）不算错");
     let old = base.join("old");
     std::fs::create_dir(&old).expect("预置");
-    std::fs::set_permissions(&old, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    test_home::set_dir_mode(&old, 0o755);
     create_dir_private(&old).expect("已在");
     assert_eq!(mode(&old), 0o755, "已在的那一层被改了权限");
     assert!(
@@ -342,7 +424,7 @@ fn d1_an_own_dir_is_a_private_real_dir_of_mine_or_it_is_refused() {
     // 不合的两形：各拒、各说清是哪一形，盘上一个字节不改。
     let real = base.join("real");
     std::fs::create_dir(&real).unwrap();
-    std::fs::set_permissions(&real, std::fs::Permissions::from_mode(0o700)).unwrap();
+    test_home::set_dir_mode(&real, 0o700);
     let link = base.join("link");
     std::os::unix::fs::symlink(&real, &link).unwrap();
     let file = base.join("file");
@@ -363,7 +445,7 @@ fn d1_an_own_dir_is_a_private_real_dir_of_mine_or_it_is_refused() {
     // 放宽了的本人目录 ⇒ 收回 0700、过。
     let wide = base.join("wide");
     std::fs::create_dir(&wide).unwrap();
-    std::fs::set_permissions(&wide, std::fs::Permissions::from_mode(0o755)).unwrap();
+    test_home::set_dir_mode(&wide, 0o755);
     own_dir(&wide).expect("放宽了的本人目录该收回、过");
     assert_eq!(mode(&wide), PRIVATE_DIR_MODE, "放宽着没收回");
     assert!(
@@ -398,5 +480,155 @@ fn diag_log_created_file_is_born_owner_only() {
         "追加新建的诊断日志权限位不是 0600"
     );
 
+    std::fs::remove_dir_all(&base).ok();
+}
+
+/// 整份写锁的文件锁那一形：别人持着那份锁文件的排他锁 ⇒ 拿不到（不等）；放了 ⇒ 拿得到；这一形不建锁目录。
+/// 「别人」是一个真子进程，这一段排在本进程第一次拿锁之前：本进程持过锁的那份 fd，旁边别的判据线程 fork 出的子进程在
+/// fork 到 exec 之间也攥着（flock 跟着打开的那份文件），本进程放了、锁还在。开着旁边不停 fork 循环 300 次，撞上一次当场红。
+#[cfg(unix)]
+#[test]
+fn a_file_write_lock_is_taken_without_waiting_and_never_made_a_directory() {
+    let base = test_home::scratch("filelock");
+    let acct = base.join("acct");
+    std::fs::create_dir_all(&acct).unwrap();
+    let own = Own::for_tests();
+    let c = own
+        .account_creds(
+            &acct,
+            "auth.json",
+            Some(".renew"),
+            None,
+            Some(("auth.lock", WriteLockForm::File)),
+        )
+        .expect("合法的那一形");
+    assert_eq!(c.write_lock_form(), Some(WriteLockForm::File));
+    let forks = test_home::forking(4);
+    for i in 0..300 {
+        let theirs = test_home::held_elsewhere(&acct, "auth.lock");
+        assert!(
+            c.try_file_lock().expect("拿得动").is_none(),
+            "第 {i} 次：别人持着 ⇒ 不等、拿不到"
+        );
+        test_home::let_go(theirs);
+        assert!(
+            c.try_file_lock().expect("拿得动").is_some(),
+            "第 {i} 次：放了 ⇒ 拿到"
+        );
+    }
+    drop(forks);
+    // 循环最后一下本进程刚拿过、放过这一份：删掉它，下面「不在就建」建的是一个新 inode，漏出去的旧 fd 碍不着。
+    std::fs::remove_file(acct.join("auth.lock")).unwrap();
+    let held = c.try_file_lock().expect("拿得动").expect("没人持着 ⇒ 拿到");
+    assert!(acct.join("auth.lock").is_file(), "锁文件不在就建");
+    let other = std::fs::OpenOptions::new()
+        .write(true)
+        .open(acct.join("auth.lock"))
+        .unwrap();
+    assert!(
+        other.try_lock().is_err(),
+        "我方持着时别人拿不到（同一份文件锁）"
+    );
+    drop(other);
+    drop(held);
+    assert!(
+        c.make_lock(&RenewLock::Write).is_err(),
+        "文件锁那一形不许建成目录"
+    );
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// 🔴 家说不出（没有家 · 家是空串）⇒ 家那一根两形都拒、拒的是同一句（`beOwnState.path.noHome`），不拼成根上的 `/.cc-monitor/…`；
+/// 判法不在本文件另写一份：家那一格只交给 `platform::paths::under_home`。
+#[test]
+fn w7_an_unsaid_home_is_refused_alike_and_judged_by_under_home() {
+    let base = test_home::scratch("w7");
+    let want = Said::from(copy_core::copy_text("beOwnState.path.noHome", &[]));
+    for own in [Own::issue_data_at(&base), Own::issue_at(Path::new(""))] {
+        assert_eq!(
+            own.at_home(".cc-monitor/x")
+                .map(|p| p.as_path().to_path_buf()),
+            Err(want.clone()),
+            "家说不出给出了路径"
+        );
+        assert_eq!(
+            own.home_dir().map(|p| p.as_path().to_path_buf()),
+            Err(want.clone()),
+            "家说不出给出了 `.cc-monitor` 那一层"
+        );
+    }
+    let me =
+        guard_core::production_code(include_str!("../../../../src/backend/platform/fs/own.rs"));
+    // 按词数 `self.home`（后面接的不是名字字符）：另起的同前缀字段不算。
+    let reads = me
+        .match_indices("self.home")
+        .filter(|(i, s)| {
+            !me[i + s.len()..]
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_alphanumeric() || c == '_')
+        })
+        .count();
+    assert_eq!(reads, 1, "家那一格只该递给 `under_home` 一处");
+    assert_eq!(
+        me.matches("under_home(self.home.as_deref()").count(),
+        1,
+        "家那一格不再交给 `platform::paths::under_home` 判"
+    );
+    std::fs::remove_dir_all(&base).ok();
+}
+
+/// 凭据文件 · MCP 登录文件是符号链接（号目录里链到别处那一份）⇒ 两只窄句柄的整份写都写到链接指着的那一份：
+/// 链接还是链接、指向不变；那一份换成新内容；号目录与那一份旁边都不留旁名。链到链的照一串解到底；相对链接照链接所在目录解。
+#[cfg(unix)]
+#[test]
+fn w8_a_linked_creds_file_is_written_through_to_what_it_points_at() {
+    let base = test_home::scratch("w8");
+    let acct = base.join("acct");
+    let shared = base.join("shared");
+    std::fs::create_dir_all(&acct).unwrap();
+    std::fs::create_dir_all(&shared).unwrap();
+    let real = shared.join("real.json");
+    std::fs::write(&real, b"old").unwrap();
+    // 号目录里：creds.json → ../shared/real.json（相对）；logins.json → hop.json → 绝对的 real.json（两跳）。
+    std::os::unix::fs::symlink("../shared/real.json", acct.join("creds.json")).unwrap();
+    std::os::unix::fs::symlink(&real, acct.join("hop.json")).unwrap();
+    std::os::unix::fs::symlink("hop.json", acct.join("logins.json")).unwrap();
+    let own = Own::for_tests();
+
+    let c = own
+        .account_creds(&acct, "creds.json", None, None, None)
+        .expect("句柄");
+    let held = c.lock().expect("目录锁");
+    c.write(&held, b"via-creds").expect("写");
+    drop(held);
+    let link = acct.join("creds.json");
+    assert!(
+        std::fs::symlink_metadata(&link).unwrap().is_symlink(),
+        "凭据链接被换成了普通文件"
+    );
+    assert_eq!(
+        std::fs::read_link(&link).unwrap(),
+        Path::new("../shared/real.json")
+    );
+    assert_eq!(std::fs::read(&real).unwrap(), b"via-creds");
+
+    let f = own
+        .mcp_logins_file(&acct, "logins.json", &[])
+        .expect("句柄");
+    let held = f.lock().expect("目录锁");
+    f.write(&held, b"via-logins").expect("写");
+    drop(held);
+    for l in ["logins.json", "hop.json"] {
+        assert!(
+            std::fs::symlink_metadata(acct.join(l))
+                .unwrap()
+                .is_symlink(),
+            "{l} 被换成了普通文件"
+        );
+    }
+    assert_eq!(std::fs::read(&real).unwrap(), b"via-logins");
+    assert!(side_files(&acct).is_empty(), "号目录里留了旁名");
+    assert!(side_files(&shared).is_empty(), "那一份旁边留了旁名");
     std::fs::remove_dir_all(&base).ok();
 }

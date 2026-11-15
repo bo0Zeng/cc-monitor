@@ -76,6 +76,7 @@ import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.core.wire.gen.BatchLine
+import com.ccmonitor.mobile.core.wire.gen.ChmodAsk
 import com.ccmonitor.mobile.core.wire.gen.MenuEntry
 import com.ccmonitor.mobile.core.wire.gen.Tone
 import com.ccmonitor.mobile.link.HostBackends
@@ -108,10 +109,10 @@ private sealed interface FilesDialog {
         val entries: List<FilesLs.Entry>,
     ) : FilesDialog
 
-    /** 改选中那几项的权限位（[now]：只选一项时它此刻的权限位）。 */
+    /** 改选中那几项的权限位（[ask]：核心照逐项读回来的权限位写好的标题 · 那一行 · 预填）。 */
     data class Chmod(
         val entries: List<FilesLs.Entry>,
-        val now: String?,
+        val ask: ChmodAsk,
     ) : FilesDialog
 
     /** 复制到…：选目标目录（[browser] 那一屏）。 */
@@ -208,7 +209,7 @@ fun FilesScreen(
             }
             val group by vm.batch.collectAsState()
             group?.let { e ->
-                if (e is BatchLine.Asking) ConflictSheet(e.title, null, e.conflicts, e.go) { vm.answerBatch(e.id, it) }
+                if (e is BatchLine.Asking) ConflictSheet(e.title, null, e.conflicts, e.whole, e.go) { vm.answerBatch(e.id, it) }
                 BatchCard(
                     e,
                     onStop = { vm.stopBatch(e.id) },
@@ -242,9 +243,10 @@ private fun entryActions(
     return remember(vm) {
         EntryActions(
             download = download,
-            preview = { e -> scope.launch { vm.preview(e.path, e.preview).onSuccess { onDialog(FilesDialog.Preview(e.name, it)) } } },
-            startEdit = { e -> scope.launch { vm.readText(e.path, e.edit).onSuccess { onDialog(FilesDialog.Edit(e, it.text, it.sha256)) } } },
-            startChmod = { es -> scope.launch { onDialog(FilesDialog.Chmod(es, es.singleOrNull()?.let { vm.modeText(it) })) } },
+            // 门只在菜单那一项能点时才走到这里（灰着的那一句由核心写、点了照说）：没有门的那一行不会到。
+            preview = { e -> e.preview?.let { g -> scope.launch { vm.preview(e.path, g).onSuccess { onDialog(FilesDialog.Preview(e.name, it)) } } } },
+            startEdit = { e -> e.edit?.let { g -> scope.launch { vm.readText(e.path, g).onSuccess { onDialog(FilesDialog.Edit(e, it.text, it.sha256)) } } } },
+            startChmod = { es -> scope.launch { vm.chmodAsk(es)?.let { onDialog(FilesDialog.Chmod(es, it)) } } },
             startCopy = { es ->
                 scope.launch {
                     val b = vm.browser()
@@ -374,10 +376,13 @@ private fun EntryList(
                     if (selection.active) {
                         vm.pick(e)
                     } else {
-                        when (vm.tapOf(e)) {
-                            "open" -> vm.navigateTo(e.path)
-                            "preview" -> actions.preview(e)
-                            "download" -> actions.download(listOf(e))
+                        val tap = vm.tapOf(e)
+                        when {
+                            tap == null -> {}
+                            tap.why != null -> vm.say(tap.why)
+                            tap.id == "open" -> vm.navigateTo(e.path)
+                            tap.id == "preview" -> actions.preview(e)
+                            tap.id == "download" -> actions.download(listOf(e))
                         }
                     }
                 },
@@ -626,20 +631,14 @@ private fun ChmodDialog(
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
-    var value by remember(d) { mutableStateOf(d.now.orEmpty()) }
-    val title =
-        d.entries.singleOrNull()?.let { copyText("rsFilewinWriteops.heading.chmodOne", "name" to it.name) }
-            ?: copyText("rsFilewinSelect.label.chmodMany", "n" to d.entries.size)
+    var value by remember(d) { mutableStateOf(d.ask.prefill.orEmpty()) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        title = { Text(d.ask.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(value, { value = it }, singleLine = true, textStyle = monoSmall, modifier = Modifier.fillMaxWidth())
-                val hint =
-                    d.now?.let { copyText("rsFilewinWriteops.mode.now", "mode" to it) }
-                        ?: copyText("rsFilewinWriteops.mode.unreadable")
-                Text(hint, style = monoSmall, color = LocalAppTokens.current.textFaint)
+                Text(d.ask.line, style = monoSmall, color = LocalAppTokens.current.textFaint)
             }
         },
         confirmButton = {

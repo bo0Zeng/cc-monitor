@@ -178,52 +178,12 @@
         "text": "允许"
       },
       {
-        "id": "always-0",
-        "look": "plain",
-        "note": "none",
-        "picks": false,
-        "row": "main",
-        "text": "允许，且允许访问 /w（本次会话）"
-      },
-      {
-        "id": "always-1",
-        "look": "plain",
-        "note": "none",
-        "picks": false,
-        "row": "main",
-        "text": "允许，且自动接受编辑（本次会话）"
-      },
-      {
         "id": "deny",
         "look": "plain",
         "note": "none",
         "picks": false,
         "row": "hold",
         "text": "拒绝"
-      },
-      {
-        "id": "deny-note",
-        "look": "plain",
-        "note": "required",
-        "picks": false,
-        "row": "hold",
-        "text": "拒绝并说明"
-      },
-      {
-        "id": "deny-stop",
-        "look": "danger",
-        "note": "none",
-        "picks": false,
-        "row": "hold",
-        "text": "拒绝并停下"
-      },
-      {
-        "id": "release",
-        "look": "ghost",
-        "note": "none",
-        "picks": false,
-        "row": "release",
-        "text": "改到终端里答"
       }
     ],
     "detail": "touch a.txt\necho ok",

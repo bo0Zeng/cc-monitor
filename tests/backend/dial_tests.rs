@@ -14,9 +14,7 @@
 //! （那会多一条跨轨编译期边）。
 
 use super::*;
-use ssh_dial::{
-    connect, stage, why_of_stage, write_ack, write_stages_then_ack, DialAck, Why, ACK_V, USES,
-};
+use ssh_dial::{connect, stage, why_of_stage, write_ack, write_stages_then_ack, DialAck, Why};
 use std::sync::Arc;
 
 /// 从一行 JSON 文本读一份**组好的**请求（`DialRequest` 自己的反序列化 —— 生产上线交来的只是那台的名字，
@@ -227,53 +225,61 @@ fn the_request_line_is_read_with_snake_case_keys() {
     );
 }
 
-/// ack 一定是**一行**，而且以 `\n` 收尾 —— 界面在 `read_line` 上等着它。
+/// ack 一定是**一行**，而且以 `\n` 收尾 —— 读它的那一侧在 `read_line` 上等着它。
+/// **ack 的金样**：线上只出有读者的那几格（手机 `RustTransport` 读 ok · said · detail · fingerprint · key_type ·
+/// expected_fingerprint · unreached；后端转发读 ok · said）。多一格就是没人读的格（R7），少一格就是读的那一侧读空。
 #[tokio::test]
-async fn the_ack_is_exactly_one_newline_terminated_line() {
-    let mut buf: Vec<u8> = Vec::new();
-    write_ack(
-        &mut buf,
-        &DialAck {
-            ok: true,
-            said: None,
-            detail: None,
-            fingerprint: Some("SHA256:x".into()),
-            endpoint: Some("h:22".into()),
-            winner: Some(Endpoint {
-                host: "h".into(),
-                port: 22,
-            }),
-            reason: Some(Why::Auth),
-            key_type: None,
-            expected_fingerprint: None,
-            v: ACK_V,
-            uses: USES.iter().map(|u| u.to_string()).collect(),
-            unreached: false,
-        },
-    )
-    .await
-    .expect("写 ack 失败");
-    let s = String::from_utf8(buf).expect("ack 不是 utf8");
-    assert_eq!(s.matches('\n').count(), 1, "ack 不是一行：{s:?}");
-    assert!(s.ends_with('\n'), "ack 没有以换行收尾：{s:?}");
-    let v: serde_json::Value = serde_json::from_str(s.trim()).expect("ack 不是合法 JSON");
-    assert_eq!(v["ok"], serde_json::Value::Bool(true));
-    // 结构化的胜者（界面据它记 last-good）。
-    assert_eq!(v["winner"], serde_json::json!({"host": "h", "port": 22}));
-    // ack 里没有固化指纹那几格（逐地址指纹 · 严格与否）：信哪把钥匙只在拨号核心那份库里判。
-    for gone in [
-        "fingerprints",
-        "jump_fingerprints",
-        "strict",
-        "jump_strict",
-        "expected_fingerprint",
-    ] {
-        assert!(v.get(gone).is_none(), "{gone} 还在 ack 里：{v}");
+async fn the_ack_is_one_line_and_carries_only_the_cells_someone_reads() {
+    async fn keys(ack: &DialAck) -> (serde_json::Value, Vec<String>) {
+        let mut buf: Vec<u8> = Vec::new();
+        write_ack(&mut buf, ack).await.expect("写 ack 失败");
+        let s = String::from_utf8(buf).expect("ack 不是 utf8");
+        assert_eq!(s.matches('\n').count(), 1, "ack 不是一行：{s:?}");
+        assert!(s.ends_with('\n'), "ack 没有以换行收尾：{s:?}");
+        let v: serde_json::Value = serde_json::from_str(s.trim()).expect("ack 不是合法 JSON");
+        let mut k: Vec<String> = v
+            .as_object()
+            .expect("ack 是一个对象")
+            .keys()
+            .cloned()
+            .collect();
+        k.sort();
+        (v, k)
     }
-    // ack 里没有「开通道被回拒」那一格。
-    assert!(v.get("open_refused").is_none());
-    // 没拨成的原因码（additive；界面按码说那一句、给修法）。
-    assert_eq!(v["reason"], "auth");
+    let (v, got) = keys(&ssh_dial::opened_ack(Some("SHA256:x".into()))).await;
+    assert_eq!(v["ok"], true);
+    assert_eq!(v["fingerprint"], "SHA256:x");
+    assert_eq!(
+        got,
+        ["fingerprint", "ok", "said", "unreached"],
+        "开成了的 ack：{v}"
+    );
+    let failed = ssh_dial::failed_ack(ssh_dial::DialFail {
+        said: "拨不通".into(),
+        detail: Some("russh: raw".into()),
+        fingerprint: Some("SHA256:x".into()),
+        reason: Some(Why::Unreachable),
+        key_type: Some("ssh-ed25519".into()),
+        expected_fingerprint: Some(String::new()),
+    });
+    let (v, got) = keys(&failed).await;
+    assert_eq!(
+        got,
+        [
+            "detail",
+            "expected_fingerprint",
+            "fingerprint",
+            "key_type",
+            "ok",
+            "said",
+            "unreached"
+        ],
+        "没开成的 ack（每一格都填上）：{v}"
+    );
+    assert_eq!(
+        (v["ok"].clone(), v["unreached"].clone()),
+        (false.into(), true.into())
+    );
 }
 
 /// 竞速那一格的阶段标签 → 原因码：每个标签各落一格，认不出的落「别的」。
@@ -300,7 +306,7 @@ fn a_v2_request_reads_and_a_v1_request_still_reads() {
     let r = parse_request(v1).expect("v1 请求读不动了");
     assert_eq!(r.use_, Use::Stream);
     assert_eq!(
-        r.race_order(),
+        ssh_dial::race_order(&r),
         vec![Endpoint {
             host: "h".into(),
             port: 22
@@ -325,7 +331,7 @@ fn a_v2_request_reads_and_a_v1_request_still_reads() {
         Some((7, Some("M".into())))
     );
     assert_eq!(
-        r.race_order(),
+        ssh_dial::race_order(&r),
         vec![
             Endpoint {
                 host: "a".into(),
@@ -355,23 +361,14 @@ fn a_v2_request_reads_and_a_v1_request_still_reads() {
     ] {
         let raw = format!(r#"{{"host":"h","port":1,"user":"u","key_path":null,"use":"{word}"}}"#);
         assert_eq!(parse_request(&raw).unwrap().use_, want);
-        assert!(
-            USES.contains(&word),
-            "`{word}` 读得动却不在 ack 的 `uses` 里 —— 界面会把它判成老代理"
-        );
     }
-    assert_eq!(
-        USES.len(),
-        5,
-        "`uses` 与 `Use` 的变体必须一一对应（两向：上面逐个读过，这里数一遍）"
-    );
     // 转发走不占 `MaxSessions` 的那一道。
     assert_eq!(
         super::uses::lane_of(Use::Forward),
         super::uses::Lane::Tunnel,
         "转发占了 session 通道的格"
     );
-    // 原始子系统字节流刻意不认（SFTP 住本机后端，界面只经帧命令 `deploy-*` · `transfer-*` 用它，
+    // 原始子系统字节流刻意不认（SFTP 住本机后端，界面只经帧命令 `deploy-*` · `transfer-copy` 用它，
     // 见 `dial/mod.rs` 头注）：读到它就是请求坏了。
     let sub = r#"{"host":"h","port":1,"user":"u","key_path":null,"use":"subsystem"}"#;
     assert!(
@@ -381,7 +378,7 @@ fn a_v2_request_reads_and_a_v1_request_still_reads() {
 }
 
 /// 生产源里点名的拨号用法（后端 `Use::X` · 各端请求里写的 `"use"` 值；界面进程零拨号、不点名）
-/// == 手写的这五种，两向。SFTP 只经帧命令（`deploy-*` · `transfer-*`）用，链路上没有文件那一种用法。
+/// == 手写的这五种，两向。SFTP 只经帧命令（`deploy-*` · `transfer-copy`）用，链路上没有文件那一种用法。
 /// 增删一种用法时同拍改这张表。
 #[test]
 fn the_dial_uses_named_in_production_are_exactly_these() {
@@ -475,7 +472,7 @@ async fn the_ack_and_the_stage_lines_have_the_shape_the_monitor_reads() {
     write_stages_then_ack(
         &mut buf,
         &sink,
-        &DialAck::of_fail(ssh_dial::fail(
+        &ssh_dial::failed_ack(ssh_dial::fail(
             "x".to_string().into(),
             Some("SHA256:x".into()),
         )),
@@ -509,8 +506,6 @@ async fn the_ack_and_the_stage_lines_have_the_shape_the_monitor_reads() {
     );
     let ack = &lines[6];
     assert_eq!(ack["ok"], false);
-    assert_eq!(ack["v"], ACK_V);
-    assert_eq!(ack["uses"], serde_json::json!(USES));
     assert_eq!(
         ack["fingerprint"], "SHA256:x",
         "失败的 ack 也带上看到过的指纹（TOFU 展示要它）"
@@ -522,7 +517,7 @@ async fn the_ack_and_the_stage_lines_have_the_shape_the_monitor_reads() {
     write_stages_then_ack(
         &mut quiet,
         &off,
-        &DialAck::of_fail(ssh_dial::fail("x".to_string().into(), None)),
+        &ssh_dial::failed_ack(ssh_dial::fail("x".to_string().into(), None)),
     )
     .await
     .unwrap();
@@ -710,12 +705,16 @@ async fn a_failed_ack_keeps_the_raw_words_in_the_detail_not_the_sentence() {
     let mut buf: Vec<u8> = Vec::new();
     let said =
         crate::common::said::Said::with_raw("step-said".to_string(), "russh: raw-words-here");
-    write_ack(&mut buf, &DialAck::of_fail(ssh_dial::fail(said, None)))
+    write_ack(&mut buf, &ssh_dial::failed_ack(ssh_dial::fail(said, None)))
         .await
         .unwrap();
     let v: serde_json::Value =
         serde_json::from_str(String::from_utf8(buf).unwrap().trim()).unwrap();
     assert_eq!(v["said"], "step-said");
+    assert!(
+        v.get("error").is_none(),
+        "没开成的那一句也叫 `said`（不出 `error`）：{v}"
+    );
     let detail = v["detail"].as_str().expect("没拨成的 ack 没有 detail");
     assert!(
         detail.contains("russh: raw-words-here"),
@@ -723,7 +722,7 @@ async fn a_failed_ack_keeps_the_raw_words_in_the_detail_not_the_sentence() {
     );
     assert!(detail.contains("dial"), "详情里没有命令那一项：{detail}");
     let mut ok: Vec<u8> = Vec::new();
-    let mut a = DialAck::of_fail(ssh_dial::fail("x".to_string().into(), None));
+    let mut a = ssh_dial::failed_ack(ssh_dial::fail("x".to_string().into(), None));
     a.ok = true;
     a.said = None;
     a.detail = None;
@@ -1009,7 +1008,7 @@ fn the_backend_installs_its_own_host_into_the_dial_core() {
             dir_mode: crate::common::own_dir::PRIVATE_DIR_MODE
         }
     );
-    let d = DialAck::of_fail(ssh_dial::fail(
+    let d = ssh_dial::failed_ack(ssh_dial::fail(
         crate::common::said::Said::with_raw("x".into(), "raw"),
         None,
     ))

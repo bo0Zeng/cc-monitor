@@ -2,6 +2,6 @@
 import type { ColumnRow } from "./ColumnRow";
 
 /**
- * 一台：它的行（那台排好的先后）· 它的组的 `order`（那台排好的先后）。
+ * 一台：给人看的称呼（手机机器表里那台的，删除确认那一句点名用）· 它的行（那台排好的先后）· 它的组的 `order`（那台排好的先后）。
  */
-export type ColumnHost = { rows: Array<ColumnRow>, groups: Array<number>, };
+export type ColumnHost = { label: string, rows: Array<ColumnRow>, groups: Array<number>, };

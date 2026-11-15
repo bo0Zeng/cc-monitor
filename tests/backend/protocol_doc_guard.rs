@@ -97,10 +97,45 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
         "agents/claudecode/mod.rs",
         include_str!("../../src/backend/agents/claudecode/mod.rs"),
     ),
+    // claude 那一家列装了哪些插件（`assets::PLUGIN_CELLS.list` 里的 `--json`）：发给 claude 这个子进程的旗标，同上。
+    (
+        "agents/claudecode/assets.rs",
+        include_str!("../../src/backend/agents/claudecode/assets.rs"),
+    ),
     // codex 那一家的起会话事实（`LAUNCH_ARGS = ["--no-daemon"]`）：发给 codex 这个子进程的旗标，同上。
     (
         "agents/codex/resume.rs",
         include_str!("../../src/backend/agents/codex/resume.rs"),
+    ),
+    // codex 那一家一次性跑一件活（`codex exec --skip-git-repo-check --output-last-message <结果文件> -- <说明>`）：发给 codex 这个子进程的旗标，同上。
+    (
+        "agents/codex/exec.rs",
+        include_str!("../../src/backend/agents/codex/exec.rs"),
+    ),
+    // codex 那一家开窗那一句（`codex exec --ephemeral --skip-git-repo-check <一句>`）：发给 codex 这个子进程的旗标，同上。
+    (
+        "agents/codex/usage.rs",
+        include_str!("../../src/backend/agents/codex/usage.rs"),
+    ),
+    // codex 那一家删会话那一条（`codex delete <uuid> --force`）：发给 codex 这个子进程的旗标，同上。
+    (
+        "agents/codex/sessions_cli.rs",
+        include_str!("../../src/backend/agents/codex/sessions_cli.rs"),
+    ),
+    // codex 那一家显示码登录那一形（`codex login --device-auth`）：发给 codex 这个子进程的旗标，同上。
+    (
+        "agents/codex/sign_in.rs",
+        include_str!("../../src/backend/agents/codex/sign_in.rs"),
+    ),
+    // codex 那一家插件装删列（`codex plugin add|remove|list … --json`）：发给 codex 这个子进程的旗标，同上。
+    (
+        "agents/codex/assets.rs",
+        include_str!("../../src/backend/agents/codex/assets.rs"),
+    ),
+    // codex 那一家答题 hook 是否被会话那一行自己的 `-c hooks=…` 盖掉（读 `--config`）：codex 这个子进程认的旗标，同上。
+    (
+        "agents/codex/asks.rs",
+        include_str!("../../src/backend/agents/codex/asks.rs"),
     ),
     // 计划读面起 pb（`pb dump --node` 按节点取 agent 视角）：发给 pb 这个子进程的旗标，同上。
     (
@@ -174,9 +209,9 @@ pub(crate) const CHILD_PROCESS_FLAGS: &[(&str, &str, &[&str], &str)] = &[
     (
         "agents/claudecode/resume.rs",
         "tests/__fixtures__/agent-profile-golden.tsv",
-        &["--permission-mode", "--resume", "--session-id", "--settings"],
+        &["--model", "--permission-mode", "--resume", "--session-id", "--settings"],
         "`claude` 那一家 resume 的 flag 形字面量（`agents/claudecode/resume.rs::RESUME_TOKEN`）、起新会话先定 sid 的旗标\
-         （`SESSION_ID_FLAG`，新起都带）、起会话选权限档的旗标（`PERMISSION_MODE_FLAG`）与挂会话级答题 hook 的旗标（`SETTINGS_FLAG`，ccm 起的都带）：都是 claude 这个子进程的命令面，后端 argv 从不认它们，\
+         （`SESSION_ID_FLAG`，新起都带）、起会话选权限档的旗标（`PERMISSION_MODE_FLAG`）· 起会话选模型的旗标（`model_args`）与挂会话级答题 hook 的旗标（`SETTINGS_FLAG`，ccm 起的都带）：都是 claude 这个子进程的命令面，后端 argv 从不认它们，\
          线上契约里也没有它们的位置。",
     ),
     (
@@ -210,11 +245,61 @@ pub(crate) const CHILD_PROCESS_FLAGS: &[(&str, &str, &[&str], &str)] = &[
          仓外的真 claude 读不到 ⇒ ② 那一侧读判据用的假子进程（它照实只认这几个）。",
     ),
     (
+        "agents/claudecode/assets.rs",
+        "tests/backend/agents/claudecode/assets_tests.rs",
+        &["--json"],
+        "`claude plugin list --json`：列这台装了哪些插件、回一个数组（`agents/claudecode/assets.rs::PLUGIN_CELLS`，扩展页插件装删那一格读它）。\
+         claude 这个子进程的命令面，后端 argv 从不认它，线上契约里也没有它的位置。仓外的真 claude 读不到 ⇒ ② 那一侧读钉住它的判据（它照实只写这一个）。",
+    ),
+    (
         "agents/codex/resume.rs",
         "tests/__fixtures__/agent-profile-golden.tsv",
-        &["--no-daemon"],
-        "`codex` 那一家起会话时垫在最前面的参数（`agents/codex/resume.rs::LAUNCH_ARGS`，不连共享后台）：\
-         它是 codex 这个子进程的命令面，后端 argv 从不认它，线上契约里也没有它的位置。",
+        &["--no-daemon", "--bundled"],
+        "`codex` 那一家起会话时垫在最前面的参数（`agents/codex/resume.rs::LAUNCH_ARGS`，不连共享后台）与列模型清单那一条\
+         （`MODEL_LIST`：`codex debug models --bundled`，不联网 · 不用登录）：都是 codex 这个子进程的命令面，后端 argv 从不认它们，线上契约里也没有它们的位置。",
+    ),
+    (
+        "agents/codex/sign_in.rs",
+        "tests/backend/agents/codex/sign_in_tests.rs",
+        &["--device-auth"],
+        "`codex login --device-auth`：Codex 给链接与码、不用粘回的那一形登录（`agents/codex/sign_in.rs::DEVICE_ARGS`）。\
+         codex 这个子进程的命令面，后端 argv 从不认它，线上契约里也没有它的位置。仓外的真 codex 读不到 ⇒ ② 那一侧读钉住它的判据（它照实只写这一个）。",
+    ),
+    (
+        "agents/codex/exec.rs",
+        "tests/backend/agents/codex/exec_tests.rs",
+        &["--skip-git-repo-check", "--output-last-message"],
+        "`codex exec --skip-git-repo-check --output-last-message <结果文件> -- <说明>`：一次性跑一件活交给 codex 的那一形（`agents/codex/exec.rs::TASK`，\
+         Codex rust-v0.167.0 的 CLI；不在 git 仓里也照跑 · 最后那段话写进结果文件）。codex 这个子进程的命令面，后端 argv 从不认它，\
+         线上契约里也没有它的位置。仓外的真 codex 读不到 ⇒ ② 那一侧读钉住它的判据（它照实只写这几个）。",
+    ),
+    (
+        "agents/codex/usage.rs",
+        "tests/backend/agents/codex/usage_tests.rs",
+        &["--ephemeral", "--skip-git-repo-check"],
+        "`codex exec --ephemeral --skip-git-repo-check <一句>`：开窗那一句交给 codex 的那一形（`agents/codex/usage.rs`，Codex rust-v0.167.0 的 CLI；不落会话记录 · 不在 git 仓里也照跑）。\
+         codex 这个子进程的命令面，后端 argv 从不认它，线上契约里也没有它的位置。仓外的真 codex 读不到 ⇒ ② 那一侧读钉住它的判据（它照实只写这几个）。",
+    ),
+    (
+        "agents/codex/assets.rs",
+        "tests/backend/agents/codex/assets_tests.rs",
+        &["--json"],
+        "`codex plugin add|remove|list … --json`：Codex 那一家插件装 · 删 · 列，回 JSON（`agents/codex/assets.rs::PLUGIN_CELLS`，扩展页插件装删那一格读它）。\
+         codex 这个子进程的命令面，后端 argv 从不认它，线上契约里也没有它的位置。仓外的真 codex 读不到 ⇒ ② 那一侧读钉住它的判据（它照实只写这一个）。",
+    ),
+    (
+        "agents/codex/asks.rs",
+        "tests/backend/agents/codex/asks_tests.rs",
+        &["--config"],
+        "`-c` / `--config <键=值>`：会话那一行里自己写的 `hooks=…` 整格盖掉答题 hook 那一张（`agents/codex/asks.rs::overridden`，注册表 `AskFace.overridden`）。\
+         读的是 codex 这个子进程的命令面，后端 argv 从不认它，线上契约里也没有它的位置。仓外的真 codex 读不到 ⇒ ② 那一侧读钉住它的判据（它照实只写这一个）。",
+    ),
+    (
+        "agents/codex/sessions_cli.rs",
+        "tests/backend/agents/codex/sessions_cli_tests.rs",
+        &["--force"],
+        "`codex delete <uuid> --force`：删一条 Codex 会话交 codex 自己删、不再问一次（`agents/codex/sessions_cli.rs`，Codex rust-v0.167.0 的 CLI）。\
+         codex 这个子进程的命令面，后端 argv 从不认它，线上契约里也没有它的位置。仓外的真 codex 读不到 ⇒ ② 那一侧读拼那一条的判据（它照实只写这一个）。",
     ),
     // 子进程是仓外的 pb（planned-build 插件）⇒ ② 那一侧读判据用的假 pb（`tests/backend/plan/fixture.rs::fake_pb`，它照实只认这几个）。
     (
@@ -378,7 +463,7 @@ mod tests {
                 .unwrap_or_else(|e| panic!("读不到子进程脚本 {child}：{e} —— 判不了，不许当成绿"));
             let mut accepts: Vec<String> = if child.ends_with(".tsv") {
                 // 子进程在仓外（`claude` · `codex`）⇒ 它认的旗标取金样里那一家的 `--` 开头的那几个词：
-                // flag 形的 `resume_token` ＋ `launch_args` ＋ 起新会话先定 sid 的 `preset_sid` ＋ 选权限档的 `permission` ＋ 挂答题 hook 的 `answer_hook_flag`。
+                // flag 形的 `resume_token` ＋ `launch_args` ＋ 起新会话先定 sid 的 `preset_sid` ＋ 选权限档的 `permission` ＋ 选模型的 `model_args` ＋ 列模型清单的 `model_list` ＋ 挂答题 hook 的 `answer_hook_flag`。
                 let agent = if file.contains("/codex/") {
                     "codex"
                 } else {
@@ -397,6 +482,8 @@ mod tests {
                                     | "launch_args"
                                     | "preset_sid"
                                     | "permission"
+                                    | "model_args"
+                                    | "model_list"
                                     | "answer_hook_flag"
                             ))
                         .then(|| {

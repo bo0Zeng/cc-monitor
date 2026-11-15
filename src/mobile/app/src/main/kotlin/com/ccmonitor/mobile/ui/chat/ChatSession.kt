@@ -39,6 +39,7 @@ import com.ccmonitor.mobile.core.wire.gen.SegHl
 import com.ccmonitor.mobile.core.wire.gen.SentAct
 import com.ccmonitor.mobile.core.wire.gen.SessionCommands
 import com.ccmonitor.mobile.core.wire.gen.SessionFace
+import com.ccmonitor.mobile.link.Problem
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
 import com.ccmonitor.mobile.ui.chat.attach.AttachTray
@@ -87,8 +88,8 @@ data class ChatUiState(
     val offline: String? = null,
     /** 这条会话此刻在跑（那台给的脸上在干什么是 `working`）：右端是 ■。 */
     val running: Boolean = false,
-    /** 会话那一层的失败（起不来 · 读不出记录）那一句；`null` ＝ 没有。 */
-    val failedWhy: String? = null,
+    /** 会话那一层的失败（起不来 · 读不出记录 · 等不到报到）那一格；`null` ＝ 没有。 */
+    val failure: SessionFailure? = null,
     /** 这条会话的记录文件最近怎么了（不见了 · 从头重读过），那台写好的那一句（会话簿那一格）；没说过 ⇒ `null`。 */
     val fileNotice: String? = null,
     val canLoadOlder: Boolean = false,
@@ -127,6 +128,10 @@ data class ChatUiState(
     val draft: String? = null,
     /** 编辑已发的那几句改到一半的字（记录里那一句的 uuid ⇒ 字，本地存的）：再长按编辑那一句时填进去。 */
     val editDrafts: Map<String, String> = emptyMap(),
+    /** 编辑已发的那几句里上一版还撤着的那几句的 uuid：撤着时［回退并发送］灰着。 */
+    val editHeld: Set<String> = emptySet(),
+    /** 那台成品写的上一版还撤着那一句（`rewindHeld`）：［回退并发送］灰着时抽屉里照摆；核心还没交过那台的成品 ⇒ `null`（只灰着）。 */
+    val rewindHeld: String? = null,
     /** 从一处命中打开的落点（那张卡的 key：滚到它、折着就展开）；不是从命中打开的 · 那张卡还没读到 ⇒ `null`。 */
     val landing: String? = null,
     /** 流里画的那几项：[units] 照那台 `history-turns` 的分段折好（[ChatTurns]）；分段还没问到 · 问不到 ⇒ 逐条摊开。 */
@@ -239,8 +244,8 @@ class ChatSession(
 
     private val box = ChatOutbox(link, machine, scope, cache, attach) { publish() }
 
-    /** 这条会话的输入队（会话那台那一份）。 */
-    private val queue = ChatQueue(link, scope) { publish() }
+    /** 这条会话的输入队（会话那台那一份）：名单说已送的那几句离开待发（编辑的那一句照回执到了删编辑草稿）。 */
+    private val queue = ChatQueue(link, scope, sent = { ids -> box.wentIn(ids).forEach(edits::landed) }) { publish() }
     private val outgoing get() = box.lines
     private val lock = Mutex()
 
@@ -294,11 +299,11 @@ class ChatSession(
             scope.launch { link.table.collect { t -> sid?.let { t.successors[it] }?.let { by -> succeed(by) } } }
             // 那台推来的输入队名单（这一条的）照画。
             queue.watch(queueMoved) { sid }
-            // 那台离线那一句（连着 ⇒ 没有）：输入队那一排照它说是上次所知。
+            // 那台离线那一句（连着 ⇒ 没有）：输入队那一排照它说是上次所知；上一版还撤着那一句不分连没连着，照那台成品取。
             scope.launch {
-                combine(link.state, link.offline) { st, off -> off.takeIf { st is LinkLine.Down } }.collect { off ->
-                    _state.value = _state.value.copy(offline = off)
-                    // 待发没回执那一行照那台成品的 heldSaid：成品换了跟着重画。
+                combine(link.state, link.offline) { st, off -> off.takeIf { st is LinkLine.Down } to st?.machine?.rewindHeld }.collect { (off, rewind) ->
+                    _state.value = _state.value.copy(offline = off, rewindHeld = rewind)
+                    // 待发没回执 · 撤着断着那一行照那台成品的 heldSaid · withdrawHeld：成品换了跟着重画。
                     publish()
                 }
             }
@@ -371,7 +376,7 @@ class ChatSession(
             branch.forget()
             body.reset(emptyList())
             queue.reset()
-            _state.value = _state.value.copy(sid = by, live = emptyList(), canLoadOlder = false, historyError = null, failedWhy = null)
+            _state.value = _state.value.copy(sid = by, live = emptyList(), canLoadOlder = false, historyError = null, failure = null)
             publishLocked()
             follow = scope.launch { attach(by, fresh = true) }
         }
@@ -443,24 +448,53 @@ class ChatSession(
             box.adopt(os)
             publish()
             resend()
-        }) { _state.value = _state.value.copy(editDrafts = it) }
+        }, ::note) { texts, held -> _state.value = _state.value.copy(editDrafts = texts, editHeld = held) }
 
     /**
-     * 撤待发里一句（见 [ChatOutbox.cancel]）：字回到输入框（那台拒了的那一句也走这一颗：改了再送）；
-     * 是编辑的那一句 ⇒ 它的编辑草稿留着字、不再带待发编号，不回输入框。
+     * 撤待发里一句（见 [ChatOutbox.withdraw]），等那台答了才定：撤成了 ⇒ 字回到输入框（那台拒了的那一句不问那台，当场回：改了再送）；
+     * 没撤成 ⇒ 同回执到了，字不回框；那一问没答复 ⇒ 字不回框，框下写那一问回来的那一句。
+     * 是编辑的那一句 ⇒ 撤成了 · 没答复时它的编辑草稿留着字、不再带待发编号，不回输入框；没撤成照回执到了删编辑草稿。
+     * 撤成了、编辑草稿却已不在（回执先到、照它删了）⇒ 字回输入框，不丢。
+     * 编辑的那一句去问那台撤的那一下在编辑草稿里记成撤着（它只落在那里；那一句已不在待发里 ⇒ 不问、不记）：撤着时关屏 ⇒ 下次开屏不重交、接着问；撤着时不能再确认一次。
+     * 接着问的那一句没答复 ⇒ 仍撤着（编辑草稿照旧记着），下回接上再问。
      */
-    fun cancel(localId: String) {
-        val edit = edits.owns(localId)
-        val text = box.cancel(localId, sid)
-        edits.unsent(localId)
-        if (!edit && text != null) recall(text)
+    fun withdraw(localId: String) {
+        box.withdraw(localId, sid, { edits.withdrawing(localId) }) { w ->
+            when (w) {
+                is Withdrawn.Back -> {
+                    edits.unsent(localId)
+                    if (!keptInEdit(w.o.rewind?.to)) recall(w.o.text)
+                    w.queue?.let(queue::got)
+                }
+                is Withdrawn.In -> {
+                    edits.landed(w.o)
+                    queue.got(w.queue)
+                    note(w.said)
+                }
+                is Withdrawn.Lost -> {
+                    if (w.o !in outgoing) edits.unsent(localId)
+                    w.said?.let(::note)
+                }
+            }
+        }
     }
 
-    /** 撤输入队名单里一条（哪一端投的都撤得了；照编号请会话那台撤，见 [ChatQueue.cancel]）：撤成了字回到输入框；编辑的那一句同上。 */
+    /**
+     * 撤输入队名单里一条（哪一端投的都撤得了；照编号请会话那台撤，见 [ChatQueue.cancel]）：撤成了字回到输入框；编辑的那一句同上；
+     * 没撤成 ⇒ 框下照撤回包里那台那一句说。
+     */
     fun cancelQueued(id: String) {
-        val edit = edits.owns(id)
-        sid?.let { queue.cancel(id, it) { text -> if (!edit) recall(text) } }
+        val uuid = outgoing.firstOrNull { it.localId == id }?.rewind?.to
+        sid?.let { queue.cancel(id, it, kept = ::note) { text -> if (!keptInEdit(uuid)) recall(text) } }
         edits.unsent(id)
+    }
+
+    /** 撤成了的那一句的字此刻留在编辑草稿里（[uuid] 是它编辑的那一句；普通的一句 ⇒ `null`，不在）：在 ⇒ 不再回输入框。 */
+    private fun keptInEdit(uuid: String?): Boolean = uuid != null && uuid in _state.value.editDrafts
+
+    /** 框下那一句（那台 · 连接层写好的，照摆）。 */
+    private fun note(said: String) {
+        _state.value = _state.value.copy(note = said)
     }
 
     /** 撤回的那一句回输入框（输入框那一侧接在原字后面另起一行，见 `ChatInput.kt`）。 */
@@ -469,14 +503,18 @@ class ChatSession(
         _state.value = _state.value.copy(recall = Recall(text, n))
     }
 
-    /** 待发里该再交的那几句照同一个编号再交一遍。 */
+    /** 待发里该再交的那几句照同一个编号再交一遍；那台连着 ⇒ 撤着、此刻没在问的那几句照同一个编号接着请它撤（不重交）。 */
     private fun resend() {
         if (sid == null) return
+        if (link.state.value is LinkLine.Up) box.unasked().forEach(::withdraw)
         box.due().forEach { o -> scope.launch { deliver(o) } }
     }
 
     /** 换模型（见 [ChatChips.switchModel]）。 */
-    fun switchModel(pick: AgentPick) = chips.switchModel(pick)
+    fun switchModel(
+        pick: AgentPick,
+        effort: String? = null,
+    ) = chips.switchModel(pick, effort)
 
     fun switchPermission(pick: AgentPick) = chips.switchPermission(pick)
 
@@ -578,10 +616,12 @@ class ChatSession(
         if (o.inFlight || o.receipt || o !in outgoing) return
         // 起不来 ⇒ 那一句标未送达；已撤回输入框的（断着没起，见 [withdrawDown]）不再标。
         val s = sid ?: started(o)?.also { if (o.handed) return } ?: return if (o in outgoing) fail(o, permanent = false, text = null) else Unit
-        box.put(o, s)
+        // 起着的时候撤出了待发（字已回框）⇒ 起好也不交。
+        if (o !in outgoing) return
+        val receipt = box.put(o, s)
         edits.landed(o)
-        // 回执到了 ⇒ 那一句此刻在哪照那台的名单（同桌面：回执那一下重问一次）。
-        if (o.receipt) queue.read(s)
+        // 这一问带回了回执 ⇒ 那一句此刻在哪照那台的名单（同桌面：回执那一下重问一次）；名单先说已送的不再重问。
+        if (receipt) queue.read(s)
     }
 
     private fun mark(
@@ -596,11 +636,28 @@ class ChatSession(
         text: String?,
     ) = mark(o, if (permanent) DeliveryState.FAILED_PERMANENT else DeliveryState.FAILED, text ?: copyText("newSession.start.failed"))
 
-    /** 新建会话起好、认出来了 ⇒ 它的 sid；起不来 ⇒ `null`（那一句已在 [ChatUiState.failedWhy]）。几句同时等同一次起，头一句（[o]）随起交；
-     * 那台说没交到（`prompt` 是 `refused`）⇒ 那句标未送达、能改的给［再发一次］（那时有 sid，投进输入队）：兜底，今天两家都作为启动参数交、起好就是交到了。 */
+    /** 新建会话起好、认出来了 ⇒ 它的 sid；起不来 ⇒ `null`（那一格已在 [ChatUiState.failure]）。几句同时等同一次起，头一句（[o]）随起交；
+     * 那台说没交到（`prompt` 是 `refused`）⇒ 那句标未送达、能改的给［再发一次］（那时有 sid，投进输入队）：兜底，今天两家都作为启动参数交、起好就是交到了。
+     * 头一句从定下随起交那一刻起撤不回（[Outgoing.opening]，不摆［撤回］）；定下之前已撤出待发 ⇒ 不起。 */
     private suspend fun started(o: Outgoing): String? {
         val d = draft ?: return null
-        val job = lock.withLock { starting?.takeIf { it.isActive } ?: scope.launch { start(d, o) }.also { starting = it } }
+        val job =
+            lock.withLock {
+                starting?.takeIf { it.isActive } ?: run {
+                    if (o !in outgoing) return null
+                    o.opening = true
+                    publishLocked()
+                    scope
+                        .launch {
+                            try {
+                                start(d, o)
+                            } finally {
+                                o.opening = false
+                                publish()
+                            }
+                        }.also { starting = it }
+                }
+            }
         job.join()
         return sid
     }
@@ -609,22 +666,22 @@ class ChatSession(
         d: ChatTarget.Draft,
         first: Outgoing,
     ) {
-        _state.value = _state.value.copy(failedWhy = null, drafting = false)
+        _state.value = _state.value.copy(failure = null, drafting = false)
         // 选项打开时问过那台（起哪一家 · 默认号 · 最近的目录）；问不到 ⇒ 照存的那一家、从哪进来的目录交，认不出由那台那一句说。
         val p = picker?.takeIf { readyToStart(it) } ?: return
         val c = p.chosen()
-        val args = SessionOpen.newIn(c.cwd, d.ticket, c.agent, first.text, c.account, c.rotation)
+        val args = SessionOpen.newIn(c.cwd, d.ticket, c.agent, first.text, c.account, c.rotation, c.model, c.effort)
         val answer =
             when (val r = link.call(SessionOpen.COMMAND, args, NEW_MS)) {
                 is Reply.Ok ->
                     SessionOpen.of(r.data)
-                        ?: return failSession(unreadableReply(machine, SessionOpen.COMMAND, r.data.toString()).text)
-                else -> return failSession(r.problem(machine, SessionOpen.COMMAND, link.offline.value)?.text)
+                        ?: return failSession(unreadableReply(machine, SessionOpen.COMMAND, r.data.toString()).failure())
+                else -> return failSession(r.problem(machine, SessionOpen.COMMAND, link.offline.value)?.failure())
             }
         val arrived =
             when (val a = arrivalOf(link, machine, answer, arrivalMs)) {
                 is Arrival.Sid -> a.sid
-                is Arrival.Missed -> return failSession(a.said)
+                is Arrival.Missed -> return failSession(a.failed)
             }
         answer.prompt?.let { said ->
             first.handed = true
@@ -657,14 +714,14 @@ class ChatSession(
 
     /** 新建会话、那台断着：等着起的那几句撤出待发、字回到输入框（几句照先后另起一行接上），回到草稿、照核心那一句说。 */
     private fun withdrawDown() {
-        val back = outgoing.toList().mapNotNull { box.cancel(it.localId, null) }
+        val back = outgoing.toList().mapNotNull { box.drop(it.localId)?.text }
         if (back.isNotEmpty()) recall(back.joinToString("\n"))
-        failSession(link.offline.value)
+        failSession(SessionFailure(null, link.offline.value))
     }
 
-    /** 会话那一层没成：那一句上屏；新建会话还没起成 ⇒ 回到草稿（选项回来，改了再发）。 */
-    private fun failSession(text: String?) {
-        _state.value = _state.value.copy(failedWhy = text, drafting = draft != null && sid == null)
+    /** 会话那一层没成：那一格上屏；新建会话还没起成 ⇒ 回到草稿（选项回来，改了再发）。 */
+    private fun failSession(failed: SessionFailure?) {
+        _state.value = _state.value.copy(failure = failed, drafting = draft != null && sid == null)
     }
 
     /** 先订上这条会话的 `line` 帧与 `from`（攒着），再读最后一屏；读完按行号接上攒着的，之后来一样接一样。[fresh]：刚起的那条（见 [freshPath]）。 */
@@ -749,7 +806,7 @@ class ChatSession(
         }
     }
 
-    /** 待发里这条会话的那几句挂回来（见 [ChatOutbox.restore]）；那台此刻连着 ⇒ 当场照同一个编号再交。 */
+    /** 待发里这条会话的那几句挂回来（见 [ChatOutbox.restore]）；那台此刻连着 ⇒ 当场照同一个编号再交 · 上次撤着的接着请那台撤（[resend]）。 */
     private suspend fun restorePendingLocked(s: String) {
         box.restore(s)
         if (link.state.value is LinkLine.Up) resend()
@@ -790,7 +847,7 @@ class ChatSession(
     }
 
     private fun readFailed(text: String?) {
-        if (body.isEmpty()) failSession(text) else _state.value = _state.value.copy(historyError = text)
+        if (body.isEmpty()) failSession(text?.let { SessionFailure(null, it) }) else _state.value = _state.value.copy(historyError = text)
     }
 
     private fun publish() {
@@ -843,14 +900,30 @@ private fun outcomeOf(res: TerminalInput.Result): Pair<DeliveryState?, String?> 
             (if (SentAct.RETRY in res.acts) DeliveryState.FAILED else DeliveryState.FAILED_PERMANENT) to res.note
     }
 
-/** 新起的那一条报到没有：报到了 ⇒ 它的 sid；没报到 ⇒ 上屏那一句。 */
+/**
+ * 会话那一层的失败（起不来 · 读不出记录 · 等不到报到），桌面那张卡同一份：[title] 标题（那台分了才有）· [said] 那一句，两样上屏；
+ * [detail] 进［复制详情］（等不到报到 ⇒ 那个终端画面的末几行；没有 ⇒ 空）。字全是核心 / 那台写好的，手机不拆不拼。
+ */
+data class SessionFailure(
+    val title: String?,
+    val said: String,
+    val detail: String = "",
+)
+
+/** 核心写好的一问一答失败 ⇒ 那一格（没有标题）。 */
+internal fun Problem.failure(): SessionFailure = SessionFailure(null, text, detail)
+
+/** 那台等不到报到时分好的三格 ⇒ 那一格：标题 · 那一句上屏，末几行进详情。 */
+internal fun ArriveEnd.Missed.failure(): SessionFailure = SessionFailure(title, said, words.orEmpty())
+
+/** 新起的那一条报到没有：报到了 ⇒ 它的 sid；没报到 ⇒ 上屏那一格。 */
 private sealed interface Arrival {
     data class Sid(
         val sid: String,
     ) : Arrival
 
     data class Missed(
-        val said: String?,
+        val failed: SessionFailure?,
     ) : Arrival
 }
 
@@ -866,13 +939,13 @@ private suspend fun arrivalOf(
 ): Arrival {
     val ask =
         answer.arrival
-            ?: return answer.sid?.let { Arrival.Sid(it) } ?: Arrival.Missed(unreadableReply(machine, SessionOpen.COMMAND, answer.toString()).text)
+            ?: return answer.sid?.let { Arrival.Sid(it) } ?: Arrival.Missed(unreadableReply(machine, SessionOpen.COMMAND, answer.toString()).failure())
     val r = link.call(SessionArrive.COMMAND, SessionArrive.args(ask), withinMs)
     val end = (r as? Reply.Ok)?.let { SessionArrive.of(it.data) }
     return when {
         end is ArriveEnd.Arrived -> Arrival.Sid(end.sid)
-        end is ArriveEnd.Missed -> Arrival.Missed(end.said)
-        r !is Reply.Ok -> Arrival.Missed(r.problem(machine, SessionArrive.COMMAND, link.offline.value)?.text)
-        else -> Arrival.Missed(unreadableReply(machine, SessionArrive.COMMAND, r.data.toString()).text)
+        end is ArriveEnd.Missed -> Arrival.Missed(end.failure())
+        r !is Reply.Ok -> Arrival.Missed(r.problem(machine, SessionArrive.COMMAND, link.offline.value)?.failure())
+        else -> Arrival.Missed(unreadableReply(machine, SessionArrive.COMMAND, r.data.toString()).failure())
     }
 }

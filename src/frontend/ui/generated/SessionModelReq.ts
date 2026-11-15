@@ -16,4 +16,8 @@ model: string,
 /**
  * 自报的前端（过「哪个前端的会话」那一维，同 `terminal-input`）。
  */
-client?: string, };
+client?: string, 
+/**
+ * 推理档（必须是那个模型 `efforts` 里的一个）；不给 ⇒ 那一家照它自己的缺省。
+ */
+effort?: string, };

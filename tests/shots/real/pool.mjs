@@ -14,6 +14,7 @@
  *   POST /__ccm/paint  {key, origin, sid, text}            ⇒ 那个会话的替身往自己的窗格里再印一段（原样的终端输出）
  *   POST /__ccm/end    {key, origin}                         ⇒ 那台已结束 / 可重连的那几个这时收场（页里收到那台的清单之后发），见到裁出来的那一格才答
  *   POST /__ccm/kill   {key, origin}                         ⇒ 那台后端当场杀掉（演「断了」）
+ *   POST /__ccm/primed {key}                                 ⇒ `{sids}`：本机后端已发过「读完了」（`session_primed`）的那几个会话
  *   GET  /__ccm/items?key=…                                  ⇒ 事件流（SSE）：一格一条 `{sub, items}`，同壳交给页的 `chan-items` 事件体。
  *                                                              页里和起世界那一问同时连：世界还没起好就先收着，起好了接上（攒着的格补上）
  *   POST /__ccm/trace  {scene}                               ⇒ 那个场景的世界里台架与无头壳之间的来往（最近 [`TRACE_KEEP`] 条，带毫秒）落进
@@ -32,19 +33,38 @@
  *
  * 隔离：每台后端跑在 bwrap 里 —— 家目录挂成 `/home/user`（界面上看到的路径与机器无关）、断网（`--unshare-net`）、主机名 `shots`、
  * `/tmp` 是空的；白名单环境（PATH · HOME · LANG · TZ · TMUX_TMPDIR · XDG_RUNTIME_DIR 都指沙箱）；不起 claude、不碰用户的 tmux。
- * 后端二进制：`CCM_SHOTS_BACKEND`，不给就用本树 `.build/backend-shots/debug/cc-monitor-backend`（带特性 `shots` 编）；无头壳：本树 `.build/shell/debug/examples/ccm-shots-shell`
- * （两样都由 [`buildBins`] 编：`run.mjs` 起 vite 前调；无头壳只在特性 `shots` 下编，发版构建里没有它）。
+ * 后端二进制：`CCM_SHOTS_BACKEND`，不给就用本树 `.build/backend-shots/<档>/cc-monitor-backend`（带特性 `shots` 编；截图调试档、性能台架发布档）；
+ * 无头壳：本树 `.build/shell/debug/examples/ccm-shots-shell`（落点只在 [`binsOf`]；两样都由 [`buildBins`] 编：`run.mjs` 起 vite 前 ·
+ * `perf/serve.mjs` 起后端池前调；无头壳只在特性 `shots` 下编，发版构建里没有它）。
  */
 import { spawn, spawnSync } from "node:child_process";
 import { appendFileSync, chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
+import { toolchainEnv } from "../host-tools.mjs";
+
+/**
+ * 摘掉会把东西引向真环境的那几族：从 cc-monitor 起的 shell 里跑时，环境里带着常驻后端的监听口、钥匙、
+ * 日志与几份真文件的位置（`CCM_*`），还有 claude / Anthropic / tmux 的那几样。工具自己的 `CCM_SHOTS_*` 留着。
+ * 工具链的家钉死（`toolchainEnv`）：编译那几步照它找 cargo / rustup，HOME 换没换都一样。
+ */
+export function scrubbedEnv(extra = {}) {
+  const env = { ...process.env, ...toolchainEnv(process.env), ...extra };
+  for (const k of Object.keys(env)) {
+    if (k.startsWith("CCM_SHOTS_")) continue;
+    if (/^(CCM_|CLAUDE_|ANTHROPIC_|TMUX)/.test(k)) delete env[k];
+  }
+  return env;
+}
 
 /** 同时留着的世界数（截图是一页一页串着截的；多留几份给预热页与下一页交接）。 */
 /** 等一件事落定的上限：兜底的那一个数（与 `run.mjs` · `tests/test-support/wall-ceiling.ts` 同值）；等的是条件，到了就走。 */
 export const WALL_CEILING_MS = 300_000;
 
 const KEEP = 4;
+
+/** 本机那一台「读完了」那几帧（`session_primed`）抄进的文件（那台沙箱的 `run/` 底下）。 */
+const PRIMED_LOG = "primed.log";
 
 /** 每个世界在内存里留最近几条来往（台架 ⇄ 无头壳：收发的每一行、页里交来的每一问），没截成时落盘。 */
 const TRACE_KEEP = 4000;
@@ -53,6 +73,33 @@ const TRACE_KEEP = 4000;
  * 截图里每一台的时区（IANA 名）：各台后端 · 无头壳 · 浏览器（`run.mjs` 起它时同样给）一律按它，不随跑截图那台机器的设置走。
  */
 export const SHOTS_TZ = "Asia/Shanghai";
+
+/**
+ * 本机那一台接常驻的 attach 行：照壳那一处（`resident_client::attach::folded_attach_line`）写，不手抄。
+ * 那一行由 Rust 判据写成金样（`tests/__fixtures__/attach-line.golden.json`：`tz` 那一格是占位，`line` 是带着占位拼出的原样；
+ * 判据 `tests/comms/resident-client/attach_tests.rs` 只比不写，重打照别的金样走 `bless-golden.sh`），这里只把 JSON 编码的占位整个换成 [`SHOTS_TZ`]、去掉行尾换行。
+ */
+export function attachLine() {
+  const golden = JSON.parse(readFileSync(new URL("../../__fixtures__/attach-line.golden.json", import.meta.url), "utf8"));
+  const slot = JSON.stringify(golden.tz);
+  if (!golden.line.includes(slot)) throw new Error(`attach 行金样里找不到时区占位 ${slot}：${golden.line}`);
+  return golden.line.replace(slot, JSON.stringify(SHOTS_TZ)).trimEnd();
+}
+
+/**
+ * 预读演成一直没读完（`MachineDisk.primeHeld`）：本机那条流往壳那一跳的一段管道（逐行读、逐行冲）。这几个会话宣告之后的格不往壳那一跳交
+ * （后端预读没完成时压着的就是这几种，另加「读完了」那一帧本身）。壳收的是折好的成品（attach 行要了 `folded`：每帧会话帧之后紧跟一帧
+ * `session_seats`，壳那一格照它换）⇒ 那条会话的 `session_seats` 只放头一格（宣告那一格），之后的也压住：每个会话一段 `sed -u`，
+ * 保持空间记「放过了」。判据：`tests/shots/prime-hold.vitest.ts`。
+ */
+export function primeHoldSh(held) {
+  const q = (v) => `'${String(v).replace(/'/g, `'\\''`)}'`;
+  for (const sid of held) if (!/^[0-9a-f-]+$/.test(sid)) throw new Error(`primeHeld 里的 sid 形状不对：${sid}`);
+  const kinds = "session_primed|session_status|line|session_runs|session_branch";
+  const pat = `"kind":"(${kinds})","(sid|session_id)":"(${held.join("|")})"`;
+  const seats = held.map((sid) => `sed -u -e ${q(`/"kind":"session_seats","seats":\\[{"sid":"${sid}"/{x;/passed/{x;d};s/.*/passed/;x}`)}`);
+  return [`grep --line-buffered -v -E ${q(pat)}`, ...seats].join(" | ");
+}
 
 /**
  * 截图里的「现在」：每一页开头拨到这一刻（[`pinDateSource`]，经调试口在页里任何脚本之前装上），之后照真钟接着走；
@@ -347,14 +394,27 @@ const BACKEND_TARGET = (repo) => path.join(repo, ".build/backend-shots");
 const SHELL_EXAMPLE = "ccm-shots-shell";
 
 /**
- * 编真后端与无头壳（增量编）。`env` 是编译用的环境（要真 HOME 找工具链，别的已摘）。回失败的那一句，成了回 `null`。
- * 外面给了 `CCM_SHOTS_BACKEND` 就不编后端。
+ * 台架那两样二进制落在哪（编法与落点只这一处定，[`buildBins`] 编、[`backendPool`] 用）。`backend`：后端那一档 ——
+ * `"debug"`（截图）· `"release"`（性能台架：调试档的后端慢出几倍，量出来的数不是用户手上那一份的快慢）。无头壳只转发，恒用调试档。
  */
-export function buildBins({ repo, env }) {
+export function binsOf(repo, backend = "debug") {
+  return {
+    backend: process.env.CCM_SHOTS_BACKEND ?? path.join(BACKEND_TARGET(repo), backend, "cc-monitor-backend"),
+    shell: path.join(repo, ".build/shell/debug/examples", SHELL_EXAMPLE),
+  };
+}
+
+/**
+ * 编真后端与无头壳（增量编）。回失败的那一句，成了回 `null`。外面给了 `CCM_SHOTS_BACKEND` 就不编后端。
+ * 截图入口（`run.mjs` 起 vite 前）与性能台架（`perf/serve.mjs` 起后端池前）都经这一处编：树里留着的旧二进制不会被悄悄拿来用
+ * （新后端配旧壳握不上手，那一页白等到上限）。`backend` 是后端那一档（[`binsOf`]）：截图用调试档，性能台架用发布档。
+ */
+export function buildBins({ repo, env = scrubbedEnv(), backend = "debug" }) {
   const jobs = { ...env, CARGO_BUILD_JOBS: env.CARGO_BUILD_JOBS ?? "4" };
   if (!process.env.CCM_SHOTS_BACKEND) {
     // 带特性 `shots`（拨钟那一段只在这一档里编），另落一个目录：不和判据 / e2e 用的那份默认构建互相覆盖。
-    const b = spawnSync("cargo", ["build", "--quiet", "--features", "shots", "--target-dir", BACKEND_TARGET(repo)], { cwd: path.join(repo, "src/backend"), env: jobs, stdio: ["ignore", "inherit", "inherit"] });
+    const release = backend === "release" ? ["--release"] : [];
+    const b = spawnSync("cargo", ["build", "--quiet", ...release, "--features", "shots", "--target-dir", BACKEND_TARGET(repo)], { cwd: path.join(repo, "src/backend"), env: jobs, stdio: ["ignore", "inherit", "inherit"] });
     if (b.status !== 0) return `真后端没编出来（cargo 退出码 ${b.status}）`;
   }
   const s = spawnSync("cargo", ["build", "--quiet", "--features", "shots", "--example", SHELL_EXAMPLE], { cwd: path.join(repo, "src/frontend/shell"), env: jobs, stdio: ["ignore", "inherit", "inherit"] });
@@ -375,9 +435,8 @@ function tmuxOf(dir) {
  * `disks`：照配方造盘的那一手（`/__ccm/world` 带 `diskFrom` 时用，性能台架 `perf/serve.mjs` 给）：配方 ⇒ `{machines, tails}`，
  * `machines` 同页里交来的那一格，`tails` 原样答回页里（会话接着往下写的那一截）。没给 ⇒ 只认页里交来的盘。
  */
-export function backendPool({ repo, sandbox, disks = null }) {
-  const bin = process.env.CCM_SHOTS_BACKEND ?? path.join(BACKEND_TARGET(repo), "debug/cc-monitor-backend");
-  const shellBin = path.join(repo, ".build/shell/debug/examples", SHELL_EXAMPLE);
+export function backendPool({ repo, sandbox, disks = null, backend = "debug" }) {
+  const { backend: bin, shell: shellBin } = binsOf(repo, backend);
   const worlds = new Map();
   /** 世界还没起好就先连上的事件流（按世界的钥匙）：`makeWorld` 起好那一刻接上。 */
   const early = new Map();
@@ -536,19 +595,16 @@ export function backendPool({ repo, sandbox, disks = null }) {
     }
     // 远端那几台：台架自己起它的沙箱（`makeWorld`），常驻问得到了说一声 `up`，之后只守着常驻（它的流归本机后端去接，没人读这台的标准输出）。
     // 本机那一台交给无头壳：接它的常驻（产品本机那一形：常驻先给 hello，attach 行进、回话那一行收掉，往后就是流 —— 壳那条读循环见到的是 hello 打头的流）。
-    const stream = `{ printf '%s\\n' ${q(JSON.stringify({ attach: true, tz: SHOTS_TZ }))}; exec cat; } | ${BACKEND_IN_BOX} -- --resident-attach | { IFS= read -r h && printf '%s\\n' "$h" && IFS= read -r _ && exec cat; }`;
+    const stream = `{ printf '%s\\n' ${q(attachLine())}; exec cat; } | ${BACKEND_IN_BOX} -- --resident-attach | { IFS= read -r h && printf '%s\\n' "$h" && IFS= read -r _ && exec cat; }`;
     const held = m.primeHeld ?? [];
+    // 往壳那一跳交的每一帧原样过（`sed -u`：逐行读、逐行冲，壳那一头照常按行读）；「读完了」那一帧（`session_primed`）另抄一行进
+    // [`PRIMED_LOG`]：台架等「那份记录已读完」照它（[`primedOf`]）。不用 awk：mawk 读管道攒满缓冲才处理，会把 hello 那一行压住。
+    const tap = `sed -u -e '/session_primed/w ${H}/.shots-run/${PRIMED_LOG}'`;
     if (!m.local) {
       if (held.length > 0) throw new Error(`${origin}：primeHeld 只演本机那一台（远端的流不经台架）`);
       sh.push("echo up", "wait");
-    } else if (held.length === 0) sh.push(stream);
-    else {
-      // 预读演成一直没读完：这几个会话宣告之后的格不往壳那一跳交（后端预读没完成时压着的就是这几种，另加「读完了」那一帧本身）。
-      for (const sid of held) if (!/^[0-9a-f-]+$/.test(sid)) throw new Error(`primeHeld 里的 sid 形状不对：${sid}`);
-      const kinds = "session_primed|session_status|line|session_runs|session_branch";
-      const pat = `"kind":"(${kinds})","(sid|session_id)":"(${held.join("|")})"`;
-      sh.push(`${stream} | grep --line-buffered -v -E ${q(pat)}`);
-    }
+    } else if (held.length === 0) sh.push(`${stream} | ${tap}`);
+    else sh.push(`${stream} | ${primeHoldSh(held)} | ${tap}`);
     writeFileSync(path.join(setup, "run.sh"), sh.join("\n") + "\n");
     // tmux 在边界上的替身（`tmuxShim`）：放在沙箱 PATH 最前，后端照常敲 `tmux` 先碰到它；没给 ⇒ 那一格目录是空的。
     mkdirSync(path.join(home, ".shots-bin"), { recursive: true });
@@ -590,7 +646,7 @@ export function backendPool({ repo, sandbox, disks = null }) {
       "/bin/sh", `${H}/.shots-setup/run.sh`,
     ];
     // 每台一条整命令（沙箱 ＋ 后端），交给无头壳去起（它拿着各台的标准输入输出，就像壳拿着本机后端那一条）。
-    return { argv: ["bwrap", ...box], doomed, paints, tmux: tmuxOf(dir) };
+    return { argv: ["bwrap", ...box], doomed, paints, tmux: tmuxOf(dir), primed: m.local ? path.join(dir, "run", PRIMED_LOG) : null };
   }
 
   /** 无头壳：一行一个 JSON 进出（`shots_shell.rs` 头注）。 */
@@ -784,7 +840,8 @@ export function backendPool({ repo, sandbox, disks = null }) {
             }
           : {}),
       };
-      const { argv, doomed, paints, tmux } = start(path.join(dir, `m${i}`), origin, m, now);
+      const { argv, doomed, paints, tmux, primed } = start(path.join(dir, `m${i}`), origin, m, now);
+      if (primed) w.primedLog = primed;
       // 只有会话流到得了本机后端的那几台收得了场：问不到的那台没人起常驻、握不上手的那台（指纹变了）本机后端拒，它们的会话等不到宣告。
       if (m.resident && !peers.some((p) => p.origin === origin && p.handshake === false)) w.doomed.push(...doomed.map((d) => ({ ...d, origin, act: () => tmux(d.act) })));
       for (const [sid, fifo] of paints) w.paints.set(`${origin}\0${sid}`, fifo);
@@ -850,6 +907,18 @@ export function backendPool({ repo, sandbox, disks = null }) {
     } catch {
       // 已经退了
     }
+  }
+
+  /** 本机后端已发过「读完了」（`session_primed`）的那几个会话（[`PRIMED_LOG`] 里抄下的；世界不在 · 还没有一帧 ⇒ 空）。 */
+  function primedOf(w) {
+    if (!w?.primedLog || !existsSync(w.primedLog)) return [];
+    return readFileSync(w.primedLog, "utf8")
+      .split("\n")
+      // 远端那几台的帧经本机后端转来时包了一层（`relayed`），sid 照「读完了」那一帧自己那一格取。
+      .flatMap((l) => {
+        const m = /session_primed\\?",\\?"sid\\?":\\?"([^"\\]+)/.exec(l);
+        return m ? [m[1]] : [];
+      });
   }
 
   /** 页里的订阅那几样原样交给无头壳（窗口只有一扇）。 */
@@ -930,7 +999,7 @@ export function backendPool({ repo, sandbox, disks = null }) {
       });
       return;
     }
-    if (req.method !== "POST" || !(req.url === "/__ccm/world" || req.url === "/__ccm/call" || req.url === "/__ccm/end" || req.url === "/__ccm/trace" || TELL.has(req.url))) return next();
+    if (req.method !== "POST" || !(req.url === "/__ccm/world" || req.url === "/__ccm/call" || req.url === "/__ccm/end" || req.url === "/__ccm/trace" || req.url === "/__ccm/primed" || TELL.has(req.url))) return next();
     try {
       const body = JSON.parse(await readBody(req));
       let out = { ok: true };
@@ -941,6 +1010,7 @@ export function backendPool({ repo, sandbox, disks = null }) {
         await endAll(body);
         worlds.get(body.key)?.trace(`http /__ccm/end ${body.origin} 收完了`);
       } else if (req.url === "/__ccm/trace") out = { files: dumpTrace(String(body.scene ?? "")) };
+      else if (req.url === "/__ccm/primed") out = { sids: primedOf(worlds.get(body.key)) };
       else tell(req.url, body);
       res.setHeader("content-type", "application/json");
       res.end(JSON.stringify(out));

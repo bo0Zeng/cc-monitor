@@ -8,21 +8,14 @@
  *
  * 用法：node make-big.mjs <HOME> [--mb 394] [--turns 9204] [--small-mb 27] [--seed 1]
  * 输出一行 JSON：两份记录的路径 · sid · 字节 · 行数 · 轮数 · 分叉数。
+ *
+ * 性能台架的页面世界也用它（`perf/disks.ts`，页地址带 `big=<MB>`）：最长那条的正文由 `record` 流式写，不在内存里拼成一个串
+ * （30 万行上下的一份过了 V8 一个串的上限）。每轮约 14.4 行：30 万行 ≈ 20 800 轮。
  */
 import { closeSync, mkdirSync, openSync, writeSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-
-const home = process.argv[2];
-if (!home) throw new Error("usage: make-big.mjs <HOME> [--mb N] [--turns N] [--small-mb N] [--seed N]");
-const opt = (k, d) => {
-  const i = process.argv.indexOf(k);
-  return i > 0 ? Number(process.argv[i + 1]) : d;
-};
-const MB = opt("--mb", 394);
-const TURNS = opt("--turns", 9204);
-const SMALL_MB = opt("--small-mb", 27);
-const SEED = opt("--seed", 1);
+import { pathToFileURL } from "node:url";
 
 function uid(...k) {
   const h = createHash("md5").update(k.map(String).join("/")).digest("hex");
@@ -50,8 +43,11 @@ function code(n, s) {
 
 const iso = (t) => new Date(t * 1000).toISOString().replace(/\.\d{3}Z$/, ".000Z");
 
-/** 写一份记录：`turns` 轮，每轮读文件那一条结果补到每轮约 `perTurn` 字节。 */
-function record(path, sid, cwd, turns, perTurn, seed) {
+/**
+ * 写一份记录：`turns` 轮，每轮读文件那一条结果补到每轮约 `perTurn` 字节。
+ * 交回里 `parent` 是主线末一条的 uuid、`t` 是末一条的时刻（epoch ms）：接着往下写的从这里接（父链 · 时刻接得上）。
+ */
+export function record(path, sid, cwd, turns, perTurn, seed) {
   const fd = openSync(path, "w");
   let bytes = 0;
   let lines = 0;
@@ -112,9 +108,20 @@ function record(path, sid, cwd, turns, perTurn, seed) {
     if (turn === 0) pad = Math.max(0, Math.round((perTurn - (bytes - before)) / 70));
   }
   closeSync(fd);
-  return { path, sid, bytes, lines, turns, forks };
+  return { path, sid, bytes, lines, turns, forks, parent, t: t * 1000 };
 }
 
+function main() {
+const home = process.argv[2];
+if (!home) throw new Error("usage: make-big.mjs <HOME> [--mb N] [--turns N] [--small-mb N] [--seed N]");
+const opt = (k, d) => {
+  const i = process.argv.indexOf(k);
+  return i > 0 ? Number(process.argv[i + 1]) : d;
+};
+const MB = opt("--mb", 394);
+const TURNS = opt("--turns", 9204);
+const SMALL_MB = opt("--small-mb", 27);
+const SEED = opt("--seed", 1);
 const slug = (cwd) => cwd.replace(/[^A-Za-z0-9]/g, "-");
 const out = [];
 for (const [tag, mb, turns] of [
@@ -125,7 +132,14 @@ for (const [tag, mb, turns] of [
   const dir = join(home, ".claude", "projects", slug(cwd));
   mkdirSync(dir, { recursive: true });
   const sid = uid("read", SEED, tag);
-  out.push({ tag, cwd, ...record(join(dir, `${sid}.jsonl`), sid, cwd, turns, (mb * 1e6) / turns, SEED) });
+  const made = record(join(dir, `${sid}.jsonl`), sid, cwd, turns, (mb * 1e6) / turns, SEED);
+  // 造到一半的游标（`parent` · `t`）不出这一行。
+  delete made.parent;
+  delete made.t;
+  out.push({ tag, cwd, ...made });
 }
 mkdirSync(join(home, ".claude", "sessions"), { recursive: true });
 console.log(JSON.stringify(out));
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();

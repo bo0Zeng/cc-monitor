@@ -2,23 +2,33 @@
  * 额度 · 轮换 · 会话的号的**取数**：什么时候问哪台、问回来放进 `appStore` 哪一格。画的那几处（状态栏按钮 · 悬停卡 · 标签页 · 会话面板）
  * 只订 `appStore.quota` / `sessionRotation` / `sessionAccount`，不自己问。
  *
- * - 问的时机全是事件：tab 来了（新 sid ⇒ 它那台的 `rotation-view` 与 `session-account`）· 那台推 `changed {quota | rotation | rotation_strategies}`
- *   （额度账 ⇒ 重读 `quota-read`，那台有 tab 的会话的号重问（用量在那一份里），那台的账号清单读过就重读（每号的额度格在那一行里）；某个 sid ⇒ 重问那一个的 `rotation-view` 与 `session-account`；
- *   策略目录 · 哪个会话用哪份变了 ⇒ 那台有 tab 的会话 `rotation-view` 全部重问）· 那台账号清单变了 ⇒ 那台有 tab 的会话的号重问（与默认号比在那一份里）·
+ * - 要问的会话 ＝ 此刻有 tab、脸不是已结束的那几个（`syncSessions` 每次照整份 tab 集合重算：tab 关了 · 会话结束了就摘掉，又出现 ⇒ 当新的问一次）。
+ * - 问的时机全是事件：要问的会话新进来（它那台的 `rotation-view` 与 `session-account`；那台第一次出现 ⇒ 额度账也问一次）· 那台推 `changed {quota | rotation | rotation_strategies}`
+ *   （额度账 ⇒ 帧里带了成品就收、没带才重读 `quota-read`，那台要问的会话的号重问（用量在那一份里），那台的账号清单读过就重读（每号的额度格在那一行里）；某个 sid ⇒ 重问那一个的 `rotation-view` 与 `session-account`；
+ *   策略目录 · 哪个会话用哪份变了 ⇒ 那台要问的会话 `rotation-view` 全部重问）· 那台账号清单变了 ⇒ 那台要问的会话的号重问（与默认号比在那一份里）·
  *   又接上了 / 丢了格 ⇒ 那台全部重问。零定时器。
+ * - 同一（问 · 台 · 会话）一次只在飞一问，在飞时再要只记回来补一趟（`ipc/one-in-flight.ts`）：那台答得慢、推得密，在飞也 ≤ 那台要问的会话数。
  * - 判定全在后端；这里不判「能不能换 / 该不该换 / 是哪个号 / 跟默认号一不一样」。
  */
 import { appStore, putIn } from "./app-store";
 import { fetchAccounts } from "./account-reads";
 import type { Machine } from "./ipc/origin";
+import { OneInFlight } from "./ipc/one-in-flight";
 import { detailOf, saidOf } from "./kit/detail";
+import { isEnded } from "./face-can";
+import type { SessionFace } from "./generated/SessionFace";
 import { readQuota, tookQuota } from "./quota-reads";
 import { readSessionView } from "./rotation-view-reads";
 import { readSessionAccount } from "./session-account-reads";
 import { pushedProducts, type Changed } from "./changed-stream";
 
-/** 每台此刻有 tab 的会话。 */
-const known = new Map<Machine, Set<string>>();
+/** 每台此刻要问的会话（`syncSessions` 每次整份换掉）。 */
+let wanted = new Map<Machine, Set<string>>();
+/** 问过额度账的台：第一次出现问一次，之后靠推送。 */
+const quotaAsked = new Set<Machine>();
+/** 同一（问 · 台 · 会话）一次只在飞一问；补那一趟之前它还得是要问的会话。 */
+const flight = new OneInFlight();
+const stillWanted = (origin: Machine, sid: string) => (): boolean => wanted.get(origin)?.has(sid) ?? false;
 
 /** 问一次那台的额度账。整问失败 ⇒ 那一格记下出错那一层写好的那一句与复制详情（界面照它说，不自己补一句）。 */
 export async function refreshQuota(origin: Machine): Promise<void> {
@@ -36,58 +46,70 @@ function quotaFailed(origin: Machine, e: unknown): void {
 }
 
 /** 一批会话各问一次 `rotation-view`（逐个；一个失败不挡别的，那一格照旧）。 */
-async function refreshRotations(origin: Machine, sids: readonly string[]): Promise<void> {
-  await Promise.all(
-    sids.map(async (sid) => {
-      try {
-        putIn(appStore.sessionRotation, sid, { origin, read: await readSessionView(origin, sid) });
-      } catch (e) {
-        console.warn(`[acct] rotation-view [${origin}] ${sid} 失败：`, e);
-      }
-    }),
-  );
+function refreshRotations(origin: Machine, sids: readonly string[]): void {
+  for (const sid of sids)
+    flight.ask(
+      `rotation-view\0${origin}\0${sid}`,
+      async () => {
+        try {
+          putIn(appStore.sessionRotation, sid, { origin, read: await readSessionView(origin, sid) });
+        } catch (e) {
+          console.warn(`[acct] rotation-view [${origin}] ${sid} 失败：`, e);
+        }
+      },
+      stillWanted(origin, sid),
+    );
 }
 
 /** 一批会话各问一次 `session-account`（逐个；一个失败不挡别的，那一格照旧）。 */
-async function refreshAccounts(origin: Machine, sids: readonly string[]): Promise<void> {
-  await Promise.all(
-    sids.map(async (sid) => {
-      try {
-        putIn(appStore.sessionAccount, sid, { origin, read: await readSessionAccount(origin, sid) });
-      } catch (e) {
-        console.warn(`[acct] session-account [${origin}] ${sid} 失败：`, e);
-      }
-    }),
-  );
+function refreshAccounts(origin: Machine, sids: readonly string[]): void {
+  for (const sid of sids)
+    flight.ask(
+      `session-account\0${origin}\0${sid}`,
+      async () => {
+        try {
+          putIn(appStore.sessionAccount, sid, { origin, read: await readSessionAccount(origin, sid) });
+        } catch (e) {
+          console.warn(`[acct] session-account [${origin}] ${sid} 失败：`, e);
+        }
+      },
+      stillWanted(origin, sid),
+    );
 }
 
 /** 一批会话的轮换与号各问一次。 */
-export async function refreshSessions(origin: Machine, sids: readonly string[]): Promise<void> {
-  await Promise.all([refreshRotations(origin, sids), refreshAccounts(origin, sids)]);
+export function refreshSessions(origin: Machine, sids: readonly string[]): void {
+  refreshRotations(origin, sids);
+  refreshAccounts(origin, sids);
 }
 
 /**
- * tab 集合变了 ⇒ 新出现的会话问一次；那台第一次出现 ⇒ 额度账也问一次。已经问过的不重问（之后靠推送）。
+ * tab 集合变了（整份，带脸）⇒ 重算每台要问的会话：新进来的问一次，摘掉的之后不再问，已经在的不重问（之后靠推送）；那台第一次出现 ⇒ 额度账也问一次。
  */
-export function syncSessions(tabs: readonly { sessionId: string; origin: Machine }[]): void {
-  const fresh = new Map<Machine, string[]>();
+export function syncSessions(tabs: readonly { sessionId: string; origin: Machine; face: SessionFace }[]): void {
+  const next = new Map<Machine, Set<string>>();
   for (const t of tabs) {
-    let set = known.get(t.origin);
-    if (!set) {
-      set = new Set();
-      known.set(t.origin, set);
+    if (!quotaAsked.has(t.origin)) {
+      quotaAsked.add(t.origin);
       void refreshQuota(t.origin);
     }
-    if (set.has(t.sessionId)) continue;
+    if (isEnded(t.face)) continue;
+    let set = next.get(t.origin);
+    if (!set) next.set(t.origin, (set = new Set()));
     set.add(t.sessionId);
-    fresh.set(t.origin, [...(fresh.get(t.origin) ?? []), t.sessionId]);
   }
-  for (const [origin, sids] of fresh) void refreshSessions(origin, sids);
+  const before = wanted;
+  wanted = next;
+  for (const [origin, sids] of next) {
+    const had = before.get(origin);
+    const fresh = [...sids].filter((s) => !(had?.has(s) ?? false));
+    if (fresh.length > 0) refreshSessions(origin, fresh);
+  }
 }
 
-/** 那台有 tab 的会话的号全部重问；不给 ⇒ 各台。 */
+/** 那台要问的会话的号全部重问；不给 ⇒ 各台。 */
 function reaskAccounts(origin?: Machine): void {
-  for (const [o, sids] of known) if (origin === undefined || o === origin) void refreshAccounts(o, [...sids]);
+  for (const [o, sids] of wanted) if (origin === undefined || o === origin) refreshAccounts(o, [...sids]);
 }
 
 /**
@@ -112,14 +134,14 @@ export function onQuotaChanged(origin: Machine, topic: "quota" | "rotation" | "r
     return;
   }
   const keys = change.cells.map((c) => c.key);
-  const mine = known.get(origin);
+  const mine = wanted.get(origin);
   const every = topic === "rotation_strategies" || change.all || keys.includes(null);
   const sids = every ? [...(mine ?? [])] : keys.filter((s): s is string => s !== null && (mine?.has(s) ?? false));
-  if (topic === "rotation_strategies") void refreshRotations(origin, sids);
-  else void refreshSessions(origin, sids);
+  if (topic === "rotation_strategies") refreshRotations(origin, sids);
+  else refreshSessions(origin, sids);
 }
 
-/** 那台账号清单变了（连上 · 默认号换了 · 清单动了；`changed/accounts`）⇒ 那台有 tab 的会话的号重问；不给 ⇒ 各台。 */
+/** 那台账号清单变了（连上 · 默认号换了 · 清单动了；`changed/accounts`）⇒ 那台要问的会话的号重问；不给 ⇒ 各台。 */
 export function onAccountsChanged(origin?: Machine): void {
   reaskAccounts(origin);
 }

@@ -62,6 +62,11 @@ pub(super) const SPECS: &[CommandSpec] = &[
     super::typed::blocking::<crate::assets::hub_inner::CcBusInstallCmd>(
         "把这台二进制带着的 cc-bus 装到这台",
     ),
+    // 插件装到这台（扩展页经枢纽问被写那台）：`assets/plugin_exec.rs` 照那一家的插件那一格跑它自己的装命令、读退出码，
+    //   再列一次确认。不经这台写文件。阻塞档（起子进程、等它）。
+    super::typed::blocking::<crate::assets::hub_inner::PluginInstallCmd>(
+        "照那一家自己的插件命令把一个插件装到这台",
+    ),
     // 两台之间「装」那一件的枢纽（skill 与 MCP 同一对）：界面只问本机一次，本机后端向来源那台取、交被写那台判与写（`assets/hub.rs`）。
     //   依赖本进程的可达表 ⇒ 只在流面上（登记行上写 `.stream_only`）。
     super::typed::asynchronous::<crate::faces::ext_hub_face::ExtHubPreview>(
@@ -97,12 +102,17 @@ pub(super) const SPECS: &[CommandSpec] = &[
     super::typed::blocking::<crate::faces::catalog_face::ExtNoteSetCmd>(
         "写 / 改 / 清一个扩展的备注",
     ),
-    // 从这台卸一个扩展：装记录里有 ⇒ 只撤装时写的；没有 ⇒ 先挪进 `~/.cc-monitor/backups/` 再删。判与写都在这台（写经 [`LocalFiles`]，
+    // 从这台卸一个扩展：装记录里有 ⇒ 只撤装时写的；没有 ⇒ skill 先挪进 `~/.cc-monitor/backups/` 再删，项目级 MCP 删之前的原文记进装记录。判与写都在这台（写经 [`LocalFiles`]，
     //   装记录的写口从这扇门递进去）。
     super::typed::blocking::<crate::faces::ext_list_face::ExtUninstallPreviewCmd>(
         "从这台卸一个扩展之前那张卡",
     ),
     super::typed::blocking::<crate::faces::ext_list_face::ExtUninstallApplyCmd>("从这台卸一个扩展"),
+    // 「文件与数据 → 改过的用户文件」那一行的「撤回」：cc-monitor 改过的一份项目级 MCP 配置整份回到改之前的原文（原文记在装记录里，
+    //   `assets/ext.rs` 接线 · `assets/mcp_sync_flow.rs` 本体）；之后被改过 ⇒ `stale`、一个字节不动。判与写都在这台（写经 [`LocalFiles`]，装记录的写口从这扇门递进去）。
+    super::typed::blocking::<crate::assets::ext::McpRevertCmd>(
+        "把 cc-monitor 改过的一份项目 MCP 配置撤回到改之前的原文",
+    ),
     // 〔D 组〕MCP 推 / 拉：每一问只在一台上（`assets/mcp_sync_flow.rs`）；判定原样是 `mcp_sync::answer_with`，写经 [`LocalFiles`]。
     super::typed::blocking::<crate::assets::hub_inner::McpSourceCmd>("装到别的机器时来源那一条"),
     super::typed::blocking::<crate::assets::hub_inner::McpPreviewCmd>(

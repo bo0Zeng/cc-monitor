@@ -30,24 +30,23 @@ use tokio::sync::mpsc;
 pub mod attach;
 pub mod batch;
 mod busy;
+pub mod column;
+mod config_text;
 mod copy;
 mod host_keys;
 pub mod install;
 mod key_line;
 mod keys;
 mod listing;
-pub mod plan;
+pub mod menu;
+pub mod record;
 pub mod resident;
 pub mod transfer;
 
-/// 这一份核心的身份那一行（JSON）：拨号核心的 ack 协议版本 ＋ 认得的用法。Kotlin 侧冒烟与「装上的是不是这一份」用它。
-pub fn version_json() -> String {
-    serde_json::json!({
-        "ack_v": ssh_dial::ACK_V,
-        "uses": ssh_dial::USES,
-    })
-    .to_string()
-}
+/// JNI 一个口：导出只按 `Core` 起名、Kotlin 只有 `Core.kt` 认识这份 `.so`。
+#[cfg(test)]
+#[path = "../../../../tests/mobile/core-rs/jni_surface_tests.rs"]
+mod jni_surface_tests;
 
 // ═══ 进程里的几样 ═══════════════════════════════════════════════════════════════
 
@@ -184,7 +183,7 @@ fn hold_key(id: &str, holding: bool) -> bool {
     true
 }
 
-/// 编号 `id` 那一样是不是密码（机器条「用密码登录」那一行照它：[`deploy::machine::signed_in`]）；不在表里 ⇒ 不是。
+/// 编号 `id` 那一样是不是密码（机器条「用密码登录」那一行照它：[`deploy::machine::mark_signed_in`]）；不在表里 ⇒ 不是。
 pub(crate) fn is_password(id: &str) -> bool {
     let table = keys().lock().unwrap_or_else(|e| e.into_inner());
     matches!(table.get(id).map(|h| &h.key), Some(Key::Password(_)))
@@ -341,9 +340,9 @@ pub fn generate_ed25519(comment: &str) -> Option<cmd_wire::phone::KeyPair> {
     })
 }
 
-/// 一段 `~/.ssh/config` 文本 ⇒ 可导入主机的 JSON 数组（解析住拨号核心 `config_text`）。
+/// 一段 `~/.ssh/config` 文本 ⇒ 可导入主机的 JSON 数组（解析住本核心 [`config_text`]）。
 pub fn ssh_config_json(text: &str) -> String {
-    serde_json::to_string(&ssh_dial::config_text::parse(text)).unwrap_or_else(|_| "[]".to_string())
+    serde_json::to_string(&config_text::parse(text)).unwrap_or_else(|_| "[]".to_string())
 }
 
 /// 手机那张机器表（`ssh_dial::machine::Host` 的 JSON 数组）；读不懂 ⇒ 那一句（契约错，不当空表）。
@@ -396,44 +395,62 @@ pub fn machine_check_json(table: &str, at: usize) -> String {
 }
 
 /// 文件页选中这几项（`files-ls` 回包 `up` 里的原行）· 此刻那一台（[`resident::here`]）⇒ 顶栏 · ⋯ · 点一下做什么
-/// （`pick_core::PhoneMenu`）；选中那几行读不动 ⇒ 空串（不按「什么都没选」出菜单）。
+/// （[`menu::PhoneMenu`]）；选中那几行读不动 ⇒ 空串（不按「什么都没选」出菜单）。
 pub fn pick_menu_json(rows: &str, here: &pick_core::Here) -> String {
     let Ok(rows) = serde_json::from_str::<Vec<cmd_wire::files::LsEntry>>(rows) else {
         return String::new();
     };
     let picks: Vec<pick_core::PickIn> = rows.iter().map(pick_core::PickIn::of_ls).collect();
     let picks: Vec<pick_core::Pick> = picks.iter().map(pick_core::PickIn::pick).collect();
-    serde_json::to_string(&pick_core::phone_menu(&picks, here)).unwrap_or_default()
+    serde_json::to_string(&menu::phone_menu(&picks, here)).unwrap_or_default()
 }
 
-/// 几台的搜内容结果合成一份：`{q, answered: [{origin, reply}]}`（`q` 搜的词；`reply` ＝ 那台 `history-search` 回包原样）⇒ `Merged`。
-/// 合的那一步是本机后端扇出完调的同一份（`face_core::search::merge`）：手机逐台直连问完，在这里合，不经哪一台当信差。
-/// 某台那一份照类型解不开 ⇒ 那台进 `down`（serde 那一句），别台照合；整份读不动 ⇒ 空串。
-pub fn search_merge_json(data: &str) -> String {
-    let Ok(mut ask) = serde_json::from_str::<serde_json::Value>(data) else {
-        return String::new();
-    };
-    let (Some(q), Ok(all)) = (
-        ask["q"].as_str().map(str::to_string),
-        serde_json::from_value::<Vec<serde_json::Value>>(ask["answered"].take()),
-    ) else {
-        return String::new();
-    };
-    let mut answered = Vec::new();
-    let mut down = Vec::new();
-    for mut one in all {
-        let Ok(origin) = serde_json::from_value::<cmd_wire::Machine>(one["origin"].take()) else {
-            return String::new();
-        };
-        match serde_json::from_value::<cmd_wire::search::HistorySearchReply>(one["reply"].take()) {
-            Ok(r) => answered.push((origin, r)),
-            Err(e) => down.push(cmd_wire::search::SearchDown {
-                origin,
-                said: e.to_string(),
-            }),
-        }
+/// 逐台问那一圈交来的：问哪几台（`{handle, origin}`：[`resident::open`] 回的编号 · 出口那一侧的机器 id，台序照给的）·
+/// 每台等多久（`withinMs`）· 搜内容时搜的词（`q`）。称呼照那条流开的时候给的名字（[`resident::Host::of`]）。
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct AllAsk {
+    hosts: Vec<AllHost>,
+    within_ms: u64,
+    #[serde(default)]
+    q: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AllHost {
+    handle: i64,
+    origin: cmd_wire::Machine,
+}
+
+impl AllAsk {
+    fn hosts(self) -> (Vec<resident::Host>, std::time::Duration, Option<String>) {
+        let hosts = self
+            .hosts
+            .into_iter()
+            .map(|h| resident::Host::of(h.handle, h.origin))
+            .collect();
+        (
+            hosts,
+            std::time::Duration::from_millis(self.within_ms.max(1)),
+            self.q,
+        )
     }
-    serde_json::to_string(&face_core::search::merge(&q, answered, down)).unwrap_or_default()
+}
+
+/// 几台的搜内容问一圈、合成一份（[`resident::search_all`]）：`AllAsk`（带 `q`）⇒ `Merged`。在调用方的线程上等到各台都有结局；
+/// 读不动 · 没带 `q` ⇒ 空串。
+pub fn search_all_json(data: &str) -> String {
+    let Ok(ask) = serde_json::from_str::<AllAsk>(data) else {
+        return String::new();
+    };
+    let (hosts, within, Some(q)) = ask.hosts() else {
+        return String::new();
+    };
+    let merged = runtime().block_on(resident::search_all(&q, hosts, move |h, cmd, args| {
+        resident::ask_one(h, cmd, args, within)
+    }));
+    serde_json::to_string(&merged).unwrap_or_default()
 }
 
 /// 几台的组合成一份：`{answered: [{origin, reply}]}`（`reply` ＝ 那台 `groups-here` 回包原样，照机器表先后）⇒ `GroupsRead`。
@@ -471,121 +488,23 @@ pub fn groups_merge_json(data: &str) -> String {
     serde_json::to_string(&face_core::groups::merge(&halves, heads)).unwrap_or_default()
 }
 
-/// 手机交来的一台（[`needs_merge_json`]）：哪台 · 给人看的称呼 · 那一格（答了 ⇒ 回包原样；没答上 ⇒ 那一问的结局）。缺格 ⇒ `None`。
-fn needs_one(one: &serde_json::Value) -> Option<(cmd_wire::Machine, String, &serde_json::Value)> {
-    let origin = serde_json::from_value::<cmd_wire::Machine>(one.get("origin")?.clone()).ok()?;
-    Some((
-        origin,
-        one.get("label")?.as_str()?.to_string(),
-        one.get("reply")?,
-    ))
-}
-
-/// 没答上那一问的结局：`{kind: "link", said, detail, down}`（连接层没走通：断着 · 期限到 · 撤了；那一句是连接层写好的，句里已叫出那台 ⇒ 照原样；
-/// `down` ＝ 那台断着，断着不让数说不准，断着的本来不计）· `{kind: "failed", code, said, detail}`（那台答了一个错，核心写好的失败原样）·
-/// `{kind: "unreadable", raw}`（回包解不开，原文）。
-/// ⇒ `(那一句, 详情, 让不让数说不准)`；认不出 ⇒ `None`。
-fn needs_miss(label: &str, r: &serde_json::Value) -> Option<(String, String, bool)> {
-    let s = |k: &str| r.get(k)?.as_str().map(str::to_string);
-    match r.get("kind")?.as_str()? {
-        "link" => Some((s("said")?, s("detail")?, !r.get("down")?.as_bool()?)),
-        "failed" => Some((
-            needs_failed_said(label, &s("code")?, s("said")?),
-            s("detail")?,
-            true,
-        )),
-        "unreadable" => {
-            let (said, detail) = needs_unreadable(label, &s("raw")?);
-            Some((said, detail, true))
-        }
-        _ => None,
-    }
-}
-
-/// 那台回包解不开（帧上缺格 · 形对不上）那一句（叫出那台）与详情（命令名 ＋ 原文）：同手机 `unreadableReply` 那一句。
-fn needs_unreadable(label: &str, raw: &str) -> (String, String) {
-    (
-        copy_core::copy_text("peerVersion.said.unreadable", &[("machine", label)]),
-        format!("command: sessions-needs\nreply: {raw}"),
-    )
-}
-
-/// 没答上那台那一句（同本机后端 `history_face::down_said`）：码说是两端对不上 · 那台不认这条命令的 ⇒ 句里已叫出那台、照原样；
-/// 别的只说了原因 ⇒「<那台> · <那一句>」。
-fn needs_failed_said(label: &str, code: &str, said: String) -> String {
-    if [cmd_wire::SHAPE_DIFFERS, "unknown_command"].contains(&code) {
-        return said;
-    }
-    copy_core::copy_text(
-        "kit.text.machineSaid",
-        &[("machine", label), ("said", &said)],
-    )
-}
-
-/// 几台的需手动合成一份：`{answered: [{origin, label, reply}], unanswered: [{origin, label, reply}], reading: [origin]}` ⇒ `NeedsMerged`。
-/// 合的那一步是本机后端 `sessions-needs-merge` 调的同一份（`face_core::needs::merge_needs`）：手机逐台直连问完，在这里照各项的 `rank` 合一次、数总数，
-/// 头那一句 · 读屏那一句 · 读不出那一行 · 没答上那几台那一句（叫出那台，称呼照 `label`）都在这里写好。
-/// 答了的那一份照类型解不开 ⇒ 读不出那台回复那一句进 `down`、不计；答失败 · 还在读 ⇒ 数说不准；整份读不动 ⇒ 空串。
-pub fn needs_merge_json(data: &str) -> String {
-    let Ok(ask) = serde_json::from_str::<serde_json::Value>(data) else {
+/// 几台的需手动问一圈、合成一份（[`resident::needs_all`]）：`AllAsk` ⇒ `NeedsMerged`。在调用方的线程上等到各台都有结局；读不动 ⇒ 空串。
+pub fn needs_all_json(data: &str) -> String {
+    let Ok(ask) = serde_json::from_str::<AllAsk>(data) else {
         return String::new();
     };
-    let list = |k: &str| ask.get(k).and_then(serde_json::Value::as_array).cloned();
-    let (Some(given), Some(missed), Some(reading)) =
-        (list("answered"), list("unanswered"), list("reading"))
-    else {
-        return String::new();
-    };
-    let mut labels: Vec<(cmd_wire::Machine, String)> = Vec::new();
-    let mut answered = Vec::new();
-    let mut down = Vec::new();
-    let mut unsure = !reading.is_empty();
-    for one in &given {
-        let Some((origin, label, reply)) = needs_one(one) else {
-            return String::new();
-        };
-        labels.push((origin.clone(), label.clone()));
-        match serde_json::from_value::<cmd_wire::needs::NeedsList>(reply.clone()) {
-            Ok(list) => answered.push((origin, list)),
-            Err(e) => {
-                unsure = true;
-                let (said, detail) = needs_unreadable(&label, &format!("{reply}\n{e}"));
-                down.push(cmd_wire::needs::NeedsDown {
-                    origin,
-                    said,
-                    detail,
-                });
-            }
-        }
-    }
-    for one in &missed {
-        let Some((origin, label, reply)) = needs_one(one) else {
-            return String::new();
-        };
-        let Some((said, detail, doubt)) = needs_miss(&label, reply) else {
-            return String::new();
-        };
-        unsure |= doubt;
-        down.push(cmd_wire::needs::NeedsDown {
-            origin,
-            said,
-            detail,
-        });
-    }
-    let name = |m: &cmd_wire::Machine| {
-        labels
-            .iter()
-            .find(|(o, _)| o == m)
-            .map_or_else(|| m.to_string(), |(_, l)| l.clone())
-    };
-    serde_json::to_string(&face_core::needs::merge_needs(answered, down, unsure, name))
-        .unwrap_or_default()
+    let (hosts, within, _) = ask.hosts();
+    let merged = runtime().block_on(resident::needs_all(hosts, move |h, cmd, args| {
+        resident::ask_one(h, cmd, args, within)
+    }));
+    serde_json::to_string(&merged).unwrap_or_default()
 }
 
-/// 会话屏勾上的那几台 ⇒ 并好的一列（`ChatsColumnAsk` ⇒ `ChatsColumn`；本机后端并历史页那一份并法，`face_core::column`）；读不动 ⇒ 空串。
+/// 会话屏勾上的那几台 ⇒ 并好的一列（[`column::ChatsColumnAsk`] ⇒ [`column::ChatsColumn`]；并法是本机后端并历史页那一份，`face_core::column`）；
+/// 各行删除确认那一句照那台的称呼重写（`face_core::history_asks::delete_ask_named`）。读不动 ⇒ 空串。
 pub fn chats_column_json(ask: &str) -> String {
-    serde_json::from_str::<face_core::column::ChatsColumnAsk>(ask)
-        .map(|a| serde_json::to_string(&face_core::column::column(&a)).unwrap_or_default())
+    serde_json::from_str::<column::ChatsColumnAsk>(ask)
+        .map(|a| serde_json::to_string(&column::column(&a)).unwrap_or_default())
         .unwrap_or_default()
 }
 
@@ -638,7 +557,7 @@ pub fn open_link(request: &str, on_data: OnData) -> Result<i64, String> {
         .await;
         let ack = match &opened {
             Ok(o) => o.ack(),
-            Err(f) => ssh_dial::DialAck::of_fail(f.clone()),
+            Err(f) => ssh_dial::failed_ack(f.clone()),
         };
         if ssh_dial::write_stages_then_ack(&mut down_w, &stages, &ack)
             .await
@@ -741,15 +660,6 @@ fn new_jstring(env: &JNIEnv, text: impl AsRef<str>) -> jstring {
 
 fn guarded<T>(fallback: T, f: impl FnOnce() -> T) -> T {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).unwrap_or(fallback)
-}
-
-/// `Core.version()`。
-#[no_mangle]
-pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_version<'l>(
-    env: JNIEnv<'l>,
-    _class: JClass<'l>,
-) -> jstring {
-    new_jstring(&env, guarded("{}".to_string(), version_json))
 }
 
 /// 会话列表副本（[`listing`]）：装核心时 Kotlin 交的那个目录，一个进程一份。
@@ -1052,54 +962,55 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_pickMenu<'l>(
     })
 }
 
-/// `Core.searchMerge(data)`：几台的搜内容结果合成一份（[`search_merge_json`]）。
+/// `Core.chmodAsk(want)`：改权限那一框（几项名 ＋ 逐项权限位 ⇒ 标题 · 那一行 · 预填，[`batch::chmod_ask`]）。
 #[no_mangle]
-pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_searchMerge<'l>(
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_chmodAsk<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    want: JString<'l>,
+) -> jstring {
+    guarded(std::ptr::null_mut(), || {
+        let want = string(&mut env, &want).unwrap_or_default();
+        new_jstring(&env, batch::chmod_ask(&want))
+    })
+}
+
+/// `Core.searchAll(data)`：几台的搜内容问一圈、合成一份（[`search_all_json`]；等各台都有结局才回，不在主线程上调）。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_searchAll<'l>(
     mut env: JNIEnv<'l>,
     _class: JClass<'l>,
     data: JString<'l>,
 ) -> jstring {
     guarded(std::ptr::null_mut(), || {
         let text = string(&mut env, &data).unwrap_or_default();
-        env.new_string(search_merge_json(&text))
+        env.new_string(search_all_json(&text))
             .map(|s| s.into_raw())
             .unwrap_or(std::ptr::null_mut())
     })
 }
 
-/// `Core.attachFace(want)`：聊天输入框上方那一排附件的字（[`attach::face_json`]）。
+/// `Core.attach(handle, op)`：聊天输入框上方那一排附件（[`attach::attach`]：`AttachDo` ⇒ `AttachDone`）；
+/// 那一排每变一次经 `Sink.resident(handle, "attach", …)` 交回。
 #[no_mangle]
-pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_attachFace<'l>(
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_attach<'l>(
     mut env: JNIEnv<'l>,
     _class: JClass<'l>,
-    want: JString<'l>,
+    handle: jlong,
+    op: JString<'l>,
 ) -> jstring {
     guarded(std::ptr::null_mut(), || {
-        let text = string(&mut env, &want).unwrap_or_default();
-        env.new_string(attach::face_json(&text))
+        let text = string(&mut env, &op).unwrap_or_default();
+        let _rt = runtime().enter();
+        env.new_string(attach::attach(handle, &text, on_resident()))
             .map(|s| s.into_raw())
             .unwrap_or(std::ptr::null_mut())
     })
 }
 
-/// `PlanFace.face(want)`：手机计划三屏那一屏的字（[`plan::face_json`]）。
+/// `Core.chatsColumn(ask)`：会话屏几台并成一列（[`chats_column_json`]）。
 #[no_mangle]
-pub extern "system" fn Java_com_ccmonitor_mobile_core_claude_link_PlanFace_face<'l>(
-    mut env: JNIEnv<'l>,
-    _class: JClass<'l>,
-    want: JString<'l>,
-) -> jstring {
-    guarded(std::ptr::null_mut(), || {
-        let text = string(&mut env, &want).unwrap_or_default();
-        env.new_string(plan::face_json(&text))
-            .map(|s| s.into_raw())
-            .unwrap_or(std::ptr::null_mut())
-    })
-}
-
-/// `ColumnFace.column(ask)`：会话屏几台并成一列（[`chats_column_json`]）。
-#[no_mangle]
-pub extern "system" fn Java_com_ccmonitor_mobile_core_claude_link_ColumnFace_column<'l>(
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_chatsColumn<'l>(
     mut env: JNIEnv<'l>,
     _class: JClass<'l>,
     ask: JString<'l>,
@@ -1112,9 +1023,9 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_claude_link_ColumnFace_col
     })
 }
 
-/// `GroupsFace.merge(data)`：几台的组合成一份（[`groups_merge_json`]）。
+/// `Core.groupsMerge(data)`：几台的组合成一份（[`groups_merge_json`]）。
 #[no_mangle]
-pub extern "system" fn Java_com_ccmonitor_mobile_core_claude_link_GroupsFace_merge<'l>(
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_groupsMerge<'l>(
     mut env: JNIEnv<'l>,
     _class: JClass<'l>,
     data: JString<'l>,
@@ -1127,16 +1038,16 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_claude_link_GroupsFace_mer
     })
 }
 
-/// `NeedsFace.merge(data)`：几台的需手动合成一份（[`needs_merge_json`]）。
+/// `Core.needsAll(data)`：几台的需手动问一圈、合成一份（[`needs_all_json`]；等各台都有结局才回，不在主线程上调）。
 #[no_mangle]
-pub extern "system" fn Java_com_ccmonitor_mobile_core_claude_link_NeedsFace_merge<'l>(
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_needsAll<'l>(
     mut env: JNIEnv<'l>,
     _class: JClass<'l>,
     data: JString<'l>,
 ) -> jstring {
     guarded(std::ptr::null_mut(), || {
         let text = string(&mut env, &data).unwrap_or_default();
-        env.new_string(needs_merge_json(&text))
+        env.new_string(needs_all_json(&text))
             .map(|s| s.into_raw())
             .unwrap_or(std::ptr::null_mut())
     })
@@ -1212,7 +1123,7 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_close<'l>(
 
 // ═══ 常驻流的口（`resident.rs`；`Core.resident*`）═══════════════════════════════════════
 
-/// `Core.residentOpen(machine, mine, tz)`：看一台，回编号。
+/// `Core.residentOpen(machine, mine, tz)`：看一台，回编号；`tz` 读不出 ⇒ 不起那一台、回 0（编号从 1 起，0 ＝ 没成）。
 #[no_mangle]
 pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_residentOpen<'l>(
     mut env: JNIEnv<'l>,
@@ -1224,7 +1135,9 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_residentOpen<'l>(
     guarded(0, || {
         let machine = string(&mut env, &machine).unwrap_or_default();
         let mine = string(&mut env, &mine);
-        let tz = string(&mut env, &tz);
+        let Some(tz) = string(&mut env, &tz) else {
+            return 0;
+        };
         let _rt = runtime().enter();
         resident::open(machine, mine, tz, on_resident())
     })
@@ -1334,31 +1247,6 @@ pub(crate) fn file_of(fd: jint) -> Option<std::fs::File> {
         let _ = fd;
         None
     }
-}
-
-/// `Core.transferStage(handle, fd, name, withinMs)`：本机那一份（`fd`，读）逐块送进那台的暂存区（`transfer.rs`）；
-/// 回问答编号，走到哪经 `moved`、结局经 `reply` 交回。这台不在 ⇒ 0。
-#[no_mangle]
-pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_transferStage<'l>(
-    mut env: JNIEnv<'l>,
-    _class: JClass<'l>,
-    handle: jlong,
-    fd: jint,
-    name: JString<'l>,
-    within_ms: jlong,
-) -> jlong {
-    guarded(0, || {
-        let Some(file) = file_of(fd) else { return 0 };
-        let name = string(&mut env, &name).unwrap_or_default();
-        let _rt = runtime().enter();
-        transfer::stage(
-            handle,
-            file,
-            name,
-            u64::try_from(within_ms).unwrap_or(0),
-            on_resident(),
-        )
-    })
 }
 
 /// `Core.transferRead(handle, path, cap, withinMs)`：那台的 `path`（线上 `WirePath` 的 JSON）逐块读进内存、过 `cap` 就停（`transfer.rs`）；
@@ -1590,7 +1478,7 @@ mod tests {
             serde_json::from_str(&super::pick_menu_json(rows, &off)).unwrap();
         assert_eq!(
             v["more"][0]["why"],
-            copy_core::copy_text("acctPage.offline.hover", &[])
+            copy_core::copy_text("link.machine.readOnly", &[])
         );
         assert_eq!(
             super::pick_menu_json("{", &up),
@@ -1721,21 +1609,6 @@ mod tests {
                 dir_mode: super::DEPLOY_DIR_MODE
             }
         );
-    }
-
-    /// 身份那一行是 JSON、带拨号核心的 ack 协议版本与它认得的用法（PTY · 握着连接那两种也在）。
-    #[test]
-    fn the_version_line_names_the_dial_core_it_carries() {
-        let v: serde_json::Value = serde_json::from_str(&super::version_json()).expect("不是 JSON");
-        assert_eq!(v["ack_v"], ssh_dial::ACK_V);
-        for u in ["shell", "hold"] {
-            assert!(
-                v["uses"]
-                    .as_array()
-                    .is_some_and(|a| a.iter().any(|x| x == u)),
-                "{v}"
-            );
-        }
     }
 
     /// 交 Kotlin 的那一形对得上那把钥匙：那一行逐字是它的 OpenSSH 形、算法名是它的、指纹是拨号核心那一份（桌面同一个）。
@@ -1909,210 +1782,25 @@ mod tests {
         assert_eq!(super::groups_merge_json("不是 JSON"), "");
     }
 
-    /// 搜内容几台合一份：手机核心合出的就是 `face_core::search::merge` 那一份（本机后端扇出完调的同一个）；
-    /// 交进来的是各台真回包的形（金样那一行：`updatedAt` · `face.order` · `hits[].offset` 这类整数格），合完整数格原样是整数；
-    /// 某台那一份解不开 ⇒ 那台进 `down`、别台照合。
+    /// 逐台问那一圈的入参读不动 · 搜内容没带词 ⇒ 空串（不当合好的一份没有）；问的台不在 ⇒ 那台断着、照合。
     #[test]
-    fn the_phone_merges_search_replies_with_the_one_shared_merge() {
+    fn the_ask_all_inputs_are_read_strictly() {
         use serde_json::{json, Value};
-        let golden: Value = serde_json::from_str(include_str!(
-            "../../../../tests/__fixtures__/history-search-row.golden.json"
-        ))
-        .unwrap();
-        let line = |sid: &str, at: i64| {
-            let mut r: Value = serde_json::from_str(golden["lines"][0].as_str().unwrap()).unwrap();
-            r["sessionId"] = json!(sid);
-            r["updatedAt"] = json!(at);
-            r["atText"] = json!("09:05");
-            r["spanText"] = json!("09:05–09:05");
-            r["label"] = json!(sid);
-            r["starred"] = json!(true);
-            r["hidden"] = json!(null);
-            r
-        };
-        let a = json!({"sessions": [line("a1", 100)], "unreadable": 1, "skipped": ["Codex"]});
-        let b =
-            json!({"sessions": [line("b1", 1_767_225_600_123)], "unreadable": 0, "skipped": []});
-        let text = json!({"q": "夹具词", "answered": [
-            {"origin": "phone-a", "reply": a},
-            {"origin": "phone-b", "reply": b},
-            {"origin": "phone-c", "reply": {"sessions": [{"updatedAt": 1.5}], "unreadable": 0, "skipped": []}},
-        ]})
-        .to_string();
-        let got: Value = serde_json::from_str(&super::search_merge_json(&text)).unwrap();
-        let want = face_core::search::merge(
-            "夹具词",
-            vec![
-                (
-                    cmd_wire::Machine::named("phone-a"),
-                    serde_json::from_value(a).unwrap(),
-                ),
-                (
-                    cmd_wire::Machine::named("phone-b"),
-                    serde_json::from_value(b).unwrap(),
-                ),
-            ],
-            vec![],
-        );
-        let mut want = serde_json::to_value(&want).unwrap();
-        assert_eq!(got["down"][0]["origin"], "phone-c", "{got}");
-        want["down"] = got["down"].clone();
-        assert_eq!(got, want, "手机核心合出的不是那一份合并");
-        assert_eq!(got["sessions"][0]["sessionId"], "b1");
-        assert!(
-            got["sessions"][0]["updatedAt"].is_i64()
-                && got["sessions"][0]["face"]["order"].is_u64(),
-            "{got}"
-        );
-        assert_eq!(super::search_merge_json("不是 JSON"), "");
-    }
-
-    /// 需手动几台合一份：手机核心合出的就是 `face_core::needs::merge_needs` 那一份（本机后端 `sessions-needs-merge` 调的同一个）：
-    /// 跨台照 `rank` 排、总数是各台加起来；会外读不出那一行照那台的称呼（`label`）写好。
-    #[test]
-    fn the_phone_merges_needs_with_the_one_shared_merge() {
-        use serde_json::{json, Value};
-        let plan = |slice: &str, rank: u64| json!({"kind": "plan", "rank": rank, "workspace": "/w", "slice": slice});
-        let a = json!({"items": [plan("a1", 5), plan("a2", 9)], "ended": []});
-        let b = json!({"items": [plan("b1", 1)], "ended": [], "manualUnreadable": "读不懂"});
-        let text = json!({"answered": [
-            {"origin": "phone-a", "label": "甲", "reply": a},
-            {"origin": "phone-b", "label": "乙", "reply": b},
-        ], "unanswered": [], "reading": []})
-        .to_string();
-        let got: Value = serde_json::from_str(&super::needs_merge_json(&text)).unwrap();
-        let order: Vec<&str> = got["items"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|x| x["item"]["slice"].as_str().unwrap())
-            .collect();
-        assert_eq!(order, ["b1", "a1", "a2"], "跨台照 rank：{got}");
-        assert_eq!(got["total"], 3, "总数是答了的几台加起来");
+        assert_eq!(super::needs_all_json("不是 JSON"), "");
+        assert_eq!(super::search_all_json("不是 JSON"), "");
+        let gone = json!({"hosts": [{"handle": -9, "origin": "m"}], "withinMs": 5});
         assert_eq!(
-            got["unreadable"],
-            json!([{"origin": "phone-b", "said": "读不懂",
-                "line": copy_core::copy_text("needs.panel.unreadable", &[("machine", "乙")])}])
+            super::search_all_json(&gone.to_string()),
+            "",
+            "搜内容没带词"
         );
-        let want = face_core::needs::merge_needs(
-            vec![
-                (
-                    cmd_wire::Machine::named("phone-a"),
-                    serde_json::from_value(a).unwrap(),
-                ),
-                (
-                    cmd_wire::Machine::named("phone-b"),
-                    serde_json::from_value(b).unwrap(),
-                ),
-            ],
-            vec![],
-            false,
-            |m| {
-                if m.to_string() == "phone-a" {
-                    "甲".into()
-                } else {
-                    "乙".into()
-                }
-            },
-        );
+        let got: Value = serde_json::from_str(&super::needs_all_json(&gone.to_string())).unwrap();
+        assert_eq!(got["down"][0]["said"], copy_core::offline("m"), "{got}");
+        let extra = json!({"hosts": [], "withinMs": 5, "reading": true});
         assert_eq!(
-            got,
-            serde_json::to_value(&want).unwrap(),
-            "手机核心合出的不是那一份合并"
+            super::needs_all_json(&extra.to_string()),
+            "",
+            "多一格 ⇒ 两端对不上"
         );
-        assert_eq!(super::needs_merge_json("不是 JSON"), "");
-    }
-
-    /// ★ 没答上的那几台也交进核心合：断着 · 期限到 · 撤了（连接层那一句已叫出那台）照原样；那台答了一个错 ⇒「<那台> · <那一句>」；
-    /// 回包解不开 ⇒ 读不出那台回复那一句（叫出那台）＋ 详情带命令与原文。都进 `down`、不计；有哪台答失败 · 还在读 ⇒ 数说不准、头那一句不带数；
-    /// 只是断着 ⇒ 照样说得准。称呼照给的 `label`。
-    #[test]
-    fn machines_that_did_not_answer_go_into_the_core_merge_named() {
-        use serde_json::{json, Value};
-        let plan = |slice: &str, rank: u64| json!({"kind": "plan", "rank": rank, "workspace": "/w", "slice": slice});
-        let a = json!({"items": [plan("a1", 5)], "ended": []});
-        let merge = |v: Value| -> Value {
-            serde_json::from_str(&super::needs_merge_json(&v.to_string())).unwrap()
-        };
-        let got = merge(json!({
-            "answered": [
-                {"origin": "phone-a", "label": "甲", "reply": a},
-                {"origin": "phone-d", "label": "丁", "reply": {"items": 3}},
-            ],
-            "unanswered": [
-                {"origin": "phone-b", "label": "乙", "reply": {"kind": "link", "said": "乙 离线", "detail": "", "down": true}},
-                {"origin": "phone-c", "label": "丙", "reply": {"kind": "failed", "code": "io", "said": "记录读取失败", "detail": "原话"}},
-            ],
-            "reading": [],
-        }));
-        assert_eq!(got["total"], 1, "没答上的不计：{got}");
-        let down = |m: &str| {
-            got["down"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .find(|d| d["origin"] == m)
-                .cloned()
-                .unwrap_or_else(|| panic!("{m} 不在 down：{got}"))
-        };
-        assert_eq!(
-            down("phone-b")["said"],
-            "乙 离线",
-            "连接层那一句已叫出那台 ⇒ 照原样"
-        );
-        assert_eq!(
-            down("phone-c")["said"],
-            copy_core::copy_text(
-                "kit.text.machineSaid",
-                &[("machine", "丙"), ("said", "记录读取失败")]
-            ),
-            "答了一个错 ⇒ 补上是哪台"
-        );
-        assert_eq!(down("phone-c")["detail"], "原话");
-        assert_eq!(
-            down("phone-d")["said"],
-            copy_core::copy_text("peerVersion.said.unreadable", &[("machine", "丁")])
-        );
-        assert!(
-            down("phone-d")["detail"]
-                .as_str()
-                .unwrap()
-                .contains("sessions-needs"),
-            "{got}"
-        );
-        assert_eq!(got["sure"], false, "有哪台答失败 ⇒ 数说不准");
-        assert_eq!(
-            got["head"],
-            copy_core::copy_text("beSession.needs.unknown", &[])
-        );
-
-        let only_down = merge(json!({
-            "answered": [{"origin": "phone-a", "label": "甲", "reply": a}],
-            "unanswered": [{"origin": "phone-b", "label": "乙", "reply": {"kind": "link", "said": "乙 离线", "detail": "", "down": true}}],
-            "reading": [],
-        }));
-        assert_eq!(only_down["sure"], true, "只是断着 ⇒ 说得准：{only_down}");
-        assert_eq!(
-            only_down["head"],
-            copy_core::copy_text("beGroups.count.needs", &[("n", "1")])
-        );
-
-        let reading = merge(json!({
-            "answered": [{"origin": "phone-a", "label": "甲", "reply": a}],
-            "unanswered": [],
-            "reading": ["phone-b"],
-        }));
-        assert_eq!(reading["sure"], false, "还在读 ⇒ 说不准：{reading}");
-
-        let timed = merge(json!({
-            "answered": [{"origin": "phone-a", "label": "甲", "reply": a}],
-            "unanswered": [{"origin": "phone-b", "label": "乙", "reply": {"kind": "link", "said": "乙 回复超时", "detail": "d", "down": false}}],
-            "reading": [],
-        }));
-        assert_eq!(
-            timed["sure"], false,
-            "通着却没答上（期限到 · 撤了）⇒ 说不准：{timed}"
-        );
-        assert_eq!(timed["down"][0]["said"], "乙 回复超时");
     }
 }

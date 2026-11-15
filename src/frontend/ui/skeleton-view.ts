@@ -32,8 +32,10 @@
  * - **精度**：占位高是第一级粗估，滚到那里、建了卡才换成真高；
  * 视口上下几屏之内的占位行由 Worker 精算（第二级，`applyRefined` · `nearbyUnrefined`，宿主 `tab-stream-view.ts`），
  *   更远的一直是第一级。
- * - **正文从哪来归宿主**：主窗口 tab 先从 `TailWindow.pending` 拿（重放推过来的），没有的按偏移取；
- *   查看器不留正文，交来的每一段都按偏移取（两边同一处切段：`rowRuns`）。
+ * - **正文从哪来归宿主**：主窗口 tab 先从 `TailWindow.pending` 拿（重放推过来的）、再从卡正文缓存拿（`body-cache.ts`：建过的 · 预取的），
+ *   没有的按偏移取；查看器不留正文，交来的每一段都按偏移取（两边同一处切段：`rowRuns`）。
+ * - **取多远与建多少分开**：建卡只建视口 ±`OVERSCAN`；视口 ±`PREFETCH_SCREENS` 屏里还是占位的交宿主 `prefetch`（只取正文、不建卡），
+ *   一屏一屏往上翻时翻到的那一屏正文已在手上。
  * - **去取的那几段留着占位**（取回中，`materialize` 的返回值）：高不撤、不再交给宿主、不算 `isPending`；
  *   正文落地 `landed` 同一个任务里换成卡，取不到 `failed` 放回普通占位。交出去就撤高的话 ⇒ 内容整体上收、
  *   视口落到后面几行的占位里又去取，一路连锁、视口一直空着（台架 `perf-huge` 的 `stuck-jump` 量这一形）。
@@ -54,6 +56,8 @@ const OVERSCAN = 0.5;
 const MAX_ROWS_PER_PASS = 300;
 /** 一次 `fillVisible` 最多跑几轮（每轮之后真高替换估高，视口里可能又露出占位）。 */
 const MAX_PASSES = 4;
+/** 一块占位里一次至多预取几行（估高荒谬地偏小时，带里装得下几千行也只从靠视口那一端取这么多）。 */
+const MAX_PREFETCH_ROWS = 600;
 
 export const SKELETON_GAP_CLASS = "stream-skeleton-gap";
 
@@ -66,6 +70,11 @@ export interface SkeletonHost {
   materialize(lo: number, hi: number): ReadonlyArray<readonly [number, number]>;
   /** 这几段（半开）已建的卡（`cards`）摘了、交回占位（[`SkeletonView.release`]）：宿主清掉还指着它们的表、重折。 */
   released(ranges: ReadonlyArray<readonly [number, number]>, cards: readonly HTMLElement[]): void;
+  /**
+   * 〔取多远与建多少分开〕视口 ±[`SkeletonView.PREFETCH_SCREENS`] 屏里还是占位的这一段（半开）：只把正文取到手上、不建卡
+   * （宿主自己认哪几行已在手上、哪几行在途）。没有这一口的宿主（查看器）物化时照旧按偏移取。
+   */
+  prefetch?(lo: number, hi: number): void;
 }
 
 interface Gap {
@@ -342,11 +351,40 @@ export class SkeletonView {
       if (n === 0) break;
       total += n;
     }
+    this.prefetchBand();
     return total;
+  }
+
+  /**
+   * 视口 ±`PREFETCH_SCREENS` 屏里还是占位的那几段交宿主预取（折着的过程扣掉；每块占位至多 [`MAX_PREFETCH_ROWS`] 行，
+   * 从靠视口那一端取）。视口拿不到布局 ⇒ 不交。
+   */
+  private prefetchBand(): void {
+    if (!this.host.prefetch) return;
+    const view = this.scrollEl.getBoundingClientRect();
+    if (view.height <= 0) return;
+    const top = view.top - view.height * SkeletonView.PREFETCH_SCREENS;
+    const bottom = view.bottom + view.height * SkeletonView.PREFETCH_SCREENS;
+    const mid = (view.top + view.bottom) / 2;
+    const ranges: Array<[Gap, number, number]> = [];
+    for (const g of this.gaps) {
+      if (g.fetching) continue;
+      const r = g.el.getBoundingClientRect();
+      if (r.height <= 0 || r.bottom <= top || r.top >= bottom) continue;
+      const i = this.ledger.seqAt(g.lo, g.hi, Math.max(0, top - r.top));
+      const j = Math.min(g.hi, this.ledger.seqAt(g.lo, g.hi, Math.min(r.height, bottom - r.top)) + 1);
+      if (j <= i) continue;
+      if (j - i <= MAX_PREFETCH_ROWS) ranges.push([g, i, j]);
+      else if ((r.top + r.bottom) / 2 < mid) ranges.push([g, j - MAX_PREFETCH_ROWS, j]);
+      else ranges.push([g, i, i + MAX_PREFETCH_ROWS]);
+    }
+    for (const [, i, j] of this.withoutFolded(ranges)) this.host.prefetch(i, j);
   }
 
   /** 视口上下各留几屏已建的卡，更远的交回占位（每多留一屏约多一万个 DOM 元素、帧间隔不随它变；两屏够来回看几眼不用重取）。 */
   static readonly KEEP_SCREENS = 2;
+  /** 视口上下各几屏只取正文、不建卡（交宿主 `prefetch`）：比留卡的带宽，翻到那里时正文已在手上。 */
+  static readonly PREFETCH_SCREENS = 2.5;
 
   /**
    * **物化的反方向**：离视口超过 ±`screens` 屏的已建卡交回占位（滚回来照物化可见区那条路重建）。

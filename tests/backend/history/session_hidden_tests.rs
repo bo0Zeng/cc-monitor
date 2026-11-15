@@ -223,7 +223,7 @@ fn the_three_carriers_get_the_cell_from_this_one_function() {
 }
 
 /// 叫一条会话什么（这台的）：monitor 里改的名 ＞ agent 起的标题 ＞ 第一句；人在 Claude 里 `/rename` 写的那一条不算。
-/// 认得出记录的走 `listing::session_title_of`（带上改过的名），cc-bus 名单 · MCP 断开那一句也是它。
+/// 照路径认得出记录的 `listing::session_title_of` 与按 sid 找到那一家的 [`title_found`] 同一条规则（带上改过的名）。
 #[test]
 fn the_name_here_takes_the_monitor_rename_and_never_the_agent_rename() {
     let dir = std::env::temp_dir().join(format!("ccm-title-here-{}", std::process::id()));
@@ -246,6 +246,86 @@ fn the_name_here_takes_the_monitor_rename_and_never_the_agent_rename() {
     assert_eq!(of(&p, Some("修登录".into())), "修登录");
     assert_eq!(of(&p, Some(" ".into())), "起的");
     std::fs::remove_dir_all(&dir).ok();
+}
+
+/// 按 sid 找到的那一份（判据里手拼：家 · 根不参与取标题）。
+fn found_at(kind: &'static str, file: &std::path::Path) -> crate::agents::SessionAt {
+    let dir = file.parent().unwrap().to_path_buf();
+    crate::agents::SessionAt {
+        kind,
+        home: dir.clone(),
+        root: dir,
+        file: file.to_path_buf(),
+    }
+}
+
+/// 一句人说的话（住记录树那一家的记录形）。
+const SAID: &str = r#"{"type":"user","uuid":"u1","timestamp":"2026-10-09T01:02:00.000Z","message":{"role":"user","content":"整理订单服务"}}
+"#;
+
+/// ★ 标题照按 sid 找到的那一家取、不照路径另认：路径认不出时，住记录树的那一家照它的读法扫出第一句。
+#[test]
+fn the_name_here_reads_the_found_family_when_the_path_is_unrecognized() {
+    let dir = test_home::scratch("title-here-tree-unrecognized");
+    // 哪一家都不认这个文件名、也不在哪一根下 ⇒ 照路径认不出。
+    let src = dir.join("s.record");
+    std::fs::write(&src, SAID).unwrap();
+    assert_eq!(crate::agents::record_kind_of(&src), None);
+    let at = found_at(crate::agents::claudecode::AGENT_KIND, &src);
+    assert_eq!(
+        title_found(crate::agents::REGISTRY, Some(&at), "s", None),
+        "整理订单服务"
+    );
+}
+
+/// ★ 记录那一家有合成历史面、路径认不出：第一句照那一家的摘录法取（不照路径另认、不落成「未命名」）。
+#[test]
+fn the_name_here_reads_the_found_synth_family_when_the_path_is_unrecognized() {
+    use crate::agents::fake::runs::history;
+    let dir = test_home::scratch("title-here-synth-unrecognized");
+    // 那一家的根在别处，这一份不在它底下。
+    let src = dir.join(history::file_name("s1"));
+    std::fs::write(
+        &src,
+        "{\"chat\":\"s1\",\"dir\":\"/w/proj\",\"said\":\"修一下夹具里的那条测试\"}\n",
+    )
+    .unwrap();
+    fn elsewhere() -> Option<std::path::PathBuf> {
+        Some(std::path::PathBuf::from("/nonexistent/fake-chats-home"))
+    }
+    let reg = [history::row(elsewhere)];
+    assert_eq!(crate::agents::record_kind_among(&reg, &src), None);
+    let at = found_at(history::KIND, &src);
+    assert_eq!(
+        title_found(&reg, Some(&at), "s1", None),
+        "修一下夹具里的那条测试"
+    );
+}
+
+/// ★ 认不出那一家（注册表里没有）⇒ 标题照「说不清」落，不退到注册序头一家去读（这一份照路径认得出也不读）。
+#[test]
+fn an_unknown_family_names_it_untitled_not_the_first_registered_reading() {
+    let dir = test_home::scratch("title-here-unknown-family");
+    // 放在住记录树那一家的根下 ⇒ 照路径认得出（前提钉住：认得出也不读）。
+    let src = dir.join(".claude/projects/-w-proj").join("s.jsonl");
+    std::fs::create_dir_all(src.parent().unwrap()).unwrap();
+    std::fs::write(&src, SAID).unwrap();
+    assert!(crate::agents::record_kind_of(&src).is_some());
+    let at = found_at("no-such-family", &src);
+    assert_eq!(
+        title_found(crate::agents::REGISTRY, Some(&at), "s", None),
+        copy_text("history.row.untitled", &[])
+    );
+    assert_eq!(
+        title_found(
+            crate::agents::REGISTRY,
+            Some(&at),
+            "s",
+            Some("改过的名".into())
+        ),
+        "改过的名",
+        "改过的名照样优先"
+    );
 }
 
 /// 启动台账 · 会话血缘读不懂 ⇒ 照旧当没有，但各出一声、带原因（不悄悄让隐藏的会话又显示出来）。

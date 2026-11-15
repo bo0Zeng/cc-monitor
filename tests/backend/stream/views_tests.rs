@@ -86,8 +86,12 @@ async fn the_frame_face_refuses_a_bad_view_before_running_the_command() {
     h.await.unwrap();
     let mut got = std::collections::BTreeMap::new();
     while let Some(f) = rx.recv().await {
-        let v: serde_json::Value =
-            serde_json::from_str(crate::wire::to_line(&f).unwrap().trim()).unwrap();
+        let v: serde_json::Value = serde_json::from_str(
+            crate::wire::to_line(&crate::wire::FrameExit::stamp(f, &Default::default()))
+                .unwrap()
+                .trim(),
+        )
+        .unwrap();
         got.insert(v["id"].as_str().unwrap().to_string(), v);
     }
     for id in ["v1", "v2"] {
@@ -123,14 +127,18 @@ async fn the_frame_face_projects_a_successful_reply() {
                 {"type": "text", "text": "x"},
             ]}}], "next": 9, "eof": true})))
         },
-        true,
+        None,
         plan,
     )
     .await;
     drop(tx);
     let f = rx.recv().await.unwrap();
-    let v: serde_json::Value =
-        serde_json::from_str(crate::wire::to_line(&f).unwrap().trim()).unwrap();
+    let v: serde_json::Value = serde_json::from_str(
+        crate::wire::to_line(&crate::wire::FrameExit::stamp(f, &Default::default()))
+            .unwrap()
+            .trim(),
+    )
+    .unwrap();
     assert_eq!(
         v["data"],
         json!({"rows": [{"end": 9, "record": {"t": "reply", "id": "a", "blocks": [
@@ -165,17 +173,16 @@ fn every_stream_place_names_a_pushed_frame_and_a_catalogued_product() {
 /// 推送帧照流的声明裁：`session_added` 去掉 `pid`、`line.record` 去掉正文块的字；`kind` 恒在；声明没点的帧与应答字节不变。
 #[test]
 fn the_stream_view_trims_pushed_frames_and_leaves_the_rest_alone() {
-    use crate::wire::{to_line, Frame};
+    use crate::wire::{to_line, WireFrame};
     let view = StreamView::parse(&json!({
         "omit": {"session_added": ["pid"], "record": ["blocks[type=text].text"]},
     }))
     .unwrap()
     .expect("认得的声明");
-    let added = Frame::SessionAdded(crate::wire::SessionAdded {
+    let added = WireFrame::SessionAdded(crate::wire::SessionAdded {
         sid: "s".into(),
         agent_kind: "claude".to_string(),
         background: false,
-        attachable: None,
         cwd: None,
         project_dir: None,
         name: None,
@@ -218,7 +225,7 @@ fn the_stream_view_trims_pushed_frames_and_leaves_the_rest_alone() {
             attachments: Vec::new(),
         },
     };
-    let line = Frame::Line(crate::wire::Line {
+    let line = WireFrame::Line(cmd_wire::frame::Line {
         session_id: "s".into(),
         path: "/p".into(),
         seq: 0,
@@ -238,7 +245,7 @@ fn the_stream_view_trims_pushed_frames_and_leaves_the_rest_alone() {
     );
     assert_eq!(cut["record"]["who"]["text"], "x", "没点到的格照发");
 
-    let other = Frame::SessionsReplayed(crate::wire::SessionsReplayed {});
+    let other = WireFrame::SessionsReplayed(crate::wire::SessionsReplayed {});
     assert_eq!(
         to_line_viewed(&other, Some(&view)).unwrap(),
         to_line(&other).unwrap()

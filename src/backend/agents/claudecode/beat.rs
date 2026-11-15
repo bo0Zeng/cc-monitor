@@ -157,7 +157,7 @@ pub(crate) fn beat_of(v: &Value) -> Option<Beat<'_>> {
         }));
     }
     if let Some(said) = super::text::user_text_of_record(v) {
-        acts.push(Act::Said(said));
+        acts.push(Act::Said(said.who));
     }
     let mode = (kind == Some("permission-mode"))
         .then(|| str_of(v, "permissionMode").map(Cow::Borrowed))

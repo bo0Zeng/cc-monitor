@@ -12,8 +12,7 @@
 //!
 //! # 买不到的
 //!
-//! - 订阅：本文件自己接三种流 `transfer/<id>`（传输台那一趟的进度，翻译在本文件末尾，判据 `transfer_stream_tests`）· `link`（那台连没连着）·
-//!   `files-batch/<票>`（一组做到哪了，`files_batch_relay`）；别的 `kind` 交进程里那一份会话流句柄（[`crate::event_replay::EventReplay::subscribe_stream`]：
+//! - 订阅：本文件自己接 `files-batch/<票>`（一组做到哪了，`files_batch_relay`）；别的 `kind` 交进程里那一份会话流句柄（[`crate::event_replay::EventReplay::subscribe_stream`]：
 //!   `changed/<主题>` 等，与主界面同一张订阅表，判据 `changed_stream_tests`），它认不出的原位回 `Closed{Peer(…)}`，不装作订阅成功。
 //! - 对端撤活是尽力的：外部前端撤单 ⇒ 路由器丢掉本 future（`router::run_call`）⇒ 那次 `inbound_client` 调用随之被丢 ⇒ 它的 `AbandonGuard`
 //!   补发一条 `cancel{target}`（判据 `inbound_client_tests::abandoning_the_wait_fires_one_cancel_and_finishing_fires_none`）。可取消档真停下；阻塞档照跑完。
@@ -135,15 +134,11 @@ pub struct InboundBackends;
 /// 这一跳在面 A 上的编号：路由器 ↔ 后端（`wire::HopId` 头注那两跳里的第 1 跳）。
 const HOP: u8 = 1;
 
-/// 通道上**由 monitor 自己接**、不按 `origin` 转给那台后端的 op：传输台开单两条（本机常驻后端的传输台，经中继 `transfer_relay.rs`）·
-/// 文件窗口「在此打开终端」（[`terminal_open`]）。其余一切照旧按 `origin` 去 `inbound_client`。
-/// 传输那两条从传输台那一份名单取（`transfer_relay::TRANSFER_OPS`，一份名单一个家）。
+/// 通道上**由 monitor 自己接**、不按 `origin` 转给那台后端的 op：文件窗口「在此打开终端」（[`terminal_open`]）·
+/// 另开一扇文件窗口 · 在计划里看。其余一切（传输也是）照旧按 `origin` 去 `inbound_client`。
 /// 窗口说「手上有什么会被打断」那一条由窗口那条通道的句柄（[`WindowBackends`]）接；从别处（主界面）来的这一条是用错了。
-pub(crate) const HOST_OPS: [&str; 7] = [
+pub(crate) const HOST_OPS: [&str; 4] = [
     filewin_contract::FILEWIN_BUSY_OP,
-    crate::transfer_relay::TRANSFER_OPS[0],
-    crate::transfer_relay::TRANSFER_OPS[1],
-    crate::transfer_relay::TRANSFER_COPY,
     filewin_contract::TERMINAL_OPEN_OP,
     filewin_contract::FILEWIN_OPEN_OP,
     filewin_contract::PLAN_OPEN_OP,
@@ -176,10 +171,6 @@ impl Backends for InboundBackends {
         kind: Kind,
         from: Option<Cursor>,
     ) -> BoxStream<'static, Item> {
-        // 🔴**生产上的第一条流**：`transfer/<id>` ⇒ 传输台那一趟的进度。
-        if let Some(id) = kind.0.strip_prefix(filewin_contract::TRANSFER_KIND_PREFIX) {
-            return transfer_stream(&origin, id, from);
-        }
         // 一组做到哪了：按票（窗口铸的）转后端推来的 `files_batch` 帧，那一组在哪台做都一样。`from` 没有意义（只留最新那一格）。
         if let Some(ticket) = kind.0.strip_prefix(crate::files_batch_relay::KIND_PREFIX) {
             use futures::StreamExt as _;
@@ -220,19 +211,11 @@ impl InboundBackends {
         view: Option<serde_json::Value>,
         left: Duration,
     ) -> BoxFuture<'static, Result<Body, CallError>> {
-        // 🔴**传输台那两条开单命令不按 `origin` 去那台机器的后端**：
-        // 传输台住**本机**常驻后端（SFTP 与其它 SSH 同一条连接），由中继 `transfer_relay.rs` 转过去；
-        //    其余一切照旧按 `origin` 去 `inbound_client`。
-        // 通道上由 monitor 自己接的那几条（[`HOST_OPS`]，两向登记在 `command_home_registry_tests::CHANNEL_OWN`）。
+        // 通道上由 monitor 自己接的那几条（[`HOST_OPS`]，两向登记在 `command_home_registry_tests::CHANNEL_OWN`）；
+        //    其余一切（传输 `transfer-copy` 也是：窗口寻址本机）照旧按 `origin` 去 `inbound_client`。
         if HOST_OPS.contains(&op.0.as_str()) {
             if op.0 == filewin_contract::FILEWIN_BUSY_OP {
                 return Box::pin(async { Err(OursFault::Misuse.into()) });
-            }
-            if crate::transfer_relay::is_transfer_op(&op.0) {
-                return Box::pin(transfer_open(origin, op, payload));
-            }
-            if op.0 == crate::transfer_relay::TRANSFER_COPY {
-                return Box::pin(transfer_copy(origin, payload, left));
             }
             if op.0 == filewin_contract::FILEWIN_OPEN_OP {
                 return Box::pin(filewin_open(origin, payload));
@@ -247,7 +230,7 @@ impl InboundBackends {
         Box::pin(async move {
             // 🔴 分层判定**不在本文件**：「那台机器没有控制通道」与 inbound 的每一种失败
             //    怎么分层、`reach` 是哪一档，唯一的家是 `backend_route` 的
-            //    `layer_no_channel` / `layer_call_error`（它们与旧三态同出一源）。
+            //    `layer_no_channel` / `layer_call_error`（给人看的那一句 `route_call_error` 也建在它们上面）。
             //    本文件只做搬运，不 match inbound 的错误枚举。
             let Some(client) = inbound_client::local_client() else {
                 return Err(backend_route::layer_no_channel(HOP));
@@ -285,78 +268,20 @@ impl InboundBackends {
     }
 }
 
-//
-// ══════════════════════════════════════════════════════════════════
-// 传输台那一口：开单 ＋ 进度流
-// ══════════════════════════════════════════════════════════════════
-//
-// 这里只做宿主那几件事：按 `origin` 找那台机器的配置、把载荷当 JSON 读、把传输台那一格（`transfer_relay::Step`）原样装进通道的格子（帧照 `cmd_wire::frame::Transfer` · 收场照 `TransferEnd` 序列化，不手写）。
-// 传输本身（借通道 · 写暂存区 · 续传 · 撤）不在这里。
-
-/// 拒绝的信封：与后端命令的拒绝**同一个形状**（交出去那一形 `cmd_wire::failed::Failed`，`backend_route::layer_call_error`
-/// 逐字），窗口那一侧用同一个翻译（`filewin::source::said`）说人话。
+/// 宿主自己接的那几条说「不行」的信封：与后端命令的拒绝**同一个形状**（交出去那一形 `cmd_wire::failed::Failed`，
+/// `backend_route::layer_call_error` 逐字），窗口那一侧用同一个翻译（`filewin::source::said`）说人话。
 ///
 /// ⚠ 经线上那一层的构造器（`wire::err_from_wire`）造，**不在本文件手写那个枚举的变体**：
 /// 本文件登记在 `backend_route_tests::SENDERS` 里（走分流器的那一档），那一档的牙是
-/// 「生产段不许自己拼 / 匹配那个错误枚举」—— 分层判定只许有一个家。这里不做任何分层判定：
-/// 传输台说了「不行」，就是对端说了「不行」，原样装进那个信封。
+/// 「生产段不许自己拼 / 匹配那个错误枚举」—— 分层判定只许有一个家。
 fn refused(code: &str, said: String) -> CallError {
-    refused_with(cmd_wire::failed::Failed {
+    let body = serde_json::to_vec(&cmd_wire::failed::Failed {
         code: code.to_string(),
         said,
         ..Default::default()
     })
-}
-
-/// 同 [`refused`]，后端带了 `data` 的（`exists` 的同名清单）一并装进信封，窗口照它画冲突框。
-fn refused_with(r: cmd_wire::failed::Failed) -> CallError {
-    let body = serde_json::to_vec(&r).unwrap_or_default();
+    .unwrap_or_default();
     super::wire::err_from_wire(super::wire::WireErr::Refused, body)
-}
-
-/// 开单：`transfer-upload` / `transfer-download`。
-async fn transfer_open(origin: Origin, op: Op, payload: Body) -> Result<Body, CallError> {
-    let Ok(args) = serde_json::from_slice::<serde_json::Value>(&payload.0) else {
-        return Err(OursFault::Misuse.into());
-    };
-    // 本机那一侧先分：本机没有 SFTP 传输这回事（文件窗口只开在远端上）⇒ 说真实原因，不让下一行答一句「未找到远端配置: <local>」。
-    if origin.is_local() {
-        return Err(refused(
-            "local_has_no_transfer",
-            copy_text("rsChanHost.transfer.localNone", &[]),
-        ));
-    }
-    // 表里有没有那台由本机后端答（没有 ⇒ 它那一码原样回窗口）。
-    let host = origin.host_name().unwrap_or_default();
-    match crate::transfer_relay::transfer_call(host.to_string(), &op.0, &args).await {
-        Ok(v) => Ok(Body(serde_json::to_vec(&v).unwrap_or_default())),
-        Err(r) => Err(refused_with(r)),
-    }
-}
-
-/// 两台之间复制一组：源 ＝ 寻址的那台，落点 ＝ 载荷里 `to` 那台；本机不是一台能拨的远端 ⇒ 说真实原因；表里有没有那两台由本机后端答。
-/// 本机后端做完整组才回 ⇒ 等的上限是窗口给的 `left`。
-async fn transfer_copy(origin: Origin, payload: Body, left: Duration) -> Result<Body, CallError> {
-    let Ok(args) = serde_json::from_slice::<serde_json::Value>(&payload.0) else {
-        return Err(OursFault::Misuse.into());
-    };
-    let to = args
-        .get("to")
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or_default()
-        .to_string();
-    for machine in [origin.to_string(), to] {
-        if machine == cmd_wire::LOCAL {
-            return Err(refused(
-                "local_has_no_transfer",
-                copy_text("rsChanHost.transfer.localNone", &[]),
-            ));
-        }
-    }
-    match crate::transfer_relay::copy_call(origin.to_string(), &args, left).await {
-        Ok(v) => Ok(Body(serde_json::to_vec(&v).unwrap_or_default())),
-        Err(r) => Err(refused_with(r)),
-    }
 }
 
 /// **文件窗口「在此打开终端」**：窗口只交意图（寻址 ＝ 那台，本机也算一台 · 参数 `{cwd}`），这里只补那台的名字、
@@ -434,7 +359,7 @@ async fn plan_open(origin: Origin, payload: Body) -> Result<Body, CallError> {
         ));
     }
     // 拉到前面走主窗口那一处（与第二次启动同一条：还原 · 显示 · 聚焦，失败各留一行日志）。
-    crate::platform::window::raise_main(&app, None, true);
+    crate::platform::window::raise_main(&app, None);
     let said = serde_json::json!({
         "origin": origin,
         "workspace": t.workspace,
@@ -448,58 +373,6 @@ async fn plan_open(origin: Origin, payload: Body) -> Result<Body, CallError> {
     })?;
     Ok(Body(b"{}".to_vec()))
 }
-
-/// 传输台的一格 ⇒ 流里的一格。进度是 `Frame{seq, Transfer}`（后端那一帧原样）；
-/// 收场那一格是 `Closed{Peer(TransferEnd)}`（码 · 复制详情原样，窗口按码换路）。
-fn step_item(seq: u64, step: crate::transfer_relay::Step) -> Item {
-    let bytes = |v: Result<Vec<u8>, serde_json::Error>| Body(v.unwrap_or_default());
-    match step {
-        Ok(t) => match &t.end {
-            None => Item::Frame {
-                seq,
-                body: bytes(serde_json::to_vec(&t)),
-            },
-            Some(end) => Item::Closed {
-                by: By::Peer(bytes(serde_json::to_vec(end))),
-            },
-        },
-        Err(end) => Item::Closed {
-            by: By::Peer(bytes(serde_json::to_vec(&end))),
-        },
-    }
-}
-
-/// 进度流。**`from` 必须是 `None`**：每一格都是一整份快照，「从哪续」对它没有意义 ——
-/// 给了就原位说用法错，不装作续上了。
-fn transfer_stream(origin: &Origin, id: &str, from: Option<Cursor>) -> BoxStream<'static, Item> {
-    use futures::stream::StreamExt;
-    let closed = |code: &str, said: String| -> BoxStream<'static, Item> {
-        let body = serde_json::to_vec(&cmd_wire::failed::Failed {
-            code: code.to_string(),
-            said,
-            ..Default::default()
-        })
-        .unwrap_or_default();
-        Box::pin(futures::stream::iter([Item::Closed {
-            by: By::Peer(Body(body)),
-        }]))
-    };
-    if from.is_some() {
-        return closed("bad_args", copy_text("rsChanHost.transfer.noResume", &[]));
-    }
-    match crate::transfer_relay::watch_ticket(origin, id) {
-        Ok(steps) => Box::pin(
-            steps
-                .enumerate()
-                .map(|(i, step)| step_item(i as u64 + 1, step)),
-        ),
-        Err((code, e)) => closed(code, e),
-    }
-}
-
-#[cfg(test)]
-#[path = "../../../../../tests/frontend/shell/chan/transfer_stream_tests.rs"]
-mod transfer_stream_tests;
 
 #[cfg(test)]
 #[path = "../../../../../tests/frontend/shell/chan/changed_stream_tests.rs"]

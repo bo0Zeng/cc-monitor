@@ -33,8 +33,8 @@ import { openMenu, type MenuItem } from "./kit/menu";
 import { closePopover, openPopover, popoverOpenOn } from "./kit/popover";
 import { undoToast } from "./kit/toast";
 import { loadConfig, patchConfig, removeAt, setAt } from "./config";
-import { DEFAULT_HEAD_BUTTONS, headButtonsThatFit, sanitizeHeadButtons, type HeadButtonId } from "./session-head-buttons";
-import { HEAD_BUTTON_FACE, HeadEditor } from "./session-head-edit";
+import { DEFAULT_HEAD_BUTTONS, HEAD_BUTTONS, headButtonsThatFit, sanitizeHeadButtons, type HeadButtonId } from "./session-head-buttons";
+import { HEAD_BUTTON_FACE, RowEditor } from "./session-head-edit";
 import { SwitchChips, type SwitchHost } from "./session-switch";
 import s from "./session-head.module.css";
 
@@ -125,7 +125,7 @@ export class SessionHead {
   private actsDrawn = "";
   /** 收进「⋯」的那几颗（从后往前收，这里按会话头顺序）。 */
   private folded: Built[] = [];
-  private editor: HeadEditor | null = null;
+  private editor: RowEditor<HeadButtonId> | null = null;
 
   /** 宿主拿 `el` 顶掉 `index.html` 里那一格占位（`#session-head`，认领 `#app` 网格的 `head` 区）。 */
   constructor(private readonly host: SessionHeadHost) {
@@ -201,7 +201,14 @@ export class SessionHead {
       closePopover();
       return;
     }
-    const ed = new HeadEditor({
+    const spec = {
+      all: HEAD_BUTTONS,
+      face: HEAD_BUTTON_FACE,
+      title: copyText("sessionHead.edit.title"),
+      hint: copyText("sessionHead.edit.hint"),
+      overflow: copyText("sessionHead.edit.overflow"),
+    };
+    const ed = new RowEditor<HeadButtonId>(spec, {
       buttons: () => this.buttons(),
       set: (next) => this.setButtons(next),
       reset: () => this.resetButtons(),

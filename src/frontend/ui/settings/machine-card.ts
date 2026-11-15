@@ -12,7 +12,7 @@ import { openFileWindow } from "../file-window";
 import { buildConfigPage } from "./config-page"; // 别名与配置文件：远端卡与本机同一个组件（`origin` = 这台）
 import { forgetHostKeys, parseAddressLines, portOf, withPort } from "../remote-config";
 import type { MachineFault } from "../generated/MachineFault";
-import { askInterrupts, interruptRows } from "./interrupts";
+import { askInterruptRows } from "./interrupts";
 import { uninstallBackend, updateBackend } from "../backend-deploy";
 // 起新会话：全产品一个框（机器卡 ⋯「新建会话…」开它，机器锁定）。
 import { openNewSession } from "../new-session";
@@ -807,7 +807,7 @@ export class MachineCard {
       this.showResultText(fault.said, "comp");
       return;
     }
-    const rows = interruptRows(await askInterrupts(this.savedName()), this.displayName(), "uninstall");
+    const rows = await askInterruptRows(this.savedName(), "uninstall");
     if (
       !(await confirmDialog({
         title: copyText("machineCard.uninstall.title", { host: cfg.host }),
@@ -863,10 +863,7 @@ export class MachineCard {
       gaps.appendChild(summary);
       for (const g of gapList) {
         const row = document.createElement("div");
-        row.textContent = copyText("machineCard.test.gapRow", {
-          reason: g.said,
-          n: String(g.count),
-        });
+        row.textContent = g.row;
         gaps.appendChild(row);
       }
       this.testResult.appendChild(gaps);

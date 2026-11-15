@@ -3,6 +3,8 @@
 #
 # `resume_kind` 是 resume 的调用形态（flag：`claude --resume <sid>` · subcommand：`codex resume <sid>`），`resume_token` 是那个字面量。
 # `launch_args`：ccm 起这一家时垫在交给它的那一串最前面的参数（空格分隔）。
+# `model_list`：列模型清单时接在启动器后面的那几个词（没有这一形 ⇒ `<empty>`）。
+# `has_accounts`：这一家有没有账号这一维（注册表 `Adapter.account_env` 声明了账号载体 ⇒ true；生成物 `hasAccounts` 那一格）。
 # 列：agent <TAB> key <TAB> value（value 为空写 `<empty>`）
 claude	default_launcher	claude
 claude	resume_kind	flag
@@ -11,14 +13,20 @@ claude	nested_env	CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUD
 claude	launch_args	<empty>
 claude	answer_hook_flag	--settings
 claude	preset_sid	--session-id
-claude	permission	--permission-mode default acceptEdits plan auto
+claude	permission	default: --permission-mode default · acceptEdits: --permission-mode acceptEdits · plan: --permission-mode plan · auto: --permission-mode auto
+claude	model_args	--model <模型>
+claude	model_list	<empty>
 claude	self_sid_env	CLAUDE_CODE_SESSION_ID
+claude	has_accounts	true
 codex	default_launcher	codex
 codex	resume_kind	subcommand
 codex	resume_token	resume
-codex	nested_env	<empty>
+codex	nested_env	CODEX_THREAD_ID CODEX_SESSION_ID CODEX_TOOL_CALL_ID CODEX_VERSION
 codex	launch_args	--no-daemon
-codex	answer_hook_flag	<empty>
+codex	answer_hook_flag	-c
 codex	preset_sid	<empty>
-codex	permission	<empty>
-codex	self_sid_env	<empty>
+codex	permission	:read-only: -a on-request -s read-only · :workspace: -a on-request -s workspace-write
+codex	model_args	-m <模型>
+codex	model_list	debug models --bundled
+codex	self_sid_env	CODEX_THREAD_ID
+codex	has_accounts	true

@@ -42,13 +42,15 @@ object NewSessionTags {
     const val AGENT = "ns-chip-agent"
     const val ACCOUNT = "ns-chip-account"
     const val CWD = "ns-chip-cwd"
+    const val MODEL = "ns-chip-model"
+    const val EFFORT = "ns-chip-effort"
     const val ROW = "ns-row"
     const val BROWSE = "ns-browse"
     const val PICK = "ns-pick"
 }
 
 /** 选项那几个底部抽屉。 */
-enum class NewSessionSheet { Machine, Agent, Account, Cwd }
+enum class NewSessionSheet { Machine, Agent, Account, Model, Effort, Cwd }
 
 /**
  * 手机上的一台机器（机器抽屉一行）：[dot] · [linked] 是那台成品的那两格（点画哪一档 · 连着没有，后端一处定，桌面同一份）；
@@ -85,6 +87,13 @@ fun NewSessionBar(
                     a?.let { AccountBadge(it.plate, it.color, size = 18) }
                     Text(a?.label ?: ui.account.orEmpty(), style = MaterialTheme.typography.bodyMedium)
                 }
+            }
+            // 模型（那一家列了才画）· 推理档（选的模型分档才画）：字都是那台写的。
+            if (ui.showModelChip) {
+                Chip(onClick = { onOpen(NewSessionSheet.Model) }, tag = NewSessionTags.MODEL) { Text(ui.modelText, style = MaterialTheme.typography.bodyMedium) }
+            }
+            if (ui.showEffortChip) {
+                Chip(onClick = { onOpen(NewSessionSheet.Effort) }, tag = NewSessionTags.EFFORT) { Text(ui.effortText.orEmpty(), style = MaterialTheme.typography.bodyMedium) }
             }
         }
         Chip(onClick = { onOpen(NewSessionSheet.Cwd) }, tag = NewSessionTags.CWD, modifier = Modifier.fillMaxWidth()) {
@@ -145,6 +154,52 @@ fun AgentSheet(
     ui.agents.forEach { a -> PickRow(title = a.text, tag = NewSessionTags.ROW, selected = a.kind == ui.agent, onClick = { onPick(a.kind) }) }
 }
 
+/** 模型抽屉：第一行「跟随」（不交），下面那一家列的模型，照那台的先后与字。 */
+@Composable
+fun ModelSheet(
+    ui: NewSessionUi,
+    machine: String,
+    onPick: (String?) -> Unit,
+    onDismiss: () -> Unit,
+) = Sheet(onDismiss) {
+    SheetHead(copyText("session.model.title"), machine)
+    PickRow(title = copyText("mobAccounts.model.follow"), tag = NewSessionTags.ROW, selected = ui.model == null, onClick = { onPick(null) })
+    ui.models.forEach { m -> PickRow(title = m.text, tag = NewSessionTags.ROW, selected = m.value == ui.model, onClick = { onPick(m.value) }) }
+}
+
+/** 模型 · 推理档那两个抽屉（[sheet] 是其一）：点一项交给 [picker]、收起。 */
+@Composable
+fun ModelEffortSheet(
+    sheet: NewSessionSheet,
+    ui: NewSessionUi,
+    machine: String,
+    picker: NewSessionPicker,
+    onDismiss: () -> Unit,
+) = when (sheet) {
+    NewSessionSheet.Effort ->
+        EffortSheet(ui, machine, onPick = {
+            picker.pickEffort(it)
+            onDismiss()
+        }, onDismiss = onDismiss)
+    else ->
+        ModelSheet(ui, machine, onPick = {
+            picker.pickModel(it)
+            onDismiss()
+        }, onDismiss = onDismiss)
+}
+
+/** 推理档抽屉：选的模型列的那几档，照那台的先后与字。 */
+@Composable
+fun EffortSheet(
+    ui: NewSessionUi,
+    machine: String,
+    onPick: (String) -> Unit,
+    onDismiss: () -> Unit,
+) = Sheet(onDismiss) {
+    SheetHead(copyText("session.effort.title"), machine)
+    ui.efforts.forEach { e -> PickRow(title = e.text, tag = NewSessionTags.ROW, selected = e.value == ui.effort, onClick = { onPick(e.value) }) }
+}
+
 /** 工作目录抽屉：「浏览…」在头一行（最近的再多也不把它挤出屏）＋「最近的」。 */
 @Composable
 fun CwdSheet(
@@ -176,10 +231,10 @@ fun CwdSheet(
             title = r.shown,
             tag = NewSessionTags.ROW,
             mono = true,
-            second = if (r.missing) copyText("newSession.cwd.missing") else null,
-            selected = r.cwd == ui.cwd && !r.missing,
-            enabled = !r.missing,
-            onClick = { if (!r.missing) onPick(r.cwd) },
+            second = r.said,
+            selected = r.cwd == ui.cwd && r.said == null,
+            enabled = r.said == null,
+            onClick = { if (r.said == null) onPick(r.cwd) },
             trail = { Text(r.lastText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) },
         )
     }

@@ -6,8 +6,8 @@ use super::*;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
-/// 等到 `f` 成立（最多兜底的那一个数）；夹具用，生产段零处。
-fn wait_until(mut f: impl FnMut() -> bool) -> bool {
+/// 等到 `f` 成立（最多兜底的那一个数）；夹具用，生产段零处。本组与 `seat_tests` 共用这一份。
+pub(super) fn wait_until(mut f: impl FnMut() -> bool) -> bool {
     let end = Instant::now() + guard_core::wall::CEILING;
     while Instant::now() < end {
         if f() {
@@ -27,18 +27,20 @@ fn unix_secs() -> u64 {
 /// `pid` 已经 exec 成 `comm` 并且新映像的环境装好了。只看 `comm` 不够：exec 时内核先换进程名、后记下新映像的
 /// 环境区 —— 中间那一刻读 `/proc/<pid>/environ` 回 0 字节（`proc_env_var` 照实答「这一刻读不到」）。
 /// 机器忙时判据正好落进这一刻 ⇒ 间歇红（紧跟着 `comm` 变了就读，本机 3000 趟里 2985 趟读到 0 字节）。
-fn exec_settled(pid: u32, comm: &str) -> bool {
+pub(super) fn exec_settled(pid: u32, comm: &str) -> bool {
     std::fs::read_to_string(format!("/proc/{pid}/comm")).is_ok_and(|c| c.trim() == comm)
         && std::fs::read(format!("/proc/{pid}/environ")).is_ok_and(|e| !e.is_empty())
 }
 
-fn tmux(sock: &std::path::Path, args: &[&str]) -> String {
+/// 对私有 `-S` socket 敲一条 tmux，读回 stdout；会话变量摘掉，落不到用户的 tmux 上。
+pub(super) fn tmux(sock: &std::path::Path, args: &[&str]) -> String {
     let out = Command::new("tmux")
         .arg("-S")
         .arg(sock)
         .args(args)
         .env_remove("TMUX")
         .env_remove("TMUX_PANE")
+        .env_remove("CLAUDE_CONFIG_DIR")
         .output()
         .expect("起不来 tmux —— 本组要它");
     String::from_utf8_lossy(&out.stdout).trim().to_string()

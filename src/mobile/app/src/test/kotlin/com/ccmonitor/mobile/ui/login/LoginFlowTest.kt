@@ -23,7 +23,7 @@ class LoginFlowTest {
     private val started = mapOf("job" to "j1", "url" to "https://example.com/oauth", "paste" to "code", "auto" to false, "opened" to false)
 
     @Test
-    fun `起 · 粘错一回（那一格下面那一句、作业还在）· 再交成了 ⇒ done；成了之后收起不再撤`() =
+    fun `起（号那一形只交号名，家由那台照号表认）· 粘错一回（那一格下面那一句、作业还在）· 再交成了 ⇒ done；成了之后收起不再撤`() =
         runTest {
             val l = FakeCoreLink()
             var finish: Reply = Reply.Failed(Failed("bad_paste", "粘贴的内容对不上本次登录 · 可重新粘贴", "d", Raw("""{"again":"paste","terminal":false}""")))
@@ -34,10 +34,10 @@ class LoginFlowTest {
                     else -> Reply.Ok(mapOf("was" to true))
                 }
             }
-            val f = LoginFlow(l, "h1", "smokebox", Login.account("claude", "team"), backgroundScope)
+            val f = LoginFlow(l, "h1", "smokebox", Login.account("team"), backgroundScope)
             f.start()
             runCurrent()
-            assertEquals(listOf(mapOf("kind" to "account", "agent" to "claude", "account" to "team")), l.calls("login-start"))
+            assertEquals(listOf(mapOf("kind" to "account", "account" to "team")), l.calls("login-start"))
             assertEquals(
                 PasteKind.CODE,
                 f.state.value.started
@@ -61,7 +61,7 @@ class LoginFlowTest {
     fun `没起成 ⇒ 那台那一句、没有作业；收起不发撤单`() =
         runTest {
             val l = FakeCoreLink().also { it.answer = { _, _ -> Reply.Failed(Failed("unsupported", "codex · 不支持在 app 里登录", "d")) } }
-            val f = LoginFlow(l, "h1", "smokebox", Login.account("codex", "cx"), backgroundScope)
+            val f = LoginFlow(l, "h1", "smokebox", Login.account("cx"), backgroundScope)
             f.start()
             runCurrent()
             assertEquals("codex · 不支持在 app 里登录", f.state.value.failed)
@@ -75,7 +75,7 @@ class LoginFlowTest {
     fun `起好了中途收起 ⇒ login-cancel 交那份作业`() =
         runTest {
             val l = FakeCoreLink().also { it.answer = { cmd, _ -> if (cmd == "login-start") Reply.Ok(started) else Reply.Ok(mapOf("was" to true)) } }
-            val f = LoginFlow(l, "h1", "smokebox", Login.account("claude", "team"), backgroundScope)
+            val f = LoginFlow(l, "h1", "smokebox", Login.account("team"), backgroundScope)
             f.start()
             runCurrent()
             f.cancel()
@@ -96,7 +96,7 @@ class LoginFlowTest {
                         else -> Reply.Ok(mapOf("was" to true))
                     }
                 }
-                val f = LoginFlow(l, "h1", "smokebox", Login.account("claude", "team"), backgroundScope)
+                val f = LoginFlow(l, "h1", "smokebox", Login.account("team"), backgroundScope)
                 f.start()
                 runCurrent()
                 f.submit("abc")
@@ -118,7 +118,7 @@ class LoginFlowTest {
                 Reply.TimedOut("t-said", "") to true,
             )) {
                 val l = FakeCoreLink().also { it.answer = { _, _ -> reply } }
-                val f = LoginFlow(l, "h1", "smokebox", Login.account("codex", "cx"), backgroundScope)
+                val f = LoginFlow(l, "h1", "smokebox", Login.account("cx"), backgroundScope)
                 f.start()
                 runCurrent()
                 assertEquals(reply.toString(), can, f.state.value.canRestart)
@@ -148,7 +148,7 @@ class LoginFlowTest {
             val want = ((mcpItem["fix"] as Map<String, Any?>)["args"] as Map<String, Any?>)
             assertEquals(listOf(want), l.calls("login-start"))
             assertEquals(copyText("login.sheet.mcp"), titleOf(f.state.value.target))
-            assertEquals(copyText("login.sheet.account"), titleOf(Login.account("claude", "team")))
+            assertEquals(copyText("login.sheet.account"), titleOf(Login.account("team")))
         }
 
     /** 没起成、那台说终端那条路在 ⇒ 多一颗［在终端里登录］；没说 · 回包里没有 `again` ⇒ 不给。 */
@@ -161,7 +161,7 @@ class LoginFlowTest {
                 Reply.TimedOut("t-said", "") to false,
             )) {
                 val l = FakeCoreLink().also { it.answer = { _, _ -> reply } }
-                val f = LoginFlow(l, "h1", "smokebox", Login.account("claude", "team"), backgroundScope)
+                val f = LoginFlow(l, "h1", "smokebox", Login.account("team"), backgroundScope)
                 f.start()
                 runCurrent()
                 assertEquals(reply.toString(), want, f.state.value.terminal)
@@ -179,7 +179,7 @@ class LoginFlowTest {
                     else -> cmdReply
                 }
             }
-            val f = LoginFlow(l, "h1", "smokebox", Login.account("claude", "team"), backgroundScope)
+            val f = LoginFlow(l, "h1", "smokebox", Login.account("team"), backgroundScope)
             f.start()
             runCurrent()
             assertEquals(Result.success("claude /login"), f.terminalLine())
@@ -188,5 +188,46 @@ class LoginFlowTest {
             assertTrue(f.terminalLine().isFailure)
             assertEquals("team · 没有这个号", f.state.value.failed)
             assertTrue(f.state.value.terminal)
+        }
+
+    @Test
+    fun `链接下面摆什么照回包的 paste：code · redirectUrl 粘回；showCode 摆那段码、不粘回；noPaste 照摆那台写的那一句`() =
+        runTest {
+            val l = FakeCoreLink()
+            val f = LoginFlow(l, "h1", "smokebox", Login.account("x1"), backgroundScope)
+
+            fun formFor(over: Map<String, Any?>): LoginForm {
+                l.answer = { cmd, _ -> if (cmd == "login-start") Reply.Ok(started + over) else Reply.Ok(mapOf("was" to true)) }
+                f.start()
+                runCurrent()
+                return formOf(f.state.value.started!!)
+            }
+            assertEquals(LoginForm.Paste(redirect = false), formFor(emptyMap()))
+            assertEquals(LoginForm.Paste(redirect = true), formFor(mapOf("paste" to "redirectUrl")))
+            assertEquals(LoginForm.ShowCode("ABCD-1234"), formFor(mapOf("paste" to "showCode", "code" to "ABCD-1234", "auto" to true)))
+            assertEquals(LoginForm.Wait("后端·需在那一台完成"), formFor(mapOf("paste" to "noPaste", "elsewhere" to "后端·需在那一台完成")))
+        }
+
+    @Test
+    fun `显示码那一形：推来 changed login 这一趟的 done ⇒ 抽屉关；别的作业号不认；failed ⇒ 那台那一句`() =
+        runTest {
+            val l = FakeCoreLink()
+            l.answer = { cmd, _ -> if (cmd == "login-start") Reply.Ok(started + mapOf("paste" to "showCode", "code" to "ABCD-1234", "auto" to true)) else Reply.Ok(mapOf("was" to true)) }
+            val f = LoginFlow(l, "h1", "smokebox", Login.account("x1"), backgroundScope)
+            f.start()
+            runCurrent()
+            l.changed(mapOf("kind" to "changed", "topic" to "login", "key" to "j-other", "body" to mapOf("state" to "done")))
+            runCurrent()
+            assertTrue("别的作业号不认", !f.state.value.done)
+            l.changed(mapOf("kind" to "changed", "topic" to "login", "key" to "j1", "body" to mapOf("state" to "done")))
+            runCurrent()
+            assertTrue(f.state.value.done)
+            f.start()
+            runCurrent()
+            l.changed(mapOf("kind" to "changed", "topic" to "login", "key" to "j1", "body" to mapOf("state" to "failed", "said" to "登录未完成 · 需重新开始", "detail" to null, "again" to "restart")))
+            runCurrent()
+            assertEquals("登录未完成 · 需重新开始", f.state.value.failed)
+            assertNull(f.state.value.started)
+            assertTrue(f.state.value.canRestart)
         }
 }

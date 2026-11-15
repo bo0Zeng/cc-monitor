@@ -41,7 +41,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.core.claude.link.QuotaRead
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.icon.BackButton
@@ -54,7 +53,6 @@ import com.ccmonitor.mobile.core.wire.gen.QuotaCell
 import com.ccmonitor.mobile.core.wire.gen.Tone
 import com.ccmonitor.mobile.link.Fetched
 import com.ccmonitor.mobile.link.HostBackends
-import com.ccmonitor.mobile.link.unreadableReply
 import com.ccmonitor.mobile.ui.chat.newsession.AccountBadge
 import com.ccmonitor.mobile.ui.chat.newsession.DefaultTag
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
@@ -112,14 +110,9 @@ fun UsageScreen(
                 is Fetched.Failed -> if (link !is LinkLine.Down) DashedBar(q.problem.text, copyText("front.act.retry"), board::reloadQuota, Modifier.testTag(UsageTags.DOWN))
                 is Fetched.Got -> {
                     val view = usageView(q.value, ui.accounts, ui.defaultAccount)
-                    if (view == null) {
-                        // 位名对不上同一份回包的 names：两端契约对不上，照「回包读不出」画，不拿码兜。
-                        DashedBar(unreadableReply(here.machine, QuotaRead.COMMAND, "").text, copyText("front.act.retry"), board::reloadQuota, Modifier.testTag(UsageTags.DOWN))
-                    } else {
-                        Head(view, board::reloadQuota)
-                        view.cards.forEach { c ->
-                            Card(c, c.account in open) { open = if (c.account in open) open - c.account else open + c.account }
-                        }
+                    Head(view, board::reloadQuota)
+                    view.cards.forEach { c ->
+                        Card(c, c.account in open) { open = if (c.account in open) open - c.account else open + c.account }
                     }
                 }
             }
@@ -153,7 +146,7 @@ private fun Head(
     }
 }
 
-/** 一张卡：卡头 ＋（两条计量条 ＋ 采样 | 按量那一格 | 没出过数的那几行）；点开 ⇒ 第一行之后的全部行。 */
+/** 一张卡：卡头 ＋（计量条 | 按量那一格 | 没出过数的那几行）；点开 ⇒ 第一行之后的全部行。 */
 @Composable
 private fun Card(
     c: UsageCard,
@@ -162,7 +155,7 @@ private fun Card(
 ) {
     val tokens = LocalAppTokens.current
     val shape = RoundedCornerShape(tokens.radius.m)
-    val canOpen = c.detail.isNotEmpty()
+    val canOpen = c.detail.isNotEmpty() || c.sampled != null
     Column(
         Modifier
             .fillMaxWidth()
@@ -191,26 +184,27 @@ private fun Card(
         c.bars.forEach { Bar(it) }
         c.usage?.let { u -> LabeledLine(copyText("acct.hover.usage"), listOf(QuotaCell(u.text, u.tone))) }
         c.plain.forEach { r -> LabeledLine(r.first().text, r.drop(1)) }
-        c.seen?.let { r -> LabeledLine(r.first().text, r.drop(1)) }
         if (expanded) {
             HorizontalDivider(Modifier.padding(vertical = 4.dp), color = tokens.borderFaint)
             Column(Modifier.testTag(UsageTags.DETAIL), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 c.detail.forEach { r -> LabeledLine(r.first().text, r.drop(1)) }
+                c.sampled?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
         }
     }
 }
 
 /**
- * 一条计量条：位名 · 条（长 ＝ pct，色 ＝ 语气，数旧画斜纹）· 右边那一格；下一行 ↻ · 距今 ……「1% ≈ 多少」。
- * 那台说不出百分比（[UsageBar.fill] 为 `null`）⇒ 轨只画虚线框、不画填充（不读成 0%），右边那一格照回包。
+ * 一条计量条 ＝ 那台写好的一个窗口那一行：名 · 条（长 ＝ pct，色 ＝ 用量那一格的语气，数旧画斜纹）· 用量那一格；下一行 ↻ · 距今 ……「1% ≈ 多少」。
+ * 那台说不出百分比（[UsageBar.fill] 为 `null`，含过了重置的那一窗：读取中 · 已重置）⇒ 轨只画虚线框、不画填充（不读成 0%），右边那一格照行。
  */
 @Composable
 private fun Bar(b: UsageBar) {
     val faint = MaterialTheme.colorScheme.onSurfaceVariant
-    val ink = cellInk(b.slot.tone, faint)
+    val value = b.cells.getOrNull(1)
+    val ink = cellInk(value?.tone ?: Tone.PLAIN, faint)
     val track = MaterialTheme.colorScheme.surfaceContainerHigh
-    val fill = cellInk(b.slot.tone, MaterialTheme.colorScheme.onSurfaceVariant)
+    val fill = cellInk(value?.tone ?: Tone.PLAIN, MaterialTheme.colorScheme.onSurfaceVariant)
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(b.label, style = MaterialTheme.typography.bodySmall, color = faint, modifier = Modifier.width(LABEL_W.dp))
@@ -239,13 +233,13 @@ private fun Bar(b: UsageBar) {
                         }
                     }.testTag(UsageTags.BAR),
             )
-            Text(b.slot.text, style = MaterialTheme.typography.bodySmall, color = ink)
+            value?.let { Text(it.text, style = MaterialTheme.typography.bodySmall, color = ink) }
         }
-        val reset = listOfNotNull(b.slot.resetText, b.slot.resetsAtRelText).joinToString("  ")
-        if (reset.isNotEmpty() || b.slot.perPctText != null) {
+        val reset = b.cells.drop(2).joinToString("  ") { it.text }
+        if (reset.isNotEmpty() || b.perPct != null) {
             Row(Modifier.padding(start = (LABEL_W + 10).dp)) {
                 Text(reset, style = MaterialTheme.typography.labelSmall, color = faint, modifier = Modifier.weight(1f))
-                b.slot.perPctText?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = faint) }
+                b.perPct?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = faint) }
             }
         }
     }

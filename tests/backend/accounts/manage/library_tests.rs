@@ -9,7 +9,7 @@ use std::fs;
 
 /// 清单的扫描本体摊成行：首行 meta、其后每号一行（不并 apikey 表）。下面几条判的是扫描（读 manifest · 判安全 · 判鉴权），不是哪一个出口。
 fn list_accounts(accts: &Path) -> Vec<String> {
-    let (meta, rows) = scan_accounts(accts, &|_| false);
+    let (meta, rows) = scan_accounts_among(crate::agents::REGISTRY, accts, &|_, _| false);
     let mut out = vec![serde_json::to_string(&meta).unwrap()];
     out.extend(rows.iter().map(|r| serde_json::to_string(r).unwrap()));
     out
@@ -207,6 +207,36 @@ fn a_windows_shaped_account_survives_the_listing() {
 
 // ---- 6. --session-accounts（procStart 身份对拍是核心）----
 
+/// 账号库说不出（家目录说不出 ⇒ `None`）⇒ 活会话照列、照样判活与裸起，号一个不认。
+#[cfg(target_os = "linux")]
+#[test]
+fn session_accounts_still_lists_live_sessions_when_the_library_is_unsaid() {
+    let root = test_home::scratch("sessnone");
+    let claude = root.join("claude");
+    let sessions = claude.join("sessions");
+    fs::create_dir_all(&sessions).unwrap();
+    let mut live = bare_child();
+    let pid = live.id();
+    let ticks = proc_starttime(pid).expect("能读子进程的 starttime");
+    fs::write(
+        sessions.join(format!("{pid}.json")),
+        format!(r#"{{"sessionId":"sid-none","cwd":"/w","procStart":"{ticks}"}}"#),
+    )
+    .unwrap();
+    let by_sid = sid_map(&session_accounts(&claude, None));
+    let _ = live.kill();
+    let _ = live.wait();
+    assert!(by_sid.contains_key("sid-none"), "账号库说不出就漏列了会话");
+    assert_eq!(
+        by_sid["sid-none"]["alive"], true,
+        "{:?}",
+        by_sid["sid-none"]
+    );
+    assert_eq!(by_sid["sid-none"]["bare"], true, "{:?}", by_sid["sid-none"]);
+    assert_eq!(by_sid["sid-none"]["account"], serde_json::Value::Null);
+    let _ = fs::remove_dir_all(&root);
+}
+
 #[test]
 fn session_accounts_marks_dead_and_bare() {
     let root = test_home::scratch("sess");
@@ -219,7 +249,7 @@ fn session_accounts_marks_dead_and_bare() {
         r#"{"sessionId":"sid-dead","cwd":"/w","procStart":"999"}"#,
     )
     .unwrap();
-    let lines = session_accounts(&claude, &root.join("no-accts"));
+    let lines = session_accounts(&claude, Some(root.join("no-accts").as_path()));
     let mut by_sid = sid_map(&lines);
     assert_eq!(by_sid["sid-dead"]["alive"], false);
     assert_eq!(by_sid["sid-dead"]["bare"], false, "死进程不算裸起");
@@ -238,7 +268,7 @@ fn session_accounts_marks_dead_and_bare() {
             format!(r#"{{"sessionId":"sid-live","cwd":"/w2","procStart":"{ticks}"}}"#),
         )
         .unwrap();
-        let lines = session_accounts(&claude, &root.join("no-accts"));
+        let lines = session_accounts(&claude, Some(root.join("no-accts").as_path()));
         by_sid = sid_map(&lines);
         assert_eq!(by_sid["sid-live"]["alive"], true, "procStart 相符应判活");
         assert_eq!(by_sid["sid-live"]["bare"], true, "{:?}", by_sid["sid-live"]);
@@ -269,7 +299,10 @@ fn session_accounts_rejects_pid_reuse() {
         ),
     )
     .unwrap();
-    let by = sid_map(&session_accounts(&claude, &root.join("no-accts")));
+    let by = sid_map(&session_accounts(
+        &claude,
+        Some(root.join("no-accts").as_path()),
+    ));
     assert_eq!(
         by["sid-stale"]["alive"], false,
         "procStart 不符 = PID 被复用 → 判死"
@@ -283,7 +316,10 @@ fn session_accounts_rejects_pid_reuse() {
         r#"{"sessionId":"sid-noproc","cwd":"/w"}"#,
     )
     .unwrap();
-    let by = sid_map(&session_accounts(&claude, &root.join("no-accts")));
+    let by = sid_map(&session_accounts(
+        &claude,
+        Some(root.join("no-accts").as_path()),
+    ));
     assert_eq!(by["sid-noproc"]["alive"], false, "缺 procStart 保守判死");
     let _ = fs::remove_dir_all(&root);
 }
@@ -303,7 +339,7 @@ fn sid_map(rows: &[SessionAccount]) -> std::collections::HashMap<String, serde_j
 #[test]
 fn session_accounts_without_sessions_dir_is_empty() {
     let root = test_home::scratch("nosess");
-    assert!(session_accounts(&root, &root).is_empty());
+    assert!(session_accounts(&root, Some(root.as_path())).is_empty());
     let _ = fs::remove_dir_all(&root);
 }
 
@@ -519,7 +555,7 @@ fn bare_session_is_attributed_to_account_zero() {
         format!(r#"{{"sessionId":"sid-zero","cwd":"/w","procStart":"{ticks}"}}"#),
     )
     .unwrap();
-    let by = sid_map(&session_accounts(&claude, &accts));
+    let by = sid_map(&session_accounts(&claude, Some(accts.as_path())));
     assert_eq!(by["sid-zero"]["alive"], true);
     assert_eq!(by["sid-zero"]["bare"], true);
     assert_eq!(by["sid-zero"]["account"], "0", "裸起不再是「归属不明」");
@@ -677,7 +713,7 @@ fn an_unreadable_environ_is_never_reported_as_the_zero_account() {
     write_pidfile(zpid, "sid-zombie");
     write_pidfile(epid, "sid-emptyenv");
     write_pidfile(ppid, "sid-control");
-    let by = sid_map(&session_accounts(&claude, &accts));
+    let by = sid_map(&session_accounts(&claude, Some(accts.as_path())));
 
     // 先收拾活体，再断言（断言失败也不留孤儿进程）。
     let _ = empty.kill();
@@ -761,7 +797,7 @@ fn bare_session_without_account_zero_stays_unattributed() {
         format!(r#"{{"sessionId":"sid-none","cwd":"/w","procStart":"{ticks}"}}"#),
     )
     .unwrap();
-    let by = sid_map(&session_accounts(&claude, &accts));
+    let by = sid_map(&session_accounts(&claude, Some(accts.as_path())));
     assert_eq!(by["sid-none"]["account"], serde_json::Value::Null);
     let _ = child.kill();
     let _ = child.wait();
@@ -783,7 +819,7 @@ fn an_announced_process_is_attributed_to_the_account_whose_dir_it_runs_under() {
             cfg.display()
         ),
     );
-    let face = crate::agents::account_library_face().expect("有账号库的那一家");
+    let kind = crate::agents::account_kind(None).expect("有账号库的那一家");
     let mut with_dir = std::process::Command::new("sleep")
         .arg("30")
         .env("CLAUDE_CONFIG_DIR", &cfg)
@@ -792,11 +828,11 @@ fn an_announced_process_is_attributed_to_the_account_whose_dir_it_runs_under() {
     wait_exec_done(with_dir.id(), "sleep");
     let mut bare = bare_child();
     assert_eq!(
-        account_of_process(with_dir.id(), &face, &accts),
+        account_of_process(with_dir.id(), kind, &accts),
         Some("b".to_string())
     );
     assert_eq!(
-        account_of_process(bare.id(), &face, &accts),
+        account_of_process(bare.id(), kind, &accts),
         None,
         "没设配置目录、账号库里也没有账号 0 ⇒ 不说"
     );
@@ -822,7 +858,7 @@ struct AuthKindParityCase {
     name: &'static str,
     /// manifest 里 `authKind` 键写什么；`None` = 这个键**不出现**。
     manifest_auth_kind: Option<&'static str>,
-    /// 要不要在它的目录里放一个 `CREDENTIALS_NAME`。
+    /// 要不要在它的目录里放一份凭据文件（`LOGIN.creds_file`）。
     credentials_present: bool,
     /// 期望产出的 `authKind`（金样）。
     expect_auth_kind: &'static str,
@@ -976,7 +1012,11 @@ fn the_account_list_auth_kind_matches_the_golden() {
         let d = root.join(c.name);
         fs::create_dir_all(&d).unwrap();
         if c.credentials_present {
-            fs::write(d.join(CREDENTIALS_NAME), "{\"tok\":\"SECRET-TOKEN\"}").unwrap();
+            fs::write(
+                d.join(crate::agents::claudecode::LOGIN.creds_file),
+                "{\"tok\":\"SECRET-TOKEN\"}",
+            )
+            .unwrap();
         }
     }
     fs::create_dir_all(root.join("shared")).unwrap();
@@ -1052,7 +1092,7 @@ fn the_auth_dimension_has_exactly_one_computation_path() {
         .collect::<Vec<_>>()
         .join("\n");
     assert!(
-        prod.contains("fn scan_accounts(") && prod.len() > 8_000,
+        prod.contains("fn scan_accounts_among(") && prod.len() > 8_000,
         "剥注释剥过头了（实得 {} 字节）—— 下面几条会零命中地绿",
         prod.len()
     );
@@ -1102,7 +1142,7 @@ fn production_text() -> String {
     let prod = guard_core::production_code(me);
     guard_core::assert_no_test_code("library.rs", &prod);
     assert!(
-        prod.contains("fn session_accounts(agent_home: &Path")
+        prod.contains("fn session_accounts(")
             && prod.contains("struct SessionAccount {")
             && prod.len() > 8_000,
         "剥过头 / 锚点挪了（实得 {} 字节）—— 用它的那几条会零命中地绿",
@@ -1136,9 +1176,9 @@ fn the_only_env_keys_this_module_reads_are_the_two_named_constants() {
              以及为什么这条查询仍然不是「任意环境变量读」原语。\n\
              **少了** ⇒ 有一条读回路被摘掉了。"
     );
-    // 两个适配层的键（账号 · 上游地址）收成一处向注册表要（账号库面 `session_env`），键名仍是常量、不是参数。
+    // 两个适配层的键（账号 · 上游地址）收成一处向注册表要（写那条会话的那一家的账号面 `session_env`），键名仍是常量、不是参数。
     assert_eq!(
-        prod.matches("crate::agents::account_library_face().map(|f| f.session_env)")
+        prod.matches("crate::agents::accounts_face_among(registry, kind).map(|f| f.session_env)")
             .count(),
         1,
         "向适配层要那两个键的那一处不见了 / 变形了"
@@ -1150,17 +1190,15 @@ fn the_only_env_keys_this_module_reads_are_the_two_named_constants() {
         "抠 `CLAUDE_CONFIG_DIR` 那一处（`owner_of`）不见了 / 变形了"
     );
     let calls = prod.matches("owner_of(pid, ").count();
-    let keyed = prod.matches("owner_of(pid, env_keys.config_dir").count()
-        + prod
-            .matches("owner_of(pid, face.session_env.config_dir")
-            .count();
+    let keyed = prod.matches("owner_of(pid, keys.config_dir").count();
     assert_eq!(
         (calls, keyed),
         (3, 3),
         "`owner_of` 的调用方变了，或有一处传的不是适配层给的配置目录键"
     );
     assert_eq!(
-        prod.matches("proc_env_var(pid, env_keys.base_url)").count(),
+        prod.matches(".map(|base_url| proc_env_var(pid, base_url))")
+            .count(),
         1,
         "抠 `ANTHROPIC_BASE_URL` 那一处不见了 / 变形了（`viaRelay` 的读侧）"
     );
@@ -1279,7 +1317,7 @@ fn the_list_product_carries_exactly_what_the_scan_reads() {
 }
 
 /// ★★ **apikey 表真并上了**：表里有 `acct-b` 那一行 ⇒ 它（没有订阅凭据）变成 `api-key` 且可选；
-/// 别家 agent ⇒ 一格不动；空表 ⇒ 一格不动；表里的 id 对不上任何号 ⇒ 一格不动。
+/// 表挂的是别家（这个号不是那一家的）⇒ 一格不动；空表 ⇒ 一格不动；表里的 id 对不上任何号 ⇒ 一格不动。
 #[test]
 fn the_list_product_merges_this_machines_apikey_table_per_agent() {
     let (root, accts) = c4c_fixture("c4c-table", true);
@@ -1318,8 +1356,12 @@ fn the_list_product_merges_this_machines_apikey_table_per_agent() {
         .cloned()
         .unwrap();
     assert_eq!(a["authKind"], acct_core::AUTH_KIND_SUBSCRIPTION);
-    for (rows, agent, why) in [
-        (vec!["acct-b".to_string()], "codex", "别家的号不许借这张表"),
+    for (rows, table_agent, why) in [
+        (
+            vec!["acct-b".to_string()],
+            "codex",
+            "表是别家的：这个号不借它",
+        ),
         (Vec::new(), "claude-code", "空表"),
         (
             vec!["acct-z".to_string()],
@@ -1332,8 +1374,8 @@ fn the_list_product_merges_this_machines_apikey_table_per_agent() {
             None,
             &rows,
             &[],
-            agent,
             "claude-code",
+            table_agent,
             false,
         ));
         assert_eq!(b["authKind"], acct_core::AUTH_KIND_SUBSCRIPTION, "{why}");
@@ -1618,13 +1660,17 @@ fn the_accounts_library_lives_under_the_contract_directory_name() {
     let prod = guard_core::production_code(include_str!(
         "../../../../src/backend/accounts/manage/library.rs"
     ));
-    let at = guard_core::find_pinned(&prod, "fn resolve_accts_dir() -> PathBuf {")
+    let at = guard_core::find_pinned(&prod, "fn resolve_accts_dir() -> Result<PathBuf, String> {")
         .unwrap_or_else(|e| panic!("缺省解析那一处找不到（恰好一处、不收参数）：{e}"));
     let body_end = prod[at + 1..]
         .find("\nfn ")
         .map_or(prod.len(), |k| at + 1 + k);
-    guard_core::find_pinned(&prod[at..body_end], "home_join(&h, ACCOUNTS_DIR_REL)")
-        .unwrap_or_else(|e| panic!("缺省解析不再经契约常量拼家目录下那一层：{e}"));
+    // 家说不出 ⇒ 照实拒：拼与判都交给 `under_home`（不另落一个相对路径）。
+    guard_core::find_pinned(
+        &prod[at..body_end],
+        "under_home(home_dir().as_deref(), ACCOUNTS_DIR_REL)",
+    )
+    .unwrap_or_else(|e| panic!("缺省解析不再经 `under_home` 拼家目录下那一层：{e}"));
 }
 
 /// 守的要求：用户「即后端去.cc-monitor读数据」——账号库的位置只跟着家走，旧位置不认、另指位置的环境变量删掉。
@@ -1757,7 +1803,7 @@ fn hx1_via_relay_says_which_live_sessions_point_at_the_local_relay_and_never_lea
         r#"{"sessionId":"sid-dead","cwd":"/w","procStart":"1"}"#,
     )
     .unwrap();
-    let lines = session_accounts(&claude, &root.join("no-accts"));
+    let lines = session_accounts(&claude, Some(root.join("no-accts").as_path()));
     for k in &mut kids {
         let _ = k.kill();
         let _ = k.wait();
@@ -1835,6 +1881,35 @@ fn app_exit_interrupts_follow_this_backends_own_exit_choice() {
     assert_eq!(
         wire(app_exit_product(true, &lines, 3)),
         serde_json::json!({"relayedSessions":1,"relayedMaybe":0,"liveStreams":2,"forwards":3})
+    );
+}
+
+/// 「会打断几条会话」数的是脸上那一条（`live`），不是账号归属那一格（`alive`：启动时刻核上）；同一条会话几个进程只算一条，
+/// 走不走中转并成一格：有一个经中转 ⇒ 经；不然有一个说不清 ⇒ 说不清。
+#[test]
+fn interrupts_count_face_sessions_once_each_whatever_the_identity_check_says() {
+    let row = |sid: &str, live: bool, via: Option<bool>| SessionAccount {
+        pid: 1,
+        sid: Some(sid.into()),
+        cwd: None,
+        config_dir: None,
+        account: None,
+        alive: false,
+        live,
+        bare: false,
+        via_relay: via,
+    };
+    let lines = vec![
+        row("a", true, None),
+        row("a", true, Some(true)),
+        row("b", true, Some(false)),
+        row("b", true, None),
+        row("c", true, Some(false)),
+        row("d", false, Some(true)),
+    ];
+    assert_eq!(
+        serde_json::to_value(machine_product(&lines, 0)).unwrap(),
+        serde_json::json!({"relayedSessions":1,"relayedMaybe":1,"liveStreams":3,"forwards":0})
     );
 }
 
@@ -1923,6 +1998,59 @@ fn the_list_product_says_who_goes_into_the_new_session_picker() {
         cell("iso"),
         serde_json::json!(true),
         "隔离、有目录 ⇒ 进（需登录照样列，灰着）"
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// ★ 新建会话的选号表只列起的那一家的号（同选号那一判 `row_of_family`）：别家的号不进，它那颗［登录 {号}］也就不出；
+/// 需登录的同家号照样进、照样带［登录…］。两家替身各一个需登录的号，换起的那一家看两格翻过来。
+#[test]
+fn the_new_session_picker_lists_only_the_launching_familys_accounts() {
+    let root = test_home::scratch("newsessionfamily");
+    let accts = root.join("accts");
+    for n in ["a1", "b1"] {
+        fs::create_dir_all(accts.join(n)).unwrap();
+    }
+    write_manifest(
+        &accts,
+        &format!(
+            r#"{{"version":1,"acctsDir":"{a}","accounts":[
+                {{"name":"a1","email":"","configDir":"{a}/a1","mode":"isolated","agent":"alpha"}},
+                {{"name":"b1","email":"","configDir":"{a}/b1","mode":"isolated","agent":"beta"}}]}}"#,
+            a = accts.display()
+        ),
+    );
+    let reg = [
+        crate::agents::fake::family_row("alpha", "CCM_A_DIR", "a", true, || None),
+        crate::agents::fake::family_row("beta", "CCM_B_DIR", "b", false, || None),
+    ];
+    let cells = |agent: &str| {
+        let mut l = super::list_product_among(
+            &reg,
+            &accts,
+            None,
+            &[],
+            &|_| None,
+            Some(agent),
+            agent,
+            false,
+        );
+        with_sign_in(&mut l, |_| Some(crate::agents::fake::SHOW_CODE_FACE));
+        l.accounts
+            .iter()
+            .filter(|r| r.new_session)
+            .map(|r| (r.scanned.name.clone(), r.login))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        cells("alpha"),
+        vec![("a1".to_string(), true)],
+        "起 alpha ⇒ 只列 alpha 的号"
+    );
+    assert_eq!(
+        cells("beta"),
+        vec![("b1".to_string(), true)],
+        "起 beta ⇒ 只列 beta 的号"
     );
     let _ = fs::remove_dir_all(&root);
 }
@@ -2027,11 +2155,15 @@ fn each_row_carries_the_label_people_see() {
     let z: serde_json::Value = serde_json::from_str(&lines[1]).unwrap();
     let zero: serde_json::Value = serde_json::from_str(&lines[2]).unwrap();
     assert_eq!(z["label"], "z");
-    assert_eq!(zero["label"], copy_core::copy_text("acct.home.name", &[]));
+    assert_eq!(
+        zero["label"],
+        crate::accounts::quota::name_words::account_text_of(crate::agents::default_kind(), "0")
+    );
     let keys: Vec<&str> = z.as_object().unwrap().keys().map(String::as_str).collect();
     assert_eq!(
         keys,
         [
+            "agent",
             "authKind",
             "authReady",
             "color",
@@ -2072,6 +2204,8 @@ fn a_row_says_why_it_cannot_be_picked_and_its_plate() {
             auth_ready: ready,
             selectable: acct_core::account_selectable(mode, ready, exists, dir.is_some()),
             color: Some(0),
+            agent: None,
+            unknown_agent: None,
         };
     let why = |a: ScannedAccount| unselectable_of(&a, a.auth_kind == acct_core::AUTH_KIND_API_KEY);
     let t = |k: &str| Some(copy_core::copy_text(k, &[]));
@@ -2113,6 +2247,7 @@ fn a_row_says_why_it_cannot_be_picked_and_its_plate() {
 #[test]
 fn only_an_account_that_only_needs_signing_in_gets_the_login_button() {
     use test_support::row_with;
+    let face = |on: bool| move |_: Option<&str>| on.then_some(crate::agents::fake::SHOW_CODE_FACE);
     let list = |sign_in: bool| {
         let mut l = test_support::list(vec![
             row_with("ready", |_| {}),
@@ -2130,7 +2265,7 @@ fn only_an_account_that_only_needs_signing_in_gets_the_login_button() {
                 a.auth_ready = false;
             }),
         ]);
-        with_sign_in(&mut l, sign_in);
+        with_sign_in(&mut l, face(sign_in));
         l.accounts
             .iter()
             .map(|r| (r.scanned.name.clone(), r.login))
@@ -2145,10 +2280,71 @@ fn only_an_account_that_only_needs_signing_in_gets_the_login_button() {
     assert_eq!(named(list(true)), vec!["need".to_string()]);
     assert!(named(list(false)).is_empty());
     let mut l = test_support::list(vec![row_with("need", |a| a.auth_ready = false)]);
-    with_sign_in(&mut l, false);
+    with_sign_in(&mut l, face(false));
     assert_eq!(
         l.accounts[0].unselectable.as_ref().map(|w| w.0.clone()),
         Some(copy_core::copy_text("accounts.row.loginElsewhere", &[]))
+    );
+}
+
+/// ★ ［登录…］·［退出登录］·［登录状态］每一行照它自己那一家的声明给，不拿请求那一家套整张表：
+/// 替身家显示码那一形声明了退出 · 状态 ⇒ 登着的订阅号给［退出登录］（没登 · API 号 · 号目录不在不给），订阅号都给［登录状态］；
+/// 另一家不粘回那一形两条都不声明 ⇒ 都不给；认不出那一家 ⇒ 三颗都不给。
+#[test]
+fn sign_out_and_status_follow_each_rows_own_family() {
+    use test_support::row_with;
+    let kind = |k: &str| Some(cmd_wire::AgentKind::from(k));
+    let mut l = test_support::list(vec![
+        row_with("in", |a| {
+            a.agent = kind("shows");
+            a.logged_in = true;
+        }),
+        row_with("out", |a| {
+            a.agent = kind("shows");
+            a.logged_in = false;
+            a.auth_ready = false;
+        }),
+        row_with("api", |a| {
+            a.agent = kind("shows");
+            a.auth_kind = acct_core::AUTH_KIND_API_KEY.to_string();
+            a.logged_in = true;
+        }),
+        row_with("gone", |a| {
+            a.agent = kind("shows");
+            a.exists = false;
+            a.logged_in = true;
+        }),
+        row_with("waits", |a| {
+            a.agent = kind("waits");
+            a.logged_in = true;
+        }),
+        row_with("who", |a| {
+            a.agent = None;
+            a.logged_in = false;
+            a.auth_ready = false;
+        }),
+    ]);
+    with_sign_in(&mut l, |k| match k {
+        Some("shows") => Some(crate::agents::fake::SHOW_CODE_FACE),
+        Some("waits") => Some(crate::agents::fake::NO_PASTE_FACE),
+        _ => None,
+    });
+    let got: Vec<(String, bool, bool, bool)> = l
+        .accounts
+        .iter()
+        .map(|r| (r.scanned.name.clone(), r.login, r.sign_out, r.status))
+        .collect();
+    let s = |n: &str, a: bool, b: bool, c: bool| (n.to_string(), a, b, c);
+    assert_eq!(
+        got,
+        vec![
+            s("in", false, true, true),
+            s("out", true, false, true),
+            s("api", false, false, false),
+            s("gone", false, false, false),
+            s("waits", false, false, false),
+            s("who", false, false, false),
+        ]
     );
 }
 
@@ -2164,7 +2360,429 @@ fn row_of(line: &str) -> Option<SessionAccount> {
         config_dir: None,
         account: None,
         alive: v["alive"] == serde_json::Value::Bool(true),
+        // 金样那一格「活着」说的是脸上活着（`machine_product` 只认这一格）。
+        live: v["alive"] == serde_json::Value::Bool(true),
         bare: false,
         via_relay: v["viaRelay"].as_bool(),
     })
+}
+
+/// 两家各一个号 ⇒ 会话各归各的号：一条会话照它那一家的号载体读进程环境，只对上那一家的号
+/// （清单里没写是哪一家的号归缺省那一家）。另一家的会话恰好指着这一家的号目录 ⇒ 不归它。
+#[cfg(target_os = "linux")]
+#[test]
+fn sessions_of_two_families_each_go_to_their_own_familys_account() {
+    let fake = crate::agents::fake::AGENT_KIND;
+    let reg = [
+        crate::agents::fake::family_row("stand-in", "CCM_STAND_IN_DIR", "si", true, || None),
+        crate::agents::fake::full_row(|| None),
+    ];
+    let fake_env = crate::agents::fake::ACCOUNT_DIR_ENV;
+    let root = test_home::scratch("acctfamilies");
+    let (s_dir, f_dir) = (root.join("acct-s"), root.join("acct-f"));
+    let accts = root.join("accts");
+    write_manifest(
+        &accts,
+        &format!(
+            r#"{{"version":1,"accounts":[{{"name":"s","configDir":"{}"}},{{"name":"f","configDir":"{}","agent":"{fake}"}}]}}"#,
+            s_dir.display(),
+            f_dir.display()
+        ),
+    );
+    let run_under = |env: &str, dir: &Path| {
+        let mut cmd = std::process::Command::new("sleep");
+        cmd.arg("30")
+            .env_remove("CCM_STAND_IN_DIR")
+            .env_remove(fake_env)
+            .env(env, dir);
+        let child = cmd.spawn().expect("起一个 sleep 当会话");
+        wait_exec_done(child.id(), "sleep");
+        child
+    };
+    let mut s = run_under("CCM_STAND_IN_DIR", &s_dir);
+    let mut f = run_under(fake_env, &f_dir);
+    let mut stray = run_under(fake_env, &s_dir);
+    assert_eq!(
+        account_of_process_among(&reg, s.id(), "stand-in", &accts),
+        Some("s".to_string()),
+        "没写家的号归缺省那一家"
+    );
+    assert_eq!(
+        account_of_process_among(&reg, f.id(), fake, &accts),
+        Some("f".to_string())
+    );
+    assert_eq!(
+        account_of_process_among(&reg, stray.id(), fake, &accts),
+        None,
+        "另一家的号目录不归这一家的会话"
+    );
+    assert_eq!(
+        account_of_process_among(&reg, f.id(), "stand-in", &accts),
+        None,
+        "那一家的号载体没设 ⇒ 账号 0，清单里没有账号 0 ⇒ 不说"
+    );
+    for c in [&mut s, &mut f, &mut stray] {
+        let _ = c.kill();
+        let _ = c.wait();
+    }
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// 各具名号的家按它那一家交（根表照它给每家每号算记录根）：没写家的号归缺省那一家；认不出家的号哪一家都不归；账号 0 不在里面
+/// （它的家是那一家的默认家）。
+#[test]
+fn every_named_account_home_goes_to_its_family() {
+    let fake = crate::agents::fake::AGENT_KIND;
+    let reg = [
+        crate::agents::fake::family_row("stand-in", "CCM_STAND_IN_DIR", "si", true, || None),
+        crate::agents::fake::full_row(|| None),
+    ];
+    let root = test_home::scratch("acctdirsfamily");
+    let accts = root.join("accts");
+    write_manifest(
+        &accts,
+        &format!(
+            r#"{{"version":1,"accounts":[{{"name":"s","configDir":"{r}/s"}},{{"name":"f","configDir":"{r}/f","agent":"{fake}"}},{{"name":"x","configDir":"{r}/x","agent":"nobody"}},{{"name":"0","isDefault":false,"mode":"bare"}}]}}"#,
+            r = root.display()
+        ),
+    );
+    let homes = |kind: &str| -> Vec<(Option<String>, PathBuf)> {
+        account_homes_among(&reg, &accts, kind)
+            .into_iter()
+            .map(|h| (h.account, h.home))
+            .collect()
+    };
+    assert_eq!(homes("stand-in"), vec![(Some("s".into()), root.join("s"))]);
+    assert_eq!(homes(fake), vec![(Some("f".into()), root.join("f"))]);
+    assert!(homes("nobody").is_empty(), "认不出的家不收号");
+    assert!(
+        account_homes_among(&reg, &root.join("none"), fake).is_empty(),
+        "没有清单 ⇒ 没有号"
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// ★ 认家连问几次只读一次号表：清单文件的戳（改动时刻 · 长度 · inode）没变 ⇒ 用上次读的那一份（盘上内容换了也不重读）；
+/// 戳变了 ⇒ 重读。
+#[test]
+fn asking_homes_again_reads_the_manifest_only_after_it_changes() {
+    let fake = crate::agents::fake::AGENT_KIND;
+    let reg = [crate::agents::fake::full_row(|| None)];
+    let root = test_home::scratch("homescache");
+    let accts = root.join("accts");
+    let body = |name: &str| {
+        format!(
+            r#"{{"version":1,"accounts":[{{"name":"{name}","configDir":"{r}/{name}","agent":"{fake}"}}]}}"#,
+            r = root.display()
+        )
+    };
+    write_manifest(&accts, &body("a"));
+    let manifest = accts.join(ACCOUNTS_MANIFEST_NAME);
+    let names = || -> Vec<Option<String>> {
+        account_homes_among(&reg, &accts, fake)
+            .into_iter()
+            .map(|h| h.account)
+            .collect()
+    };
+    assert_eq!(names(), vec![Some("a".to_string())]);
+    let was = fs::metadata(&manifest).unwrap().modified().unwrap();
+    // 同长度、原地改写（inode 不换），改动时刻拨回原样 ⇒ 戳没变：该是上次读的那一份。
+    {
+        let f = fs::OpenOptions::new().write(true).open(&manifest).unwrap();
+        std::io::Write::write_all(&mut &f, body("b").as_bytes()).unwrap();
+        f.set_modified(was).unwrap();
+    }
+    for _ in 0..3 {
+        assert_eq!(names(), vec![Some("a".to_string())], "戳没变就不该重读号表");
+    }
+    // 戳变了 ⇒ 重读。
+    {
+        let f = fs::OpenOptions::new().write(true).open(&manifest).unwrap();
+        f.set_modified(was + std::time::Duration::from_secs(5))
+            .unwrap();
+    }
+    assert_eq!(names(), vec![Some("b".to_string())], "号表文件变了该重读");
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// 清单成品每号带家：没写家的号照缺省那一家给出；写了一个认不出的家 ⇒ 缺（不冒充缺省那一家）。
+#[test]
+fn the_listed_accounts_carry_their_family() {
+    let root = test_home::scratch("acctlistfamily");
+    let accts = root.join("accts");
+    write_manifest(
+        &accts,
+        &format!(
+            r#"{{"version":1,"accounts":[{{"name":"s","configDir":"{r}/s"}},{{"name":"x","configDir":"{r}/x","agent":"nobody"}}]}}"#,
+            r = root.display()
+        ),
+    );
+    let (_, rows) = scan_accounts_among(crate::agents::REGISTRY, &accts, &|_, _| false);
+    let family = |n: &str| {
+        rows.iter()
+            .find(|a| a.name == n)
+            .and_then(|a| a.agent.as_ref().map(|k| k.as_str().to_string()))
+    };
+    assert_eq!(
+        family("s"),
+        crate::agents::account_kind(None).map(str::to_string)
+    );
+    assert_eq!(family("x"), None);
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// 号目录有没有活会话在用（空闲才续的那一家续之前问它）：活着、进程环境里的号目录就是它（尾部 `/` 不算差别）才算；
+/// 已死的那一行 · 别的号目录 · 账号 0 都不算。
+#[test]
+fn a_dir_is_in_use_only_while_a_live_session_runs_under_it() {
+    let row = |dir: Option<&str>, alive: bool| SessionAccount {
+        pid: 1,
+        sid: Some("s".into()),
+        cwd: None,
+        config_dir: dir.map(str::to_string),
+        account: None,
+        alive,
+        live: alive,
+        bare: dir.is_none(),
+        via_relay: None,
+    };
+    let here = Path::new("/h/.cc-monitor/accounts/f/");
+    assert!(dir_in_use(
+        &[row(Some("/h/.cc-monitor/accounts/f"), true)],
+        here
+    ));
+    assert!(
+        !dir_in_use(&[row(Some("/h/.cc-monitor/accounts/f"), false)], here),
+        "已死"
+    );
+    assert!(
+        !dir_in_use(&[row(Some("/h/.cc-monitor/accounts/g"), true)], here),
+        "别的号"
+    );
+    assert!(!dir_in_use(&[row(None, true)], here), "账号 0");
+}
+
+/// 登没登只看那个号那一家声明的凭据文件（`LoginFace.creds_file`）：替身家的凭据文件名与两家都不同 —— 在 ⇒ 已登录，不在 ⇒ 未登录；
+/// 只放一份别家那一名的不算。
+#[test]
+fn logged_in_looks_only_at_the_credentials_file_that_family_declares() {
+    let fake = crate::agents::fake::AGENT_KIND;
+    let reg = [crate::agents::fake::full_row(|| None)];
+    let creds = reg[0]
+        .accounts
+        .and_then(|f| f.login)
+        .expect("替身家声明了凭据文件")
+        .creds_file;
+    for a in crate::agents::REGISTRY {
+        let theirs = a.accounts.and_then(|f| f.login).map(|l| l.creds_file);
+        assert_ne!(
+            theirs,
+            Some(creds),
+            "{} 与替身家同名 ⇒ 判据证明不了什么",
+            a.kind
+        );
+    }
+    let root = super::test_support::fresh_dir("famcreds");
+    let accts = root.join("accts");
+    let (with, other) = (root.join("with"), root.join("other"));
+    fs::create_dir_all(&with).unwrap();
+    fs::create_dir_all(&other).unwrap();
+    fs::write(with.join(creds), "{}").unwrap();
+    fs::write(
+        other.join(crate::agents::claudecode::LOGIN.creds_file),
+        "{}",
+    )
+    .unwrap();
+    write_manifest(
+        &accts,
+        &serde_json::json!({
+            "version": 1,
+            "accounts": [
+                {"name": "w", "configDir": with.to_string_lossy(), "agent": fake},
+                {"name": "o", "configDir": other.to_string_lossy(), "agent": fake},
+            ],
+        })
+        .to_string(),
+    );
+    let (_, rows) = scan_accounts_among(&reg, &accts, &|_, _| false);
+    let logged = |n: &str| rows.iter().find(|r| r.name == n).map(|r| r.logged_in);
+    assert_eq!(logged("w"), Some(true), "那一家声明的那一份在");
+    assert_eq!(logged("o"), Some(false), "只有别家那一名的凭据文件");
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// 经不经本机中转：那一家不从环境变量读中转地址（替身家不声明 `base_url`，经参数注入）⇒ 没有环境那一格可读，照起会话时留的那一份认
+/// （注入了中转 ⇒ 是；没注入 ⇒ 不是；说不清 ⇒ 说不清）。读环境那一家照旧看环境，不问起会话那一份。
+#[test]
+fn via_relay_follows_the_launch_record_when_the_family_does_not_read_it_from_env() {
+    let fake = crate::agents::fake::full_row(|| None);
+    let keys = fake.accounts.expect("替身家有账号面").session_env;
+    assert_eq!(keys.base_url, None, "替身家不从环境变量读中转地址");
+    let base = || keys.base_url.map(|_| EnvRead::Unset);
+    let never = || -> bool { panic!("不从环境读 ⇒ 不问设置文件") };
+    assert_eq!(via_relay_of(base(), &|| Some(true), &never), Some(true));
+    assert_eq!(via_relay_of(base(), &|| Some(false), &never), Some(false));
+    assert_eq!(via_relay_of(base(), &|| None, &never), None);
+    let unasked = || -> Option<bool> { panic!("读环境那一家不问起会话那一份") };
+    assert_eq!(
+        via_relay_of(Some(EnvRead::Unset), &unasked, &|| false),
+        Some(false)
+    );
+    assert_eq!(
+        via_relay_of(Some(EnvRead::Unreadable), &unasked, &|| false),
+        None
+    );
+}
+
+/// 账号行那一句「MCP 登录不在号之间同步」照那个号那一家判（`mcp_logins_exec::logins_shared`）：
+/// 替身家的登录面没声明可同步的那一节 ⇒ 行上有那一句；Claude 那一家同步 ⇒ 缺（帧里不出这一格）。
+#[test]
+fn a_row_says_mcp_logins_are_not_shared_only_for_a_family_that_does_not_share_them() {
+    let root = test_home::scratch("acctmcplogins");
+    let accts = root.join("accts");
+    write_manifest(
+        &accts,
+        &format!(
+            r#"{{"version":1,"accounts":[{{"name":"f","configDir":"{r}/f"}}]}}"#,
+            r = root.display()
+        ),
+    );
+    // 替身家今天声明了 MCP 登录那一格 ⇒ 这里抹掉它，喂一家不同步的。
+    let row = crate::agents::fake::family_row(
+        crate::agents::fake::AGENT_KIND,
+        "CCM_FAKE_A",
+        "fakea",
+        true,
+        || None,
+    );
+    let reg = [crate::agents::Adapter {
+        accounts: row.accounts.map(|f| crate::agents::AccountsFace {
+            mcp_logins: None,
+            ..f
+        }),
+        ..row
+    }];
+    let fake = super::list_product_among(
+        &reg,
+        &accts,
+        None,
+        &[],
+        &|_| None,
+        Some("fake"),
+        "fake",
+        false,
+    );
+    let row = fake
+        .accounts
+        .iter()
+        .find(|a| a.scanned.name == "f")
+        .expect("替身家那个号");
+    assert_eq!(
+        row.mcp_logins.as_ref().map(|w| w.0.as_str()),
+        Some(copy_text("accounts.fact.mcpLoginsNotShared", &[]).as_str())
+    );
+    let claude = list_product_with(&accts, None, &[], &[], "claude-code", "claude-code", false);
+    let f = claude["accounts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["name"] == "f")
+        .expect("Claude 那个号");
+    assert!(f.get("mcpLogins").is_none(), "同步的那一家不出这一格：{f}");
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// ★ 记录里自报的额度认号进账（[`quota_said_among`]）：替身合成历史家两个号 ⇒ 号 b 归档根底下那一份记在 b 名下、号 a 日期根底下那一份记在 a 名下，
+/// 来源 `usage`；记录不在任何号的根底下 ⇒ 额度账一条不添。
+#[test]
+fn a_quota_said_in_a_record_lands_on_the_account_whose_root_holds_it() {
+    use crate::agents::fake::runs::history as chats;
+    let root = test_home::scratch("quota-said");
+    let reg = [crate::agents::Adapter {
+        history: Some(chats::HISTORY),
+        records: chats::row(|| None).records,
+        ..crate::agents::fake::family_row(chats::KIND, "CCM_CHATS_DIR", "chats", true, || None)
+    }];
+    let (a, b) = (root.join("homes").join("a"), root.join("homes").join("b"));
+    for h in [&a, &b] {
+        fs::create_dir_all(chats::records_root(h)).unwrap();
+        fs::create_dir_all(chats::shelf_root(h)).unwrap();
+    }
+    let accts = root.join("accts");
+    write_manifest(
+        &accts,
+        &format!(
+            r#"{{"version":1,"accounts":[{{"name":"a","configDir":"{}","agent":"{k}"}},{{"name":"b","configDir":"{}","agent":"{k}"}}]}}"#,
+            a.display(),
+            b.display(),
+            k = chats::KIND
+        ),
+    );
+    let data = root.join("data");
+    fs::create_dir_all(&data).unwrap();
+    let own = crate::platform::fs::Own::issue_data_at(&data);
+    let ledger_file = crate::accounts::quota::ledger::path_under(&data);
+    let said = |used: f64| {
+        vec![crate::agents::QuotaWindow {
+            name: "burst".into(),
+            used: Some(used),
+            resets_at: None,
+            warned_at: None,
+        }]
+    };
+    let stray = root.join("elsewhere").join(chats::file_name("s0"));
+    quota_said_among(&reg, &accts, &own, chats::KIND, &stray, said(0.9), 100);
+    assert!(!ledger_file.exists(), "认不出号 ⇒ 额度账一条不添");
+    let shelved = chats::shelf_root(&b).join(chats::file_name("s1"));
+    quota_said_among(&reg, &accts, &own, chats::KIND, &shelved, said(0.25), 200);
+    let dated = chats::records_root(&a).join(chats::file_name("s2"));
+    quota_said_among(&reg, &accts, &own, chats::KIND, &dated, said(0.5), 300);
+    let ledger = crate::accounts::quota::ledger::Ledger::at(Some(ledger_file));
+    let used = |acct: &str| {
+        let e = ledger.entry(chats::KIND, acct).expect("记进了账");
+        assert_eq!(
+            e.window_seen("burst").from,
+            crate::accounts::quota::ledger::Source::Usage,
+            "来源 usage"
+        );
+        e.reading.windows[0].used
+    };
+    assert_eq!(used("b"), Some(0.25), "归档根底下那一份记在 b 名下");
+    assert_eq!(used("a"), Some(0.5), "日期根底下那一份记在 a 名下");
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// ★ 号表里写的那一家注册表里认不出（替身家：只登了 `alpha`）⇒ 那一行照出、家那一格缺；账号 0 的号名照实说认不出是哪一家的，
+/// 不退到空串那一家（空串问不出家目录 ⇒ 号名成了空串）。具名号的号名照原名。
+#[test]
+fn an_account_of_an_unknown_family_says_so_instead_of_an_empty_name() {
+    let root = test_home::scratch("unknownfamily");
+    let accts = root.join("accts");
+    fs::create_dir_all(accts.join("n")).unwrap();
+    write_manifest(
+        &accts,
+        &format!(
+            r#"{{"version":1,"sharedStore":"/s","accounts":[
+                {{"name":"0","mode":"bare","agent":"gone"}},
+                {{"name":"n","configDir":"{a}/n","agent":"gone"}}]}}"#,
+            a = accts.display()
+        ),
+    );
+    let reg = [crate::agents::fake::family_row(
+        "alpha",
+        "CCM_A_DIR",
+        "a",
+        true,
+        || None,
+    )];
+    let (_, lines) = super::scan_accounts_among(&reg, &accts, &|_, _| false);
+    let of = |n: &str| lines.iter().find(|a| a.name == n).expect("那一行照出");
+    assert_eq!(
+        of("0").label,
+        copy_core::copy_text("rsAgents.family.unknown", &[])
+    );
+    assert_eq!(of("0").agent, None);
+    assert_eq!(of("n").label, "n");
+    assert_eq!(of("n").agent, None);
+    let _ = fs::remove_dir_all(&root);
 }

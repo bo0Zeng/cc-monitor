@@ -1,11 +1,11 @@
 // 手机嵌的 Rust 核心（`libmobcore.so`）：Rust 源在 `rust/`（crate `mobcore`，后端那一棵 workspace 的成员，拨号是 `ssh-dial` 那一份），
-// Kotlin 侧只有一个口 `Core`（手写 JNI，走消息）。
+// Kotlin 侧只有一个口 `Core`（手写 JNI，走消息）；取文口 `copyText` 与 `DurationFormat`（包 `core.copy`）也住这里，写字经 `Core`。
 //
 // 每个构建类型只编它自己那一个 ABI（`gradle.properties` 的 `ccm.abi.<构建类型>`；app 的 abiFilters 读同一行）：
 //   release（发出去的包，真机也用它）= arm64-v8a；debug（模拟器 · androidTest · 冒烟）= x86_64。两个 ABI 从不在同一趟里编。
 // cargo 由这里调：`cargoBuild<构建类型>` 只编那一个 target，产物抄进 `build/rustJniLibs/<构建类型>/<ABI>/`，那个目录接进同名源集的 jniLibs。
 // cargo 自己按源码增量（没改就几百毫秒），所以本任务每趟都跑、不另记输入。
-// JVM 单测加载同一个 crate 的宿主版（根 `build.gradle.kts` 的 `cargoBuildHost`，写字经它）；`Core` 只在真连接那一条路上用，单测走假传输。
+// JVM 单测加载同一个 crate 的宿主版（根 `build.gradle.kts` 的 `cargoBuildHost`）：写字 · 并一份那几口经 `Core` 照真的调，连接那几口单测走假传输。
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
@@ -91,6 +91,8 @@ listOf("debug", "release", "minified").forEach { buildType ->
 }
 
 dependencies {
+    testImplementation(libs.junit)
+    testImplementation(libs.moshi) // 读金样
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.runner)
 }

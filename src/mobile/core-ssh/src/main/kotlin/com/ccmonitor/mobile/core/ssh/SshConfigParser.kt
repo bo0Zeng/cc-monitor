@@ -6,7 +6,7 @@ import com.ccmonitor.mobile.core.wire.gen.ConfigHost
 import com.ccmonitor.mobile.core.wire.gen.arr
 
 /**
- * 把 OpenSSH `~/.ssh/config` 文本解析成可导入的主机列表（[ConfigHost]：通配 Host 已滤掉）。解析住拨号核心（`ssh-dial` 的 `config_text`，
+ * 把 OpenSSH `~/.ssh/config` 文本解析成可导入的主机列表（[ConfigHost]：通配 Host 已滤掉）。解析住手机嵌的 Rust 核心（`core-rs` 的 `config_text`，
  * 判据也在那里），这里只照线上类型装它回的那一份；装不进（两端契约对不上）⇒ 抛，不补默认。要那份 .so。
  */
 object SshConfigParser {

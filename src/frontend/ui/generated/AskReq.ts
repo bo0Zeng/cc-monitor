@@ -4,4 +4,9 @@ import type { AgentKind } from "./AgentKind";
 /**
  * `needs-ask` 的入参：哪一家（线上的 kind）＋ 那一家的 hook 交来的那一份原样。
  */
-export type AskReq = { agent: AgentKind, hook: unknown, };
+export type AskReq = { agent: AgentKind, hook: unknown, 
+/**
+ * 经环境来的那一发（换了启动器那一支，子进程也继承得到）里发问那个进程的 pid：常驻照它认是不是 ccm 起的那一个会话
+ * （[`hook::vouched`]）。不是经环境来的 ⇒ 不带。
+ */
+asker?: number, };

@@ -53,8 +53,6 @@ pub struct Linked {
     pub session: client::Handle<Checker>,
     pub fingerprint: Option<String>,
     pub endpoint: String,
-    /// 同一条胜者，结构化（ack 的 `winner`）。
-    pub winner: Endpoint,
     /// 经跳板时跳板链那几条连接（外在先）：**必须与目标连接同生命周期**（drop 它 ⇒ 隧道死 ⇒ 目标断）。
     pub _jumps: Vec<client::Handle<Checker>>,
     /// 这条连接上的通道预算（`pool::Budget`）：长流 · 查询 · SFTP 同一条连接，同一道闸。
@@ -642,7 +640,11 @@ async fn race(
                         stages.emit(crate::stage::failed(
                             ep.clone(),
                             &ep_label,
-                            &format!("[{}] {}", f.code_or_fallback(), f.said),
+                            &format!(
+                                "[{}] {}",
+                                cmd_wire::failed::Failed::code_or_fallback(f.code.clone()),
+                                f.said
+                            ),
                         ));
                         Err(f.wrap(|e| format!("{ep_label} {e}")))
                     }
@@ -669,9 +671,9 @@ async fn race(
                     return Ok(winner);
                 }
                 Ok(Err(f)) => {
-                    let stage = f.code_or_fallback();
-                    if worst.as_deref().is_none_or(|w| rank(stage) < rank(w)) {
-                        worst = Some(stage.to_string());
+                    let stage = cmd_wire::failed::Failed::code_or_fallback(f.code.clone());
+                    if worst.as_deref().is_none_or(|w| rank(&stage) < rank(w)) {
+                        worst = Some(stage);
                     }
                     errors.push(f.said)
                 }
@@ -1204,7 +1206,7 @@ pub async fn establish_via(
     out: &egress::Egress,
 ) -> Result<Linked, (Said, Option<String>)> {
     // 目标那一台的全部地址：库里按它们认这台、记也写它们（经跳板时也一样，同一台机器）。
-    let addrs = req.race_order();
+    let addrs = crate::race_order(req);
     let target_trust = Trust::of(&addrs).map_err(|e| unreadable(stages, e))?;
     let (mut session, observed, winner, jumps, heard, far, via_proxy, jump_wires) =
         if req.jump.is_none() {
@@ -1282,7 +1284,6 @@ pub async fn establish_via(
         session,
         fingerprint,
         endpoint: label(&winner),
-        winner,
         _jumps: jumps,
         budget: crate::pool::Budget::new(),
         held: Mutex::new(Vec::new()),

@@ -5,7 +5,7 @@
  * 扫哪几棵树：欠账名单 `tests/frontend/ui/exit-debt.json` 的 `roots`，照分层表（§2.9 的「输出适配层」那一行：
  * 界面 · 壳 · 文件窗口 · 手机端）各登一棵。三门语言共用这一份名单，各判各的格：
  * - TS（`src/frontend/ui`）在这里判；
- * - Rust（壳 · 文件窗口）在 `tests/frontend/filewin/exit_scan_tests.rs`；
+ * - Rust（壳 · 文件窗口）在 `tests/frontend/filewin/exit_scan_tests.rs`，另多一句 `fmt`（[`RS_ONLY_RULES`]）；
  * - Kotlin（`src/mobile`）是 `src/mobile/detekt-rules` 里的 detekt 规则（`ExitCopyKey` · `ExitCopyBranch`）。
  * 名单自身与合计在这里判。存量只许删、不许加：
  * 1. TS 每一格（文件 × 句）实得 == 名单登的数：多一处 ⇒ 红；少了 ⇒ 也红（删了就把那一格改小或删掉）；名单外的文件命中一处 ⇒ 红。
@@ -39,6 +39,12 @@ interface Debt {
 
 /** 首登 ＝ 换成两句那一趟第一次跑看见的存量，还没逐格分归哪一批；留 ＝ 不是违例（why 写凭什么）。 */
 const KINDS = new Set(["首登", "留"]);
+
+/**
+ * 只 Rust 那一半判的句：`fmt`（出口调 copy-core 的格式化读口，`exit_scan_tests.rs`）。TS 不扫它（那几处调的是 jsh 登着的孪生，
+ * 孪生一删调用方就编不过），Kotlin 那一半今天零处；名单里它只许登在 Rust 的树底下。
+ */
+const RS_ONLY_RULES: readonly string[] = ["fmt"];
 
 const debt = JSON.parse(readFileSync(resolve(REPO_ROOT, DEBT_PATH), "utf8")) as Debt;
 const entries = debt.groups.flatMap((g) => g.cells.map(([file, rule, n]) => ({ file, rule, n, kind: g.kind, why: g.why })));
@@ -86,7 +92,8 @@ describe("出口零判定零格式化：按意思判的两句 ＋ 只减不增�
       const k = `${e.file} · ${e.rule}`;
       if (!debt.roots.some((r) => e.file.startsWith(`${r.dir}/`))) bad.push(`${k}：不在任何一棵 roots 底下`);
       if (!existsSync(resolve(REPO_ROOT, e.file))) bad.push(`${k}：文件不在了 —— 删掉那一格`);
-      if (!(RULE_IDS as readonly string[]).includes(e.rule)) bad.push(`${k}：没有这一句`);
+      const rsCell = debt.roots.some((r) => r.lang === "rs" && e.file.startsWith(`${r.dir}/`));
+      if (!(RULE_IDS as readonly string[]).includes(e.rule) && !(rsCell && RS_ONLY_RULES.includes(e.rule))) bad.push(`${k}：没有这一句`);
       if (seen.has(k)) bad.push(`${k}：重复`);
       seen.add(k);
       if (!(Number.isInteger(e.n) && e.n > 0)) bad.push(`${k}：n 要是正整数`);

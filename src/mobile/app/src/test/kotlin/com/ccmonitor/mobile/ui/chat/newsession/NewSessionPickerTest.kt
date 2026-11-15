@@ -92,7 +92,7 @@ class NewSessionPickerTest {
                 "files-home" -> ok(mapOf("path" to "/h/me"))
                 "accounts-list" -> ok(a(args))
                 "rotation-strategies" -> ok(strategies)
-                "session-open-dir" -> ok(mapOf("exists" to (args?.get("cwd") != "/h/gone"), "shown" to shown(args?.get("cwd") as String), "tmuxName" to null))
+                "session-open-dir" -> ok(mapOf("said" to (if (args?.get("cwd") == "/h/gone") "/h/gone 不存在" else null), "shown" to shown(args?.get("cwd") as String), "tmuxName" to null))
                 "accounts-set-default" -> ok(mapOf("applied" to true))
                 else -> Reply.LinkDown
             }
@@ -210,6 +210,52 @@ class NewSessionPickerTest {
             assertEquals(Chosen("/h/work/orders", "codex", null, null), p.chosen())
         }
 
+    /** 一家带模型清单：Alpha 分档（缺省 hi）· Beta 不分档。字与先后都是那台写的。 */
+    private fun modelled() =
+        agent("claude", "Claude Code") +
+            (
+                "models" to
+                    listOf(
+                        mapOf("value" to "m-alpha", "text" to "Alpha 模型", "efforts" to listOf(mapOf("value" to "lo", "text" to "推理 lo"), mapOf("value" to "hi", "text" to "推理 hi")), "defaultEffort" to "hi"),
+                        mapOf("value" to "m-beta", "text" to "Beta 模型"),
+                    )
+            )
+
+    @Test
+    fun `模型：那一家列了才画那一颗、缺省跟随不交；选了有推理档的 ⇒ 画推理档、预选 defaultEffort、交 model · effort`() =
+        runTest {
+            val p = picker(link(f = facts(agents = listOf(modelled(), agent("codex", "Codex")))))
+            val s = p.state.value
+            assertTrue(s.showModelChip)
+            assertFalse("跟随 ⇒ 不画推理档", s.showEffortChip)
+            assertEquals(copyText("mobAccounts.model.follow"), s.modelText)
+            assertEquals(Chosen("/h/work/orders", "claude", null, null), p.chosen())
+            p.pickModel("m-alpha")
+            val a = p.state.value
+            assertTrue(a.showEffortChip)
+            assertEquals(listOf("推理 lo", "推理 hi"), a.efforts.map { it.text })
+            assertEquals("hi", a.effort)
+            assertEquals("推理 hi", a.effortText)
+            assertEquals(Chosen("/h/work/orders", "claude", null, null, "m-alpha", "hi"), p.chosen())
+            p.pickEffort("lo")
+            assertEquals("lo", p.chosen().effort)
+        }
+
+    @Test
+    fun `模型：选的没有推理档 ⇒ 不画、只交 model；换 agent ⇒ 回到跟随；那一家没列模型 ⇒ 那一颗不画`() =
+        runTest {
+            val p = picker(link(f = facts(agents = listOf(modelled(), agent("codex", "Codex")))))
+            p.pickModel("m-alpha")
+            p.pickModel("m-beta")
+            assertFalse(p.state.value.showEffortChip)
+            assertEquals(Chosen("/h/work/orders", "claude", null, null, "m-beta", null), p.chosen())
+            p.pickAgent("codex")
+            runCurrent()
+            assertFalse("codex 没列模型", p.state.value.showModelChip)
+            assertNull(p.chosen().model)
+            assertNull(p.chosen().effort)
+        }
+
     @Test
     fun `设为默认：交那台（accounts-set-default），再问一次账号；默认那一格照新的`() =
         runTest {
@@ -225,16 +271,15 @@ class NewSessionPickerTest {
         }
 
     @Test
-    fun `最近的目录：点一行先问那台在不在；不在 ⇒ 那一行灰掉写「目录不在」、不选；在 ⇒ 选上`() =
+    fun `最近的目录：点一行先问那台在不在；不在 ⇒ 那一行灰掉、照抄那台写好的那一句、不选；在 ⇒ 选上`() =
         runTest {
             val p = picker(link(f = facts(recent = listOf("/h/work/orders", "/h/gone"))))
             p.pickRecent("/h/gone")
             runCurrent()
             assertEquals(
-                listOf("/h/gone"),
+                listOf<Any?>("/h/work/orders" to null, "/h/gone" to "/h/gone 不存在"),
                 p.state.value.recent
-                    .filter { it.missing }
-                    .map { it.cwd },
+                    .map { it.cwd to it.said },
             )
             assertEquals("/h/work/orders", p.state.value.cwd)
             p.pickRecent("/h/work/orders")

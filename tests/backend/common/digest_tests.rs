@@ -21,7 +21,7 @@ fn the_streaming_digest_matches_the_published_vectors() {
     assert_eq!(hex(b"abc").len(), SHA256_HEX_LEN);
 }
 
-/// 一边传一边算（传输台）与提交那一侧逐块读：块怎么切都不改答案。
+/// 一边传一边算（送块那一侧）与提交那一侧逐块读：块怎么切都不改答案。
 #[test]
 fn feeding_in_pieces_gives_the_same_digest_as_feeding_at_once() {
     let body: Vec<u8> = (0..10_000u32).map(|i| (i % 251) as u8).collect();

@@ -122,7 +122,7 @@ class KeyOps(
 
     suspend fun revert(k: TermKey): TermKey = dao.revertToDefault(k)
 
-    suspend fun restoreDefaults() = dao.restoreDefaults()
+    suspend fun restoreDefaults() = dao.restoreDefaults(commonGroupName())
 
     suspend fun setDoubleTapMs(ms: Int?) = settings.setKeyDoubleTapMs(ms)
 

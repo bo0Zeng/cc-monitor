@@ -8,12 +8,11 @@
 //! - [`capture_pane`]：抓一次某个窗格此刻那一屏（只读、只抓一次；`readonly_guard::capture_is_read_only` 逐元素钉 argv）。
 //! - [`kill`]：杀一个 tmux 会话，过三道门（Gate 3 = `windows==1` 只给它），对 `#{session_id}` 句柄下手。
 //! - [`launch`]：起 tmux 会话 / 往已有会话键入载荷（argv 直传不过 shell）；不 attach —— backend 在远端开不了你面前的窗。
-//! - [`cc_bus`]：cc-bus 的读命令（`bus-list` / `bus-inbox`），转调本机的 cc-bus 命令；不读 cc-bus 的任何数据文件，只把它的命令当接口。
-//! - [`cc_bus_envelope`]：cc-bus 信封的唯一一处校验（`bus-envelope`；`cc-bus send` 发之前问它，不合格当场拒）。
-//! - [`cc_bus_scope`]：cc-bus 的范围（组）：同组才送得到，名单读不到就拒。
+//! - [`cc_bus`]：cc-bus 一族（`bus-*` 那几条帧命令）：收件箱住这台后端的数据目录，读写只在 `cc_bus/store.rs`；
+//!   信封校验 `cc_bus/envelope.rs` · 范围（组）`cc_bus/scope.rs` · 发信规矩 `cc_bus/rules.rs` · 线上形 `cc_bus/wire.rs`。
 //! - [`deploy_plan`]：给那台装 / 升级后端（帧命令 `deploy-install`；编排住 `deploy` crate）。
 //!
-//! 独立的包 `backend-control`：只引 `assets` · `accounts` · `agents` · `dial` · `history` · `host` · `stderr_log` ·
+//! 独立的包 `backend-control`：只引 `assets` · `accounts` · `agents` · `dial` · `history` · `host` ·
 //! `wire`（含 `ccm_line`）· `common` · `platform`，不引观测面，引了上层就编不过。上层只够得到这里的 `pub` 项。
 //! 通用的安全读文件住 `platform/fs/ro.rs`，不靠给反向边开例外。
 
@@ -32,7 +31,7 @@
 )]
 
 // 包里照旧写 `crate::control::…` · `crate::assets::…` · `crate::accounts::…` · `crate::agents::…` · `crate::dial::…` ·
-// `crate::history::…` · `crate::host::…` · `crate::ccm_line::…` · `crate::stderr_log::…` · `crate::wire::…` · `crate::common::…` · `crate::platform::…`。
+// `crate::history::…` · `crate::host::…` · `crate::ccm_line::…` · `crate::wire::…` · `crate::common::…` · `crate::platform::…`。
 extern crate self as control;
 use backend_accounts as accounts;
 use backend_agents as agents;
@@ -42,7 +41,6 @@ use backend_dial as dial;
 use backend_history as history;
 use backend_host as host;
 use backend_platform as platform;
-use backend_stderr_log as stderr_log;
 use backend_wire as wire;
 use backend_wire::ccm_line;
 
@@ -51,7 +49,7 @@ use backend_wire::ccm_line;
 #[used]
 static TEST_HOME: fn() = test_home::linked;
 
-// 测试档才引的那几样：判据照旧写 `crate::files::…`（传输台判据核落点的读面）· `crate::tmux_sandbox::…` · `crate::golden::…`。
+// 测试档才引的那几样：判据照旧写 `crate::files::…`（两台之间复制判据核落点的读面）· `crate::tmux_sandbox::…` · `crate::golden::…`。
 #[cfg(test)]
 use backend_files as files;
 #[cfg(test)]
@@ -61,12 +59,11 @@ use test_meters::golden;
 
 // 待答登记表（会话里弹的批准 / 提问 / 批计划经答题 hook 挂进来，任一出口答）＋ hook 那一头的客户端（`--answer-hook`）。
 pub mod asks;
+// 桌面聊天附件草稿那一圈（attach-draft-* 五条）：问收不收 · 送块 · 提交 · 断了重排，照 `chunk_core::attach`，推 `changed/attach`。
+pub mod attach_upload;
 pub mod bookmarks; // 这台的书签（`~/.cc-monitor/bookmarks.json`）：读 · 锁里读—改—写，文件窗口与手机按机器名问
 pub mod capture_pane;
 pub mod cc_bus;
-pub(crate) mod cc_bus_envelope;
-pub mod cc_bus_scope; // cc-bus 的范围：组（`bus-envelope` 核完各格之后判）
-pub mod cc_bus_wire; // cc-bus 那三条帧命令的形状（入参 · 回包 · 码表 · 怎么跑）
 pub mod ccm;
 pub mod deploy_plan;
 pub mod exit_policy;
@@ -76,8 +73,7 @@ pub use machine_prefs::apply_agent_homes;
 pub mod machine_menu; // 命令面板打机器名：`machine-find` 认那台 · `machine-menu` 那台能做的几样
 pub mod machine_state;
 pub mod machines;
-pub mod monitor_board; // 监控板的成品：每台写行 · 各台合成（分组 · 组内先后 · 组头 · 汇总；宿主 `faces/monitor_board_face.rs`）
-                       // 分叉之后起：新会话的工作目录 / 号 / 终端从哪知道（逐格知道 ＋ 来源码 / 不知道 ＋ 原因码，不猜）。
+// 分叉之后起：新会话的工作目录 / 号 / 终端从哪知道（逐格知道 ＋ 来源码 / 不知道 ＋ 原因码，不猜）。
 pub mod fork_launch;
 pub mod fork_write;
 pub mod gate;
@@ -103,13 +99,12 @@ pub mod session_set; // 帧命令 `set-plan`：补足一组会话的判定（每
 pub(crate) mod session_new_ticket;
 // 终端管理 L1：名单 · 抓一屏 · 送字送键（两个前端共用，形状与宿主无关；这一版宿主是 tmux）。
 pub mod terminals;
-pub mod terminals_board; // 「终端」视图那张名单的成品：每台写行 · 各台合成（宿主 `faces/terminals_board_face.rs`）
-                         // 终端管理 L1 三条的线上形（入参 · 回包 · 码）与 typed 登记。
+// 终端管理 L1 三条的线上形（入参 · 回包 · 码）与 typed 登记。
 pub mod terminals_wire;
 // 终端实时预览（L2）：订阅一个终端的画面，有变化就推一整屏（tmux 控制模式报变化 · 一帧在途等回执）。
 pub mod terminal_follow;
 pub mod tmux_hook;
-// 传输台住本机常驻后端（文件管理写面的成员：本机下载落点的写 · 票表 · 进度帧）。
+// 两台之间复制一组（`transfer-copy`）的 SFTP 腿：上传进那台暂存区 · 下载落到本机（写经分派交来的写句柄）。
 pub mod transfer;
 pub mod transfer_copy; // 两台之间复制一组（经本机中转，目录整棵、逐项结局）
 
@@ -132,3 +127,8 @@ mod host_on_control_tests;
 #[cfg(test)]
 #[path = "../../../tests/backend/accounts/sign_in_tests.rs"]
 mod accounts_sign_in_tests;
+
+// Codex 这一行喂给核心拼出来的起会话那一串（恢复 · 新起都带权限档那一对与模型；适配层那个包够不到这一层）。
+#[cfg(test)]
+#[path = "../../../tests/backend/agents/codex/launch_line_tests.rs"]
+mod codex_launch_line_tests;

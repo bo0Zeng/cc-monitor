@@ -1,7 +1,7 @@
 /**
  * 性能台架 perfA（Chromium）：主窗口其余 · 独立查看窗 · agent 窗口。动作在页里（`actions.ts` 的 `__pa`），这里只开页、逐项调、记浏览器进程树 CPU。
  *
- *   node tests/shots/perf/bench-a.mjs [--runs 2] [--out <目录>] [--only idle,scroll-up,…] [--trace <项名>]
+ *   node tests/shots/perf/bench-a.mjs [--runs 2] [--out <目录>] [--only idle,scroll-up,…] [--trace <项名>] [--main <主窗口页地址的查询串>]
  *
  * 环境同 `bench.mjs`（生产构建 ＋ 页里假后端 ＋ 无头 Chromium，HOME 隔离进 `.build/perf-a-sandbox/`；不起后端、不起 claude、不碰 tmux）。
  * 世界：`world.ts::perfMainWorld`（二十四个 tab，四条几千条记录；几条在等你；最长那条带十二个子 agent 与三十条任务）。
@@ -33,6 +33,9 @@ export const MAIN = ["idle", "away-idle", "scroll-up", "scroll-down", "stream-ac
 export const VIEWER = ["viewer-idle", "viewer-away-idle", "viewer-scroll", "viewer-find"];
 const only = args.only ? new Set(String(args.only).split(",")) : null;
 const LONGEST = "5e550100-0000-4000-8000-000000000100";
+// `--main <页地址的查询串>`：主窗口那一页开哪个场景（缺 ⇒ perf-main）。30 万行那一形：
+//   --main 'scene=perf-huge&turns=20860&big=990' --only huge-grow-scroll
+const MAIN_URL = `index.html?${args.main ?? "scene=perf-main"}`;
 
 const children = [];
 const cleanup = () => {
@@ -140,7 +143,7 @@ async function runAll(page, names, run, where) {
 
 if (args.eval) {
   // 调试：开一页（`--page main|viewer|agent`），求一段表达式（可 await）
-  const url = { main: "index.html?scene=perf-main", viewer: `viewer.html?scene=perf-viewer&viewer=${LONGEST}`, agent: `viewer.html?scene=perf-agent&viewer=${LONGEST}&run=agent-p0` }[args.page ?? "main"];
+  const url = { main: MAIN_URL, viewer: `viewer.html?scene=perf-viewer&viewer=${LONGEST}`, agent: `viewer.html?scene=perf-agent&viewer=${LONGEST}&run=agent-p0` }[args.page ?? "main"];
   const { page } = await open(url).catch(async (e) => ({ page: null, e: console.log(String(e)) }));
   if (page) {
     console.log(JSON.stringify(await page.eval(`(async () => { ${args.eval} })()`), null, 1));
@@ -153,7 +156,7 @@ for (let run = 0; run < runs; run++) {
   const extra = only ? [...only].filter((n) => !MAIN.includes(n) && !VIEWER.includes(n) && !n.startsWith("viewer-")) : [];
   const vextra = only ? [...only].filter((n) => !VIEWER.includes(n) && n.startsWith("viewer-")) : [];
   if (!only || MAIN.some((n) => only.has(n)) || extra.length) {
-    const { page, openMs } = await open("index.html?scene=perf-main");
+    const { page, openMs } = await open(MAIN_URL);
     console.log(`主窗口开好 ${openMs} ms`);
     await runAll(page, [...MAIN, ...extra], run, "main");
     await page.close();
@@ -362,7 +365,7 @@ function parseArgs(argv) {
     const a = argv[i];
     if (!a.startsWith("--")) continue;
     const k = a.slice(2);
-    if (["runs", "out", "only", "trace", "merge", "port", "eval", "page", "css"].includes(k)) o[k] = argv[++i];
+    if (["runs", "out", "only", "trace", "merge", "port", "eval", "page", "css", "main"].includes(k)) o[k] = argv[++i];
     else o[k] = true;
   }
   return o;

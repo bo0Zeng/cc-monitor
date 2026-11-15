@@ -86,16 +86,28 @@ impl Relay {
     }
 }
 
-/// cc-bus 自动收信的两条钩子。
+/// 一家的 cc-bus 自动收信钩子（`hooks-diag` 那一家的那一份）。
 pub(crate) struct Hooks {
-    /// 这台装了 cc-bus（两个脚本都在）。
+    /// 那一家（注册表 `kind`；待办的 id 带它）。
+    pub kind: String,
+    /// 这台装了 cc-bus（入口在）。
     pub ccbus: bool,
-    /// 两条钩子都在、指向的脚本都在。
+    /// 钩子在、指向的入口在。
     pub installed: bool,
     pub path: String,
     pub text: Option<String>,
     /// 要加的：每一项（键路径 · 那一项；路径照那一家的拼法，见 `assets::cc_bus_hooks::slots_of`），往那条路径上的数组末尾加。
     pub items: Vec<(Vec<String>, Value)>,
+    /// 那一家声明了信任 ⇒ 那一条的信任（不声明 ⇒ `None`）。
+    pub trust: Option<HookTrustTodo>,
+}
+
+/// 一条收信钩子的信任那一件：记在哪份 · 现在的内容 · 对没对上 · 记上之后的整份（那一家的 `merge` 并好的；并不出 ⇒ `None`）。
+pub(crate) struct HookTrustTodo {
+    pub path: String,
+    pub text: Option<String>,
+    pub trusted: bool,
+    pub whole: Option<String>,
 }
 
 /// 收齐的事实。
@@ -108,21 +120,27 @@ pub(crate) struct Facts {
     pub clashes: Vec<Clash>,
     pub dead: Vec<DeadLines>,
     pub relay: Vec<Relay>,
-    pub hooks: Option<Hooks>,
+    /// 声明了收信钩子的每一家各一份（这台跑不了 cc-bus ⇒ 空）。
+    pub hooks: Vec<Hooks>,
     /// 用户自己配的（全局 · 本项目 · 项目文件里的）、要登录的 MCP（`mcp-read` 那一份判定）。
     pub mcp_login: Vec<McpLogin>,
+    /// 各家账号 0 比别的号缺的那几格信任（信任同步不写账号 0，`trust_share_exec::zero_gaps`）。
+    pub zero_trust: Vec<crate::accounts::manage::trust_share_exec::ZeroGap>,
+    /// 清单里号目录不在账号库里的号（预标与同步信任都不写它，`trust_share_exec::outside_library`）。
+    pub outside_library: Vec<crate::accounts::manage::trust_share_exec::OutsideLibrary>,
     /// 这台 sshd 的配置关了端口转发的那一行（说不清 / 没装 sshd ⇒ `None`）。
     pub sshd: Option<sshd::ForwardingOff>,
     /// 点过「不用了」的那几件（`marks.rs`）。
     pub declined: Vec<String>,
 }
 
-/// 一个要登录的 MCP：名字 · 在哪几个号里（账号库里的名字；没设账号 ⇒ 空）· 登录那条命令。
+/// 一个要登录的 MCP：哪一家的 · 名字 · 在哪几个号里（账号库里的名字；没设账号 ⇒ 空）· 登录那一行。
 pub(crate) struct McpLogin {
+    pub kind: &'static str,
     pub name: String,
     pub who: Vec<String>,
-    /// 登录要敲的那条命令（那一家的，`agents::mcp_login_command`）。
-    pub command: &'static str,
+    /// 登录要敲的那一行（那一家的 argv 拼成的，`agents::mcp_login_argv_among`）。
+    pub command: String,
 }
 
 /// 一件的类（急的在前：声明次序就是排序次序）。角标只数前三类（要做 · 要装 · 待定）。
@@ -552,9 +570,9 @@ pub(crate) fn chores(f: &Facts) -> Vec<Chore> {
         }
         out.push(c);
     }
-    if let Some(h) = f.hooks.as_ref().filter(|_| !f.windows) {
+    for h in f.hooks.iter().filter(|_| !f.windows) {
         let mut c = Chore::new(
-            "cc-bus-hooks",
+            format!("cc-bus-hooks:{}", h.kind),
             ChoreKind::Optional,
             ChoreAction::CopySnippet,
         );
@@ -588,10 +606,30 @@ pub(crate) fn chores(f: &Facts) -> Vec<Chore> {
             }
         }
         out.push(c);
+        // 信任那一件：cc-bus 没装就不出（钩子那一件先决）；对上 ⇒ 已做；没对上 ⇒ 照那一家并好的整份出改法。
+        if let Some(t) = h.trust.as_ref().filter(|_| h.ccbus) {
+            let mut c = Chore::new(
+                format!("cc-bus-trust:{}", h.kind),
+                ChoreKind::Optional,
+                ChoreAction::CopySnippet,
+            );
+            c.name = copy_text("beChore.hookTrust.name", &[]);
+            c.loc = copy_text("beChore.hookTrust.loc", &[("path", &t.path)]);
+            c.why = copy_text("beChore.hookTrust.why", &[]);
+            c.said = copy_text("beChore.hookTrust.said", &[]);
+            c.file = Some(t.path.clone());
+            if t.trusted {
+                c.state = ChoreState::Done;
+            } else if let Some(whole) = &t.whole {
+                let p = patch::plan_of(t.text.as_deref().unwrap_or(""), whole.clone());
+                fill_plan(&mut c, &t.path, &p);
+            }
+            out.push(c);
+        }
     }
     for m in &f.mcp_login {
         let mut c = Chore::new(
-            format!("mcp-login:{}", m.name),
+            format!("mcp-login:{}:{}", m.kind, m.name),
             ChoreKind::Optional,
             ChoreAction::CopyCommand,
         );
@@ -599,27 +637,86 @@ pub(crate) fn chores(f: &Facts) -> Vec<Chore> {
         c.loc = m.who.join(&copy_text("plan.page.listSep", &[]));
         c.said = copy_text("beChore.mcpLogin.said", &[]);
         c.why = copy_text("beChore.mcpLogin.why", &[]);
-        c.steps = vec![copy_text("beChore.mcpLogin.step", &[("name", &m.name)])];
-        c.copy = Some(m.command.to_string());
+        c.steps = vec![copy_text("beChore.mcpLogin.run", &[("name", &m.name)])];
+        c.copy = Some(m.command.clone());
+        out.push(c);
+    }
+    // 账号 0 缺的信任：一家一件，改法照那一家的改法在账号 0 原文上标好算出 diff；整份不下发（那一份大、又常被那一家自己改写）。
+    for z in &f.zero_trust {
+        let mut c = Chore::new(
+            format!("zero-trust:{}", z.kind),
+            ChoreKind::Optional,
+            ChoreAction::CopySnippet,
+        );
+        let n = z.missing.len().to_string();
+        c.name = copy_text(
+            "beChore.zeroTrust.name",
+            &[("family", &z.family), ("n", &n)],
+        );
+        c.loc = copy_text("beChore.hookTrust.loc", &[("path", &z.path)]);
+        c.said = copy_text("beChore.zeroTrust.said", &[]);
+        c.why = copy_text("beChore.zeroTrust.why", &[]);
+        c.file = Some(z.path.clone());
+        let p = patch::plan_of(z.text.as_deref().unwrap_or(""), z.whole.clone());
+        fill_steps(&mut c, &z.path, &p);
+        out.push(c);
+    }
+    // 号目录在账号库外：cc-monitor 不写用户自己的配置，一个号一件，让人在清单里改回库里的目录。
+    for o in &f.outside_library {
+        let mut c = Chore::new(
+            format!("outside-library:{}", o.name),
+            ChoreKind::Optional,
+            ChoreAction::Locate,
+        );
+        c.name = copy_text("beChore.outsideLibrary.name", &[("name", &o.name)]);
+        c.loc = copy_text(
+            "beChore.outsideLibrary.loc",
+            &[("manifest", &o.manifest), ("name", &o.name)],
+        );
+        c.said = copy_text("beChore.outsideLibrary.said", &[]);
+        // 旧的就地号（号目录就是那一家的默认共享库）单列那一句：不自动迁。
+        c.why = if o.in_place {
+            copy_text(
+                "beChore.outsideLibrary.inPlace",
+                &[("path", &o.dir), ("accts", &o.accts)],
+            )
+        } else {
+            copy_text(
+                "beChore.outsideLibrary.why",
+                &[("path", &o.dir), ("accts", &o.accts)],
+            )
+        };
+        c.steps = vec![
+            copy_text("beChore.step.open", &[("path", &o.manifest)]),
+            copy_text(
+                "beChore.outsideLibrary.step",
+                &[("name", &o.name), ("accts", &o.accts)],
+            ),
+        ];
+        c.copy = Some(o.manifest.clone());
+        c.file = Some(o.manifest.clone());
         out.push(c);
     }
     // 同一份文件里有两件都没做 ⇒ 各自的「整份」都给含两件的那一份（按现在的内容先合一件、再合另一件）。
-    //   能落在同一份文件里的只有「实时显示」某一家 ＋ 收信那两件（收信那一件排在最后）。
-    if let Some(((b, _), rest)) = same_file.split_last() {
-        let b = *b;
-        if let Some(a) = rest
-            .iter()
-            .map(|(a, _)| *a)
-            .find(|a| out[*a].file == out[b].file)
-        {
-            let both = merge_both(f);
-            if let Some(both) = both {
-                let covers = vec![out[a].id.clone(), out[b].id.clone()];
-                for k in [a, b] {
-                    out[k].whole = Some(both.clone());
-                    out[k].whole_covers = covers.clone();
-                }
-            }
+    //   能落在同一份文件里的只有「实时显示」某一家 ＋ 同一份里那一家的收信钩子（实时显示那几件排在前）。
+    let pairs: Vec<(usize, usize)> = same_file
+        .iter()
+        .enumerate()
+        .filter_map(|(i, (a, _))| {
+            same_file[i + 1..]
+                .iter()
+                .find(|(b, _)| out[*b].file == out[*a].file)
+                .map(|(b, _)| (*a, *b))
+        })
+        .collect();
+    for (a, b) in pairs {
+        let Some(both) = out[a].file.as_deref().and_then(|file| merge_both(f, file)) else {
+            continue;
+        };
+        let covers = vec![out[a].id.clone(), out[b].id.clone()];
+        for k in [a, b] {
+            out[k].whole = Some(both.clone());
+            out[k].whole_covers = covers.clone();
         }
     }
     for c in out.iter_mut() {
@@ -642,10 +739,10 @@ fn push_at(text: &str, path: &[String], item: &Value) -> Option<String> {
     patch::push_item(text, &path, item).map(|p| p.whole)
 }
 
-/// 实时显示与收信落在同一份文件：先合实时显示、再在合好的那份上加两条钩子。
-fn merge_both(f: &Facts) -> Option<String> {
-    let h = f.hooks.as_ref()?;
-    let r = f.relay.iter().find(|r| r.path == h.path)?;
+/// 实时显示与收信落在同一份文件 `file`：先合那一份的实时显示、再在合好的那份上加那一家的收信钩子。
+fn merge_both(f: &Facts, file: &str) -> Option<String> {
+    let r = f.relay.iter().find(|r| r.path == file)?;
+    let h = f.hooks.iter().find(|h| h.path == file)?;
     let mut text = r.plan(r.url.as_ref()?)?.whole;
     for (path, item) in &h.items {
         text = push_at(&text, path, item)?;
@@ -653,8 +750,15 @@ fn merge_both(f: &Facts) -> Option<String> {
     Some(text)
 }
 
-/// 一份改法填进那一件：怎么做的几步 · diff · 要复制的那几行 · 整份。
+/// 一份改法填进那一件：[`fill_steps`] 那几样 ＋ 整份。
 fn fill_plan(c: &mut Chore, path: &str, p: &Plan) {
+    fill_steps(c, path, p);
+    c.whole = Some(p.whole.clone());
+    c.whole_covers = vec![c.id.clone()];
+}
+
+/// 一份改法填进那一件：怎么做的几步 · diff · 要复制的那几行（整份不填）。
+fn fill_steps(c: &mut Chore, path: &str, p: &Plan) {
     let added: Vec<&str> = p
         .diff
         .iter()
@@ -690,8 +794,6 @@ fn fill_plan(c: &mut Chore, path: &str, p: &Plan) {
     });
     c.diff = Some(diff_of(rows.collect(), p.notice.clone()));
     c.copy = Some(added.join("\n"));
-    c.whole = Some(p.whole.clone());
-    c.whole_covers = vec![c.id.clone()];
 }
 
 /// 一行里每一条插好钥匙的我们那一形地址（`relay_route_core::split_keyed_base_url` 认得的），钥匙段换成 `…`；其余逐字不变。

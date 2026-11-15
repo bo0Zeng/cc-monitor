@@ -74,7 +74,6 @@ fn only_the_right_of_the_last_end_is_ccm_and_nothing_is_intercepted_without_it()
         flag::CCM_HELP,
         flag::CCM_VERSION,
         flag::CCM_PROBE,
-        flag::CCM_SID,
         flag::NEW, //
     ]
     .iter()
@@ -148,15 +147,15 @@ fn route_asks_the_entry_whether_a_word_belongs_to_the_backend() {
     );
 }
 
-/// `ccm -- --host-run <句柄> -- <命令>` 落在 ccm 那一侧（不进后端的一次性查询面），由它在起会话那一套之前接走；
-/// 不紧跟打头的 `--` 不算。
+/// `ccm -- --host-run <句柄> -- <命令>` 落在 ccm 那一侧（不进后端的一次性查询面），由二进制入口照 `host_run_args`
+/// 分岔给托管进程那一形（`host::managed::run::process`）；不紧跟打头的 `--` 不算。
 #[test]
 fn the_host_run_word_routes_to_the_hosted_terminal_not_the_query_face() {
     let a: Vec<String> = ["--", "--host-run", "h1", "--", "sh"]
         .iter()
         .map(|s| s.to_string())
         .collect();
-    // 不进后端的一次性查询面（那一面只认子命令闸门 `stream::cli::is_subcommand`），落在 ccm 那一侧、由它在起会话那一套之前接走。
+    // 不进后端的一次性查询面（那一面只认子命令闸门 `stream::cli::is_subcommand`），落在 ccm 那一侧。
     assert_eq!(
         crate::control::ccm::route("ccm", &a, crate::stream::entry::is_backend_word),
         crate::control::ccm::Entry::Ccm(a.clone())

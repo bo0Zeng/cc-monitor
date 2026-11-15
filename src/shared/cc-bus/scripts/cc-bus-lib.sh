@@ -17,22 +17,22 @@ ccbus_ccm_bin() {
   return 1
 }
 
-# ccbus_ask <动词> <JSON 入参> —— 交给后端 `--bus-<动词>`,成了 ⇒ 回包放进 `CCBUS_OUT`、返回 0。
+# ccbus_ask <命令> <JSON 入参> —— 交给后端 `--<命令>`(完整命令名:`bus-send` · `session-self` …),成了 ⇒ 回包放进 `CCBUS_OUT`、返回 0。
 # 不成 ⇒ 后端那一句 ＋ 原话印到 stderr,码放进 `CCBUS_CODE`(找不到后端 ⇒ `no_backend`),返回非 0。
 # 在当前 shell 里调(别包进 `$( )`:那两格是给调用方读的变量)。
 CCBUS_CODE=""
 CCBUS_OUT=""
 ccbus_ask() {
-  local verb="$1" req="$2" ccm errf out rc
+  local cmd="$1" req="$2" ccm errf out rc
   CCBUS_CODE=""
   CCBUS_OUT=""
   ccm=$(ccbus_ccm_bin) || {
     CCBUS_CODE=no_backend
-    echo "cc-bus $verb: no cc-monitor backend (~/.cc-monitor/bin/ccm) — nothing done" >&2
+    echo "cc-bus ${cmd#bus-}: no cc-monitor backend (~/.cc-monitor/bin/ccm) — nothing done" >&2
     return 1
   }
   errf=$(mktemp) || return 1
-  out=$(printf '%s' "$req" | "$ccm" -- "--bus-$verb" --within-ms 10000 2>"$errf"); rc=$?
+  out=$(printf '%s' "$req" | "$ccm" -- "--$cmd" --within-ms 10000 2>"$errf"); rc=$?
   if [ "$rc" -ne 0 ]; then
     CCBUS_CODE=$(jq -r '.code // ""' <"$errf" 2>/dev/null || true)
     jq -r '.said + (if (.detail // "") != "" then "\n" + .detail else "" end)' <"$errf" >&2 2>/dev/null || cat "$errf" >&2

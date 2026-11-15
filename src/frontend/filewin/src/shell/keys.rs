@@ -27,11 +27,6 @@ impl FileWindow {
         !self.focused || self.modal_up() || self.menu.is_some() || ctx.egui_wants_keyboard_input()
     }
 
-    /// 在列表上方说一句（键盘那一路同一个出口：下一次按键就清）。
-    pub fn set_key_notice(&mut self, n: String) {
-        self.key_notice = Some(n);
-    }
-
     pub fn keys_blocked(&self, ctx: &egui::Context) -> bool {
         !self.focused
             || self.modal_up()
@@ -149,51 +144,45 @@ impl FileWindow {
         target.is_some()
     }
 
-    /// 回车：选中的**恰好一项** ⇒ 目录进去、文件编辑。
-    ///
-    /// ⚠ 文件那一支**直接**走 [`Self::begin_edit`]，不先问 [`select::actions_for`]：
-    /// 那张表对「超编辑上限」只会说「没有编辑这一项」，而 `begin_edit` 会说**为什么**
-    /// （多了多少字节）—— 两者判的是同一个函数（`editor::is_editable` 就是
-    /// `why_not_editable` 的 `is_none()`），所以准不准一致，只是这一支说得更具体。
+    /// 回车：选中的**恰好一项** ⇒ 目录进去、看得了的图查看、别的文件编辑；不是恰好一项 ⇒ 「打开」那一件。
+    /// 做不做得了、做不了说什么都照成品 `acts` 里那一件（[`Self::perform`]；超编辑上限那一句是后端照编辑门写的）。
     pub(super) fn open_picked(&mut self, ctx: Option<egui::Context>) -> bool {
-        let one = {
+        let a = {
             let rows = self.listing.rows.lock().unwrap();
             match self.selection.picked_indices(&rows).as_slice() {
-                [i] => Some((*i, rows[*i].opens_as_dir())),
-                _ => None,
+                [i] if rows[*i].opens_as_dir() => Action::Open,
+                [i] if crate::imgview::viewable(&rows[*i]) => Action::View,
+                [_] => Action::Edit,
+                _ => Action::Open,
             }
         };
-        match one {
-            Some((_, true)) => self.perform(Action::Open, ctx),
-            Some((i, false)) => self.open_file(i, ctx),
-            None => {
-                self.key_notice = Some(select::refusal(Action::Open, self.selection.len()));
-                false
-            }
-        }
+        self.perform(a, ctx)
     }
 
     /// 🔴 **对选中那几项做一件事 —— 菜单与键盘的唯一执行口。**
     ///
-    /// 先**再问一次** [`select::actions_for`]（菜单是开菜单那一刻的快照，键盘压根没问过）：
-    /// 不在表里 ⇒ 出声、不做。在表里 ⇒ 落回行上那几颗按钮**已经在走**的那几个 `begin_*`
-    /// —— 一条新写路都没长（一次问完 · 只经通道说 `call` 全在那几个函数后面）。
+    /// 先读此刻这份选中的成品（本机后端 `files-menu` 答的 `acts`）里那一件：做不了 ⇒ 说它写好的那一句、不做；
+    /// 成品还没回来 ⇒ 记下这一键（只记最后一键），回来了照成品做或说为什么，回来之前选中又变了 ⇒ 作废
+    /// （[`Self::settle_key`]）。做得了 ⇒ 落回行上那几颗按钮**已经在走**的那几个 `begin_*`。
     pub fn perform(&mut self, a: Action, ctx: Option<egui::Context>) -> bool {
-        let (idx, allowed) = {
+        self.ask_menu(ctx.clone());
+        self.key_wait = None;
+        match self.act_why(a) {
+            Err(()) => {
+                let asked = self.menu_now.lock().unwrap().asked.clone();
+                self.key_wait = asked.map(|req| (a, req));
+                return false;
+            }
+            Ok(Some(why)) => {
+                self.key_notice = Some(why);
+                return false;
+            }
+            Ok(None) => {}
+        }
+        let idx = {
             let rows = self.listing.rows.lock().unwrap();
-            let idx = self.selection.picked_indices(&rows);
-            let picked: Vec<&crate::source::Listed> = idx.iter().map(|&i| &rows[i]).collect();
-            let allowed = select::actions_for(&picked);
-            (idx, allowed)
+            self.selection.picked_indices(&rows)
         };
-        if !allowed.contains(&a) {
-            self.key_notice = Some(select::refusal(a, idx.len()));
-            return false;
-        }
-        if let Some(why) = self.refused_here(a) {
-            self.key_notice = Some(why);
-            return false;
-        }
         match (a, idx.as_slice()) {
             (Action::Delete, _) => self.delete_picked(&idx, ctx),
             (Action::Open, [i]) => self.activate(*i),
@@ -201,7 +190,7 @@ impl FileWindow {
             (Action::View, [i]) => self.begin_view(*i),
             (Action::Copy, [i]) => self.begin_copy(*i),
             (Action::Download, [i]) => self.begin_pull(*i),
-            // 多项：选一个本机目录，一组一条 `transfer-download`。
+            // 多项：选一个本机目录，一组一条寻址本机的 `transfer-copy`。
             (Action::Download, _) => self.begin_pull_many(&idx),
             // 两栏的事归窗口那一级（`Workspace::copy_to_other`）。
             (Action::Across, _) => {
@@ -218,10 +207,12 @@ impl FileWindow {
             // 一项或多项：同一个框（多项时框上说件数）。
             (Action::Chmod, _) => self.begin_chmod_rows(&idx),
             (Action::Properties, [i]) => self.begin_props(*i, ctx),
-            // `actions_for` 只对恰好一项给出单项动作 ⇒ 这一支走不到；
-            // 真走到了也**出声**，不静默。
+            // 成品只对恰好一项放行单项动作 ⇒ 这一支走不到；真走到了也**出声**，不静默。
             _ => {
-                self.key_notice = Some(select::refusal(a, idx.len()));
+                self.key_notice = Some(copy_text(
+                    "rsFilewinSelect.refusal.cannot",
+                    &[("label", &self.act_text(a))],
+                ));
                 false
             }
         }
@@ -236,7 +227,7 @@ impl FileWindow {
         let mut ops = Vec::with_capacity(idx.len());
         for &i in idx {
             let Some(row) = self.writable_row(i) else {
-                self.key_notice = Some(select::refusal(Action::Delete, idx.len()));
+                self.key_notice = Some(copy_text("rsFilewinSelect.refusal.deleteBadNames", &[]));
                 return false;
             };
             self.describe_for_delete(&row);
@@ -318,10 +309,10 @@ impl FileWindow {
         true
     }
 
-    /// 🔴 **胶水**：列表说「第 `i` 行被右键点了」→ 选中态按右键的手感变 → 摆出菜单；
-    /// 说「空白处被右键点了」→ 清掉选中 → 摆出对这个目录的菜单（新建 · 上传 · 终端）。
+    /// 🔴 **胶水**：列表说「第 `i` 行被右键点了」→ 选中态按右键的手感变 → 问本机后端要这一份选中的菜单成品、到了就摆；
+    /// 说「空白处被右键点了」→ 清掉选中 → 同上（成品是对这个目录的那几项：新建 · 上传 · 终端）。
     ///
-    /// `at` = 菜单摆在哪儿（指针那一刻的位置；判据直接喂）。
+    /// `at` = 菜单摆在哪儿（指针那一刻的位置；判据直接喂）。成品已在手上 ⇒ 这一下就摆（[`Self::settle_menu`]）。
     pub fn apply_menu_click(&mut self, at: egui::Pos2) -> bool {
         let row = self.tally.menu_clicked;
         if row.is_none() && !self.tally.menu_blank {
@@ -330,56 +321,26 @@ impl FileWindow {
         if self.modal_up() {
             return false;
         }
-        let (kind, why, actions, n) = {
+        {
             let rows = self.listing.rows.lock().unwrap();
             match row {
                 Some(i) => self.selection.pick_for_menu(&rows, i),
                 None => self.selection.clear_picked(),
             }
-            let idx = self.selection.picked_indices(&rows);
-            let picked: Vec<&crate::source::Listed> = idx.iter().map(|&i| &rows[i]).collect();
-            let kind = select::picked_kind(&picked);
-            // 表里有、这一份做不了的那几件 ⇒ 那一句（菜单上灰着说）。
-            let why: Vec<(Action, String)> = select::menu_groups(kind, false)
-                .into_iter()
-                .flatten()
-                .filter_map(|it| match it {
-                    Item::Act(a) => select::blocked(a, &picked).map(|w| (a, w)),
-                    _ => None,
-                })
-                .collect();
-            (kind, why, select::actions_for(&picked), idx.len())
-        };
+        }
         self.key_notice = None;
-        // 归属问到了、单选的那一份归某一格 ⇒ 表里「带计划」那一组。
-        let plan = self
-            .picked_owner()
-            .map(|(_, o)| crate::plan::menu_label(&o));
-        let dual = self.dual;
-        let groups = select::menu_groups(kind, plan.is_some())
-            .into_iter()
-            .map(|g| {
-                g.into_iter()
-                    // 「复制到另一栏」只在两栏时有。
-                    .filter(|it| dual || *it != Item::Act(Action::Across))
-                    .map(|it| {
-                        let w = why
-                            .iter()
-                            .find(|(a, _)| it == Item::Act(*a))
-                            .map(|(_, w)| w.clone());
-                        (it, w)
-                    })
-                    .collect()
-            })
-            .collect();
-        self.menu = Some(MenuAt {
-            at,
-            groups,
-            actions,
-            n,
-            plan,
-            serial: MENU_SERIAL.fetch_add(1, Ordering::SeqCst) + 1,
-        });
+        self.menu = None;
+        // 上一趟没问成 ⇒ 这一下再问一次（不拿那一句搪塞这一次右键）。
+        {
+            let mut now = self.menu_now.lock().unwrap();
+            if now.failure().is_some() {
+                now.asked = None;
+                now.failed = None;
+                self.menu_seen = None;
+            }
+        }
+        self.menu_wait = Some((at, MENU_SERIAL.fetch_add(1, Ordering::SeqCst) + 1));
+        self.settle_menu(None);
         true
     }
 
@@ -388,24 +349,10 @@ impl FileWindow {
         egui::Id::new(("filewin-row-menu", serial))
     }
 
-    /// 菜单上的一项此刻做不了的那一句：这一份做不了（开菜单时算好的）· 这台做不到 · 断着线。
-    pub(super) fn item_refusal(&self, it: Item, row_why: &Option<String>) -> Option<String> {
-        use crate::chrome::Cmd;
-        if row_why.is_some() {
-            return row_why.clone();
-        }
-        match it {
-            Item::Act(a) => self.refused_here(a),
-            Item::InPlan | Item::SelectAll => None,
-            Item::Mkdir => self.offline_cmd(Cmd::Mkdir),
-            Item::NewFile => self.offline_cmd(Cmd::NewFile),
-            Item::Upload => self.offline_cmd(Cmd::Upload),
-            Item::Term => self.offline_cmd(Cmd::Term),
-        }
-    }
-
     /// 画右键菜单（经 kit 那一种菜单项）；点了哪一项就交出去。点别处 / Esc ⇒ 收掉。
     pub(super) fn menu_ui(&mut self, ui: &mut egui::Ui) {
+        // 每一帧先问一遍此刻这份选中的成品，等着的那个菜单成品到了就摆。
+        self.settle_menu(Some(ui.ctx().clone()));
         let Some(m) = self.menu.clone() else {
             return;
         };
@@ -415,24 +362,26 @@ impl FileWindow {
             .iter()
             .map(|g| {
                 g.iter()
-                    .map(|(it, why)| {
-                        crate::kit::MenuRow::new(it.icon(), it.label(m.n, m.plan.as_deref()))
-                            .key(it.shortcut().map(|k| ctx.format_shortcut(&k)))
-                            .danger(it.danger())
-                            .blocked(self.item_refusal(*it, why))
+                    .map(|e| {
+                        crate::kit::MenuRow::new(e.item.icon(), e.text.clone())
+                            .key(e.item.shortcut().map(|k| ctx.format_shortcut(&k)))
+                            .danger(e.item.danger())
+                            .blocked(e.why.clone())
                     })
                     .collect()
             })
             .collect();
         let (mut entries, at) = crate::kit::grouped(rows);
         if entries.is_empty() {
-            entries.push(crate::kit::Entry::Note(MENU_EMPTY.to_string()));
+            entries.push(crate::kit::Entry::Note(
+                m.note.clone().unwrap_or_else(|| MENU_EMPTY.to_string()),
+            ));
         }
         let mut open = true;
         let hit = crate::kit::context_menu(ui, Self::menu_id(m.serial), m.at, &mut open, &entries)
             .and_then(|k| at.get(k).copied())
             .and_then(|(g, i)| m.groups.get(g).and_then(|g| g.get(i)))
-            .map(|(it, _)| *it);
+            .map(|e| e.item);
         if hit.is_some() || !open {
             self.menu = None;
         }

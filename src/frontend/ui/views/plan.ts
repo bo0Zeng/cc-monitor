@@ -37,13 +37,12 @@ import type { Tab } from "../tab-model";
 import { ackNeed, adoptRepo, fetchPlanList, fetchPlanNew, fetchPlanRead, planCommand, registerRepo, type PlanBlock, type PlanCell, type PlanNeed, type PlanList, type PlanRead, type PlanSlice, type PlanWho } from "../plan-reads";
 import type { PlanMoved } from "../changed-stream";
 import {
-  blockRoots,
   cellIndex,
   isFresh,
   kindSlot,
   labelOf,
   outlineRows,
-  shortId,
+  rootBlock,
   ringLanes,
   ringRules,
   topBlock,
@@ -51,7 +50,7 @@ import {
   type RingRow,
 } from "./plan-model";
 import { CellDetail, handoffBox, takeoverCell, takeoverSpec, unbuiltTakeoverCell } from "./plan-cell";
-import { cellTarget, needBar, openNeeds, openReturn, returnedBar, type ReviewHost } from "./plan-review";
+import { cellTarget, needBar, openReturn, returnedBar, type ReviewHost } from "./plan-review";
 import type { PlanNeedsBook } from "../plan-needs";
 import { planCellIn, type PlanNeedItem } from "../needs-book";
 import { freshPane, phaseBadge, setKindColor, STATUS_ICON } from "./plan-bits";
@@ -61,19 +60,24 @@ import { openNewSession } from "../new-session";
 import { openPlanAsk } from "../plan-ask";
 import { openSettingsWindow } from "../open-settings";
 import { pbDirOf } from "../settings-dest";
+import { readPrefs, setPrefs } from "../machine-prefs";
 import s from "./plan.module.css";
 
-/** 记在本机的界面偏好（不是数据）。 */
+/** 记在本机的界面偏好（不是数据；手加的工作区目录住那台后端的偏好 `planDirs`）。 */
 interface Prefs {
   /** 上次看的那一片：`机器 \u0000 工作区 \u0000 片名`。 */
   last?: string;
-  /** 手加的工作区目录（每台一份；`""` ＝ 本机）。 */
-  dirs: Record<string, string[]>;
 }
 
 function loadPrefs(): Prefs {
   const v = safeGetJson<Partial<Prefs>>(LS_KEYS.planPrefs) ?? {};
-  return { last: typeof v.last === "string" ? v.last : undefined, dirs: v.dirs && typeof v.dirs === "object" ? v.dirs : {} };
+  return { last: typeof v.last === "string" ? v.last : undefined };
+}
+
+/** 把一个目录记进那台的手加目录（那台偏好 `planDirs`，整节换掉 ⇒ 先读再接在后面）；已记着 ⇒ 不写。 */
+async function addPlanDir(origin: Machine, dir: string): Promise<void> {
+  const have = (await readPrefs(origin)).prefs.planDirs;
+  if (!have.includes(dir)) await setPrefs(origin, { planDirs: [...have, dir] });
 }
 
 /** 一台此刻的样子。 */
@@ -179,10 +183,7 @@ export class PlanView {
       origin: () => this.current?.origin ?? LOCAL,
       workspace: () => this.current?.workspace ?? "",
       who: (w) => this.whoChip(w),
-      sessionName: (w) => {
-        const tab = w?.sid ? this.tabOf(w.sid) : null;
-        return tab ? tab.title : w ? shortId(w.id) : "";
-      },
+      sessionName: (w) => w?.label ?? "",
       switchTo: (sid) => this.goSession(sid),
       resume: (anchor, sid) => this.resume(anchor, sid),
       ack: (need) => void this.ack(need),
@@ -303,8 +304,7 @@ export class PlanView {
       const was = this.per.get(m);
       const prev = was?.state === "ok" ? was.list : (was?.prev ?? null);
       this.per.set(m, { state: "loading", prev });
-      const dirs = this.prefs.dirs[isRemoteOrigin(m) ? m : ""] ?? [];
-      fetchPlanList(m, fresh, dirs).then(
+      fetchPlanList(m, fresh).then(
         (list) => {
           if (seq !== this.seq && only === undefined) return;
           this.per.set(m, { state: "ok", list, at: Date.now() });
@@ -430,7 +430,7 @@ export class PlanView {
   private nextNeed(): void {
     const slice = this.currentSlice();
     if (!slice) return;
-    const all = openNeeds(slice);
+    const all = slice.needs;
     if (all.length === 0) return;
     const i = all.findIndex((n) => this.needHere(slice, n));
     const n = all[(i + 1) % all.length];
@@ -467,7 +467,7 @@ export class PlanView {
           ),
       },
     });
-    const rest = openNeeds(slice).filter((n) => n.key !== need.key);
+    const rest = slice.needs.filter((n) => n.key !== need.key);
     const n = rest[0];
     this.selected = n && n.cell !== null && cellIndex(slice).has(n.cell) ? n.cell : null;
     this.read(cur.origin, cur.workspace);
@@ -475,7 +475,7 @@ export class PlanView {
 
   /** 此刻这一页顶上那几条：需手动（这一页的）· 退回过的那一格。 */
   private reviewBars(slice: PlanSlice, cell: PlanCell | undefined): HTMLElement[] {
-    const all = openNeeds(slice);
+    const all = slice.needs;
     const out: HTMLElement[] = [];
     all.forEach((n, i) => {
       if (this.needHere(slice, n)) out.push(needBar(this.review, slice, n, { i, n: all.length }));
@@ -657,16 +657,17 @@ export class PlanView {
         ask: (o, dir2, path, domain) => fetchPlanNew(o, dir2, path, domain),
         create: (o, dir2, path, domain) => registerRepo(o, dir2, path, domain),
         done: (o, root, slice, said) => {
-          // 新的工作区记进这台手加的目录（下次开页 `plan-list` 也问它），重问那台、选中那一片。
-          const key = isRemoteOrigin(o) ? o : "";
-          const list = (this.prefs.dirs[key] ??= []);
-          if (!this.dirsOf(o).known.includes(root) && !list.includes(root)) list.push(root);
+          // 新的工作区记进那台手加的目录（那台偏好；下次开页 `plan-list` 也问它），重问那台、选中那一片。
+          const known = this.dirsOf(o).known.includes(root);
           this.current = { origin: o, workspace: root, name: slice };
           this.prefs.last = refKey(this.current);
           this.savePrefs();
           this.selected = null;
           toast(said, "", { level: "success" });
-          this.refresh(true, o);
+          void (known ? Promise.resolve() : addPlanDir(o, root)).then(
+            () => this.refresh(true, o),
+            (e: unknown) => failToast(copyText("detail.act.failed"), e),
+          );
         },
       },
       { origin, dir },
@@ -858,6 +859,17 @@ export class PlanView {
   }
 
   private renderBody(): void {
+    const tree = document.createElement("div");
+    tree.className = s.pvTree;
+    const pane = document.createElement("div");
+    pane.className = `${s.pvPane} plan-pane`;
+    // 清单还没回来 ⇒ 骨架照大纲那一栏的位子画（整页那一格居中，会把骨架挤成零宽）。
+    if (this.listLoading()) {
+      this.bodyEl.className = s.pvBody;
+      tree.appendChild(skeletonRows(8));
+      morph(this.bodyEl, [tree, pane]);
+      return;
+    }
     const whole = this.wholeState();
     if (whole) {
       this.bodyEl.className = s.pvWhole;
@@ -868,10 +880,6 @@ export class PlanView {
     const slice = this.currentSlice();
     const stale = !!this.currentDoc()?.stale || !!slice?.stale || this.per.get(this.current!.origin)?.state === "failed";
     this.bodyEl.dataset.stale = String(stale);
-    const tree = document.createElement("div");
-    tree.className = s.pvTree;
-    const pane = document.createElement("div");
-    pane.className = `${s.pvPane} plan-pane`;
     if (!slice) {
       // 读不成、手上又没有上一份 ⇒ 写后端那一句 ＋［重试］（不一直转）；还在读 ⇒ 骨架。
       const said = unreadSaid(this.currentRead());
@@ -908,26 +916,33 @@ export class PlanView {
     morph(this.bodyEl, [tree, pane]);
   }
 
-  /** 整页一句的几种：首次加载 · pb 没装 / 太旧 · 没有计划。`null` ＝ 有片可画。 */
+  /** 首次加载：一片都还没有、要看的那一片也没在读，有一台清单还没回来。 */
+  private listLoading(): boolean {
+    if (this.allSlices().length > 0 || (this.currentRead() && this.current)) return false;
+    return this.machines.some((m) => {
+      const st = this.per.get(m);
+      return st === undefined || st.state === "loading";
+    });
+  }
+
+  /** 整页一句的几种：pb 没装 / 太旧 · 没有计划。`null` ＝ 有片可画（首次加载归 [`listLoading`]）。 */
   private wholeState(): HTMLElement | null {
     const any = this.allSlices().length > 0;
     // 清单还没回来、要看的那一片已经在读（或读完了）⇒ 照那一份画，不等清单。
     if ((any || this.currentRead()) && this.current) return null;
-    const states = this.machines.map((m) => this.per.get(m));
-    if (states.some((x) => x === undefined || x.state === "loading") && !any) {
-      const box = document.createElement("div");
-      box.appendChild(skeletonRows(6));
-      return box;
-    }
-    const local = this.per.get(LOCAL);
-    if (local?.state === "ok" && local.list.pb.state !== "ok") {
-      const [head, ...rest] = (local.list.pb.said ?? "").split("\n");
-      // 找不到 pb ⇒ 去本机设置里填 pb 路径那一行。
+    // 哪台答了 pb 不在 / 太旧（照机器先后第一台）⇒ 照那台写的那一句；找不到 pb ⇒ 去那台的设置里填 pb 路径那一行。
+    const noPb = this.machines.find((m) => {
+      const st = this.per.get(m);
+      return st?.state === "ok" && st.list.pb.state !== "ok";
+    });
+    const pbSt = noPb !== undefined ? this.per.get(noPb) : undefined;
+    if (noPb !== undefined && pbSt?.state === "ok") {
+      const { said, hint } = pbSt.list.pb;
       const set: HTMLButtonElement | undefined =
-        local.list.pb.state === "missing"
-          ? button({ label: copyText("plan.empty.setPb"), kind: "ghost", onClick: () => void openSettingsWindow(set, pbDirOf(LOCAL)) })
+        pbSt.list.pb.state === "missing"
+          ? button({ label: copyText("plan.empty.setPb"), kind: "ghost", onClick: () => void openSettingsWindow(set, pbDirOf(noPb)) })
           : undefined;
-      return emptyState({ icon: "warning", text: head, hint: rest.join(copyText("kit.text.sep")) || undefined, action: set });
+      return emptyState({ icon: "warning", text: said ?? "", hint: hint ?? undefined, action: set });
     }
     const add = button({ label: copyText("plan.empty.add"), kind: "ghost", onClick: () => void this.addWorkspace() });
     return emptyState({ icon: "plan", text: copyText("plan.empty.text"), hint: copyText("plan.empty.hint"), action: add });
@@ -937,9 +952,12 @@ export class PlanView {
     const dir = await askText({ title: copyText("plan.addWs.title"), action: copyText("mobPlus.sheet.title"), label: copyText("gridMonitor.fact.dir") });
     const d = dir?.trim();
     if (!d) return;
-    const list = (this.prefs.dirs[""] ??= []);
-    if (!list.includes(d)) list.push(d);
-    this.savePrefs();
+    try {
+      await addPlanDir(LOCAL, d);
+    } catch (e) {
+      failToast(copyText("detail.act.failed"), e);
+      return;
+    }
     this.refresh(true, LOCAL);
   }
 
@@ -1169,7 +1187,6 @@ export class PlanView {
     // 顶层进度
     const sec2 = section(copyText("plan.overview.progress"));
     const tbl2 = table([copyText("plan.progress.cell"), copyText("backend.column.status"), copyText("plan.blocks.block")], []);
-    const roots = blockRoots(slice);
     for (const id of slice.top) {
       const c = byId.get(id);
       if (!c) continue;
@@ -1183,7 +1200,7 @@ export class PlanView {
       stw.className = s.pvStw;
       stw.dataset.look = c.look;
       stw.append(icon(STATUS_ICON[c.look], "compact"), document.createTextNode(c.end ?? ""));
-      const b = roots.get(c.id);
+      const b = rootBlock(slice, c);
       const tr = tbl2.row([name, stw, b?.owner ? this.whoChip(b.owner) : text("")]);
       clickRow(tr, () => this.select(c.id));
     }
@@ -1205,8 +1222,9 @@ export class PlanView {
     b.dataset.kind = w.kind;
     const txt = document.createElement("span");
     txt.className = s.pvOwnerText;
+    // 名字只照后端写好的 label（会话 ⇒ 标题 · 子 agent ⇒「{父会话} 的 agent」· 认不出那一句），不自己截 id。
+    txt.textContent = w.label;
     if (w.kind === "unknown" || w.sid === null) {
-      txt.textContent = w.label ?? "";
       b.appendChild(txt);
       b.addEventListener("click", (ev) => {
         ev.stopPropagation();
@@ -1217,9 +1235,6 @@ export class PlanView {
     const tab = this.tabOf(w.sid);
     const face = tab ? tab.face : w.face;
     b.appendChild(statusDot(face?.dot ?? null, face?.name ?? null, "compact"));
-    const name = tab ? tab.title : shortId(w.sid);
-    // 子 agent ⇒ 后端写好的「{父会话} 的 agent」照画；会话本身 ⇒ 标签页的名字。
-    txt.textContent = w.label ?? name;
     b.appendChild(txt);
     if (tab) {
       const mt = document.createElement("span");

@@ -246,15 +246,26 @@ export class KeybindingDispatcher {
     for (const a of ACTIONS) if (a.also && !this.chordToAction.has(a.also)) this.chordToAction.set(a.also, [a.id]);
   }
 
-  /** 此刻焦点在哪儿、这一键的作用范围放不放行（带修饰键的单键动作按「随时」算）。 */
+  /**
+   * 这一键实际按哪一档算：单键动作改成带 Ctrl / Alt / ⌘ 的键 ⇒ 随时；`session` 那一档改成不带的键 ⇒ 只在主区
+   * （不带修饰键的键在输入框里归输入框）。派发与键位总览都照它。
+   */
+  static effectiveScope(scope: Scope, chord: string | null): Scope {
+    const modified = chord !== null && chord.split("+").some((p) => p === "Ctrl" || p === "Alt" || p === "Meta");
+    if (scope === "bare" && modified) return "any";
+    if (scope === "session" && !modified) return "main";
+    return scope;
+  }
+
+  /** 此刻焦点在哪儿、这一键的作用范围放不放行（按 [`effectiveScope`] 那一档）。 */
   static scopeAllows(scope: Scope, chord: string, where: FocusWhere): boolean {
-    const modified = chord.split("+").some((p) => p === "Ctrl" || p === "Alt" || p === "Meta");
-    const s: Scope = scope === "bare" && modified ? "any" : scope;
-    switch (s) {
+    switch (KeybindingDispatcher.effectiveScope(scope, chord)) {
       case "any":
         return true;
       case "idle":
-        return where !== "input";
+        return where !== "input" && where !== "composer";
+      case "session":
+        return where === "main" || where === "composer";
       case "main":
         return where === "main";
       case "nav":
@@ -359,12 +370,15 @@ function typesText(el: HTMLElement): boolean {
   return false;
 }
 
-/** 焦点在哪一块：输入框 · 标签页栏 · 主区（消息流 · 会话头 · 没焦点）· 别处（抽屉 · 状态栏 · 浮层里的按钮 …）。 */
-export type FocusWhere = "input" | "tabs" | "main" | "other";
-const FOCUS_WHERES: readonly FocusWhere[] = ["input", "tabs", "main", "other"];
+/**
+ * 焦点在哪一块：会话的输入框（`[data-role="composer"]` 里会打字的那一格）· 别的会打字的地方 · 标签页栏 ·
+ * 主区（消息流 · 会话头 · 没焦点）· 别处（抽屉 · 状态栏 · 浮层里的按钮 …）。
+ */
+export type FocusWhere = "composer" | "input" | "tabs" | "main" | "other";
+const FOCUS_WHERES: readonly FocusWhere[] = ["composer", "input", "tabs", "main", "other"];
 
 export function focusWhere(): FocusWhere {
-  if (isEditableTarget()) return "input";
+  if (isEditableTarget()) return document.activeElement!.closest('[data-role="composer"]') ? "composer" : "input";
   const el = document.activeElement;
   if (!(el instanceof HTMLElement) || el === document.body || el === document.documentElement) return "main";
   if (el.closest("#tab-bar")) return "tabs";

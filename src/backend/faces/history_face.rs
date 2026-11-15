@@ -33,9 +33,9 @@ fn over_cap<T: serde::Serialize>(reply: &T) -> Option<String> {
     (size > LINES_CAP_BYTES.as_len()).then(|| too_large(size).said)
 }
 
-/// 这台的记录树根（生产只这一个值）。
-fn home() -> std::path::PathBuf {
-    crate::history::listing::agent_home()
+/// 这台各家的家（有本机布局的每一家，[`crate::agents::local_homes`]）。
+fn home() -> Vec<crate::agents::AgentHome> {
+    crate::agents::local_homes()
 }
 
 /// 按字节分页那几条的码：围栏外 ⇒ `refused`；一行比续读上限还长 ⇒ `oversized_line`；读不动 ⇒ `failed`。
@@ -88,10 +88,12 @@ impl crate::wire::typed::Handle for HistoryReadCmd {
 
 /// [`HistoryReadCmd`] 的本体，家目录是参数。
 pub(crate) fn read_at(
-    home: &Path,
+    home: impl crate::agents::IntoHomes,
     req: HistoryReadReq,
     tz: &crate::common::time::Tz,
 ) -> Result<HistoryRead, HistoryReadErr> {
+    let home_v = crate::agents::IntoHomes::into_homes(home);
+    let home: &[crate::agents::AgentHome] = &home_v;
     let lower = of_fail_with(HistoryReadErr::Failed);
     let fixed = jlen(&HistoryRead::<serde_json::Value> {
         rows: Vec::new(),
@@ -117,7 +119,7 @@ pub(crate) fn read_at(
 /// 源字节照一页一块读、同一个读法接着解（相邻的认不出那几条跨块照样并成一条）；一页最多扫 [`LINE_CAP_BYTES`] 源字节：
 /// 一行超长时一页本来就要续读到这么多，最坏的一页不比按源字节封顶时更重。
 fn read_rows(
-    home: &Path,
+    home: &[crate::agents::AgentHome],
     path: &str,
     offset: u64,
     until: Option<u64>,
@@ -254,10 +256,12 @@ impl crate::wire::typed::Handle for HistoryPageCmd {
 
 /// [`HistoryPageCmd`] 的本体，家目录是参数。
 pub(crate) fn page_at(
-    home: &Path,
+    home: impl crate::agents::IntoHomes,
     req: HistoryPageReq,
     tz: &crate::common::time::Tz,
 ) -> Result<HistoryPage, HistoryPageErr> {
+    let home_v = crate::agents::IntoHomes::into_homes(home);
+    let home: &[crate::agents::AgentHome] = &home_v;
     let lower = of_fail_with(HistoryPageErr::Failed);
     let offset = req.offset.unwrap_or(0);
     let (target, face) = record_face(home, &req.path).map_err(&lower)?;
@@ -321,10 +325,12 @@ impl crate::wire::typed::Handle for HistoryLinesCmd {
 
 /// [`HistoryLinesCmd`] 的本体，家目录是参数。
 pub(crate) fn lines_at(
-    home: &Path,
+    home: impl crate::agents::IntoHomes,
     req: HistoryLinesReq,
     tz: &crate::common::time::Tz,
 ) -> Result<HistoryLines, HistoryLinesErr> {
+    let home_v = crate::agents::IntoHomes::into_homes(home);
+    let home: &[crate::agents::AgentHome] = &home_v;
     let lower = of_fail_with(HistoryLinesErr::Failed);
     let (target, face) = record_face(home, &req.path).map_err(&lower)?;
     let page = body::read_lines(
@@ -410,7 +416,12 @@ impl crate::wire::typed::Handle for HistoryImageCmd {
 
 /// [`HistoryImageCmd`] 的本体，家目录是参数。读 `at` 起的那一行、走同一份翻译（与 `history-lines` · 流上的 `line` 同一个口），
 /// 认身份，按块的先后深度优先找第 `n` 张。
-pub(crate) fn image_at(home: &Path, req: HistoryImageReq) -> Result<HistoryImage, HistoryImageErr> {
+pub(crate) fn image_at(
+    home: impl crate::agents::IntoHomes,
+    req: HistoryImageReq,
+) -> Result<HistoryImage, HistoryImageErr> {
+    let home_v = crate::agents::IntoHomes::into_homes(home);
+    let home: &[crate::agents::AgentHome] = &home_v;
     use cmd_wire::record::{Block, Body};
     let lower = of_fail_with(HistoryImageErr::Failed);
     let missing = || {
@@ -425,29 +436,33 @@ pub(crate) fn image_at(home: &Path, req: HistoryImageReq) -> Result<HistoryImage
         .map_err(&lower)?;
     let line = page.bytes.split(|&b| b == b'\n').next().unwrap_or_default();
     let line = String::from_utf8_lossy(line.strip_suffix(b"\r").unwrap_or(line));
-    let record = (face.parse)(&crate::agents::Line::new(&line, req.at))
+    let (record, mut images) = (face.parse)(&crate::agents::Line::new(&line, req.at))
         .ok()
         .flatten()
-        .and_then(|t| t.record)
-        .filter(|r| r.id == req.id)
+        .and_then(|t| Some((t.record?.rec, t.unsent.images)))
+        .filter(|(r, _)| r.id == req.id)
         .ok_or_else(missing)?;
     let blocks = match record.body {
         Body::Said { blocks, .. } | Body::Reply { blocks, .. } => blocks,
         _ => return Err(missing()),
     };
-    fn nth(blocks: Vec<Block>, n: u32) -> Option<HistoryImage> {
+    // 媒体类型在线上那一块里，字节在只给后端看的那一份里（按 `n` 排）。
+    fn media_of(blocks: Vec<Block>, n: u32) -> Option<String> {
         blocks.into_iter().find_map(|b| match b {
             Block::Image {
-                n: k,
-                media_type,
-                data,
-                ..
-            } if k == n => Some(HistoryImage { media_type, data }),
-            Block::ToolResult { content, .. } => nth(content, n),
+                n: k, media_type, ..
+            } if k == n => Some(media_type),
+            Block::ToolResult { content, .. } => media_of(content, n),
             _ => None,
         })
     }
-    nth(blocks, req.n).ok_or_else(missing)
+    let media_type = media_of(blocks, req.n).ok_or_else(missing)?;
+    let data = usize::try_from(req.n)
+        .ok()
+        .filter(|&i| i < images.len())
+        .map(|i| images.swap_remove(i))
+        .ok_or_else(missing)?;
+    Ok(HistoryImage { media_type, data })
 }
 
 // ───────────────────────── history-run ─────────────────────────
@@ -546,10 +561,12 @@ impl crate::wire::typed::Handle for HistoryRunCmd {
 
 /// [`HistoryRunCmd`] 的本体，家目录是参数。
 pub(crate) fn run_at(
-    home: &Path,
+    home: impl crate::agents::IntoHomes,
     req: HistoryRunReq,
     tz: &crate::common::time::Tz,
 ) -> Result<HistoryRun, HistoryRunErr> {
+    let home_v = crate::agents::IntoHomes::into_homes(home);
+    let home: &[crate::agents::AgentHome] = &home_v;
     let lower = of_fail_with(HistoryRunErr::Failed);
     let from = req.from.unwrap_or(0);
     let (source, run) =
@@ -629,7 +646,12 @@ impl crate::wire::typed::Handle for HistoryBranchCmd {
 }
 
 /// [`HistoryBranchCmd`] 的本体，家目录是参数。
-pub(crate) fn branch_at(home: &Path, req: BranchReq) -> Result<Branch, HistoryBranchErr> {
+pub(crate) fn branch_at(
+    home: impl crate::agents::IntoHomes,
+    req: BranchReq,
+) -> Result<Branch, HistoryBranchErr> {
+    let home_v = crate::agents::IntoHomes::into_homes(home);
+    let home: &[crate::agents::AgentHome] = &home_v;
     branch_page(home, req, REPLY_PAGE_BYTES.as_len()).map_err(HistoryBranchErr::Failed)
 }
 
@@ -691,10 +713,12 @@ pub(crate) fn how_of(
 
 /// [`HistoryTailCmd`] 的本体，家目录是参数。
 pub(crate) fn tail_at(
-    home: &Path,
+    home: impl crate::agents::IntoHomes,
     req: HistoryTailReq,
     tz: &crate::common::time::Tz,
 ) -> Result<HistoryTail, HistoryTailErr> {
+    let home_v = crate::agents::IntoHomes::into_homes(home);
+    let home: &[crate::agents::AgentHome] = &home_v;
     let failed = HistoryTailErr::Failed;
     let path = req.path;
     let tail = tail::tail_now(home, &path, usize::try_from(req.n).unwrap_or(usize::MAX))
@@ -790,9 +814,11 @@ impl crate::wire::typed::Handle for HistoryRecordCmd {
 
 /// [`HistoryRecordCmd`] 的本体，家目录是参数。
 pub(crate) fn record_at(
-    home: &Path,
+    home: impl crate::agents::IntoHomes,
     req: HistoryRecordReq,
 ) -> Result<RecordProbe, HistoryRecordErr> {
+    let home_v = crate::agents::IntoHomes::into_homes(home);
+    let home: &[crate::agents::AgentHome] = &home_v;
     locate::record_for(home, req.config_dir.as_deref(), &req.sid).map_err(HistoryRecordErr::BadArgs)
 }
 
@@ -828,10 +854,12 @@ impl crate::wire::typed::Handle for SessionsNeedsCmd {
 
 /// [`SessionsNeedsCmd`] 的本体：家目录 · 这台计划里要人看的每一条（工作区 · 片名 · 落在哪一格）· 会话外的清单（读不出 ⇒ 那一句）是参数。
 pub(crate) fn needs_at(
-    home: &Path,
+    home: impl crate::agents::IntoHomes,
     plan: &[crate::wire::needs::NeedAt],
     manual: Result<Vec<cmd_wire::needs::ManualItem>, String>,
 ) -> NeedsList {
+    let home_v = crate::agents::IntoHomes::into_homes(home);
+    let home: &[crate::agents::AgentHome] = &home_v;
     let annotations = match crate::history::history_annotations::load() {
         crate::history::history_annotations::Loaded::Read(t) => t,
         _ => Default::default(),
@@ -847,12 +875,14 @@ pub(crate) fn needs_at(
 
 /// [`needs_at`]；隐藏要的这台那几样 · 注解由调用方给（判据喂夹具）。
 pub(crate) fn needs_with(
-    home: &Path,
+    home: impl crate::agents::IntoHomes,
     here: &crate::history::session_hidden::Here,
     annotations: &crate::history::history_annotations::Table,
     plan: &[crate::wire::needs::NeedAt],
     manual: Result<Vec<cmd_wire::needs::ManualItem>, String>,
 ) -> NeedsList {
+    let home_v = crate::agents::IntoHomes::into_homes(home);
+    let home: &[crate::agents::AgentHome] = &home_v;
     crate::observe::recognize::facts::needs_list(
         crate::observe::accounts_query::live_needs(
             home,
@@ -964,46 +994,40 @@ pub(crate) async fn needs_merge_with(
     for (origin, r) in got {
         match r {
             Ok(list) => answered.push((origin, list)),
-            Err(s) => down.push(cmd_wire::needs::NeedsDown {
-                detail: s.raw.clone().unwrap_or_default(),
-                said: down_said(&origin, s),
-                origin,
-            }),
+            Err(s) => {
+                let name = copy_core::machine_word(&origin);
+                down.extend(face_core::needs::needs_reply(origin, &name, said_end(s)).err());
+            }
         }
     }
-    // 没问到的那几台不计 ⇒ 数说不准（桌面不分断着与答失败：都是这一问没问到）。
-    let unsure = !down.is_empty();
+    // 没问到的那几台不计、数说不准：合的那一下照 `down` 判（这里没有还在读的）。
     Ok(face_core::needs::merge_needs(
         answered,
         down,
-        unsure,
-        machine_name,
+        false,
+        copy_core::machine_word,
     ))
 }
 
-/// 给人看的那台的称呼：本机 ⇒「本机」，远端 ⇒ 它的名字。
-fn machine_name(origin: &cmd_wire::Machine) -> String {
-    origin
-        .host_name()
-        .map_or_else(copy_core::local_machine, str::to_string)
-}
-
-/// 没问到那台那一句（`NeedsDown.said`，出口照摆）：常驻那一层说的那几种（常驻不在 · 回复超时 · 后端要更新 · 后端版本不同）
-/// 句里已叫出那台 ⇒ 照原样；别的（本机答失败 · 那台答了一个错原样转回来 · 那台够不着）只说了原因 ⇒「<那台> · <那一句>」。
-fn down_said(origin: &cmd_wire::Machine, s: crate::common::said::Said) -> String {
-    const NAMED: [&str; 4] = [
-        crate::wire::listen::CALL_ABSENT,
-        crate::wire::listen::CALL_TIMED_OUT,
-        "unknown_command",
-        cmd_wire::SHAPE_DIFFERS,
-    ];
-    if s.code.as_deref().is_some_and(|c| NAMED.contains(&c)) {
-        return s.said;
+/// 扇出问一台没问成的那一句 ⇒ 生成的一问结局（[`cmd_wire::phone::CallEnd`]，手机核心交 Kotlin 的同一形），
+/// 那一句怎么说由 `face_core::needs::missed` 照它定：到期（常驻那一层写好的、已叫出那台）⇒ `Timeout`；别的 ⇒ `Failed` 照码。
+/// 扇出这边没有一问一号 ⇒ `call` 恒 0。
+pub(crate) fn said_end(s: crate::common::said::Said) -> cmd_wire::phone::CallEnd {
+    let detail = s.raw.unwrap_or_default();
+    match s.code {
+        Some(c) if c == crate::wire::listen::CALL_TIMED_OUT => cmd_wire::phone::CallEnd::Timeout {
+            call: 0,
+            said: s.said,
+            detail,
+        },
+        code => cmd_wire::phone::CallEnd::Failed {
+            call: 0,
+            code: cmd_wire::failed::Failed::code_or_fallback(code),
+            said: s.said,
+            detail,
+            data: None,
+        },
     }
-    copy_core::copy_text(
-        "kit.text.machineSaid",
-        &[("machine", &machine_name(origin)), ("said", &s.said)],
-    )
 }
 
 // ───────────────────────── 出成品那几条的收集器 ─────────────────────────
@@ -1097,7 +1121,12 @@ impl crate::wire::typed::Handle for HistoryIndexCmd {
 }
 
 /// [`HistoryIndexCmd`] 的本体，家目录是参数。
-pub(crate) fn index_at(home: &Path, req: HistoryIndexReq) -> Result<HistoryIndex, HistoryIndexErr> {
+pub(crate) fn index_at(
+    home: impl crate::agents::IntoHomes,
+    req: HistoryIndexReq,
+) -> Result<HistoryIndex, HistoryIndexErr> {
+    let home_v = crate::agents::IntoHomes::into_homes(home);
+    let home: &[crate::agents::AgentHome] = &home_v;
     index_page(home, req, REPLY_PAGE_BYTES.as_len()).map_err(HistoryIndexErr::Failed)
 }
 
@@ -1129,7 +1158,12 @@ impl crate::wire::typed::Handle for UserInputsCmd {
 }
 
 /// [`UserInputsCmd`] 的本体，家目录是参数。
-pub(crate) fn user_inputs_at(home: &Path, req: UserInputsReq) -> Result<UserInputs, UserInputsErr> {
+pub(crate) fn user_inputs_at(
+    home: impl crate::agents::IntoHomes,
+    req: UserInputsReq,
+) -> Result<UserInputs, UserInputsErr> {
+    let home_v = crate::agents::IntoHomes::into_homes(home);
+    let home: &[crate::agents::AgentHome] = &home_v;
     user_inputs_page(home, req, REPLY_PAGE_BYTES.as_len()).map_err(UserInputsErr::Failed)
 }
 
@@ -1168,21 +1202,25 @@ impl crate::wire::typed::Handle for HistoryTurnsCmd {
 
 /// [`HistoryTurnsCmd`] 的本体，家目录是参数。还在跑的最后一轮下次从它的 `at` 再取。
 pub(crate) fn turns_at(
-    home: &Path,
+    home: impl crate::agents::IntoHomes,
     req: HistoryTurnsReq,
     tz: &crate::common::time::Tz,
 ) -> Result<HistoryTurns, HistoryTurnsErr> {
+    let home_v = crate::agents::IntoHomes::into_homes(home);
+    let home: &[crate::agents::AgentHome] = &home_v;
     turns_page(home, req, tz, REPLY_PAGE_BYTES.as_len())
 }
 
 /// [`turns_at`] 的本体，一页的上限是参数：从扫描图上切（[`crate::observe::query::turns::turns_page`]），
 /// 还没收尾的最后一轮按这台此刻的会话事实拼进过程行（判定同 `history-facts`）；整份过上限 ⇒ `too_large`。
 pub(crate) fn turns_page(
-    home: &Path,
+    home: impl crate::agents::IntoHomes,
     req: HistoryTurnsReq,
     tz: &crate::common::time::Tz,
     cap: usize,
 ) -> Result<HistoryTurns, HistoryTurnsErr> {
+    let home_v = crate::agents::IntoHomes::into_homes(home);
+    let home: &[crate::agents::AgentHome] = &home_v;
     let path = req.path.clone();
     let reply = crate::observe::query::turns::turns_page(home, req, tz, cap, &|last| {
         dress_open_turn(home, &path, last)
@@ -1195,14 +1233,20 @@ pub(crate) fn turns_page(
 }
 
 /// 还没收尾那一轮的「现在在做哪一步 / 在等什么」：此刻谁持着它 · 答题口接没接上 · pidfile 说在等什么。
-fn dress_open_turn(home: &Path, path: &str, last: &mut crate::observe::recognize::turns::TurnRow) {
+fn dress_open_turn(
+    home: impl crate::agents::IntoHomes,
+    path: &str,
+    last: &mut crate::observe::recognize::turns::TurnRow,
+) {
+    let home_v = crate::agents::IntoHomes::into_homes(home);
+    let home: &[crate::agents::AgentHome] = &home_v;
     let sid = crate::agents::sid_of(Path::new(path)).unwrap_or_default();
     let sid = sid.as_str();
     let holders = locate::facts_holders(home, path).unwrap_or_default();
     let off = answer_off_of(&holders, locate::facts_agent(home, path).as_deref());
     let needs = dress_ask(
         crate::observe::recognize::facts::needs_of(
-            crate::agents::record_kind_of(Path::new(path)).unwrap_or_default(),
+            crate::agents::record_kind_of(Path::new(path)),
             &last.pending,
             crate::history::live_table::now(home).wait_of(sid).as_ref(),
         ),
@@ -1313,10 +1357,12 @@ impl crate::wire::typed::Handle for HistoryFindCmd {
 
 /// [`HistoryFindCmd`] 的本体，家目录是参数。先走常驻索引（不再每次从头扫）；不归它管 ⇒ 现扫。
 pub fn find_at(
-    home: &Path,
+    home: impl crate::agents::IntoHomes,
     req: HistoryFindReq,
     tz: &crate::common::time::Tz,
 ) -> Result<HistoryFind, HistoryFindErr> {
+    let home_v = crate::agents::IntoHomes::into_homes(home);
+    let home: &[crate::agents::AgentHome] = &home_v;
     use crate::observe::search_query::{self, FindPage, FIND_DEFAULT_LIMIT, FIND_MAX_LIMIT};
     let limit = req.limit.map_or(FIND_DEFAULT_LIMIT, |n| {
         usize::try_from(n).unwrap_or(usize::MAX).min(FIND_MAX_LIMIT)
@@ -1337,15 +1383,17 @@ pub fn find_at(
         include_tools,
         scope,
         page,
-        |h| hits.push(&search_query::with_hit_text(h, tz)),
+        |h| hits.push(&search_query::with_hit_text(h, tz, user_only)),
     ) {
         Some(r) => r,
         None => {
             let r = locate::open_session_at(home, &req.path, 0).map_err(HistoryFindErr::Failed)?;
-            // 哪一家跟着这份记录走（照它落在哪棵树下认）。
-            let kind = crate::agents::record_kind_of(&target).unwrap_or_default();
+            // 哪一家跟着这份记录走（照它落在哪棵树下认）；认不出 ⇒ 文本怎么抽没有那一家可问，照实说认不出是哪一家的。
+            let kind = crate::agents::record_kind_of(&target).ok_or_else(|| {
+                HistoryFindErr::Failed(copy_core::copy_text("rsAgents.family.unknown", &[]))
+            })?;
             search_query::scan_session_find(kind, r, &req.query, include_tools, scope, page, |h| {
-                hits.push(&search_query::with_hit_text(h, tz))
+                hits.push(&search_query::with_hit_text(h, tz, user_only))
             })
         }
     };
@@ -1449,25 +1497,29 @@ impl crate::wire::typed::Handle for HistoryFactsCmd {
 /// [`HistoryFactsCmd`] 的本体，家目录是参数；`tz` ＝ 看的那一台的时区（通知组头的钟面照它写）；
 /// `called` ＝ 看的那一端怎么称呼这台（「在哪」那一句照它写，没交 ⇒ 不编名字）。目录的显示形照这台用户的家目录写（[`facts_in`]）。
 pub(crate) fn facts_at(
-    home: &Path,
+    home: impl crate::agents::IntoHomes,
     req: HistoryFactsReq,
     limits: &crate::observe::recognize::facts::ContextLimits,
     tz: &crate::common::time::Tz,
     called: Option<&str>,
 ) -> Result<FactsReply, HistoryFactsErr> {
+    let home_v = crate::agents::IntoHomes::into_homes(home);
+    let home: &[crate::agents::AgentHome] = &home_v;
     let user_home = crate::platform::paths::home_dir();
     facts_in(home, user_home.as_deref(), req, limits, tz, called)
 }
 
 /// 同 [`facts_at`]，用户的家目录也是参数（`cwdShown` 与「在哪」那一句里的目录照它写成 `~/…`；`None` ⇒ 原样）。
 pub(crate) fn facts_in(
-    home: &Path,
+    home: impl crate::agents::IntoHomes,
     user_home: Option<&Path>,
     req: HistoryFactsReq,
     limits: &crate::observe::recognize::facts::ContextLimits,
     tz: &crate::common::time::Tz,
     called: Option<&str>,
 ) -> Result<FactsReply, HistoryFactsErr> {
+    let home_v = crate::agents::IntoHomes::into_homes(home);
+    let home: &[crate::agents::AgentHome] = &home_v;
     use crate::observe::recognize::facts;
     let (path, found) = match req {
         HistoryFactsReq::Path(FactsByPath { path }) => (path, false),
@@ -1515,26 +1567,7 @@ pub(crate) fn facts_in(
         };
         facts::forked_line(&crate::history::search_rules::session_label(&label).0)
     });
-    // 权限档的字：那一家的权限档那一处给（同 `session-permission` 回包的 `modeText`）。
-    facts.permission_mode_text = facts
-        .agent
-        .as_deref()
-        .zip(facts.permission_mode.as_deref())
-        .and_then(|(kind, mode)| crate::agents::permission_mode_text(kind, mode))
-        .map(crate::common::cells::Words);
-    // 模型的字：那一家的模型那一处给（同起会话的那张表的系列名）。
-    facts.model_text = facts
-        .agent
-        .as_deref()
-        .zip(facts.usage.as_ref().and_then(|u| u.model.as_deref()))
-        .and_then(|(kind, model)| crate::agents::model_text(kind, model))
-        .map(crate::common::cells::Words);
-    facts.model_pick = facts
-        .agent
-        .as_deref()
-        .zip(facts.usage.as_ref().and_then(|u| u.model.as_deref()))
-        .and_then(|(kind, model)| crate::agents::model_pick(kind, model))
-        .map(str::to_string);
+    dress_words_among(&mut facts, crate::agents::REGISTRY);
     dress_kept(
         &mut facts,
         crate::history::history_annotations::kept_for_resume(
@@ -1553,14 +1586,14 @@ pub(crate) fn facts_in(
     facts.ask_end = crate::control::asks::ended(sid);
     // 需手动的种类 · 后台那一句：照这台活会话表配（与状态一句的读口同一处，`locate::dress_live`）；需手动再配上挂着的待答请求。
     let live = crate::history::live_table::now(home);
-    locate::dress_live(
+    let needs = locate::dress_live(
         &mut facts,
         &live,
         sid,
         Path::new(path),
         crate::common::time::now_ms(),
     );
-    facts.needs = dress_ask(facts.needs.take(), sid, facts.answer_off.as_ref());
+    facts.needs = dress_ask(needs, sid, facts.answer_off.as_ref());
     // 每一步还没结果时的样子：在等你 · 在跑 · 状态不明（界面只读这一格）。判不了活 ⇒ 状态不明说的是判不了。
     facts::settle_pending(&mut facts, holders.is_some());
     // 通知组：照此刻的交回定哪几条不露、写组头（钟面照看的那一台）。
@@ -1580,34 +1613,82 @@ pub(crate) fn facts_in(
     }
 }
 
+/// 权限档 · 模型那几格的字：照 `registry` 里那一家的起会话面问（认不出是哪一家 · 那一家没有那一格 · 认不出那个值 ⇒ 那一格 `null`，不借别家的）。
+pub(crate) fn dress_words_among(
+    facts: &mut crate::observe::recognize::facts::SessionFacts,
+    registry: &[crate::agents::Adapter],
+) {
+    let face = facts
+        .agent
+        .as_deref()
+        .and_then(|kind| crate::agents::launch_face_among(registry, kind));
+    // 权限档的字：那一家的权限档那一处给（同 `session-permission` 回包的 `modeText`）。
+    facts.permission_mode_text = face
+        .as_ref()
+        .and_then(|face| face.permission.as_ref())
+        .zip(facts.permission_mode.as_deref())
+        .and_then(|(permission, mode)| permission.text_of(mode))
+        .map(crate::common::cells::Words);
+    // 模型的字：那一家的模型那一处给（同起会话的那张表的系列名）。
+    let model = facts.usage.as_ref().and_then(|u| u.model.as_deref());
+    facts.model_text = face
+        .as_ref()
+        .and_then(|face| face.model_text)
+        .zip(model)
+        .and_then(|(text, model)| text(model))
+        .map(crate::common::cells::Words);
+    facts.model_pick = face
+        .as_ref()
+        .and_then(|face| face.model_pick)
+        .zip(model)
+        .and_then(|(pick, model)| pick(model))
+        .map(str::to_string);
+}
+
 /// 终端没了时换的那一项还算数（[`crate::history::history_annotations::kept_for_resume`]，恢复读同一份）⇒ 模型 · 权限档那几格写它：下次恢复就照它起。
 pub(crate) fn dress_kept(
     facts: &mut crate::observe::recognize::facts::SessionFacts,
     kept: Option<cmd_wire::listing::ResumeWith>,
 ) {
     let Some(k) = kept else { return };
-    let kind = facts.agent.as_deref().unwrap_or_default().to_string();
+    // 认不出是哪一家的 ⇒ 那两格的字没有那一家可问（缺），换的那一项照记。
+    let face = facts
+        .agent
+        .as_deref()
+        .and_then(|kind| crate::agents::launch_face_among(crate::agents::REGISTRY, kind));
     if let Some(m) = k.permission_mode {
-        facts.permission_mode_text =
-            crate::agents::permission_mode_text(&kind, &m).map(crate::common::cells::Words);
+        facts.permission_mode_text = face
+            .as_ref()
+            .and_then(|face| face.permission.as_ref())
+            .and_then(|permission| permission.text_of(&m))
+            .map(crate::common::cells::Words);
         facts.permission_mode = Some(m);
     }
     if let Some(m) = k.model {
-        facts.model_text =
-            crate::agents::model_choice_text(&kind, &m).map(crate::common::cells::Words);
+        facts.model_text = face
+            .as_ref()
+            .and_then(|face| {
+                face.model_word(
+                    &m,
+                    super::session_open_face::listed_models(&face).as_deref(),
+                )
+            })
+            .map(crate::common::cells::Words);
         facts.model_pick = Some(m);
     }
 }
 
 /// 这条会话的主会话与子会话（`here` ＝ 这台的会话血缘 · 启动台账 · 偏好；注解现读）：会话事实那两格。
 pub(crate) fn kin_of(
-    home: &Path,
+    home: impl crate::agents::IntoHomes,
     sid: &str,
     here: &crate::history::session_hidden::Here,
 ) -> (
     Option<crate::observe::recognize::facts::Kin>,
     Vec<crate::observe::recognize::facts::Kin>,
 ) {
+    let home_v = crate::agents::IntoHomes::into_homes(home);
+    let home: &[crate::agents::AgentHome] = &home_v;
     use crate::history::session_hidden::title_here;
     use crate::observe::recognize::facts::Kin;
     let annotations = match crate::history::history_annotations::load() {
@@ -1616,10 +1697,15 @@ pub(crate) fn kin_of(
     };
     let live = crate::history::live_table::now(home);
     let bg = live.background();
+    let housing = crate::host::Housing::here();
+    let face = |k: &str| {
+        let life = live.life_of(k);
+        crate::wire::SessionFace::listed(&life, housing.live(k, &life).as_ref())
+    };
     let kin = |k: &str| Kin {
         sid: k.to_string(),
         title: title_here(k, &annotations),
-        face: crate::wire::SessionFace::of(crate::wire::Life::of_wire(&live.life_of(k))),
+        face: face(k),
         hidden: crate::history::session_hidden::hidden_here(
             here,
             &annotations,

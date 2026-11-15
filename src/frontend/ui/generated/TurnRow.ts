@@ -54,4 +54,8 @@ phase: TurnPhase,
 /**
  * 过程段（文件序）：一段一行，界面把那一行插在 `after` 那张卡后面、把这一段的卡收进去。空 ⇒ 这一轮什么都不折。
  */
-folds: Array<FoldSegment>, };
+folds: Array<FoldSegment>, 
+/**
+ * 轮条上这一轮的悬停头（「轮 n · 钟面 · 工具 ×k」，n ＝ 这份记录里第几轮；答 `history-turns` 那一下 [`TurnRow::tip`] 写，扫描那一层不写）。界面照抄。
+ */
+tipText?: string, };

@@ -304,7 +304,7 @@ export async function recordReadReply(
 // 判据按两条命令名答话、回命令回包的形状（`{available, error, meta, accounts, notice}`）。
 // 这一问在线上是一发 `chan_call`（op = `accounts-list`）⇒ 本节把一发 `chan_call` 译回「哪一问 ＋ 旧形参」，
 // 把判据手里那份旧回包译成**后端的成品字节**（或通道的失败）。
-// ⚠ 译法逐格照生产：请求体键名是 `src/frontend/ui/accounts.ts` 发的那几个，成品键名是后端 `accounts/manage/library.rs::list_product`
+// ⚠ 译法逐格照生产：请求体键名是 `src/frontend/ui/accounts.ts` 发的那几个，成品键名是后端 `accounts/manage/library.rs::list_product_with`
 //   出的那几个（生成类型 `AccountsList`）。
 // ⚠ 旧回包里「老后端」那几种缺格（账号缺 `authKind` / `authReady`、`meta: null`）在成品里不存在 ⇒ 按旧消费侧的回落补齐：
 //   `authKind` 缺 ⇒ 订阅 · `authReady` 缺 ⇒ `loggedIn`（`accountReady` 那条旧回落）· `meta: null` ⇒ 没启用（`deriveUi` 那一档）。
@@ -336,7 +336,7 @@ const ACCOUNT_KEYS = ["name", "email", "configDir", "isDefault", "mode", "exists
 function productAccount(a: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const k of ACCOUNT_KEYS) out[k] = a[k];
-  // 号名那一格是那台后端写好的（`name_words::account_text`）：夹具不写 ⇒ 照原名。
+  // 号名那一格是那台后端写好的（`name_words::account_text_among`）：夹具不写 ⇒ 照原名。
   out.label = a.label ?? a.name;
   out.email = a.email ?? "";
   out.configDir = a.configDir ?? null;

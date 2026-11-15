@@ -129,13 +129,18 @@ pub fn remove_env<S: AsRef<str>>(vars: &[S]) -> String {
     format!("Remove-Item {} -ErrorAction Ignore; ", names.join(", "))
 }
 
-/// 跑这一行的那个 PowerShell 把自己的窗口标签（`$PID-<StartTime.ToFileTime()>`，与接入块设的 `LC_CCM_WINDOW` 同一个键）与 `machine`
+/// 这个 PowerShell 自己的起始时刻（文件时间刻度）：窗口标签 `$PID-<它>` 的后半。接入块（`src/shared/cc.ps1.tpl` 的占位）
+/// 与 [`note_own_window`] 都只引这一句（与 `LC_CCM_WINDOW` 同一个键）。是一个表达式。
+pub const SELF_START: &str =
+    "[System.Diagnostics.Process]::GetCurrentProcess().StartTime.ToFileTime()";
+
+/// 跑这一行的那个 PowerShell 把自己的窗口标签（`$PID-<`[`SELF_START`]`>`，与接入块设的 `LC_CCM_WINDOW` 同一个键）与 `machine`
 /// 两行写进 `file`（UTF-8 无 BOM，先写 `part` 再挪过去）。在一个脚本块里跑（变量不留在那个窗口里），错误吞掉、不往终端里打字；
 /// 不带双引号。三个词由调用方先过 `dialect::ps_literal`。以 `; ` 收尾，后面接那一行。
 pub fn note_own_window(file: &str, part: &str, machine: &str) -> String {
     format!(
         "try {{ & {{ param($f, $t, $m) $ErrorActionPreference = 'Stop'; \
-         [System.IO.File]::WriteAllText($t, [string]$PID + '-' + [System.Diagnostics.Process]::GetCurrentProcess().StartTime.ToFileTime() + [char]10 + $m + [char]10); \
+         [System.IO.File]::WriteAllText($t, [string]$PID + '-' + {SELF_START} + [char]10 + $m + [char]10); \
          Move-Item -LiteralPath $t -Destination $f -Force }} {file} {part} {machine} }} catch {{}}; "
     )
 }
@@ -266,7 +271,7 @@ pub(crate) fn between_marks<'a>(out: &'a str, mark: &str) -> Option<&'a str> {
 /// 现问：`dir` 在不在用户级 `PATH` 上。这台不说 PowerShell ⇒ `None`。
 pub fn user_path_holds(dir: &str) -> Option<Result<bool, Said>> {
     const MARK: &str = "@@ccm-user-path@@";
-    let cmd = super::powershell_on(PsHost::Desktop, &user_path_query(MARK))?;
+    let cmd = super::powershell_on(PsHost::Powershell, &user_path_query(MARK))?;
     Some(run_said(cmd, USER_PATH_WITHIN).and_then(|out| {
         between_marks(&out, MARK)
             .map(|p| user_path_has(p, dir))
@@ -286,7 +291,7 @@ pub fn user_path_set(dir: &str, on: bool) -> Option<Result<(), Said>> {
     } else {
         user_path_remove(dir)
     };
-    let cmd = super::powershell_on(PsHost::Desktop, &script)?;
+    let cmd = super::powershell_on(PsHost::Powershell, &script)?;
     Some(run_said(cmd, USER_PATH_WITHIN).map(|_| ()))
 }
 
@@ -295,7 +300,7 @@ fn run_said(cmd: crate::platform::child::Child, within: Deadline) -> Result<Stri
     use crate::platform::child::ChildFail;
     let out = cmd.run(within).map_err(|e| match &e {
         ChildFail::NotFound(io) | ChildFail::Io(io) => {
-            Said::with_raw(copy_core::spawn_reason(io.kind()), &e)
+            crate::platform::child::spawn_said(io, str::to_owned)
         }
         ChildFail::TimedOut { .. } => {
             Said::with_raw(copy_core::io_reason(std::io::ErrorKind::TimedOut), &e)

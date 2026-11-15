@@ -31,17 +31,29 @@ pub fn relay_refusal(first: &str) -> Option<String> {
 /// attach 行：「我要流」＋ 看的这一台的时区 ＋ 手上这一版的身份 ＋ 在看名单（本机那一条：同机不压）。
 /// `tz` ⇒ `None` 不带（后端按 UTC 写推来的钟面）；`mine` ⇒ `None` 不带（那台就不回新旧）；`watch` 照名单台此刻那份（[`crate::watch::Desk::ask_for_attach`]）。
 pub fn attach_line(tz: Option<&str>, mine: Option<&str>, watch: Option<WatchAsk>) -> String {
-    line_of(tz, mine, watch, false)
+    line_of(tz, mine, watch, false, false)
 }
 
-/// attach 行只在这一处拼（本机 · 远端 · 手机）；`deflate` ⇒ 要那台把回话之后的字节整条压过来。
-fn line_of(tz: Option<&str>, mine: Option<&str>, watch: Option<WatchAsk>, deflate: bool) -> String {
+/// 桌面壳连本机后端那一行：同 [`attach_line`]，另要那台折好的成品（`folded`：会话整条 · 活卡那一处，壳不折）。
+pub fn folded_attach_line(tz: Option<&str>, watch: WatchAsk) -> String {
+    line_of(tz, None, Some(watch), false, true)
+}
+
+/// attach 行只在这一处拼（本机 · 远端 · 手机）；`deflate` ⇒ 要那台把回话之后的字节整条压过来；`folded` ⇒ 要折好的成品。
+fn line_of(
+    tz: Option<&str>,
+    mine: Option<&str>,
+    watch: Option<WatchAsk>,
+    deflate: bool,
+    folded: bool,
+) -> String {
     AttachLine {
         attach: Yes,
         tz: tz.map(str::to_string),
         mine: mine.map(str::to_string),
         deflate,
         watch,
+        folded,
     }
     .line()
 }
@@ -176,7 +188,7 @@ where
 {
     let sent = async {
         stream
-            .write_all(line_of(tz, mine, watch.clone(), deflate).as_bytes())
+            .write_all(line_of(tz, mine, watch.clone(), deflate, false).as_bytes())
             .await?;
         stream.flush().await
     }

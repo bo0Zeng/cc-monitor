@@ -1,5 +1,5 @@
 /**
- * 账号读面里另外几口：账号页那一家的画像与 `launchAgentId` 同一个出处 ·
+ * 账号读面里另外几口：账号页那一家的画像与 `launchAgentId` 同一个出处 · 照框里那一家问号表（不入 store、不记上次）·
  * 本机后端记着的上次那份不是这一版 ⇒ 不画上次的。账号清单那一问本身见 `accounts.vitest.ts` · `last-seen.vitest.ts`。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -21,7 +21,8 @@ vi.mock("../../../src/comms/inward/chan", () => ({
   },
 }));
 
-import { accountsAgentProfile, fetchAccounts, launchAgentId } from "../../../src/frontend/ui/account-reads";
+import { accountsAgentProfile, fetchAccounts, fetchAccountsOf, launchAgentId } from "../../../src/frontend/ui/account-reads";
+import { appStore } from "../../../src/frontend/ui/app-store";
 
 beforeEach(() => {
   calls.length = 0;
@@ -48,6 +49,29 @@ describe("默认那一家不在画像表里", () => {
       vi.doUnmock("../../../src/frontend/ui/agent-profile");
       vi.resetModules();
     }
+  });
+});
+
+describe("照框里那一家问号表（fetchAccountsOf）", () => {
+  it("★ 问的是给的那一家（不是账号库那一家）；答回来照原样交，不入 store、不记上次那一份", async () => {
+    const meta = { enabled: true, manifestPath: "/a/accounts.json", updatedAt: null, count: 1, error: null };
+    replies.set("devbox:accounts-list", { meta, accounts: [{ name: "x" }], notice: "缺账号 0" });
+    const before = appStore.accounts.get();
+    const st = await fetchAccountsOf("devbox", "fake-other");
+    expect(calls.map((c) => `${c.origin}:${c.op}`), "多问了一处（记上次 · 读上次）").toEqual(["devbox:accounts-list"]);
+    expect(calls[0].args.agent).toBe("fake-other");
+    expect(calls[0].args.agent).not.toBe(launchAgentId());
+    expect(st).toEqual({ origin: "devbox", available: true, error: null, oldBackend: false, meta, accounts: [{ name: "x" }], notice: "缺账号 0" });
+    expect(appStore.accounts.get(), "框里那一问写进了账号库那一家的 store").toBe(before);
+  });
+  it("★ 问不到 ⇒ 不可用 ＋ 通道那一层的一句，不去问本机后端记着的上次那一份", async () => {
+    const st = await fetchAccountsOf("devbox", "fake-other");
+    expect(calls.map((c) => `${c.origin}:${c.op}`)).toEqual(["devbox:accounts-list"]);
+    expect(st.available).toBe(false);
+    expect(st.accounts).toEqual([]);
+    expect(st.meta).toBeNull();
+    expect(st.error, "不可用要带一句人话").toBeTruthy();
+    expect("last" in st, "框里那一问不画上次的").toBe(false);
   });
 });
 

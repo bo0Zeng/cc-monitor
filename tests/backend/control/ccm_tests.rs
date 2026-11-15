@@ -130,9 +130,9 @@ fn the_probe_output_is_the_shape_its_parser_expects() {
     assert_eq!(lines[5], format!("build={}", crate::common::id::BUILD_ID));
     assert_eq!(lines.len(), 6, "多一行少一行都是契约变更，实得 {lines:?}");
     assert!(out.ends_with('\n'), "最后一行也要有换行");
-    // 消费者今天要的那 8 个（`ccm_invocation.rs::CLI_REQUIRED_CAPS` ＋ account 维度）
+    // 消费者今天要的那 7 个（`ccm_invocation.rs::CLI_REQUIRED_CAPS` ＋ account 维度）
     for c in [
-        "new", "resume", "attach", "tmux", "cwd", "launcher", "ccm-sid", "account",
+        "new", "resume", "attach", "tmux", "cwd", "launcher", "account",
     ] {
         assert!(
             CAPABILITIES.contains(&c),
@@ -296,7 +296,10 @@ fn the_agent_set_has_one_address_and_every_member_is_wired() {
     );
     assert_eq!(face("claude").nested_env.len(), 4);
     assert!(
-        face("codex").nested_env.is_empty(),
+        !face("codex")
+            .nested_env
+            .iter()
+            .any(|k| face("claude").nested_env.contains(k)),
         "codex 不清 claude 的嵌套标记"
     );
 }
@@ -313,7 +316,6 @@ fn the_container_launch_goes_through_the_one_door_with_every_field_intact() {
         name: "n1".into(),
         cwd: "/p".into(),
         agent: "claude".into(),
-        ccm_sid: "p1".into(),
         size: Some(("220".into(), "50".into())),
         detach: true,
         payload: "'/usr/local/bin/ccm' '--cwd' '/p'".into(),
@@ -326,7 +328,7 @@ fn the_container_launch_goes_through_the_one_door_with_every_field_intact() {
     assert_eq!(req.name, "n1");
     assert_eq!(req.payload, c.payload, "载荷不许被改一个字节");
     assert_eq!(req.cwd.as_deref(), Some("/p"));
-    assert_eq!(req.ccm_sid.as_deref(), Some("p1"), "意图标不许丢");
+    assert_eq!(req.ccm_sid, None, "建会话不写身份");
     assert_eq!(
         req.agent.as_deref(),
         Some("claude"),
@@ -548,7 +550,6 @@ fn on_windows_the_probe_does_not_claim_what_only_tmux_can_carry() {
         "detach",
         "tmux-size",
         "tmux-base",
-        "ccm-sid",
         "base-url-across-tmux",
     ];
     // `attach` 做得到：`--attach <名>` 先认托管名单（瘦客户端接上），认不到才落 `tmux attach`。
@@ -1165,4 +1166,18 @@ fn a_hosted_terminal_is_up_when_it_says_so() {
             HostSpawn::Failed(m) | HostSpawn::Refused(m) => m,
         })
     );
+}
+
+/// ★ `sh -c` 那一趟包没包一层，照它最后 `exec` 的那个程序判 —— 计划 argv 的头一个（启动器已换成要起的那个文件），不看后面透传的参数：
+/// Windows 上原生的包一层、它自己又包一层的两层不算；unix 不包；argv 空着（没东西可起）⇒ 不包。
+#[test]
+fn the_shell_hop_judges_its_wrap_by_the_program_it_execs() {
+    let mut d = direct_of(&[], None);
+    d.argv = vec![r"C:\w\claude.exe".into(), "x.cmd".into()];
+    assert!(super::shell_hop_wraps(&d, true), "原生：sh.exe 包一层");
+    assert!(!super::shell_hop_wraps(&d, false), "unix 就地 exec，不包");
+    d.argv = vec![r"C:\npm\claude.cmd".into(), "--resume".into()];
+    assert!(!super::shell_hop_wraps(&d, true), "再经 cmd.exe：两层");
+    d.argv.clear();
+    assert!(!super::shell_hop_wraps(&d, true), "没东西可起 ⇒ 不包");
 }

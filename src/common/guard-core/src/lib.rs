@@ -1970,7 +1970,7 @@ pub fn files_by_extension(root: &std::path::Path, ext: &str) -> Vec<String> {
 ///
 /// 判「是不是 shell 脚本」按**两种真实形态**取，不按后缀一种取：
 /// `*.sh`，**或**「没有扩展名 + 首行 shebang 里带 `sh`」。后者不是边角料 ——
-/// `shared/ccm`、`tests/e2e/fake-claude`、`src/shared/cc-bus/scripts/` 里那些命令都是这一形，
+/// `tests/e2e/fake-claude`、`src/shared/cc-bus/scripts/` 里那些命令都是这一形，
 /// 而 CI 的 shellcheck 列表里逐个手写着它们。
 pub fn shell_scripts(root: &std::path::Path) -> Vec<String> {
     walk_repo(root, &|path, name| {
@@ -2229,7 +2229,7 @@ pub fn call_rows() -> Vec<(String, String)> {
     rows
 }
 
-/// `calls!` 表里名字是 `op` 的那几个入参类型（一条命令可有两层入参，如传输台的 `*Ask` · `*Req`）。
+/// `calls!` 表里名字是 `op` 的那几个入参类型（一条命令可有两层入参：`*Ask` · `*Req`）。
 pub fn call_reqs_named(op: &str) -> Vec<String> {
     call_rows()
         .into_iter()

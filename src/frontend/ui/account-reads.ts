@@ -26,24 +26,39 @@ import { saidOf } from "./kit/detail";
 export async function fetchAccounts(origin: Machine): Promise<AccountsState> {
   let state: AccountsState;
   try {
-    const got = await callTyped(origin, "accounts-list", { agent: launchAgentId() }, budgetWithin(ACCOUNTS_BUDGET_MS));
-    // `notice`：后端说的「能用但有缺」（manifest 里没有账号 0 等）。
-    state = { origin, available: true, error: null, oldBackend: false, meta: got.meta, accounts: got.accounts, notice: got.notice };
+    const got = await askList(origin, launchAgentId());
+    state = answered(origin, got);
     void rememberSeen(origin, "accounts", got);
   } catch (e) {
-    state = {
-      origin,
-      available: false,
-      error: saidOf(e),
-      oldBackend: isOldBackend(e),
-      meta: null,
-      accounts: [],
-      notice: null,
-      last: await recallLast(origin),
-    };
+    state = { ...unanswered(origin, e), last: await recallLast(origin) };
   }
   putIn(appStore.accounts, origin, state); // 画的那几处订它
   return state;
+}
+
+/**
+ * 问那台 `agent` 那一家的账号清单（新会话框照框里选的那一家问）：形状与降级同 [`fetchAccounts`]，
+ * **不入 store、不记上次那一份**（那两样是账号库那一家的：账号 chip · 设置页订它）。
+ */
+export async function fetchAccountsOf(origin: Machine, agent: string): Promise<AccountsState> {
+  try {
+    return answered(origin, await askList(origin, agent));
+  } catch (e) {
+    return unanswered(origin, e);
+  }
+}
+
+function askList(origin: Machine, agent: string) {
+  return callTyped(origin, "accounts-list", { agent }, budgetWithin(ACCOUNTS_BUDGET_MS));
+}
+
+// `notice`：后端说的「能用但有缺」（manifest 里没有账号 0 等）。
+function answered(origin: Machine, got: Awaited<ReturnType<typeof askList>>): AccountsState {
+  return { origin, available: true, error: null, oldBackend: false, meta: got.meta, accounts: got.accounts, notice: got.notice };
+}
+
+function unanswered(origin: Machine, e: unknown): AccountsState {
+  return { origin, available: false, error: saidOf(e), oldBackend: isOldBackend(e), meta: null, accounts: [], notice: null };
 }
 
 /** 本机后端记着的那台上次那一份（没有 / 存档不是这一版 ⇒ `null`；本机那台不记）。 */
@@ -71,7 +86,7 @@ export function launchAgentId(): string {
   return accountsAgentProfile().agent;
 }
 
-/** 账号页那一家的画像（与 [`launchAgentId`] 同一个出处）：叫法 · 认得的模型。表里没有 ⇒ 抛（不回落到任何一家）。 */
+/** 账号页那一家的画像（与 [`launchAgentId`] 同一个出处）：是哪一家 · 认得的模型（叫法照 `displayNameOf` 取）。表里没有 ⇒ 抛（不回落到任何一家）。 */
 export function accountsAgentProfile(): AgentProfileRow {
   const got = lookupAgentProfile(DEFAULT_AGENT);
   if (!got.known) throw new Error(got.message);

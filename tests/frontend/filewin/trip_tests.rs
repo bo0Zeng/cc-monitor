@@ -16,14 +16,3 @@ fn a_lane_lands_once_and_every_copy_sees_the_same_ending() {
         (1, Some(7), None)
     );
 }
-
-/// 新的一趟一格新的：结局与趟数不带过去（上一趟的结局不许落在下一趟那一行上）。
-#[test]
-fn a_fresh_lane_starts_with_no_ending() {
-    let lane: Lane<u32> = Lane::default();
-    lane.finish(1);
-    let next = lane.fresh_like();
-    assert_eq!((next.rounds(), next.last()), (0, None));
-    next.finish(2);
-    assert_eq!(lane.last(), Some(1), "新的一格写到了旧的那一格上");
-}

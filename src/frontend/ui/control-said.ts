@@ -65,14 +65,9 @@ function refreshAction(origin: Machine): ToastAction {
 /** 期限：后端要等每份 watcher 对完表、打完标（起几次 tmux）。 */
 const RESYNC_BUDGET_MS = 20_000;
 
-/** 一次对齐的差异（后端 `resync` 的成品）。 */
+/** 一次对齐的结果（后端 `resync` 的成品）：那一句由后端写好（补读了几条 ＋ 差异），界面照抄。 */
 export interface Resynced {
-  added: number;
-  removed: number;
-  retagged: number;
-  /** 在跟的会话这趟从游标补读出几行（补出来的行照常经流到达）。 */
-  caughtUp: number;
-  watchers: number;
+  said: string;
 }
 
 /**
@@ -83,13 +78,13 @@ export async function resync(origin: Machine, sid?: string): Promise<Resynced> {
   const budget = budgetWithin(RESYNC_BUDGET_MS);
   const req = sid === undefined ? {} : { sid };
   // 回包里那两格能力事实 monitor 在通道那一跳已经收进 `Offer`（唯一住处），界面不读。
-  const { added, removed, retagged, caught_up: caughtUp, watchers } = await settleTyped(
+  const { said } = await settleTyped(
     origin,
     "resync",
     callTyped(origin, "resync", req, budget),
     (said) => copyText("resync.call.refused", { said }),
   );
-  return { added, removed, retagged, caughtUp, watchers };
+  return { said };
 }
 
 /**

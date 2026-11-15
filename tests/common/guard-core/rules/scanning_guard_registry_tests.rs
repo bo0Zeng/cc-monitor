@@ -13,18 +13,16 @@ const PENDING: &[&str] = &[
     "tests/backend/readonly_guard.rs",
 ];
 
+/// 开发调度（独立工作区、按设计不链产品包，引不到 `guard_core::scan_tree!`）列目录只许封在这一处；
+/// 它不是存量（不随迁移减），但要真命中（封装没了 ⇒ 死格，红），devsched 别的文件再裸遍历照红。
+const DEVSCHED_WALK: &str = "tests/devsched/support.rs";
+
 /// 判定「这是一个带登记表的判据文件」的声明形态。**闭集，按名字认。**
 ///
 /// 🔴 **这是一个闭集，不是一族形状** —— 往里加一个名字就是在**放宽**一条守卫，
 /// 加之前先读模块头注「『扫描面 ＋ 常量表』型判据要留反向那半」那一节：它写着为什么这里走
 /// 「闭集 ＋ 点名钉住」而不是「按形状认」，以及那条纪律要求新写的扫描型判据把表**起成这里的名字之一**。
-const TABLE_DECLS: &[&str] = &[
-    "const REGISTERED:",
-    "const SITES:",
-    // `local_backend_tests.rs` 里 fork 与 exec 之间那条判据的形态表。
-    // 三棵树的 `.rs` 里 `const FORMS:` **恰好一处**，就是它 ⇒ 这一条不引入误采。
-    "const FORMS:",
-];
+const TABLE_DECLS: &[&str] = &["const REGISTERED:", "const SITES:"];
 
 /// 识别器：这份**测试段**里有没有一张登记表。
 ///
@@ -287,10 +285,8 @@ fn every_registry_guard_keeps_its_reverse_half() {
     // 改一个名字 ⇒ 那一形当场退回「没被扫到」，而「没被扫到」与「过了」在上面那条
     // 断言上**输出完全相同**（都不红）。⇒ 拿真实住址把至少一形钉住，让它改名即红。
     const MUST_BE_RECOGNISED: &[(&str, &str)] = &[(
-        // 全树 `const FORMS:` **恰好一处**，就是它。
-        "tests/frontend/shell/local_backend_tests.rs",
-        "`nothing_in_the_production_path_runs_code_between_fork_and_exec`，\
-             它的表叫 `FORMS`",
+        "tests/backend/platform/shell/dialect_tests.rs",
+        "`the_profile_location_has_exactly_one_home`，它的表叫 `SITES`",
     )];
     let unseen: Vec<String> = MUST_BE_RECOGNISED
         .iter()
@@ -340,9 +336,9 @@ fn every_registry_guard_keeps_its_reverse_half() {
     // 而 0 条时下面那两条断言**恒真地绿** —— 与自检③同形：
     // 「没扫到你」与「判过你了」在输出上一模一样。⇒ 拿真实住址把**题眼**钉住。
     const MUST_BE_JUDGED_PER_GUARD: &[(&str, &str)] = &[(
-        "tests/frontend/shell/local_backend_tests.rs::nothing_in_the_production_path_runs_code_between_fork_and_exec",
-        "判据级这一层的题眼：它的表叫 `FORMS`、声明在它自己体内，\
-             而同一份文件的测试段里另有几十处 `assert_eq!(` ——\
+        "tests/backend/platform/shell/dialect_tests.rs::the_profile_location_has_exactly_one_home",
+        "判据级这一层的题眼：它的表叫 `SITES`、声明在它自己体内，\
+             而同一份文件的测试段里另有几十处 `assert` ——\
              文件级那一层对它恒真，判据级这一层才判得到它",
     )];
     let unjudged: Vec<String> = MUST_BE_JUDGED_PER_GUARD
@@ -652,9 +648,13 @@ fn raw_walkers() -> Vec<String> {
 #[test]
 fn no_new_guard_walks_the_tree_without_excluding_itself() {
     let found = raw_walkers();
+    assert!(
+        found.iter().any(|f| f == DEVSCHED_WALK),
+        "开发调度那一处列目录的封装（{DEVSCHED_WALK}）不再裸遍历了：删掉 `DEVSCHED_WALK` 这一格"
+    );
     let newcomers: Vec<&String> = found
         .iter()
-        .filter(|f| !PENDING.contains(&f.as_str()))
+        .filter(|f| !PENDING.contains(&f.as_str()) && f.as_str() != DEVSCHED_WALK)
         .collect();
     assert!(
         newcomers.is_empty(),

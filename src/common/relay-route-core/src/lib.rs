@@ -159,7 +159,7 @@ pub const PORT: u16 = 8788;
 /// 注入的 URL 不带钥匙本身，渲染成 `$(cat ~/<本常量>)` 在那台机器的 pane shell 里展开（RK1）。
 pub const KEY_FILE_REL: &str = ".cc-monitor/relay-key";
 
-/// 〔「一台机器一个家」〕后端的**暂存区**（相对家目录）：SFTP 传输台往这里写 `<key>.part`（上传件与下载半成品都放这里），
+/// 〔「一台机器一个家」〕后端的**暂存区**（相对家目录）：两台之间复制的 SFTP 腿往这里写 `<key>.part`（上传件与下载半成品都放这里），
 /// 传完经 `common::staging::land` 挪进目标。后端按它落盘（`files/commit.rs::STAGING_DIR`），monitor 的数据位置页按它列出。
 pub const STAGING_DIR_REL: &str = ".cc-monitor/staging";
 
@@ -176,6 +176,54 @@ pub const PREFS_REL: &str = ".cc-monitor/prefs.json";
 /// 〔同上〕这一端连各台用的机器表：每台的名字 · 地址 · 端口 · 用户 · 钥匙路径 · 备用地址 · 跳板 · 连不连
 /// （只有本机后端写，`control/machines.rs`；读法在 `dial/machines.rs`；桌面的 monitor 只经 `machines-read` 读）。
 pub const MACHINES_REL: &str = ".cc-monitor/machines.json";
+
+/// 握手目录名（相对数据目录）：本机 bash / zsh 接入块（`src/shared/ccm-aliases.sh`，后端填进去）在这里留终端记录，monitor `bind.rs` 读 ⇒ **不许改值**。
+pub const AWAIT_SUBDIR: &str = "ps-await";
+
+/// 握手表那一层（相对数据目录）：monitor `bind.rs` 认出终端窗口后写 `<进程号>.json`，数据位置页按它列。
+pub const REGISTRY_SUBDIR: &str = "ps-registry";
+
+/// 开机自启那一份（相对数据目录）：monitor `auto_launch.rs` 读写，PowerShell 别名块 `cc.ps1.tpl` 照同一个名字读。
+pub const AUTO_LAUNCH_FILE: &str = "auto-launch.json";
+
+/// 文件管理窗口记整窗缩放那一份（相对数据目录）：monitor 开窗入口拼好全路径、随种子交给窗口。
+pub const FILEWIN_VIEW_FILE: &str = "filewin-view.json";
+
+macro_rules! log_dir_rel {
+    () => {
+        "logs"
+    };
+}
+
+/// 日志目录（相对数据目录）：monitor 自己的滚动日志（`monitor/`）与本机后端脱离运行时的错误输出（[`BACKEND_STDERR_REL`]）各住它底下一层。
+pub const LOG_DIR_REL: &str = log_dir_rel!();
+
+/// 本机后端脱离运行时的错误输出所在的目录（相对数据目录；monitor `logging.rs` 起后端时交出去的就在这里）。
+pub const BACKEND_STDERR_REL: &str = concat!(log_dir_rel!(), "/backend");
+
+/// 这台后端自己的 stderr 诊断文件（**家目录相对**）：远端常驻后端的 stderr 落这里（本机那一份由宿主交数据目录下的路径），
+/// 一次性模式没拿到宿主交的路径时也落这里。与本机那一份同层（[`BACKEND_STDERR_REL`] 底下；滚出来的旧那份在同目录 `stderr.old.log`）。
+/// 后端 `stderr_log`（接 · 滚）与 `control/resident`（起常驻那一跳交给子进程）都引它。
+pub const BACKEND_STDERR_LOG_REL: &str =
+    concat!(".cc-monitor/", log_dir_rel!(), "/backend/stderr.log");
+
+/// 〔「界面自己那几份也进唯一枚举」〕monitor 数据目录里只住界面这一侧的每一样：`(名字, 相对数据目录, 是目录, 删了会丢)`。
+/// 名字是闭集（后端按它取说法）；本机后端「文件与数据」本机那一问逐样 stat 它（`footprint/data.rs::monitor_rows`），远端那一问不列。
+pub const MONITOR_DATA_ENTRIES: &[(&str, &str, bool, bool)] = &[
+    (
+        "config",
+        file_name_of(CONFIG_REL),
+        false,
+        CONFIG_FILE.kept(),
+    ),
+    // 开关是用户选的（真相），exe 路径每次启动自愈重写（派生）⇒ 整份按「删了会丢」记。
+    ("autoLaunch", AUTO_LAUNCH_FILE, false, true),
+    ("filewinView", FILEWIN_VIEW_FILE, false, true),
+    ("psAwait", AWAIT_SUBDIR, true, false),
+    ("psRegistry", REGISTRY_SUBDIR, true, false),
+    ("logs", LOG_DIR_REL, true, false),
+    ("backendLogs", BACKEND_STDERR_REL, true, false),
+];
 
 /// 〔同上〕别名块文件：POSIX shell 读的那一份（后端 `platform/shell/dialect.rs` 写，rc 里那一行 source 它）。
 pub const POSIX_ALIASES_REL: &str = ".cc-monitor/aliases.sh";
@@ -896,9 +944,9 @@ const PREFS_MAX_BYTES: Cap = Cap {
     bytes: 256 * 1024,
     over: Over::Reject,
 };
-/// 这台的偏好（第 2 版：恢复那一格是三选 `resumeWhere`；第 1 版读不懂）。
+/// 这台的偏好（第 2 版：恢复那一格从开关 `resumeInTmux` 换成三选 `resumeWhere`；第 1 版经一步升级读，常驻起来时写回成第 2 版）。
 pub const PREFS_FILE: Decl<State> =
-    Decl::<State>::json(PREFS_REL, Owner::Machine, 2, 2, PREFS_MAX_BYTES);
+    Decl::<State>::json(PREFS_REL, Owner::Machine, 2, 1, PREFS_MAX_BYTES).floor_raised_in("5.1.6");
 /// 机器表那一份的读上限（至多 256 台）。
 const MACHINES_MAX_BYTES: Cap = Cap {
     bytes: 1024 * 1024,
@@ -952,14 +1000,16 @@ const BOOKMARKS_MAX_BYTES: Cap = Cap {
 /// 书签。
 pub const BOOKMARKS_FILE: Decl<State> =
     Decl::<State>::json(BOOKMARKS_REL, Owner::Machine, 1, 1, BOOKMARKS_MAX_BYTES);
-/// skill 装记录（第 2 版：顶层 `version`；第 1 版读不懂）。
+/// skill 装记录（第 2 版：版本从 `"v"` 挪到顶层 `version`；第 3 版：多一格 `touched`，缺 ⇒ 空）。
+/// 第 1 · 2 版经升级步读，常驻起来时写回成第 3 版。
 pub const SKILL_LEDGER_FILE: Decl<State> = Decl::<State>::json(
     SKILL_LEDGER_REL,
     Owner::Machine,
-    2,
-    2,
+    3,
+    1,
     SKILL_LEDGER_MAX_BYTES,
-);
+)
+.floor_raised_in("5.1.6");
 /// skill 装记录那一份的读上限（超了当读不懂：不覆盖、`ledger_unreadable`）。
 const SKILL_LEDGER_MAX_BYTES: Cap = Cap {
     bytes: 4 * 1024 * 1024,

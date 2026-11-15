@@ -24,6 +24,7 @@ fn script(body: &str) -> Script {
 
 fn acct(id: &str, api: bool, resets5h: Option<u64>) -> Acct {
     Acct {
+        agent: String::new(),
         id: id.into(),
         api,
         used: [0.0, 0.0],
@@ -136,6 +137,48 @@ fn a_landed_send_keeps_when_it_went_and_the_reset_it_brought() {
     );
 }
 
+/// ★ 那一发没成 ⇒ 当场放开（不占 15 分钟）、记下几点 · 为什么；不自动重发，下一次谁叫谁发。
+/// 正在发的那一发照样挡着另一次；成了才占，成了之后「上次没成」那一条不再说。
+#[test]
+fn a_failed_send_does_not_hold_and_is_told_as_failed() {
+    let w = Warm::default();
+    let an = ["an".to_string()];
+    assert_eq!(w.claim(AGENT, &an, T), ["an"]);
+    assert!(w.claim(AGENT, &an, T + 1).is_empty(), "正在发 ⇒ 不另发一次");
+    let why = Said::new("failed", "起不来".into()).and_raw(Some("exit 1: boom"));
+    w.failed(AGENT, "an", T + 30, &why);
+    assert_eq!(
+        w.last_failed(AGENT, "an"),
+        Some(WarmFailed {
+            at: T + 30,
+            why: crate::common::cells::Words("起不来".into()),
+            raw: Some("exit 1: boom".into()),
+        })
+    );
+    assert_eq!(w.sent(AGENT, "an"), None, "没成的不当发过");
+    assert_eq!(w.claim(AGENT, &an, T + 31), ["an"], "没成的不占：再叫就发");
+    w.landed(AGENT, "an", Some(T + 5 * 3600));
+    assert_eq!(w.last_failed(AGENT, "an"), None, "成了 ⇒ 不再说上次没成");
+    assert!(w.claim(AGENT, &an, T + 60).is_empty(), "成了才占");
+}
+
+/// ★ 认下那一发怎么收场只记一处（`booked`；`kick` 与命令经 [`send_booked`] 交给它）：没成 ⇒ 回错照旧、那一本记下没成、不占。
+/// 这一家没有开窗那一形 ⇒ 不起进程就没成，拿它当没成的那一发。
+#[test]
+fn a_send_that_fails_is_booked_as_failed() {
+    let home = std::env::temp_dir().join(format!("ccm-warm-booked-{}", std::process::id()));
+    let own = crate::platform::fs::Own::issue_data_at(&home);
+    let acct = format!("booked-{}", std::process::id());
+    assert_eq!(
+        book().claim("nobody", std::slice::from_ref(&acct), T),
+        [acct.clone()]
+    );
+    let err = send_booked("nobody", &acct, &own).expect_err("没有开窗那一形");
+    let f = book().last_failed("nobody", &acct).expect("记下没成");
+    assert_eq!(f.why.0, err.said);
+    assert_eq!(book().sent("nobody", &acct), None, "没成的不占");
+}
+
 /// ★ 交给 ccm 的那一行：适配层那几个参数在 `--` 左边（交那一家），右边点名号 · 工作目录 · 这一发不轮换；
 /// Claude 那一形是 haiku 一句、不给工具、不落会话记录，起它时关掉思考。
 #[test]
@@ -175,9 +218,6 @@ fn the_ccm_line_names_the_account_and_does_not_rotate() {
     let tools = left.iter().position(|x| x == "--tools").expect("--tools");
     assert_eq!(left[tools + 1], "", "不给工具");
     assert!(face.env_set.contains(&("MAX_THINKING_TOKENS", "0")));
-    assert!(crate::agents::route_named("codex")
-        .and_then(crate::agents::warm_of)
-        .is_none());
 }
 
 /// ★ 认号同轮换那一个谓词（`relay_route_core::account_ok`）：过不了路由段闸的 · 「没说是哪个号」那一段（`_`）都当入参不对，不起进程。
@@ -191,6 +231,95 @@ fn an_account_id_rotation_would_refuse_is_bad_args() {
             account: bad.into(),
         };
         let err = answer(&req, &own, T).expect_err(bad);
-        assert_eq!(err.code_or_fallback(), "bad_args", "{bad:?}");
+        assert_eq!(
+            cmd_wire::failed::Failed::code_or_fallback(err.code.clone()),
+            "bad_args",
+            "{bad:?}"
+        );
+    }
+}
+
+/// ★ 开窗回的 5 小时重置时刻照事实那一处取窗口（[`crate::accounts::quota::facts::current`] ＋ `pick`）：
+/// 那一格不在它来源最近一份里、又过了它自己的重置时刻 ⇒ 不回；没过 ⇒ 照它回。
+#[test]
+fn the_5h_reset_after_a_warm_is_taken_like_the_facts_take_it() {
+    use crate::agents::{QuotaReading, QuotaWindow};
+    let reading = |names: &[(&str, u64)]| QuotaReading {
+        status: None,
+        refused: false,
+        limiting: None,
+        resets_at: None,
+        windows: names
+            .iter()
+            .map(|(n, r)| QuotaWindow {
+                name: (*n).to_string(),
+                used: Some(0.1),
+                resets_at: Some(*r),
+                warned_at: None,
+            })
+            .collect(),
+        overage: None,
+    };
+    let l = super::super::ledger::Ledger::at(None);
+    let own = crate::platform::fs::Own::for_tests();
+    let rec = |r: QuotaReading, at: u64| {
+        super::super::ledger::record_seen(&l, &own, None, AGENT, "q", r, at);
+    };
+    rec(
+        reading(&[("five_hour", T + 1_000), ("seven_day", T + 90_000)]),
+        T,
+    );
+    rec(reading(&[("seven_day", T + 90_000)]), T + 600);
+    assert_eq!(resets_5h(&l, AGENT, "q", T + 900), Some(T + 1_000));
+    assert_eq!(resets_5h(&l, AGENT, "q", T + 2_000), None);
+}
+
+/// ★ 这一家没有开窗那一形 ⇒ 那一句照传进来的注册表说那一家的叫法：路由名先认回那一家；认不出 ⇒ 照实那一句，不露路由名（替身家）。
+#[test]
+fn the_unsupported_refusal_names_that_family_not_its_route() {
+    use crate::agents::fake;
+    // 第二家的路由名与 kind 不同：照路由名直接当 kind 说的就说不出它的叫法。
+    let mut b = fake::family_row("stand-b", "CCM_STAND_B", "sb", false, || None);
+    b.launch = b.launch.map(|l| crate::agents::LaunchFace {
+        adapter_id: "route-b",
+        ..l
+    });
+    let reg = [
+        fake::family_row("stand-a", "CCM_STAND_A", "sa", true, || None),
+        b,
+    ];
+    let said =
+        |agent: &str| copy_core::copy_text("beQuotaWarm.agent.unsupported", &[("agent", agent)]);
+    for (route, want) in [
+        ("route-b", said(fake::said_of("stand-b"))),
+        ("stand-a", said(fake::said_of("stand-a"))),
+        (
+            "no-route",
+            said(&copy_core::copy_text("rsAgents.family.unsaid", &[])),
+        ),
+    ] {
+        let got = unsupported_among(&reg, route);
+        assert_eq!(got.code.as_deref(), Some("unsupported"), "{route}");
+        assert_eq!(got.said, want, "{route}");
+    }
+}
+
+/// ★ 起不来那一句只一套原因词：同一个 IO 错，走「本程序路径取不到 · 开窗线程起不来」（[`run_failed`]）
+/// 与「那一发的子进程起不来」（[`child_failed`]）两条路，出来同一句、同一个码、同一段原话。
+#[test]
+fn a_spawn_error_says_the_same_on_both_paths() {
+    use crate::platform::child::ChildFail;
+    use std::io::{Error, ErrorKind as K};
+    for kind in [K::NotFound, K::PermissionDenied, K::Other] {
+        let child = if kind == K::NotFound {
+            ChildFail::NotFound(Error::new(kind, "boom"))
+        } else {
+            ChildFail::Io(Error::new(kind, "boom"))
+        };
+        assert_eq!(
+            run_failed(&Error::new(kind, "boom")),
+            child_failed(child),
+            "{kind:?}"
+        );
     }
 }

@@ -4,18 +4,51 @@ import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.Login
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.Changed
 import com.ccmonitor.mobile.core.wire.gen.LoginAgain
 import com.ccmonitor.mobile.core.wire.gen.LoginAgainHow
 import com.ccmonitor.mobile.core.wire.gen.LoginStartReq
 import com.ccmonitor.mobile.core.wire.gen.LoginStarted
+import com.ccmonitor.mobile.core.wire.gen.PasteKind
+import com.ccmonitor.mobile.core.wire.gen.SignInState
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+
+/** 链接下面那一段摆什么：照那台回包的 `paste`（两端同一个分法，桌面 `login-drawer.ts`）。 */
+sealed interface LoginForm {
+    /** 粘回：那一格的名字照它（登录页上的码 · 浏览器地址栏那一整条）。 */
+    data class Paste(
+        val redirect: Boolean,
+    ) : LoginForm
+
+    /** 显示码：那段码在登录页里填，不粘回；那台登完推一帧，抽屉自己关。 */
+    data class ShowCode(
+        val code: String,
+    ) : LoginForm
+
+    /** 不粘回：那一家等浏览器回跳到它那一台；只能在那一台登完时那台写好的那一句（`elsewhere`），照摆。 */
+    data class Wait(
+        val said: String?,
+    ) : LoginForm
+}
+
+/** 那台回包 ⇒ 链接下面摆什么。 */
+internal fun formOf(s: LoginStarted): LoginForm =
+    when (s.paste) {
+        PasteKind.CODE -> LoginForm.Paste(redirect = false)
+        PasteKind.REDIRECT_URL -> LoginForm.Paste(redirect = true)
+        PasteKind.SHOW_CODE -> LoginForm.ShowCode(s.code.orEmpty())
+        PasteKind.NO_PASTE -> LoginForm.Wait(s.elsewhere)
+    }
 
 /** 登录抽屉此刻。 */
 data class LoginUi(
@@ -55,8 +88,17 @@ class LoginFlow(
     private val _state = MutableStateFlow(LoginUi(target))
     val state: StateFlow<LoginUi> = _state.asStateFlow()
 
+    /** 正听着那台 `changed {login}` 的那一路（一趟一路；重新开始 · 收起就换掉）。 */
+    private var watch: Job? = null
+
     fun start() {
+        watch?.cancel()
         _state.update { LoginUi(it.target) }
+        // 先订那台的 `changed {login}` 再起（那一帧只推一次）：作业自己收了（显示码那一形登完 · 那一家先退了）⇒ 照它的结局收。
+        watch =
+            scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                link.changed.filterIsInstance<Changed.Login>().collect(::ended)
+            }
         scope.launch {
             val r = link.call(Login.START, Login.start(_state.value.target), CALL_MS)
             val s = (r as? Reply.Ok)?.let { Login.started(it.data) }
@@ -80,8 +122,20 @@ class LoginFlow(
         }
     }
 
+    /** 推来的结局：只认这一趟的作业号。成 ⇒ 抽屉关；不成 ⇒ 那台那一句（作业没了，接着粘无从谈起 ⇒ 照「重新开始」画）。 */
+    private fun ended(c: Changed.Login) {
+        val job = _state.value.started?.job ?: return
+        if (c.key != job || _state.value.done) return
+        when (val b = c.body) {
+            SignInState.Done -> _state.update { it.copy(submitting = false, done = true) }
+            is SignInState.Failed -> _state.update { it.copy(started = null, submitting = false, failed = b.said, canRestart = b.again != LoginAgainHow.NONE, terminal = false) }
+            null -> Unit
+        }
+    }
+
     /** 收起（取消 · ✕ · 下滑 · 点遮罩）：作业还在 ⇒ 交 `login-cancel`；不确认（再点［登录…］就是）。 */
     fun cancel() {
+        watch?.cancel()
         val job = _state.value.started?.job ?: return
         if (_state.value.done) return
         scope.launch { link.call(Login.CANCEL, Login.cancel(job), CALL_MS) }

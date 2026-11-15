@@ -331,7 +331,7 @@ fn the_general_layer_answers_a_non_claude_agent_silently_or_with_claudes_words()
     //   会去读**用户真实的**账号库（不碰生产）。
     let no_accts = root.join("no-such-accts");
     assert_eq!(
-        crate::accounts::manage::library::session_accounts(&root, &no_accts),
+        crate::accounts::manage::library::session_accounts(&root, Some(no_accts.as_path())),
         Vec::new(),
         "会话归属的反应变了"
     );
@@ -355,6 +355,7 @@ fn the_general_layer_answers_a_non_claude_agent_silently_or_with_claudes_words()
 fn registry_with_fake() -> Vec<crate::agents::Adapter> {
     let row = |kind, home, launch| crate::agents::Adapter {
         kind,
+        display_name: None,
         home,
         account_env: None,
         assets: None,
@@ -402,7 +403,9 @@ fn the_ccm_plan_and_resume_read_only_the_launch_face_for_every_family() {
     // 「在别处跑着」：一个账号目录里，测试进程自己持着 sid-1（记真的启动时刻 ⇒ 活会话表认它在写）。
     let live_dir = fixture_root("resume-live");
     let _ = std::fs::remove_dir_all(&live_dir);
-    let sessions = crate::agents::pidfile_dir(&live_dir);
+    let sessions = crate::agents::IntoHomes::into_homes(&live_dir)[0]
+        .pidfile_dir()
+        .unwrap();
     std::fs::create_dir_all(&sessions).expect("建 pidfile 目录");
     let me = std::process::id();
     let ticks = crate::platform::proc::proc_starttime(me).expect("读得到自己的启动时刻");
@@ -454,15 +457,16 @@ fn the_ccm_plan_and_resume_read_only_the_launch_face_for_every_family() {
             };
             let full = plan::render(&Plan::Container(c.clone()));
             let typed = format!(
-                "send-keys -t '=w-x:' {} Enter",
-                shell_quote_core::posix_quote(&c.payload)
+                "send-keys -t =w-x: -l -- {}",
+                crate::platform::shell::dialect::posix_word(&c.payload)
             );
             assert_eq!(
                 (
                     full.matches("send-keys").count(),
-                    full.matches(&typed).count()
+                    full.matches(&typed).count(),
+                    full.matches("send-keys -t =w-x: Enter").count()
                 ),
-                (1, 1),
+                (2, 1, 1),
                 "{} {extra:?}：容器路里除了键入载荷还有别的按键：{full}",
                 a.kind
             );
@@ -613,6 +617,7 @@ fn the_fake_agents_mcp_face_is_read_through_the_generic_layer() {
     .expect("写夹具");
     let adapter = crate::agents::Adapter {
         kind: AGENT_KIND,
+        display_name: None,
         account_env: None,
         assets: None,
         history: None,
@@ -742,7 +747,14 @@ fn the_same_generic_dispatch_answers_for_claude_codex_and_the_fake() {
         Some(cfg.to_path_buf())
     );
 
-    // 账号库面：会话进程环境里读的账号键 == 那一家的账号载体（`Adapter.account_env`）；Codex 今天没有账号库。
+    // 账号库面：会话进程环境里读的账号键 == 那一家的账号载体（`Adapter.account_env`）；不写死哪一家有没有账号库，
+    // 「没声明账号面 ⇒ 答不出」拿一行没账号面的替身测。
+    reg.push(crate::agents::Adapter {
+        kind: "fake-no-accounts",
+        account_env: None,
+        accounts: None,
+        ..full_row(home_of_walk)
+    });
     for a in &reg {
         let face = accounts_face_among(&reg, a.kind);
         assert_eq!(
@@ -752,5 +764,24 @@ fn the_same_generic_dispatch_answers_for_claude_codex_and_the_fake() {
             a.kind
         );
     }
-    assert!(accounts_face_among(&reg, codex).is_none());
+    assert!(accounts_face_among(&reg, "fake-no-accounts").is_none());
+    assert!(accounts_face_among(&reg, AGENT_KIND).is_some());
+}
+
+/// 一份记录不在哪一家的根底下、只能照文件名认：恰一家认得 ⇒ 那一家；两家都认得 ⇒ 认不出，不照注册序取头一家。
+#[test]
+fn a_record_two_families_both_claim_by_name_is_unrecognised() {
+    use crate::agents::record_kind_among;
+    let stray = Path::new("/ccm-no-such-root").join(session_file_name(FIXTURE_SESSION_ID));
+    let one = [full_row(|| None)];
+    assert_eq!(record_kind_among(&one, &stray), Some(AGENT_KIND));
+    let two = [
+        full_row(|| None),
+        family_row("fake-b", "FAKE_B_DIR", "fake-b", false, || None),
+    ];
+    assert_eq!(
+        record_kind_among(&two, &stray),
+        None,
+        "两家都认得这个文件名，却认成了注册序上的头一家"
+    );
 }

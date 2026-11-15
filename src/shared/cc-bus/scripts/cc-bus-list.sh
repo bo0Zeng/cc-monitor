@@ -6,6 +6,6 @@ SELFDIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
 # shellcheck source=cc-bus-lib.sh
 . "$SELFDIR/cc-bus-lib.sh"
 [ $# -eq 0 ] || { echo "cc-bus list: 不收参数" >&2; exit 2; }
-ccbus_ask list '{}' || exit 1
+ccbus_ask bus-list '{}' || exit 1
 printf 'id\tlive\tunread\ttitle\n'
 printf '%s' "$CCBUS_OUT" | jq -r '.agents[] | "\(.id)\t\(.live)\t\(.unread)\t\(.title)"'

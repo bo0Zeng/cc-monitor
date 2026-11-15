@@ -32,7 +32,7 @@ async function mount(lines: RigPayload[], over: Partial<ViewerOptions> = {}): Pr
   viewerRig.chunk = lines;
   const v = new SessionViewer();
   document.body.appendChild(v.element);
-  await v.load({ jsonlPath: "/p/s1.jsonl", displayTitle: "T", origin: LOCAL, suppressBranch: true, ...over });
+  await v.load({ jsonlPath: "/p/s1.jsonl", sessionId: "s1", displayTitle: "T", origin: LOCAL, suppressBranch: true, ...over });
   return v;
 }
 

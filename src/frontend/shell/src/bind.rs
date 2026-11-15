@@ -28,6 +28,7 @@ use crate::platform::own_fs::OwnState;
 use copy_core::{Discard, Why};
 use notify::RecursiveMode;
 use parking_lot::RwLock;
+use relay_route_core::{AWAIT_SUBDIR, REGISTRY_SUBDIR};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -168,11 +169,6 @@ fn same_shell(recorded: &str, start_now: Option<u64>) -> bool {
         (Some(a), Some(b)) if a == b
     )
 }
-
-use shell_quote_core::AWAIT_SUBDIR;
-
-/// 握手表那一层（数据目录底下）。
-const REGISTRY_SUBDIR: &str = "ps-registry";
 
 /// 启动时扫已有 ps-registry/*.json（应对 monitor 重启）。
 /// P3 归并：走 utils::scan_dir_jsons。

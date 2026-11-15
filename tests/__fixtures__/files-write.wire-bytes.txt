@@ -9,8 +9,8 @@ delete	{"outcomes":[{"key":"0","path":"<ROOT>/copied.txt","removed":1,"state":"d
 delete-empty-dir	{"outcomes":[{"key":"0","path":"<ROOT>/dir1","removed":1,"state":"done"}],"said":"已删除 1 项"}
 delete-expect	{"outcomes":[{"key":"0","path":"<ROOT>/moved.txt","removed":1,"state":"done"}],"said":"已删除 1 项"}
 delete-tree	{"outcomes":[{"key":"0","path":"<ROOT>/tree2","removed":4,"state":"done"}],"said":"已删除 1 项"}
-extract	{"bytes":3,"dirs":1,"files":2,"links":0,"path":"<ROOT>/a"}
-extract-fresh	{"bytes":3,"dirs":1,"files":2,"links":0,"path":"<ROOT>/a (2)"}
+extract	{"bytes":3,"dirs":1,"files":2,"links":0,"path":"<ROOT>/a","size_text":"3 B"}
+extract-fresh	{"bytes":3,"dirs":1,"files":2,"links":0,"path":"<ROOT>/a (2)","size_text":"3 B"}
 mkdir	{"path":"<ROOT>/dir1"}
 rename	{"path":"<ROOT>/moved.txt"}
 stage-chunk	{"bytes":5}

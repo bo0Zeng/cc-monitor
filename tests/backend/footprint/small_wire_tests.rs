@@ -20,12 +20,19 @@ fn agent_home_check_keeps_its_wire_bytes() {
     let check = |p: &std::path::Path| {
         wire(&super::agent_home_check::answer_check(&take(json!({ "path": p }))).unwrap())
     };
-    assert_eq!(check(&d.join("nope")), r#"{"state":"missing"}"#);
+    // 那一句里的路径换成 `<D>`（临时目录每趟不同）。
+    let at = |p: &std::path::Path| check(p).replace(&d.display().to_string(), "<D>");
+    assert_eq!(at(&d.join("nope")), r#"{"said":"<D>/nope 不存在"}"#);
     std::fs::write(d.join("f"), "x").unwrap();
-    assert_eq!(check(&d.join("f")), r#"{"state":"not_dir"}"#);
-    assert_eq!(check(&d), r#"{"state":"no_records"}"#);
-    std::fs::create_dir_all(crate::agents::records_root(&d).unwrap()).unwrap();
-    assert_eq!(check(&d), r#"{"state":"ok"}"#);
+    assert_eq!(at(&d.join("f")), r#"{"said":"<D>/f 不是目录"}"#);
+    assert_eq!(at(&d), r#"{"said":"<D> 无会话记录"}"#);
+    std::fs::create_dir_all(
+        crate::agents::IntoHomes::into_homes(&d)[0]
+            .records_root()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(at(&d), r#"{"said":null}"#);
     let _ = std::fs::remove_dir_all(&d);
 }
 
@@ -91,7 +98,7 @@ fn last_seen_pair_keeps_its_wire_bytes() {
         wire(
             &ls(
                 &own,
-                &json!({"origin": "devbox", "kind": "data", "value": {"home": "/h", "changedFiles": [], "todo": [], "tmux": null, "counts": {"badge": 0, "open": 0, "must": 0, "decide": 0, "install": 0, "optional": 0, "done": 0}, "rank": 2, "own": []}}),
+                &json!({"origin": "devbox", "kind": "data", "value": {"changedFiles": [], "todo": [], "tmux": null, "counts": {"badge": 0, "open": 0, "must": 0, "decide": 0, "install": 0, "optional": 0, "done": 0}, "rank": 2, "own": []}}),
                 2000
             )
             .unwrap()
@@ -100,7 +107,7 @@ fn last_seen_pair_keeps_its_wire_bytes() {
     );
     assert_eq!(
         read("devbox"),
-        r#"{"accounts":{"seen":{"atMs":1000,"said":"采样于 00:00"},"state":"kept","value":{"accounts":[],"meta":{"count":0,"effectiveDefault":null,"enabled":true,"error":null,"manifestPath":"/a/m.json","nextDefault":null,"unsupported":null,"updatedAt":null},"notice":null}},"data":{"seen":{"atMs":2000,"said":"采样于 00:00"},"state":"kept","value":{"changedFiles":[],"counts":{"badge":0,"decide":0,"done":0,"install":0,"must":0,"open":0,"optional":0},"home":"/h","own":[],"rank":2,"tmux":null,"todo":[]}}}"#
+        r#"{"accounts":{"seen":{"atMs":1000,"said":"采样于 00:00"},"state":"kept","value":{"accounts":[],"meta":{"count":0,"effectiveDefault":null,"enabled":true,"error":null,"manifestPath":"/a/m.json","nextDefault":null,"unsupported":null,"updatedAt":null},"notice":null}},"data":{"seen":{"atMs":2000,"said":"采样于 00:00"},"state":"kept","value":{"changedFiles":[],"counts":{"badge":0,"decide":0,"done":0,"install":0,"must":0,"open":0,"optional":0},"own":[],"rank":2,"tmux":null,"todo":[]}}}"#
     );
     assert_eq!(
         wire(&ls(&own, &json!({"origin": "devbox", "forget": true}), 3000).unwrap()),

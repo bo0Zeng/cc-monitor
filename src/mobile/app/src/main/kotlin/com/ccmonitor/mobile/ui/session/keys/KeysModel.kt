@@ -9,10 +9,7 @@ import com.ccmonitor.mobile.core.data.db.KeyPress
 import com.ccmonitor.mobile.core.data.db.ResetPreview
 import com.ccmonitor.mobile.core.data.db.TermKey
 import com.ccmonitor.mobile.core.data.db.UnconvertedNote
-import com.ccmonitor.mobile.core.data.db.appActionName
-import com.ccmonitor.mobile.core.data.db.autoCap
 import com.ccmonitor.mobile.core.data.db.isRepeatable
-import com.ccmonitor.mobile.core.data.db.modName
 import com.ccmonitor.mobile.core.data.repo.SettingsRepository
 
 /*

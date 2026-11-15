@@ -11,9 +11,11 @@ package com.ccmonitor.mobile.core.rs
  * 一台的**常驻流**（重连 · 握手 · 版本门 · 在看名单 · 一问一答，桌面同一份 `resident-client`）整条在核心里：[residentOpen] 看一台，
  * [residentSsh] 交 SSH 那层此刻的拨号请求，[residentCall] 问一句，[residentWatch] 报在看哪条，[residentKick] 叫它马上再接，[residentClose] 不看了；
  * 它交的事经 [Sink.resident] 回来（`state` · `empty` · `frame` · `unread` · `watch_from` · `ssh` · `reply` · `moved` · `deploy` · `batch` · `batch_keep` · `batch_local` · `busy`）。给一台装 / 更新后端经 [deploy]。
- * 分块传（上传送进暂存区）的循环也在核心里：本机那一份的文件描述符交 [transferStage]，走到哪经 `moved`、结局经 `reply` 回；下到本机那一组整组在核心里（[batchStart]）。
+ * 分块传的循环也在核心里：拉进内存经 [transferRead]，走到哪经 `moved`、结局经 `reply` 回；上传那一组与下到本机那一组整组在核心里（[batchStart]）。
  *
- * 第一次碰到时才加载那份 .so；JVM 单测不碰它（真连接那一条路才用，单测走假传输）。写字那几个口另在 core-copy 的 `CopyCore`。
+ * 写字（[copyTextFlat] · [shortDuration]，取文口 `copyText` 与 `DurationFormat` 转调）· 送进终端的字节（[keyBytes]，`TermKeys` 转调）·
+ * 几台并一份的那几样（[chatsColumn] · [groupsMerge]，core-claude 那几个读口经 `ResidentCore` 交进来）· 逐台问一圈再合的那两样（[needsAll] · [searchAll]）也在这里：
+ * 认识这份 .so 的 Kotlin 只有这一个对象。第一次碰到时才加载；JVM 单测加载同一个 crate 的宿主编译（根 `build.gradle.kts` 指好 `java.library.path`）。
  */
 object Core {
     init {
@@ -41,9 +43,6 @@ object Core {
             body: String,
         )
     }
-
-    /** 这一份核心的身份那一行（JSON：拨号核心的 ack 协议版本 · 认得的用法）。 */
-    external fun version(): String
 
     /**
      * 记下 [sink]、装上手机那一套（只认第一次）：主机钥匙那份库（OpenSSH known_hosts）在 [knownHosts]（App 私有目录），
@@ -142,11 +141,47 @@ object Core {
         rows: String,
     ): String
 
-    /** 几台搜内容的结果 `[{origin, reply}]` ⇒ 合好的那一份（`Merged`，本机后端扇出完调的同一份合并）；读不动 ⇒ 空串。 */
-    external fun searchMerge(data: String): String
+    /** 改权限那一框 `{names, modes}`（逐项读回来的权限位，读不到 ⇒ `null`）⇒ `ChmodAsk {title, line, prefill}`；读不动 ⇒ 空串。 */
+    external fun chmodAsk(want: String): String
 
-    /** 聊天输入框上方那一排附件的字（`{cards, offline, local}` JSON）⇒ `{cards: [{line, remove}], note}`；读不动 ⇒ 空串。 */
-    external fun attachFace(want: String): String
+    /**
+     * 几台搜内容问一圈、合成一份：`{q, hosts: [{handle, origin}], withinMs}`（[residentOpen] 的编号 · hostId）⇒ `Merged`（本机后端扇出完调的同一份合并）；
+     * 等各台都有结局才回（不在主线程上调）；读不动 ⇒ 空串。
+     */
+    external fun searchAll(data: String): String
+
+    /** 会话屏勾上的那几台并成一列：`ChatsColumnAsk` ⇒ `ChatsColumn`（JSON，`face_core::column`）；读不动 ⇒ 空串。 */
+    external fun chatsColumn(ask: String): String
+
+    /** 几台的组合成一份：`{answered: [{origin, reply}]}` ⇒ `GroupsRead`（JSON，`face_core::groups::merge`）；读不动 ⇒ 空串。 */
+    external fun groupsMerge(data: String): String
+
+    /**
+     * 几台的需手动问一圈、合成一份：`{hosts: [{handle, origin}], withinMs}` ⇒ `NeedsMerged`（JSON，`face_core::needs::merge_needs`）；
+     * 等各台都有结局才回（不在主线程上调）；读不动 ⇒ 空串。
+     */
+    external fun needsAll(data: String): String
+
+    /** 取文（`copy-core::copy_text`，表编译期内嵌）：[args] 按「名 · 值 · 名 · 值 …」平铺；表里没有的键写成〔键〕。 */
+    external fun copyTextFlat(
+        key: String,
+        args: Array<String>,
+    ): String
+
+    /** 毫秒 ⇒ 短时长（`copy-core::short_duration`）；负数按 0。 */
+    external fun shortDuration(ms: Long): String
+
+    /** 几下（`TermKeys` 的记号）⇒ 送进终端的字节，一下接一下拼起来；有一个记号读不出 ⇒ null。 */
+    external fun keyBytes(tokens: Array<String>): ByteArray?
+
+    /**
+     * 聊天输入框上方那一排附件（那一圈在核心里，`attach.rs`）：[op] 是 `AttachDo` 那一行 ⇒ `AttachDone` 那一行；
+     * 那一排每变一次经 `Sink.resident(handle, "attach", AttachShown)` 交回。读不动 ⇒ 空串。
+     */
+    external fun attach(
+        handle: Long,
+        op: String,
+    ): String
 
     /** 开一条链路，回编号；请求读不动 ⇒ 0。 */
     external fun open(request: String): Long
@@ -168,7 +203,7 @@ object Core {
     external fun residentOpen(
         machine: String,
         mine: String?,
-        tz: String?,
+        tz: String,
     ): Long
 
     /** SSH 那层此刻的连接（拨号请求 JSON，同 [open] 那一形，不带用法）；`null` ⇒ 没通。请求读不动 ⇒ `false`。 */
@@ -199,17 +234,6 @@ object Core {
     )
 
     external fun residentClose(handle: Long)
-
-    /**
-     * 上传那一半：[fd]（读，已 detach，核心用完就关）逐块送进那台的暂存区；[name] 是它在句子里的名字。回问答编号：
-     * 每块之后一行 `moved {call, done, total}`，结局 `reply`：成了 ⇒ `data {key, chunks, bytes, sha256}`（提交照交）。这台不在 ⇒ 0。
-     */
-    external fun transferStage(
-        handle: Long,
-        fd: Int,
-        name: String,
-        withinMs: Long,
-    ): Long
 
     /**
      * 拉进内存那一半：那台的 [path]（线上 `WirePath` 的 JSON）逐块读回、过 [cap]（门给的上限）就停。回问答编号：

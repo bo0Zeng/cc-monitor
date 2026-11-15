@@ -20,7 +20,7 @@ fn row(
 fn entry(
     name: &str,
     status: crate::agents::McpStatus,
-    login_in: &[&str],
+    login_in: &[Option<&str>],
 ) -> crate::agents::McpEntry {
     crate::agents::McpEntry {
         scope: "user",
@@ -28,7 +28,7 @@ fn entry(
         server: json!({}),
         source: "/h/.claude.json".to_string(),
         status,
-        login_in: login_in.iter().map(|s| s.to_string()).collect(),
+        login_in: login_in.iter().map(|s| s.map(str::to_string)).collect(),
         seen_ms: None,
     }
 }
@@ -49,16 +49,22 @@ fn the_manual_list_names_each_thing_and_how_to_fix_it() {
         None,
         crate::agents::McpRead {
             entries: vec![
-                entry("notes", crate::agents::McpStatus::NeedsLogin, &["work"]),
-                entry("bare", crate::agents::McpStatus::NeedsLogin, &[]),
+                entry(
+                    "notes",
+                    crate::agents::McpStatus::NeedsLogin,
+                    &[Some("work")],
+                ),
+                entry("bare", crate::agents::McpStatus::NeedsLogin, &[None]),
                 entry("down", crate::agents::McpStatus::Failed, &[]),
             ],
             dirs: vec![],
             problems: vec![],
         },
     )]);
-    let got = json!({ "items": manual_of("claude", &accounts, None, &[], Some(("claude", &mcp[..]))).expect("列得出") });
-    let fix = |a: &str| json!({ "command": "login-start", "args": { "kind": "account", "agent": "claude", "account": a } });
+    let got = json!({ "items": manual_of(crate::agents::REGISTRY, "claude", &accounts, None, &[], Some(("claude", &mcp[..]))).expect("列得出") });
+    // 号那一项的解法不带家（家由后端照号表认：同一个号从哪里点进来都是同一个目标）。
+    let fix =
+        |a: &str| json!({ "command": "login-start", "args": { "kind": "account", "account": a } });
     let mcp_fix = |a: Value, s: &str| {
         json!({ "command": "login-start",
                 "args": { "kind": "mcp", "agent": "claude", "account": a, "server": s, "projectDir": null } })
@@ -69,7 +75,7 @@ fn the_manual_list_names_each_thing_and_how_to_fix_it() {
             { "kind": "accountLogin", "agent": "claude", "account": "work",
               "said": copy_text("beManual.list.accountLogin", &[("account", "work")]), "fix": fix("work") },
             { "kind": "accountLogin", "agent": "claude", "account": "0",
-              "said": copy_text("beManual.list.accountLogin", &[("account", &copy_text("acct.home.name", &[]))]), "fix": fix("0") },
+              "said": copy_text("beManual.list.accountLogin", &[("account", &crate::accounts::quota::name_words::account_text_of("claude", "0"))]), "fix": fix("0") },
             { "kind": "mcpLogin", "account": "work", "server": "notes", "scope": "user",
               "said": copy_text("beManual.list.mcpLogin", &[("server", "notes"), ("account", "work")]),
               "fix": mcp_fix(json!("work"), "notes") },
@@ -79,10 +85,9 @@ fn the_manual_list_names_each_thing_and_how_to_fix_it() {
         ]})
     );
     // 那一家不在 app 里登 ⇒ 不列需登录的号（没有解法的不列成「点了能解」）。
-    let fake =
-        json!({ "items": manual_of("no-such-agent", &accounts, None, &[], None).expect("列得出") });
+    let fake = json!({ "items": manual_of(crate::agents::REGISTRY, "no-such-agent", &accounts, None, &[], None).expect("列得出") });
     assert_eq!(fake, json!({ "items": [] }));
-    let no_mcp_login = json!({ "items": manual_of("no-such-agent", &accounts, None, &[], Some(("fake", &mcp[..]))).expect("列得出") });
+    let no_mcp_login = json!({ "items": manual_of(crate::agents::REGISTRY, "no-such-agent", &accounts, None, &[], Some(("fake", &mcp[..]))).expect("列得出") });
     assert_eq!(no_mcp_login["items"][0]["kind"], "mcpLogin");
     assert_eq!(
         no_mcp_login["items"][0]["fix"],
@@ -91,7 +96,10 @@ fn the_manual_list_names_each_thing_and_how_to_fix_it() {
     );
     assert_eq!(
         no_mcp_login["items"][0]["why"],
-        json!(copy_text("beManual.list.mcpNoFix", &[("agent", "fake")])),
+        json!(copy_text(
+            "beManual.list.mcpNoFix",
+            &[("agent", &copy_text("rsAgents.family.unsaid", &[]))]
+        )),
         "没有解法时说为什么"
     );
     assert!(
@@ -104,6 +112,40 @@ fn the_manual_list_names_each_thing_and_how_to_fix_it() {
     );
 }
 
+/// 逐号读出来、两个号的家里各一份同名同配置的 MCP：每个号一项、不按读出的份数重复出项。
+#[test]
+fn a_server_read_from_two_homes_is_listed_once_per_account() {
+    let accounts = crate::accounts::manage::library::test_support::list(vec![]);
+    let from = |home: &str| crate::agents::McpEntry {
+        source: format!("/h/{home}/.claude.json"),
+        ..entry("notes", crate::agents::McpStatus::NeedsLogin, &[Some(home)])
+    };
+    let mcp = crate::accounts::manage::mcp_share_exec::needs_login_of(&[(
+        None,
+        crate::agents::McpRead {
+            entries: vec![from("a"), from("b"), from("a")],
+            dirs: vec![],
+            problems: vec![],
+        },
+    )]);
+    let got = json!(manual_of(
+        crate::agents::REGISTRY,
+        "claude",
+        &accounts,
+        None,
+        &[],
+        Some(("claude", &mcp[..]))
+    )
+    .expect("列得出"));
+    let who: Vec<&Value> = got
+        .as_array()
+        .expect("items")
+        .iter()
+        .map(|i| &i["account"])
+        .collect();
+    assert_eq!(who, vec![&json!("a"), &json!("b")], "{got}");
+}
+
 /// 口径取全范围：这台活会话所在项目里的项目级 server 要登录 ⇒ 它也进需手动，解法带上那个项目（在那个项目里登）。
 #[test]
 fn a_project_server_needing_login_in_a_live_session_is_a_manual_item() {
@@ -111,7 +153,7 @@ fn a_project_server_needing_login_in_a_live_session_is_a_manual_item() {
     let project = crate::agents::McpRead {
         entries: vec![crate::agents::McpEntry {
             scope: "project",
-            ..entry("tracker", crate::agents::McpStatus::NeedsLogin, &[])
+            ..entry("tracker", crate::agents::McpStatus::NeedsLogin, &[None])
         }],
         dirs: vec![],
         problems: vec![],
@@ -120,9 +162,15 @@ fn a_project_server_needing_login_in_a_live_session_is_a_manual_item() {
         (None, crate::agents::McpRead::default()),
         (Some("/p/app".into()), project),
     ]);
-    let got = json!(
-        manual_of("claude", &accounts, None, &[], Some(("claude", &mcp[..]))).expect("列得出")
-    );
+    let got = json!(manual_of(
+        crate::agents::REGISTRY,
+        "claude",
+        &accounts,
+        None,
+        &[],
+        Some(("claude", &mcp[..]))
+    )
+    .expect("列得出"));
     assert_eq!(
         got,
         json!([{ "kind": "mcpLogin", "account": null, "server": "tracker", "scope": "project",
@@ -140,13 +188,13 @@ fn an_account_whose_renewal_was_refused_is_listed_as_needing_a_new_login() {
         row("q", "subscription", true, true),
         row("ok", "subscription", true, true),
     ]);
-    let got = json!({ "items": manual_of("claude", &accounts, None, &["q".to_string()], None).expect("列得出") });
+    let got = json!({ "items": manual_of(crate::agents::REGISTRY, "claude", &accounts, None, &["q".to_string()], None).expect("列得出") });
     assert_eq!(
         got,
         json!({ "items": [
             { "kind": "accountLogin", "agent": "claude", "account": "q",
               "said": copy_text("beManual.list.accountRelogin", &[("account", "q")]),
-              "fix": { "command": "login-start", "args": { "kind": "account", "agent": "claude", "account": "q" } } },
+              "fix": { "command": "login-start", "args": { "kind": "account", "account": "q" } } },
         ]})
     );
 }
@@ -163,7 +211,8 @@ fn an_unreadable_account_library_is_said_not_listed_as_nothing() {
     let product = list_product_with(&accts, None, &[], &|_| None, "claude", "claude", false);
     let why = library_unreadable(&accts);
     assert_eq!(why, product.meta.error, "同账号清单那一句");
-    let fail = manual_of("claude", &product, why, &[], None).expect_err("读不懂 ⇒ 不是空清单");
+    let fail = manual_of(crate::agents::REGISTRY, "claude", &product, why, &[], None)
+        .expect_err("读不懂 ⇒ 不是空清单");
     assert_eq!(Some(fail), product.meta.error, "那一句是为什么");
     let nope = root.join("nope");
     assert_eq!(
@@ -173,7 +222,8 @@ fn an_unreadable_account_library_is_said_not_listed_as_nothing() {
     );
     let absent = list_product_with(&nope, None, &[], &|_| None, "claude", "claude", false);
     assert_eq!(
-        manual_of("claude", &absent, None, &[], None).expect("没有清单照列"),
+        manual_of(crate::agents::REGISTRY, "claude", &absent, None, &[], None)
+            .expect("没有清单照列"),
         Vec::new()
     );
     let _ = std::fs::remove_dir_all(&root);
@@ -183,12 +233,22 @@ fn an_unreadable_account_library_is_said_not_listed_as_nothing() {
 #[test]
 fn the_login_target_takes_exactly_its_two_shapes() {
     let ok: LoginStartReq =
-        serde_json::from_value(json!({ "kind": "account", "agent": "claude", "account": "w" }))
-            .unwrap();
+        serde_json::from_value(json!({ "kind": "account", "account": "w" })).unwrap();
     assert_eq!(
         ok,
         LoginStartReq::Account {
-            agent: "claude".into(),
+            agent: None,
+            account: "w".into()
+        }
+    );
+    // 带了家照收（对不对得上号表在后端判，见 `an_account_asked_under_another_family_is_refused`）。
+    let with: LoginStartReq =
+        serde_json::from_value(json!({ "kind": "account", "agent": "claude", "account": "w" }))
+            .unwrap();
+    assert_eq!(
+        with,
+        LoginStartReq::Account {
+            agent: Some("claude".into()),
             account: "w".into()
         }
     );
@@ -206,7 +266,8 @@ fn the_login_target_takes_exactly_its_two_shapes() {
     );
     for bad in [
         json!({ "agent": "claude", "account": "w" }),
-        json!({ "kind": "account", "agent": "claude", "account": "w", "server": "x" }),
+        json!({ "kind": "account", "account": "w", "server": "x" }),
+        json!({ "kind": "account", "agent": "claude" }),
         json!({ "kind": "mcp", "agent": "claude" }),
         json!({ "kind": "other", "agent": "claude", "account": "w" }),
     ] {
@@ -221,10 +282,10 @@ fn the_login_target_takes_exactly_its_two_shapes() {
 #[test]
 fn whether_the_browser_is_here_rides_beside_the_target() {
     let target = LoginStartReq::Account {
-        agent: "claude".into(),
+        agent: None,
         account: "w".into(),
     };
-    let base = json!({ "kind": "account", "agent": "claude", "account": "w" });
+    let base = json!({ "kind": "account", "account": "w" });
     let with = |v: Value| {
         let mut a = base.clone();
         a["browserHere"] = v;
@@ -284,7 +345,7 @@ fn it_says_it_finishes_by_itself_only_when_the_browser_is_here() {
         let started_with = |face| {
             let args = LoginStartArgs {
                 target: LoginStartReq::Account {
-                    agent: "claude".into(),
+                    agent: None,
                     account: "w".into(),
                 },
                 browser_here: here,
@@ -292,6 +353,7 @@ fn it_says_it_finishes_by_itself_only_when_the_browser_is_here() {
             let s = sign_in::Started {
                 job: "login-1-0".into(),
                 url: "https://claude.com/cai/oauth/authorize?state=s".into(),
+                code: None,
             };
             started(s, face, &args)
         };
@@ -301,7 +363,7 @@ fn it_says_it_finishes_by_itself_only_when_the_browser_is_here() {
     for here in [true, false] {
         let args = LoginStartArgs {
             target: LoginStartReq::Account {
-                agent: "claude".into(),
+                agent: None,
                 account: "w".into(),
             },
             browser_here: here,
@@ -309,8 +371,286 @@ fn it_says_it_finishes_by_itself_only_when_the_browser_is_here() {
         let s = sign_in::Started {
             job: "login-1-0".into(),
             url: "https://claude.com/cai/oauth/authorize?state=s".into(),
+            code: None,
         };
         assert_eq!(started(s, face, &args).auto, here);
+    }
+}
+
+/// 显示码那一形照声明答（替身家声明，不认哪一家）：`paste: showCode`、回包带那段码、在哪台的浏览器里都登得完（`auto` 恒真）。
+#[test]
+fn a_shown_code_answers_as_declared() {
+    for here in [true, false] {
+        let args = LoginStartArgs {
+            target: LoginStartReq::Account {
+                agent: None,
+                account: "w".into(),
+            },
+            browser_here: here,
+        };
+        let s = sign_in::Started {
+            job: "login-1-0".into(),
+            url: "https://login.fake.test/device?ticket=t1".into(),
+            code: Some("ABCD-1234".into()),
+        };
+        let shown = started(s, crate::agents::fake::SHOW_CODE_FACE, &args);
+        assert_eq!(
+            (shown.paste, shown.code.as_deref(), shown.auto),
+            (PasteKind::ShowCode, Some("ABCD-1234"), true)
+        );
+        assert_eq!(shown.elsewhere, None, "显示码在哪台都登得完");
+    }
+    assert_eq!(
+        serde_json::to_value(PasteKind::ShowCode).unwrap(),
+        json!("showCode")
+    );
+}
+
+/// 不粘回那一形照声明答（替身家声明）：`paste: noPaste`、不带码、只有浏览器在这台才自己登完（`auto` · `opened` 照 `browserHere`）。
+#[test]
+fn a_no_paste_login_answers_as_declared() {
+    for here in [true, false] {
+        let args = LoginStartArgs {
+            target: LoginStartReq::Account {
+                agent: None,
+                account: "w".into(),
+            },
+            browser_here: here,
+        };
+        let s = sign_in::Started {
+            job: "login-1-0".into(),
+            url: "https://login.fake.test/device?ticket=t1".into(),
+            code: None,
+        };
+        let wait = started(s, crate::agents::fake::NO_PASTE_FACE, &args);
+        assert_eq!(
+            (wait.paste, wait.code.as_deref(), wait.auto, wait.opened),
+            (PasteKind::NoPaste, None, here, here)
+        );
+        // 浏览器不在那一台 ⇒ 后端写好「需在那一台完成」那一句（两端照摆，不自己判）；在 ⇒ 没有。
+        assert_eq!(
+            wait.elsewhere,
+            (!here).then(|| copy_text("beLogin.start.elsewhere", &[]))
+        );
+    }
+    assert_eq!(
+        serde_json::to_value(PasteKind::NoPaste).unwrap(),
+        json!("noPaste")
+    );
+}
+
+/// 两家混列的账号库（夹具，同 `accounts-list` 不按家过滤）：alpha 是默认起的那一家、beta 是另一家，各声明一形登录
+/// （程序 · 号载体都不同）；gamma 不在 app 里登。还有一个认不出是哪一家的号、一个 API 号。
+fn two_families() -> (
+    Vec<crate::agents::Adapter>,
+    crate::accounts::manage::library::AccountsList,
+) {
+    let with_face = |mut a: crate::agents::Adapter, face: crate::agents::SignInFace| {
+        if let Some(f) = a.accounts.as_mut() {
+            f.sign_in = Some(face);
+        }
+        a
+    };
+    let registry = vec![
+        with_face(
+            crate::agents::fake::family_row("alpha", "CCM_A_DIR", "a", true, || None),
+            crate::agents::SignInFace {
+                program: "alpha-login",
+                dir_env: "CCM_A_DIR",
+                ..crate::agents::fake::SHOW_CODE_FACE
+            },
+        ),
+        with_face(
+            crate::agents::fake::family_row("beta", "CCM_B_DIR", "b", false, || None),
+            crate::agents::SignInFace {
+                program: "beta-login",
+                dir_env: "CCM_B_DIR",
+                ..crate::agents::fake::SHOW_CODE_FACE
+            },
+        ),
+        crate::agents::fake::family_row("gamma", "CCM_G_DIR", "g", false, || None),
+    ];
+    let of = |name: &str, kind: Option<&str>| {
+        crate::accounts::manage::library::test_support::row_with(name, |a| {
+            a.agent = kind.map(cmd_wire::AgentKind::new);
+        })
+    };
+    let api = crate::accounts::manage::library::test_support::row_with("k1", |a| {
+        a.agent = Some(cmd_wire::AgentKind::new("alpha"));
+        a.auth_kind = acct_core::AUTH_KIND_API_KEY.to_string();
+    });
+    let list = crate::accounts::manage::library::test_support::list(vec![
+        of("b1", Some("beta")),
+        of("a1", Some("alpha")),
+        of("g1", Some("gamma")),
+        of("lost", None),
+        api,
+    ]);
+    (registry, list)
+}
+
+/// 号 ⇒ 子命令照号表里那个号带的家拼（不照请求那一家）：混列清单里另一家的号用那一家的程序 · 号载体，默认那一家的号用它自己的；
+/// 请求不带家照号表；带了家、对得上照收。登录 · 退出 · 状态都从这一处取。
+#[test]
+fn each_account_signs_in_with_its_own_family() {
+    let (registry, list) = two_families();
+    let at = |asked: Option<&str>, name: &str| {
+        let a = account_at(&registry, &list, asked, name).expect("认得出");
+        (a.agent, a.face.program, a.face.dir_env, a.dir)
+    };
+    assert_eq!(
+        at(None, "b1"),
+        ("beta", "beta-login", "CCM_B_DIR", Some("/h/b1".to_string()))
+    );
+    assert_eq!(
+        at(None, "a1"),
+        (
+            "alpha",
+            "alpha-login",
+            "CCM_A_DIR",
+            Some("/h/a1".to_string())
+        )
+    );
+    assert_eq!(at(Some("beta"), "b1").1, "beta-login", "带了家、对得上");
+}
+
+/// 请求里报的家与号表不符 ⇒ `bad_args`（照实说这个号是哪一家的），不照请求那一家起子命令；
+/// 没这个号 ⇒ `not_found`；那一家不在 app 里登 · 认不出是哪一家的号 · API 号 ⇒ `unsupported`。登录 · 退出 · 状态同一套码。
+#[test]
+fn an_account_asked_under_another_family_is_refused() {
+    let (registry, list) = two_families();
+    let refused = |asked: Option<&str>, name: &str| {
+        account_at(&registry, &list, asked, name).err().expect("拒")
+    };
+    let codes = |r: AccountRefused| {
+        (
+            cmd_wire::failed::Failed::code_or_fallback(
+                r.clone().for_start(&registry).into_said().code,
+            ),
+            cmd_wire::failed::Failed::code_or_fallback(r.for_once(&registry).into_said().code),
+        )
+    };
+    let wrong = refused(Some("alpha"), "b1");
+    assert_eq!(
+        wrong.clone().for_once(&registry).into_said().said,
+        copy_text(
+            "beLogin.account.otherAgent",
+            &[
+                ("account", "b1"),
+                ("own", crate::agents::fake::said_of("beta")),
+                ("agent", crate::agents::fake::said_of("alpha")),
+            ]
+        ),
+        "照实说：两家都说各自的叫法，不露 kind"
+    );
+    assert_eq!(
+        refused(None, "g1").for_start(&registry).into_said().said,
+        copy_text(
+            "beLogin.agent.unsupported",
+            &[("agent", crate::agents::fake::said_of("gamma"))]
+        ),
+        "不在 app 里登的那一家说它的叫法"
+    );
+    for (r, code) in [
+        (wrong, "bad_args"),
+        (refused(Some("no-such-agent"), "a1"), "bad_args"),
+        (refused(None, "nobody-here"), "not_found"),
+        (refused(Some("alpha"), "nobody-here"), "not_found"),
+        (refused(None, "g1"), "unsupported"),
+        (refused(None, "lost"), "unsupported"),
+        (refused(None, "k1"), "unsupported"),
+    ] {
+        assert_eq!(codes(r), (code.to_string(), code.to_string()));
+    }
+}
+
+/// MCP 登录带了号：只取请求那一家的号（家照号表比，同账号登录那一判）；号名在账号库里、却是另一家的号 ⇒ 拒（`bad_args`），
+/// 不拿那一家的配置目录。同家照旧取目录；API 号也照取（MCP 登录与号怎么登无关）；没这个号 ⇒ `not_found`。
+#[test]
+fn a_mcp_login_takes_only_an_account_of_its_own_family() {
+    let (registry, list) = two_families();
+    let dir = |agent: &str, name: &str| mcp_dir_of(&registry, &list, agent, name);
+    let code = |r: AccountRefused| {
+        cmd_wire::failed::Failed::code_or_fallback(r.for_start(&registry).into_said().code.clone())
+    };
+    assert_eq!(dir("alpha", "a1").ok(), Some(Some("/h/a1".to_string())));
+    assert_eq!(dir("beta", "b1").ok(), Some(Some("/h/b1".to_string())));
+    assert_eq!(
+        dir("alpha", "k1").ok(),
+        Some(Some("/h/k1".to_string())),
+        "API 号照取"
+    );
+    assert_eq!(
+        code(dir("alpha", "b1").err().expect("别家的号不取")),
+        "bad_args"
+    );
+    assert_eq!(
+        code(dir("beta", "a1").err().expect("别家的号不取")),
+        "bad_args"
+    );
+    assert_eq!(
+        code(dir("alpha", "lost").err().expect("认不出家的号不取")),
+        "bad_args"
+    );
+    assert_eq!(
+        code(dir("alpha", "nobody-here").err().expect("没这个号")),
+        "not_found"
+    );
+}
+
+/// 两家各有一个同名的号：报了家 ⇒ 取那一家的那一行（别家那一行排在前面也不取）；MCP 登录 · 账号登录同一判。
+#[test]
+fn a_name_held_by_two_families_resolves_within_the_asked_one() {
+    let (registry, _) = two_families();
+    let twin = |kind: &str, dir: &str| {
+        crate::accounts::manage::library::test_support::row_with("x", |a| {
+            a.agent = Some(cmd_wire::AgentKind::new(kind));
+            a.config_dir = Some(dir.to_string());
+        })
+    };
+    let list = crate::accounts::manage::library::test_support::list(vec![
+        twin("beta", "/h/x-beta"),
+        twin("alpha", "/h/x-alpha"),
+    ]);
+    assert_eq!(
+        mcp_dir_of(&registry, &list, "alpha", "x").ok(),
+        Some(Some("/h/x-alpha".to_string()))
+    );
+    assert_eq!(
+        mcp_dir_of(&registry, &list, "beta", "x").ok(),
+        Some(Some("/h/x-beta".to_string()))
+    );
+    let at = account_at(&registry, &list, Some("alpha"), "x").expect("同家照取");
+    assert_eq!(
+        (at.agent, at.dir),
+        ("alpha", Some("/h/x-alpha".to_string()))
+    );
+}
+
+/// 退出 · 状态的入参只要号名；带了家照收（对不对得上同登录那一条）；缺号名 · 多一格照旧拒。
+#[test]
+fn sign_out_and_status_take_the_account_alone() {
+    let take = |v: Value| crate::wire::typed::take::<LoginAccountReq>(&v);
+    assert_eq!(
+        take(json!({ "account": "w" })).expect("收"),
+        LoginAccountReq {
+            agent: None,
+            account: "w".into()
+        }
+    );
+    assert_eq!(
+        take(json!({ "agent": "claude", "account": "w" }))
+            .expect("收")
+            .agent
+            .as_deref(),
+        Some("claude")
+    );
+    for bad in [json!({}), json!({ "account": "w", "server": "x" })] {
+        assert_eq!(
+            take(bad.clone()).expect_err("拒").code.as_deref(),
+            Some("bad_args"),
+            "{bad}"
+        );
     }
 }
 
@@ -319,7 +659,7 @@ fn it_says_it_finishes_by_itself_only_when_the_browser_is_here() {
 fn each_failure_says_what_can_be_done_next() {
     let again = |f: Said| {
         (
-            f.code_or_fallback().to_string(),
+            cmd_wire::failed::Failed::code_or_fallback(f.code.clone()),
             f.data.map(|d| d["again"].clone()),
         )
     };
@@ -405,7 +745,7 @@ fn only_a_failed_account_start_offers_the_terminal_window() {
     }
     // 号那一种起不来才算：目标形状 ⇒ 这一格。
     let account = LoginStartReq::Account {
-        agent: "claude".into(),
+        agent: None,
         account: "t1".into(),
     };
     let mcp = LoginStartReq::Mcp {
@@ -506,4 +846,390 @@ fn a_too_wide_secret_file_is_a_manual_item_until_it_is_fixed() {
     mode(&key, 0o600);
     assert!(items().is_empty(), "改回只给本人 ⇒ 那一项没了");
     std::fs::remove_dir_all(&dir).ok();
+}
+
+/// 两家都声明了账号面与 MCP 面：要登录的 MCP 逐家各问一遍、各并进那一家自己那一份（不因为多了一家就一家都不认），
+/// 每一项的解法认的是它自己那一家。替身家，账号清单空、各家要登录的那一条认得出是谁的。
+#[test]
+fn each_family_with_an_mcp_face_lists_its_own_servers_needing_login() {
+    use crate::agents::fake;
+    let reg = [
+        fake::family_row("alpha", "CCM_A_DIR", "a", true, || None),
+        fake::family_row("beta", "CCM_B_DIR", "b", false, || None),
+    ];
+    let items = logins_among(
+        &reg,
+        None,
+        |_| Vec::new(),
+        crate::accounts::manage::library::test_support::list(vec![]),
+        |kind| {
+            vec![crate::accounts::manage::mcp_share_exec::McpNeed {
+                name: format!("{kind}-srv"),
+                scope: "user",
+                login_in: vec![None],
+                project: None,
+            }]
+        },
+    )
+    .expect("列得出");
+    let got: Vec<(String, Option<String>)> = items
+        .iter()
+        .filter_map(|i| match i {
+            ManualItem::McpLogin { server, why, .. } => Some((server.clone(), why.clone())),
+            _ => None,
+        })
+        .collect();
+    let names: Vec<&str> = got.iter().map(|(s, _)| s.as_str()).collect();
+    assert_eq!(
+        names,
+        vec!["alpha-srv", "beta-srv"],
+        "两家各列各的：{got:?}"
+    );
+    // 替身家不在 app 里登 MCP ⇒ 只有 why；那一句点的是它自己那一家的叫法（传进来的注册表上的，各家各一个）。
+    for (server, why) in &got {
+        let kind = server.trim_end_matches("-srv");
+        assert_eq!(
+            why.as_deref(),
+            Some(copy_text("beManual.list.mcpNoFix", &[("agent", fake::said_of(kind))]).as_str()),
+            "{server} 的解法没认它自己那一家"
+        );
+    }
+}
+
+/// 一家只声明了 MCP 面、没声明账号面：它要登录的 MCP 照样进需手动清单（问的是声明了 MCP 面的每一家，不只问有账号面的）。
+/// 没写是哪一家的号归缺省那一家（默认起的那一家，不是排在前面的那一家：前面那一家没有账号面 · 另一家有账号面却不是默认）。
+/// 替身家，只有 MCP 面的那一家排在最前。
+#[test]
+fn a_family_with_only_an_mcp_face_still_lists_its_servers_needing_login() {
+    use crate::agents::fake;
+    let mut alpha = fake::family_row("alpha", "CCM_A_DIR", "a", true, || None);
+    if let Some(f) = alpha.accounts.as_mut() {
+        f.sign_in = Some(fake::SHOW_CODE_FACE);
+    }
+    let reg = [
+        crate::agents::Adapter {
+            accounts: None,
+            ..fake::family_row("beta", "CCM_B_DIR", "b", false, || None)
+        },
+        fake::family_row("gamma", "CCM_G_DIR", "g", false, || None),
+        alpha,
+    ];
+    let items = logins_among(
+        &reg,
+        None,
+        |_| Vec::new(),
+        // 号走真扫号那一路：没写家的照扫号单那一判归缺省那一家（夹具不直接造 `agent`）。
+        scanned_list(&reg, "mcponly-family", &[("q", None)]),
+        |kind| {
+            vec![crate::accounts::manage::mcp_share_exec::McpNeed {
+                name: format!("{kind}-srv"),
+                scope: "user",
+                login_in: vec![None],
+                project: None,
+            }]
+        },
+    )
+    .expect("列得出");
+    let servers: Vec<&str> = items
+        .iter()
+        .filter_map(|i| match i {
+            ManualItem::McpLogin { server, .. } => Some(server.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        servers,
+        vec!["beta-srv", "gamma-srv", "alpha-srv"],
+        "{items:?}"
+    );
+    let accounts: Vec<(&str, &str)> = items
+        .iter()
+        .filter_map(|i| match i {
+            ManualItem::AccountLogin { agent, account, .. } => {
+                Some((agent.as_str(), account.as_str()))
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(accounts, vec![("alpha", "q")], "{items:?}");
+}
+
+/// 走真扫号那一路（`list_product_among`）的号单：临时号表里每个号一个隔离目录（没有凭据文件 ⇒ 订阅号需登录），
+/// 家那一格照给的写（`None` ⇒ 不写）。号是哪一家的照扫号单那一判（`family_of`），不由夹具直接造。
+fn scanned_list(
+    reg: &[crate::agents::Adapter],
+    tag: &str,
+    rows: &[(&str, Option<&str>)],
+) -> crate::accounts::manage::library::AccountsList {
+    let root = test_home::scratch(tag);
+    let accts = root.join("accts");
+    let lines: Vec<String> = rows
+        .iter()
+        .map(|(n, agent)| {
+            std::fs::create_dir_all(accts.join(n)).unwrap();
+            let agent = agent.map_or(String::new(), |k| format!(r#","agent":"{k}""#));
+            format!(
+                r#"{{"name":"{n}","email":"","configDir":"{a}/{n}","mode":"isolated"{agent}}}"#,
+                a = accts.display()
+            )
+        })
+        .collect();
+    crate::accounts::manage::library::test_support::write_manifest(
+        &accts,
+        &format!(
+            r#"{{"version":1,"acctsDir":"{a}","accounts":[{l}]}}"#,
+            a = accts.display(),
+            l = lines.join(",")
+        ),
+    );
+    crate::accounts::manage::library::list_product_among(
+        reg,
+        &accts,
+        None,
+        &[],
+        &|_| None,
+        None,
+        reg[0].kind,
+        false,
+    )
+}
+
+/// 替身注册表只有 alpha（能在 app 里登）；号表里 z1 写成没注册的 zeta、n1 没写家。
+fn unregistered_family_fixture(
+    tag: &str,
+) -> (
+    [crate::agents::Adapter; 1],
+    crate::accounts::manage::library::AccountsList,
+) {
+    use crate::agents::fake;
+    let mut alpha = fake::family_row("alpha", "CCM_A_DIR", "a", true, || None);
+    if let Some(f) = alpha.accounts.as_mut() {
+        f.sign_in = Some(fake::SHOW_CODE_FACE);
+    }
+    let reg = [alpha];
+    let list = scanned_list(&reg, tag, &[("z1", Some("zeta")), ("n1", None)]);
+    (reg, list)
+}
+
+/// 写了没注册的家的号不并进任何一家（不列成缺省那一家的需登录）；没写家的照常归缺省那一家。
+#[test]
+fn an_unregistered_familys_account_is_not_folded_into_the_default_family() {
+    let (reg, list) = unregistered_family_fixture("unknownfamily-fold");
+    let items = logins_among(&reg, None, |_| Vec::new(), list, |_| Vec::new()).expect("列得出");
+    let logins: Vec<(&str, &str)> = items
+        .iter()
+        .filter_map(|i| match i {
+            ManualItem::AccountLogin { agent, account, .. } => {
+                Some((agent.as_str(), account.as_str()))
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(logins, vec![("alpha", "n1")], "{items:?}");
+}
+
+/// 扫号单分清「没写家」与「写了、认不出」：没写的归缺省那一家；写了没注册的家不归任何一家，原样留着。
+#[test]
+fn the_scan_keeps_an_unregistered_family_apart_from_an_unwritten_one() {
+    let (_, list) = unregistered_family_fixture("unknownfamily-scan");
+    let got: Vec<(&str, Option<&str>, Option<&str>)> = list
+        .accounts
+        .iter()
+        .map(|r| {
+            (
+                r.scanned.name.as_str(),
+                r.scanned.agent.as_ref().map(cmd_wire::AgentKind::as_str),
+                r.scanned.unknown_agent.as_deref(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        got,
+        vec![("z1", None, Some("zeta")), ("n1", Some("alpha"), None)]
+    );
+}
+
+/// 这台偏好那份文件在、格式比下限老（读口当没有、照缺省用）⇒ 会话外的需手动多一项（太老的文件照实说、不悄悄当没有）：
+/// 那一句（路径 · 盘上第几版 · 此后端认哪几版 · 设置均未生效）· 没有 app 里的解法（`fix: null`）· 第二行那一句是怎么办与原文留在哪。
+/// 不在 · 读得懂（含能升上来的旧版）⇒ 不列；每问一次现读，不记。
+#[test]
+fn an_older_prefs_file_is_a_manual_item_while_it_stays_older() {
+    let dir = std::env::temp_dir().join(format!("ccm-own-files-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let prefs = dir.join("prefs.json");
+    let _ = std::fs::remove_file(&prefs);
+    let items = || own_files(Some(&prefs));
+    assert!(items().is_empty(), "不在 ⇒ 不列");
+    std::fs::write(&prefs, r#"{"version":1,"resumeInTmux":true}"#).unwrap();
+    assert!(items().is_empty(), "读得懂的旧版（能升上来）⇒ 不列");
+    std::fs::write(&prefs, r#"{"version":0}"#).unwrap();
+    let path = prefs.display().to_string();
+    let keep = dir.join("prefs.json.v0").display().to_string();
+    assert_eq!(
+        serde_json::to_value(items()).unwrap(),
+        json!([{
+            "kind": "ownFile",
+            "said": copy_text("beManual.list.prefsOlder", &[("path", &path), ("theirs", "0"), ("mine", "1–2")]),
+            "fix": null,
+            "why": copy_text("beManual.why.prefsOlder", &[("keep", &keep)]),
+        }])
+    );
+    // 进整单：会话外那一截。
+    let list = crate::observe::recognize::facts::needs_list(vec![], &[], Ok(items()), vec![]);
+    let whole = serde_json::to_value(&list).unwrap();
+    assert_eq!(whole["items"][0]["kind"], "manual");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// 号表里那一格写了注册表里没有的家：那个号不归缺省那一家（不列成它的需登录），照实出一行
+/// 「无法识别 {account} 是哪一家的号」（号表原名，同登录拒的那一句，一个意思一把键）。
+#[test]
+fn an_account_naming_an_unregistered_family_stays_on_the_manual_list() {
+    let (reg, list) = unregistered_family_fixture("unknownfamily-manual");
+    let mut list = list;
+    list.accounts.retain(|r| r.scanned.name == "z1");
+    let items = logins_among(&reg, None, |_| Vec::new(), list, |_| Vec::new()).expect("列得出");
+    let said = |i: &ManualItem| match i {
+        ManualItem::AccountLogin { said, .. }
+        | ManualItem::McpLogin { said, .. }
+        | ManualItem::AccountNoAgent { said, .. }
+        | ManualItem::SecretFile { said, .. }
+        | ManualItem::OwnFile { said, .. } => said.clone(),
+    };
+    let saids: Vec<String> = items.iter().map(said).collect();
+    assert_eq!(
+        saids,
+        vec![copy_text("beLogin.account.noAgent", &[("account", "z1")])],
+        "{items:?}"
+    );
+}
+
+/// ★ 「这一家不在 app 里登」那一句的另两处（起 MCP 登录那一家没有登录形 · 退出 / 问状态那一家没声明那一条）
+/// 照传进来的注册表说那一家的叫法；认不出 ⇒ 照实那一句，不露 kind（替身家）。
+#[test]
+fn the_not_declared_refusals_name_that_family_not_its_kind() {
+    let reg = [
+        crate::agents::fake::family_row("alpha", "CCM_A_DIR", "a", true, || None),
+        crate::agents::fake::family_row("beta", "CCM_B_DIR", "b", false, || None),
+    ];
+    let said = |agent: &str| copy_text("beLogin.agent.unsupported", &[("agent", agent)]);
+    for (kind, want) in [
+        ("beta", said(crate::agents::fake::said_of("beta"))),
+        ("alpha", said(crate::agents::fake::said_of("alpha"))),
+        ("nope", said(&copy_text("rsAgents.family.unsaid", &[]))),
+    ] {
+        let start = mcp_unsupported_among(&reg, kind).into_said();
+        assert_eq!(
+            (start.code.as_deref(), start.said.as_str()),
+            (Some("unsupported"), want.as_str()),
+            "起登录 {kind}"
+        );
+        let once = not_declared_among(&reg, kind).into_said();
+        assert_eq!(
+            (once.code.as_deref(), once.said.as_str()),
+            (Some("unsupported"), want.as_str()),
+            "退出 · 问状态 {kind}"
+        );
+    }
+}
+
+/// 登录那一面拿的账号库（同 [`library`]：照盘上的库 · key 表那几行与它挂的那一家出成品，不按起的那一家过滤），注册表是夹具。
+fn login_library_among(
+    registry: &[crate::agents::Adapter],
+    accts: &std::path::Path,
+    rows: &[String],
+    table_agent: &str,
+) -> crate::accounts::manage::library::AccountsList {
+    crate::accounts::manage::library::list_product_among(
+        registry,
+        accts,
+        None,
+        rows,
+        &|_| None,
+        None,
+        table_agent,
+        false,
+    )
+}
+
+/// 盘上两家混列的账号库（alpha 是默认起的那一家）：key 表的行只属于它挂的那一家。另一家的号照它自己的家判——
+/// 表挂 beta、beta 的号在表里 ⇒ 是 API 号（不在 app 里登）；表挂 alpha、同一个号名在表里 ⇒ 不算（行不是它那一家的）。
+/// 新建会话那一格（newSession）也照号自己的家给，不只给默认那一家的号。
+#[test]
+fn an_account_of_the_other_family_is_judged_by_its_own_family() {
+    let (registry, _) = two_families();
+    let root = std::env::temp_dir().join(format!("ccm-login-own-family-{}", std::process::id()));
+    let accts = root.join("accts");
+    for n in ["a1", "b1"] {
+        std::fs::create_dir_all(accts.join(n)).unwrap();
+    }
+    std::fs::write(
+        accts.join("accounts.json"),
+        format!(
+            r#"{{"version":1,"acctsDir":"{a}","accounts":[
+                {{"name":"a1","email":"","configDir":"{a}/a1","mode":"isolated","agent":"alpha"}},
+                {{"name":"b1","email":"","configDir":"{a}/b1","mode":"isolated","agent":"beta"}}]}}"#,
+            a = accts.display()
+        ),
+    )
+    .unwrap();
+    let rows = ["a1".to_string(), "b1".to_string()];
+    let list = |table_agent: &str| login_library_among(&registry, &accts, &rows, table_agent);
+    let code = |l: &crate::accounts::manage::library::AccountsList, name: &str| {
+        account_at(&registry, l, None, name).err().map(|r| {
+            cmd_wire::failed::Failed::code_or_fallback(r.for_start(&registry).into_said().code)
+        })
+    };
+    let kind = |l: &crate::accounts::manage::library::AccountsList, name: &str| {
+        let r = l
+            .accounts
+            .iter()
+            .find(|r| r.scanned.name == name)
+            .expect("列出");
+        (r.scanned.auth_kind.clone(), r.new_session)
+    };
+    let beta_table = list("beta");
+    assert_eq!(
+        kind(&beta_table, "b1"),
+        (acct_core::AUTH_KIND_API_KEY.to_string(), true),
+        "表挂 beta ⇒ beta 的号照它自己的家判成 API 号；新建会话照它自己的家给"
+    );
+    assert_eq!(
+        code(&beta_table, "b1").as_deref(),
+        Some("unsupported"),
+        "API 号不在 app 里登"
+    );
+    assert_eq!(
+        kind(&beta_table, "a1").0,
+        acct_core::AUTH_KIND_SUBSCRIPTION,
+        "表挂 beta ⇒ alpha 的号不算在表里"
+    );
+    let alpha_table = list("alpha");
+    assert_eq!(
+        kind(&alpha_table, "b1"),
+        (acct_core::AUTH_KIND_SUBSCRIPTION.to_string(), true),
+        "表挂 alpha ⇒ beta 的号不算在表里（号名撞上也不算）"
+    );
+    assert_eq!(code(&alpha_table, "b1"), None, "照订阅号登");
+    assert_eq!(
+        kind(&alpha_table, "a1").0,
+        acct_core::AUTH_KIND_API_KEY,
+        "表挂 alpha ⇒ alpha 的号照它自己的家判成 API 号"
+    );
+    let launching_beta = crate::accounts::manage::library::list_product_among(
+        &registry,
+        &accts,
+        None,
+        &rows,
+        &|_| None,
+        Some("beta"),
+        "alpha",
+        false,
+    );
+    assert_eq!(
+        kind(&launching_beta, "a1"),
+        (acct_core::AUTH_KIND_API_KEY.to_string(), false),
+        "起的是 beta ⇒ alpha 的号照样照它自己的家判成 API 号，只是不进 beta 的选号表"
+    );
+    let _ = std::fs::remove_dir_all(&root);
 }

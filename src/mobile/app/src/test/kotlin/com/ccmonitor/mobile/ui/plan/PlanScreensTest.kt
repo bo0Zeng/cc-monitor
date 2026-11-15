@@ -1,7 +1,7 @@
 package com.ccmonitor.mobile.ui.plan
 
-import com.ccmonitor.mobile.core.claude.link.PlanLook
 import com.ccmonitor.mobile.core.ui.icon.Ph
+import com.ccmonitor.mobile.core.wire.gen.PlanLook
 import com.ccmonitor.mobile.ui.nav.Screen
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

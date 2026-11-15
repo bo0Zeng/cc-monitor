@@ -21,7 +21,7 @@
 //! 只收「我们装到别处的东西」的话，app **装不了、却离不开**的那些
 //! （最吃重的一项是 Claude Code 自己写的会话记录）只能靠**不进表**来表示 ——
 //! 用缺席表达一个判断。⇒ `installable: false`
-//! 的条目是这张表的一等公民，它们与 [`UNMANAGED_ENV`] 一起被 [`environment`]
+//! 的条目是这张表的一等公民，它们与 [`UNMANAGED_ENV`] 一起被 [`environment_among`]
 //! 汇成**唯一一份**环境清单。
 //!
 //! ## 为什么今天不把它做成机检（量过才这么写）
@@ -96,7 +96,7 @@ use copy_core::copy_text;
 /// （第 3 点：先用已知行为的工具验证抽象，再拿它吃新工具）。
 pub(crate) const TOOLS: &[ToolSpec] = &[
     // 落在 Claude 布局里的那几条（`cc-bus` · `accounts` · `skill-install` · `claude-code`）住适配层
-    //   `agents/claudecode/footprint.rs::TOOLS`，经注册表（`agents::Adapter::footprint`）汇进 [`tools`]。
+    //   `agents/claudecode/footprint.rs::TOOLS`，经注册表（`agents::Adapter::footprint`）汇进 [`tools_among`]。
     ToolSpec {
         id: "ccm",
         display_name: Text(|| copy_text("rsToolRegistry.tools.ccmName", &[])),
@@ -206,7 +206,7 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
     // 合块与剥块都走 `profile_installer::merge_profile_block` / `strip_profile_block`），
     // `profile_installer::plan_uninstall` 卸得掉，`profile_installer::scan_profile` 查得出。
     //
-    // 🔴 **升档本身是一条可验的性质**，不是一句话：`installable: true` ⇒ [`environment`]
+    // 🔴 **升档本身是一条可验的性质**，不是一句话：`installable: true` ⇒ [`environment_among`]
     // 把它算成 [`EnvTier::AppInstalls`]，判据是 `posix_rc_aliases_sits_in_the_first_tier_now`。
     // 档没升 = 活没做完 —— 这一格从此有人数着。
     ToolSpec {
@@ -215,8 +215,8 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
         installable: true,
         uninstallable: true,
         carriers: &[Carrier {
-            // 装进去的内容**就是仓里那份文件**（`profile_installer::CCM_WRAPPER_SNIPPET` 是它的
-            // `include_str!`）。远端那条 `ccm` 用的是同一份 —— 那正是这里不许出现第二份的东西。
+            // 装进去的内容由仓里那份模板编译期填好（`profile_installer::CCM_WRAPPER_SNIPPET`：模板只写形状，
+            // 路径与那一句起始时刻由 POSIX 方言模块填）。远端那条 `ccm` 用的是同一份 —— 那正是这里不许出现第二份的东西。
             source: ToolSource::EmbeddedText {
                 repo_path: "src/shared/ccm-aliases.sh",
             },
@@ -329,7 +329,7 @@ impl EnvTier {
 /// 🔴 它分两群：9 项通用工具是 [`Provisioning::UserProvides`]，
 /// [`Provisioning::AppShips`] 那一群今天是空的（账号库由后端自己建，不在表里）。
 ///
-/// 每一条登记时带上它的平台范围（[`OnPlatform`]）：只在 unix 那一台上有意义的几条不进 Windows 那一台的闭集（[`environment_on`]），
+/// 每一条登记时带上它的平台范围（[`OnPlatform`]）：只在 unix 那一台上有意义的几条不进 Windows 那一台的闭集（[`environment_among`]），
 /// 页面与「待办 · 要装」跟着不出 —— 平台范围只住这里，显示侧不另判。
 pub(crate) const UNMANAGED_ENV: &[(OnPlatform, UnmanagedEnv)] = &[
     // `claude-cli` 那一条住适配层（`agents/claudecode/footprint.rs::UNMANAGED_ENV`），每台都要。
@@ -338,6 +338,10 @@ pub(crate) const UNMANAGED_ENV: &[(OnPlatform, UnmanagedEnv)] = &[
         UnmanagedEnv {
             id: "tmux",
             display_name: Text(|| copy_text("mobTerms.row.tmux", &[])),
+            required: false,
+            how: None,
+            // tmux 一律可选：缺了不进「要装」（有没有它只走 `tmux` 那一格，没有的那台不出 tmux 相关项）。
+            asks_install: false,
             who: Provisioning::UserProvides,
             probe: EnvProbe::OnPath,
             named: "tmux",
@@ -351,6 +355,9 @@ pub(crate) const UNMANAGED_ENV: &[(OnPlatform, UnmanagedEnv)] = &[
         UnmanagedEnv {
             id: "terminal-exit",
             display_name: Text(|| copy_text("rsToolRegistry.env.terminalExitName", &[])),
+            required: false,
+            how: None,
+            asks_install: true,
             who: Provisioning::UserProvides,
             probe: EnvProbe::OnPath,
             named: "xdg-terminal-exec",
@@ -363,6 +370,9 @@ pub(crate) const UNMANAGED_ENV: &[(OnPlatform, UnmanagedEnv)] = &[
         UnmanagedEnv {
             id: "git",
             display_name: Text(|| "git".to_string()),
+            required: false,
+            how: None,
+            asks_install: true,
             who: Provisioning::UserProvides,
             probe: EnvProbe::OnPath,
             named: "git",
@@ -375,6 +385,9 @@ pub(crate) const UNMANAGED_ENV: &[(OnPlatform, UnmanagedEnv)] = &[
         UnmanagedEnv {
             id: "ssh",
             display_name: Text(|| copy_text("rsToolRegistry.env.sshName", &[])),
+            required: false,
+            how: None,
+            asks_install: true,
             who: Provisioning::UserProvides,
             probe: EnvProbe::SshClient,
             named: "ssh",
@@ -389,6 +402,9 @@ pub(crate) const UNMANAGED_ENV: &[(OnPlatform, UnmanagedEnv)] = &[
         UnmanagedEnv {
             id: "xdg-open",
             display_name: Text(|| "xdg-open".to_string()),
+            required: false,
+            how: None,
+            asks_install: true,
             who: Provisioning::UserProvides,
             probe: EnvProbe::OnPath,
             named: "xdg-open",
@@ -402,6 +418,9 @@ pub(crate) const UNMANAGED_ENV: &[(OnPlatform, UnmanagedEnv)] = &[
         UnmanagedEnv {
             id: "login-shell",
             display_name: Text(|| copy_text("rsToolRegistry.env.loginShellName", &[])),
+            required: false,
+            how: Some("https://www.gnu.org/software/bash/"),
+            asks_install: true,
             who: Provisioning::UserProvides,
             probe: EnvProbe::OnPath,
             named: "bash",
@@ -414,6 +433,9 @@ pub(crate) const UNMANAGED_ENV: &[(OnPlatform, UnmanagedEnv)] = &[
         UnmanagedEnv {
             id: "mcp-server",
             display_name: Text(|| copy_text("rsToolRegistry.env.mcpServerName", &[])),
+            required: false,
+            how: None,
+            asks_install: true,
             who: Provisioning::UserProvides,
             // 🔴 **这一条是「查不动」而不是「不查」的活体** —— 它不是懒：
             // 那个 command 是**用户在 `.mcp.json` 里写的一行**，本页连是哪个项目都不知道
@@ -477,21 +499,36 @@ pub(crate) struct EnvEntry {
     pub backing: EnvBacking,
 }
 
-/// 受管工具的**全集**：本表 [`TOOLS`] ＋ 注册表里各家足迹面带来的那一半（落在那一家布局里的），按注册表顺序。
-pub(crate) fn tools() -> Vec<&'static ToolSpec> {
+/// 受管工具全集，注册表是参数（生产交 `agents::REGISTRY`，判据喂替身家）。
+pub(crate) fn tools_among(registry: &[crate::agents::Adapter]) -> Vec<&'static ToolSpec> {
     TOOLS
         .iter()
-        .chain(crate::agents::footprint_faces().flat_map(|f| f.tools.iter()))
+        .chain(crate::agents::footprint_faces_among(registry).flat_map(|f| f.tools.iter()))
         .collect()
 }
 
-/// 手写那一半里在这一种平台的那台上有意义的几条（[`OnPlatform::holds`]；各家足迹面带来的每台都要）。
-fn unmanaged_on(windows: bool) -> Vec<&'static UnmanagedEnv> {
+/// 环境清单里 `id` 那一条（手写那一半两种平台的都算 ＋ 各家足迹面带来的），注册表是参数。认不出 ⇒ `None`。
+pub(crate) fn env_decl(
+    registry: &[crate::agents::Adapter],
+    id: &str,
+) -> Option<&'static UnmanagedEnv> {
+    UNMANAGED_ENV
+        .iter()
+        .map(|(_, u)| u)
+        .chain(crate::agents::footprint_faces_among(registry).flat_map(|f| f.env.iter()))
+        .find(|u| u.id == id)
+}
+
+/// 手写那一半里在这一种平台上有意义的几条 ＋ 各家足迹面带来的那几条，注册表是参数。
+fn unmanaged_among(
+    registry: &[crate::agents::Adapter],
+    windows: bool,
+) -> Vec<&'static UnmanagedEnv> {
     UNMANAGED_ENV
         .iter()
         .filter(|(on, _)| on.holds(windows))
         .map(|(_, u)| u)
-        .chain(crate::agents::footprint_faces().flat_map(|f| f.env.iter()))
+        .chain(crate::agents::footprint_faces_among(registry).flat_map(|f| f.env.iter()))
         .collect()
 }
 
@@ -515,14 +552,13 @@ fn unmanaged_on(windows: bool) -> Vec<&'static UnmanagedEnv> {
 /// （本页不连 SSH）—— 那仍是「查了、只是查不动」，不是「没查」，但它**不等于**
 /// 「app 有一个真能回答它在不在的口」。要那一格得另立判据。
 ///
-/// 闭集是**这台平台上**的那一份（[`environment_on`]）：登记成 [`OnPlatform::UnixOnly`] 的几条不进 Windows 那一台的。
-pub(crate) fn environment() -> Vec<EnvEntry> {
-    environment_on(cfg!(windows))
-}
-
-/// 见 [`environment`]：`windows` ⇒ Windows 那一台的闭集。
-pub(crate) fn environment_on(windows: bool) -> Vec<EnvEntry> {
-    let mut out: Vec<EnvEntry> = tools()
+/// 闭集是**这台平台上**的那一份（`windows` ⇒ Windows 那一台的）：登记成 [`OnPlatform::UnixOnly`] 的几条不进 Windows 那一台的。
+/// 各家足迹面那一半照 `registry` 收：生产交 `agents::REGISTRY`（`rows::build_rows` 经 `SurfaceEnv::registry`），判据喂替身家。
+pub(crate) fn environment_among(
+    registry: &[crate::agents::Adapter],
+    windows: bool,
+) -> Vec<EnvEntry> {
+    let mut out: Vec<EnvEntry> = tools_among(registry)
         .into_iter()
         .map(|t| {
             let who = Provisioning::of_tool(t);
@@ -535,20 +571,24 @@ pub(crate) fn environment_on(windows: bool) -> Vec<EnvEntry> {
             }
         })
         .collect();
-    out.extend(unmanaged_on(windows).into_iter().map(|u| EnvEntry {
-        id: u.id,
-        display_name: u.display_name.get(),
-        who: u.who,
-        // 🔴 **第二格是 `false` 而不是一个字段** —— 手写那一半没有 `ToolSpec`，
-        // 也就没有落点、没有 `touches`、没有装 / 卸实现可对拍 ⇒ 「今天有没有装口」
-        // 这个问题在这一半上**有唯一答案**，不该再开一个能填错的格子。
-        tier: EnvTier::of(u.who, false),
-        backing: EnvBacking::Named {
-            named: u.named,
-            host: u.host,
-            probe: u.probe,
-        },
-    }));
+    out.extend(
+        unmanaged_among(registry, windows)
+            .into_iter()
+            .map(|u| EnvEntry {
+                id: u.id,
+                display_name: u.display_name.get(),
+                who: u.who,
+                // 🔴 **第二格是 `false` 而不是一个字段** —— 手写那一半没有 `ToolSpec`，
+                // 也就没有落点、没有 `touches`、没有装 / 卸实现可对拍 ⇒ 「今天有没有装口」
+                // 这个问题在这一半上**有唯一答案**，不该再开一个能填错的格子。
+                tier: EnvTier::of(u.who, false),
+                backing: EnvBacking::Named {
+                    named: u.named,
+                    host: u.host,
+                    probe: u.probe,
+                },
+            }),
+    );
     out
 }
 

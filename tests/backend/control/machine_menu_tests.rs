@@ -79,7 +79,7 @@ fn state(kind: MachineStateKind, offline: bool, word: &str) -> MachineState {
     MachineState {
         name: "nas".into(),
         state: kind,
-        dot: deploy::machine::dot(kind),
+        dot: copy_core::machine::dot(kind),
         linked: deploy::machine::linked(kind),
         offline,
         reason: None,
@@ -90,6 +90,8 @@ fn state(kind: MachineStateKind, offline: bool, word: &str) -> MachineState {
         said: String::new(),
         offline_said: "nas w-off".into(),
         held_said: "nas w-held".into(),
+        withdraw_held: "nas w-withdraw".into(),
+        rewind_held: "nas w-rewind".into(),
         fixes: Vec::new(),
         seen_host_key: None,
         expected_host_key: None,

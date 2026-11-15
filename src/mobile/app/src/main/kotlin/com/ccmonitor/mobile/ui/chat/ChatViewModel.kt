@@ -75,7 +75,7 @@ class ChatViewModel(
             loadPicks = session::loadPicks,
             loadCommands = session::loadCommands,
             say = session::say,
-            cancel = session::cancel,
+            withdraw = session::withdraw,
             cancelQueued = session::cancelQueued,
             editDraft = session::editDraft,
             attach = session.attach?.let { t -> AttachActions(add = t::add, remove = t::remove, retry = t::retry, local = t::local) },

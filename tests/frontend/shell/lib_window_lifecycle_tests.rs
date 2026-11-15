@@ -7,7 +7,7 @@
 //!
 //! 设置窗关窗 = 隐藏、永不自己销毁 ⇒ 主窗销毁时它必须跟着走，否则进程被一个看不见的窗口吊住。
 //! 这里钉决策本身（纯函数，Linux 上就跑得动）；`on_window_event` 只负责照它执行。
-use super::{windows_to_destroy_after, MAIN_WINDOW_LABEL, SETTINGS_WINDOW_LABEL};
+use super::{wants_front, windows_to_destroy_after, MAIN_WINDOW_LABEL, SETTINGS_WINDOW_LABEL};
 
 #[test]
 fn main_destroyed_takes_the_hidden_settings_window_with_it() {
@@ -289,4 +289,17 @@ fn a_window_that_lets_close_through_may_destroy_itself() {
         granted,
         "这些窗口接管了关窗又放行（Tauri 随后替它 destroy），权限里却没有 core:window:allow-destroy ⇒ 点 × 关不掉：{through:?}"
     );
+}
+
+/// ★ 第二个 cc-monitor 实例来了：带 `--background`（终端里 `cc` 起 monitor 那一下 · 开机自启）⇒ 已经在跑就什么都不做，
+/// 不把藏在托盘里的主窗拉出来；不带（双击）⇒ 照旧还原 · 显示 · 拉前（第一个实例起来时补不补 set_focus 问的也是它）。PowerShell 接入块不再扫进程判 monitor 在不在，靠的就是这一判。
+#[test]
+fn a_wants_front_the_main_window_only_when_not_in_the_background() {
+    let args = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    assert!(!wants_front(&args(&["cc-monitor", "--background"])));
+    assert!(!wants_front(&args(&["--background"])));
+    assert!(wants_front(&args(&["cc-monitor"])));
+    assert!(wants_front(&args(&[])));
+    // 只认整词：别的参数里含这几个字不算。
+    assert!(wants_front(&args(&["cc-monitor", "--background-ish"])));
 }

@@ -10,7 +10,6 @@ import com.ccmonitor.mobile.core.wire.gen.LoginStartReq
 import com.ccmonitor.mobile.core.wire.gen.Rewind
 import com.ccmonitor.mobile.core.wire.gen.RewindHow
 import com.ccmonitor.mobile.core.wire.gen.RewindWhen
-import com.ccmonitor.mobile.core.wire.gen.Staged
 import com.ccmonitor.mobile.core.wire.gen.Tab
 import com.ccmonitor.mobile.core.wire.gen.TerminalHost
 import org.junit.Assert.assertEquals
@@ -67,7 +66,6 @@ class SentRequestsTest {
             SessionTasks.COMMAND to listOf(SessionTasks.args("s")),
             SessionsStop.COMMAND to listOf(SessionsStop.args(listOf("s"))),
             HistoryList.COMMAND to listOf(HistoryList.args(ListAsk()), HistoryList.args(ListAsk("q", 7, ListSort.CREATED, true)), HistoryList.args(ListAsk(sort = ListSort.ACTIVITY)), HistoryList.args(ListAsk(), "e.1.2")),
-            HistorySearch.COMMAND to listOf(HistorySearch.args("q")),
             HistoryRead.COMMAND to listOf(HistoryRead.args("/p/s.jsonl", 0L, 10L)),
             HistoryRun.COMMAND to listOf(HistoryRun.after("/p/s.jsonl", "r", 0L), HistoryRun.tail("/p/s.jsonl", "r"), HistoryRun.before("/p/s.jsonl", "r", 30L)),
             HistoryTail.COMMAND to listOf(HistoryTail.args("/p/s.jsonl", 50), HistoryTail.args("/p/s.jsonl", 50, Held("/p/s.jsonl", 3L, 30L, "m"))),
@@ -77,10 +75,12 @@ class SentRequestsTest {
             KeyAdd.COMMAND to listOf(KeyAdd.args("ssh-ed25519 AAAA k")),
             Login.CMD to listOf(Login.cmd("a")),
             Login.CANCEL to listOf(Login.cancel("j")),
+            Login.OUT to listOf(Login.once("work")),
+            Login.STATUS to listOf(Login.once("work")),
             Login.FINISH to listOf(Login.finish("j", "code")),
             Login.START to
                 listOf(
-                    Login.start(Login.account("claude", "a")),
+                    Login.start(Login.account("a")),
                     Login.start(LoginStartReq.Mcp("claude", "a", "notes", null)),
                     Login.start(LoginStartReq.Mcp("claude", null, "notes", "/w")),
                 ),
@@ -89,9 +89,6 @@ class SentRequestsTest {
                     NeedsAnswer.args("s", "q", "allow"),
                     NeedsAnswer.args("s", "q", "answer", note = "n", picks = mapOf("0" to NeedsPick(setOf("A"), " t "))),
                 ),
-            PlanCellView.COMMAND to listOf(PlanCellView.args("/w", "x", "A1")),
-            PlanList.COMMAND to listOf(PlanList.args()),
-            PlanRead.COMMAND to listOf(PlanRead.args("/w")),
             Profiles.READ to listOf(emptyMap()),
             ProseHl.COMMAND to listOf(ProseHl.args(listOf(HlCode(lang = "rust", x = "fn f() {}"), HlCode(lang = null, x = "a")))),
             QuotaRead.COMMAND to listOf(null),
@@ -139,9 +136,6 @@ class SentRequestsTest {
                     SessionArrive.args(ArriveAsk(ArriveBy.Cwd("/w"), 3L, "w-cc", TerminalHost.TMUX)),
                     SessionArrive.args(ArriveAsk(ArriveBy.Sid("s"), 3L, null, null)),
                 ),
-            SessionAttachmentCheck.COMMAND to listOf(SessionAttachmentCheck.args("s", listOf(AttachAsk("a.png", 5L)))),
-            SessionAttachmentCommit.COMMAND to listOf(SessionAttachmentCommit.args("s", "a.png", Staged("k", 3L, 9L, SHA))),
-            SessionAttachmentDrop.COMMAND to listOf(SessionAttachmentDrop.args("s", "i")),
             SessionCommandList.COMMAND to listOf(SessionCommandList.args("s")),
             SessionModel.COMMAND to listOf(SessionModel.args("s", "opus")),
             SessionOpenDir.COMMAND to listOf(SessionOpenDir.args("/w")),
@@ -166,7 +160,6 @@ class SentRequestsTest {
                 ),
             SessionQueueRead.COMMAND to listOf(SessionQueueRead.args("s")),
             SessionRewindOptions.COMMAND to listOf(SessionRewindOptions.args("s", "u")),
-            SessionsNeeds.COMMAND to listOf(null),
             SessionsWhere.COMMAND to listOf(SessionsWhere.args("s")),
             TerminalPreview.COMMAND to listOf(TerminalPreview.args("t1")),
             TerminalsList.COMMAND to listOf(TerminalsList.args()),

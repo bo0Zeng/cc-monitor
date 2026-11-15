@@ -59,7 +59,7 @@ export function remaining(budget: Budget): number {
 
 export type HopTag = "open" | "auth" | "write" | "read" | "wait";
 export type Reach = "NotSent" | "Sent" | "Unknown";
-export type HopFault = "Unreachable" | "Dropped" | "Overrun";
+export type HopFault = "Unreachable" | "Dropped" | "Overrun" | "Full";
 export type OursFault = "Cancelled" | "Misuse" | "Broken";
 
 /** `§3.3.1` 的三层。 */
@@ -86,7 +86,7 @@ export class ChanError extends Error {
 
 const HOP_TAGS: readonly string[] = ["open", "auth", "write", "read", "wait"];
 const REACHES: readonly string[] = ["NotSent", "Sent", "Unknown"];
-const HOP_FAULTS: readonly string[] = ["Unreachable", "Dropped", "Overrun"];
+const HOP_FAULTS: readonly string[] = ["Unreachable", "Dropped", "Overrun", "Full"];
 const OURS_FAULTS: readonly string[] = ["Cancelled", "Misuse", "Broken"];
 
 const BROKEN: CallError = { layer: "ours", why: "Broken" };

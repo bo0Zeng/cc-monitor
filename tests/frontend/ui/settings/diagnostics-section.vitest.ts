@@ -10,7 +10,9 @@
 import { describe, it, expect, vi, beforeEach, onTestFinished } from "vitest";
 import { fakeClipboard } from "../../../test-support/clipboard-fake";
 
-const { setDiag, getDiag, logInfo, opened, report, chan } = vi.hoisted(() => ({
+const { setDiag, getDiag, logInfo, opened, report, chan, fileWin, osOpened } = vi.hoisted(() => ({
+  fileWin: [] as { host: unknown; at: unknown }[],
+  osOpened: [] as string[],
   chan: { asked: [] as [string, string][] },
   setDiag: { fail: null as Error | null, calls: [] as unknown[] },
   getDiag: { fail: null as Error | null, logEnabled: true },
@@ -58,6 +60,7 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
     },
     os_open: (w: { kind: string; path?: string }) => {
       if (w.kind === "path") opened(w.path);
+      else osOpened.push(w.kind);
       return Promise.resolve();
     },
     clipboard_write: async (a: { text: string }) => (await import("../../../test-support/clipboard-fake")).viaFake(a),
@@ -72,10 +75,14 @@ vi.mock("../../../../src/frontend/ui/ipc/chan-caller", async (importOriginal) =>
   },
 }));
 vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
+vi.mock("../../../../src/frontend/ui/file-window", () => ({
+  openFileWindow: (host: unknown, at: unknown) => (fileWin.push({ host, at }), Promise.resolve(true)),
+}));
 
 import { DiagnosticsSection } from "../../../../src/frontend/ui/settings/diagnostics-section";
 import { restartReasons, __resetRestartNoticeForTests } from "../../../../src/frontend/ui/settings/restart-notice";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
+import { LOCAL } from "../../../../src/frontend/ui/ipc/origin";
 
 const settle = () => new Promise((r) => setTimeout(r, 0));
 
@@ -111,6 +118,8 @@ beforeEach(() => {
   logInfo.value.current_file = "/d/logs/monitor.2026-09-25.log";
   logInfo.value.current_file_shown = "壳写的今天那份显示形";
   opened.mockClear();
+  fileWin.length = 0;
+  osOpened.length = 0;
   document.body.replaceChildren();
 });
 
@@ -200,6 +209,16 @@ describe("文件：今天的日志照抄壳写好的路径", () => {
     const sec = await loaded();
     expect(today(sec.element).textContent).toContain("壳写的今天那份显示形");
     expect(today(sec.element).textContent).not.toContain("/d/logs");
+  });
+
+  it("★ 看目录那一颗 ⇒ 文件窗口开进本机日志目录（与各页同一句），不交系统文件管理器", async () => {
+    const sec = await loaded();
+    const b = today(sec.element).querySelector<HTMLButtonElement>(`button[aria-label="${copyText("data.item.reveal")}"]`);
+    expect(b, "今天那一行少了看目录那一颗").toBeTruthy();
+    b!.click();
+    await settle();
+    expect(fileWin).toEqual([{ host: LOCAL, at: { dir: "/d/logs" } }]);
+    expect(osOpened, "不该交系统文件管理器").toEqual([]);
   });
 
   it("★ 还没有 ⇒ 那一句里的目录是壳写的显示形", async () => {

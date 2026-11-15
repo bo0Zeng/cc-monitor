@@ -3,6 +3,7 @@
  *
  * 三个键：`order`（顺序）· `collapsed`（收着的组 id）· `hiddenOpen`（栏底「已隐藏」那一行展开着没有，缺 ＝ 收着）。
  * 每个键只动自己：`writeSegKey` 是它们唯一的写口（`tab-bar-state.vitest.ts` 各有一格盯着）。
+ * 段里还有 `head`（栏顶那一排）：设置窗也读写它、设置窗不带这一截 ⇒ 它的读写住入口清单 `global-dests.ts`，只动它自己那一格。
  */
 import { loadConfig, patchConfig, setAt } from "./config";
 

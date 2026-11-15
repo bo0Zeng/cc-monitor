@@ -28,7 +28,7 @@ pub const ONESHOTS: &[(&str, &str, &str, Oneshot)] = &[
     (
         "--answer-hook",
         "<agent>",
-        "会话级答题 hook 的客户端（那一家的 hook 设置里直接叫它，不经 shell）：读 hook 的 stdin，经本机常驻后端 `needs-ask` 挂上、等人答；拿到答案 ⇒ stdout 打那一家要的那一整份；常驻不在 · 断开 · 不是要人答的那一种 · 终端那边先答了 ⇒ 一个字节不打。恒退出 0",
+        "会话级 hook 的客户端（答题与一轮的那几种事件都走这里；那一家的 hook 设置里直接叫它，不经 shell）：读 hook 的 stdin，经本机常驻后端 `needs-ask` 交过去——要人答的挂上等人答，拿到答案 ⇒ stdout 打那一家要的那一整份；一轮的事件（提交了一句 · 一轮结束 · 闲着的通知）交常驻记下、一个字节不打；常驻不在 · 断开 · 终端那边先答了 ⇒ 一个字节不打。恒退出 0",
         |c| {
             Box::pin(crate::control::asks::hook::run(
                 c.args,
@@ -70,7 +70,7 @@ pub const ONESHOTS: &[(&str, &str, &str, Oneshot)] = &[
     (
         relay_route_core::RESIDENT_STOP,
         "[--grace <秒>]",
-        "停这台的常驻后端：问套接字在听的是谁 → SIGTERM → 宽限（缺省 35 秒）→ SIGKILL；回 `{stopped: graceful|killed|not_running, pid}`",
+        "停这台的常驻后端：问套接字在听的是谁 → SIGTERM → 宽限（缺省 35 秒）→ SIGKILL；回 `{stopped: graceful|killed|not_running, pid, said}`（said 是写好的那一句，壳与界面照抄）",
         |c| Box::pin(async move { crate::control::resident::run_stop(&c.args[1..], c.own) }),
     ),
     (

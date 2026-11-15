@@ -27,7 +27,7 @@ import type { Ask, AskChoice, AskQuestionItem, Needs } from "./session-reads";
 import { copyText } from "./copy-table";
 import { button, setBusy, setButtonLabel, setDisabled, type ButtonKind } from "./kit/button";
 import { kbd } from "./kit/badge";
-import { needsOf } from "./session-face";
+import { needsBehind, needsOf } from "./session-face";
 import { waitedNow } from "./duration-format";
 import type { AnswerReq } from "./generated/AnswerReq";
 import type { NeedsChoiceLook } from "./generated/NeedsChoiceLook";
@@ -114,8 +114,10 @@ export class AnswerBlock {
     const sid = tab?.sessionId ?? null;
     if (this.goneLine && this.goneLine.sid !== sid) this.goneLine = null;
     // 画着的那条请求没了、不是这里答掉的 ⇒ 别处先答了（终端那边 · 另一个窗口 · 替人答了）：块收起、留后端写好的那一行，直到下一条请求来或切走。
+    // 「没了」只照会话事实（`needs` 与收场那一格 `askEnd` 同一份到）：脸是另一条流，它先说不在等、事实还挂着这一条时，
+    // 这一条的收场那一句还在路上 ⇒ 不算收场（块照脸收起），事实一到再照它说。
     const shown = this.shown;
-    if (shown && (shown.sid !== sid || n?.ask?.id !== shown.id)) {
+    if (shown && (shown.sid !== sid || tab?.needs?.ask?.id !== shown.id)) {
       this.shown = null;
       const end = tab?.askEnd;
       if (shown.sid === sid && !shown.ours && !this.goneLine && end) this.goneLine = { sid: shown.sid, ask: shown.id, said: end.said };
@@ -124,14 +126,19 @@ export class AnswerBlock {
       // 点了才知道的那一种：请求还在（等重读）⇒ 淡出的块 ＋ 那一行照旧。
       if (n?.ask && n.ask.id === this.goneLine.ask) return;
       if (!n?.ask) {
-        this.drawGone(this.goneLine.said);
+        this.drawLine("gone", this.goneLine.said);
         return;
       }
       this.goneLine = null;
     }
+    // 脸说又在等、手上那份事实还是上一轮的（`needsBehind`）⇒ 上一轮那条请求不画（已经过去了），只写「读取中」，这一轮的事实到了再画。
+    if (tab && needsBehind(tab)) {
+      this.drawLine("reading", copyText("kit.state.reading"));
+      return;
+    }
     // 上一条请求收场那一格说留着（替人答过）：同一行（后端那一句），切走再回来也在，下一条请求来了才换掉。
     if (tab && !n && tab.askEnd?.stays) {
-      this.drawGone(tab.askEnd.said);
+      this.drawLine("gone", tab.askEnd.said);
       return;
     }
     if (!tab || !n) {
@@ -171,17 +178,25 @@ export class AnswerBlock {
     this.current = null;
   }
 
-  /** 块收起、只留「已在别处答过」那一行（稳定态：下一条请求来了 / 切走才没）。 */
-  private drawGone(said: string): void {
-    const key = `gone\u0000${said}`;
+  /**
+   * 块里只剩一行状态（不给答的按钮）：`part` 是那一行的记号（`gone` ＝ 别处已答过 · 那条收了，块带淡出的记号，稳定态：下一条请求来了 / 切走才没；
+   * `reading` ＝ 这一轮的事实还在路上）。
+   */
+  private drawLine(part: "gone" | "reading", said: string): void {
+    const key = `${part}\u0000${said}`;
     if (this.drawn === key) return;
     this.drawn = key;
     this.forget();
     this.el.hidden = false;
-    this.el.dataset.gone = "true";
-    this.el.dataset.goneOnly = "true";
+    if (part === "gone") {
+      this.el.dataset.gone = "true";
+      this.el.dataset.goneOnly = "true";
+    } else {
+      delete this.el.dataset.gone;
+      delete this.el.dataset.goneOnly;
+    }
     delete this.el.dataset.folded;
-    this.el.replaceChildren(this.goneRow(said));
+    this.el.replaceChildren(this.statusRow(part, said));
     this.reportRoom();
   }
 
@@ -191,10 +206,10 @@ export class AnswerBlock {
     this.host.room?.(this.el.offsetHeight + gap);
   }
 
-  private goneRow(said: string): HTMLElement {
+  private statusRow(part: "gone" | "reading", said: string): HTMLElement {
     const line = document.createElement("div");
     line.className = s.abGone;
-    line.dataset.part = "gone";
+    line.dataset.part = part;
     line.setAttribute("role", "status");
     line.textContent = said;
     return line;
@@ -248,7 +263,7 @@ export class AnswerBlock {
     head.dataset.part = "head";
     const title = document.createElement("span");
     title.className = s.abTitle;
-    title.textContent = ask && ask.questions.length > 0 ? copyText("askBlock.head.questions", { head: n.head, n: ask.questions.length }) : n.head;
+    title.textContent = n.askHead ?? n.head;
     head.append(title);
     if (ask?.run) {
       const tag = document.createElement("span");
@@ -584,7 +599,7 @@ export class AnswerBlock {
         for (const x of this.el.querySelectorAll<HTMLButtonElement>("button")) setDisabled(x, out.said);
         for (const x of this.el.querySelectorAll<HTMLInputElement>("input")) x.disabled = true;
         this.goneLine = { sid, ask: req.ask, said: out.said };
-        this.scroll?.append(this.goneRow(out.said));
+        this.scroll?.append(this.statusRow("gone", out.said));
         this.host.reread(sid);
         return;
       case "failed":

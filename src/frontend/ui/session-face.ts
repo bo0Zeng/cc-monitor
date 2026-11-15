@@ -6,13 +6,39 @@
  * （`face.clock`）按此刻填。需手动的详情在会话事实里（`Tab.needs`），脸上那颗点说在等才认。
  */
 import type { DotState } from "./kit/status-dot";
-import type { BackgroundWork, Needs } from "./session-reads";
+import type { BackgroundWork, Needs, PendingCall } from "./session-reads";
 import type { Tab } from "./tab-model";
 import { clockNow } from "./duration-format";
+import { WAITING_DOTS } from "./generated/judgment-rules";
+
+/**
+ * 会话事实里说「在等」的那几样认不认：脸上那颗点说在等、且手上那份事实是脸这一轮在等的那一份才认
+ * （事实还在路上 · 要不到时不画脸已经不说的那一份，也不画上一轮那份）。需手动那一份（`needsOf`）与某一步此刻怎样（`stepOf`）都只过这一道门。
+ */
+export function waitCounts(tab: Tab): boolean {
+  return WAITING_DOTS.some((d) => d === tab.face?.dot) && !needsBehind(tab);
+}
+
+/**
+ * 脸说在等、手上那份需手动却是上一轮的（那一份开始等的时刻对不上脸这一轮会走的那一句的起点）⇒ 这一轮的事实还在路上：
+ * 不画那一份（那条请求已经过去了），出口写「读取中」。两边有一边说不出几时起等 ⇒ 判不了，不算（照事实画、不猜）。
+ */
+export function needsBehind(tab: Tab): boolean {
+  const from = tab.face?.clock?.from;
+  const since = tab.needs?.sinceMs;
+  return WAITING_DOTS.some((d) => d === tab.face?.dot) && from != null && since != null && since !== from;
+}
 
 /** 此刻在等人 ⇒ 等的是什么（会话事实那一份；脸上那颗点说在等才认）；不在等 ⇒ `null`。 */
 export function needsOf(tab: Tab): Needs | null {
-  return tab.face?.dot === "needs-you" ? tab.needs : null;
+  return waitCounts(tab) ? tab.needs : null;
+}
+
+/** 某一步此刻怎样（会话事实 `pending` 里那一条）：事实说在等、脸却不在等 ⇒ 不作数（`null`：画成状态不明 / 建卡时不画，等事实）；事实里没有 ⇒ `null`。 */
+export function stepOf(tab: Tab, call: string): PendingCall | null {
+  const p = tab.pending.find((x) => x.id === call);
+  if (!p) return null;
+  return p.state === "awaiting" && !waitCounts(tab) ? null : p;
 }
 
 /** 状态点的名字（读屏名 / 悬停名）：脸上的短名；还没收到脸 ⇒ `null`（不画点，也没有名字）。 */
@@ -37,7 +63,7 @@ export function backgroundLine(b: BackgroundWork, now: number): string {
  */
 export function stateLine(tab: Tab, now: number): { text: string; needs: boolean } {
   const f = tab.face;
-  return { text: f?.clock ? clockNow(f.clock, now) : (f?.line ?? ""), needs: f?.dot === "needs-you" };
+  return { text: f?.clock ? clockNow(f.clock, now) : (f?.line ?? ""), needs: WAITING_DOTS.some((d) => d === f?.dot) };
 }
 
 /** 悬停卡里那一句 peek（脸上那一格：在等 ⇒ 等的那一步 · 在跑 ⇒ 那一步 · 空闲 / 后台 ⇒ 最后一句）；没有 ⇒ `null`（不出这一行）。 */

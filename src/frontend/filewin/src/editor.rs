@@ -91,13 +91,10 @@ pub fn fits_one_line(at: &super::source::RemotePath, content: &str) -> bool {
         <= SAVE_LINE_CAP.as_len()
 }
 
-/// 后端 CAS 摘要（SHA-256）的十六进制长度。窗口不算摘要，只认形状：读回来的那一格不是这个形状 ⇒ 不打开
-/// （存不回去的编辑面不该立起来）。与后端 `files::SHA256_HEX_LEN` 同一个数（SHA-256 的定义，不是可调的量）。
-pub const SHA256_HEX_LEN: usize = 64;
-
-/// 这一格像不像后端交的摘要（64 位小写十六进制）。
+/// 这一格像不像后端交的摘要（64 位小写十六进制）。窗口不算摘要，只认形状：读回来的那一格不是这个形状 ⇒ 不打开
+/// （存不回去的编辑面不该立起来）。
 pub fn is_sha256_hex(s: &str) -> bool {
-    s.len() == SHA256_HEX_LEN
+    s.len() == w::SHA256_HEX_LEN
         && s.bytes()
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
@@ -140,12 +137,6 @@ pub static OVERWRITE_LABEL: std::sync::LazyLock<String> =
 /// 同上，另一颗。
 pub static REOPEN_LABEL: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinEditor.stale.reopen", &[]));
-
-/// 这一行**为什么**改不了（`None` = 改得了）：目录 · 名字寻址不到 · 后端那道编辑门不许（那一句是后端写好的）。
-/// 回那句话而不是 `bool`：灰着的按钮与「这个功能坏了」在屏幕上同形。
-pub fn why_not_editable(l: &super::source::Listed) -> Option<String> {
-    pick_core::why_not_editable(&l.pick())
-}
 
 /// 打开这一行许读多少（后端那道编辑门给的；不许 ⇒ `None`）。
 pub fn edit_cap(l: &super::source::Listed) -> Option<u64> {
@@ -423,11 +414,11 @@ struct Desk {
     saved: Option<Result<Saved, SaveError>>,
 }
 
-/// 跨线程共享那一格（UI 线程读，tokio 那条写）。同 `DownloadBoard` 的理由。
+/// 跨线程共享那一格（UI 线程读，tokio 那条写）。同 `batch::BatchBoard` 的理由。
 #[derive(Clone, Default)]
 pub struct EditBoard {
     inner: Arc<Mutex<Desk>>,
-    /// 🔴 敲窗口那只手（同 `DownloadBoard::ctx`：读/存都在 tokio 那条线程上落，
+    /// 🔴 敲窗口那只手（同 `batch::BatchBoard` 那只手：读/存都在 tokio 那条线程上落，
     /// 而 egui 只在有事发生时画下一帧）。
     ctx: Arc<Mutex<Option<egui::Context>>>,
 }
@@ -453,7 +444,7 @@ impl EditBoard {
             d.opening = None;
             d.arrived = Some(a);
         }
-        // ⚠ 同 `DownloadBoard::finish`：先落货、再敲（锁已放掉）。
+        // ⚠ 同 `trip::Lane::finish`：先落货、再敲（锁已放掉）。
         self.poke();
     }
 
@@ -505,7 +496,7 @@ impl EditBoard {
         self.lock().saving.clone()
     }
 
-    /// 毒化容忍 —— 同 `DownloadBoard::lock`（这个窗口崩掉 = 用户丢掉整个文件管理器）。
+    /// 毒化容忍 —— 同 `trip::Lane` 的锁（这个窗口崩掉 = 用户丢掉整个文件管理器）。
     fn lock(&self) -> std::sync::MutexGuard<'_, Desk> {
         match self.inner.lock() {
             Ok(g) => g,
@@ -660,7 +651,7 @@ async fn stage_text(
     let key = chunk_core::key_of(*uuid::Uuid::new_v4().as_bytes());
     let total = content.len().div_ceil(chunk_core::CHUNK);
     let mut sent = Sent(0);
-    let over = super::chunk_upload::Over { line, origin };
+    let over = super::source::Over { line, origin };
     // 读的是内存里那一份、也不撤 ⇒ 后两口走不到；照样给一句原话，不 panic。
     chunk_core::stage(
         &over,

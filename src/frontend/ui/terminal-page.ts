@@ -8,7 +8,8 @@
  *   订上了 ⇒ 头上「● 实时」、画面跟着变、送完不再重抓；那台只能快照 ⇒ 多一枚「仅快照」，照旧送完 0.5 · 1.5 · 3 秒各再抓一次、其余时候点「重新看」；
  *   实时断了 ⇒ 画面留着变淡、头上退回「画面几点 ＋ 重新看」、头下一条原因 ＋［重新接上］（流断了不自己重连）；断在「那台断开」的，
  *   那台自己重连回来（机器状态推「已连上」，宿主转给 {@link TerminalPage.machineUp}）⇒ 自动重新订上、输入框跟着恢复。收起 / 换页 / 切标签页即退订。开着不轮询。
- * - 往上翻了不拽回：底部出「回到最新」。
+ * - 没往上翻就一直贴底（画面框变高变矮也落到底）；用户往上翻了不拽回：底部出「回到最新」。贴不贴只由用户滚改，不照几何现算。
+ * - 实时停了、不是那台断开（收尾帧 · 读不懂）⇒ 当场重问名单：页头照新那一行，终端没了照名单里没有那一行写。
  * - 能不能送、输入会不会和别的终端窗口混在一起：只读名单里后端给的 `can.input` · `clients` · `input`，界面不判。
  * - 托管那一形（输入只收持有者的）：「送往 …」那一行右边写后端那一句（输入在此处 · 在手机 · 在终端窗口 …）＋［接管输入］（不是这一端持有）/［交还］
  *   （`terminal-take-input` · `terminal-release-input`，回的那一格就地换上；实时流每一帧也带此刻的持有者，就地换）。不是这一端持有 ⇒ 输入行 · 按键一排灰着，
@@ -162,6 +163,12 @@ export class TerminalPage {
   private live: Live = { at: "off" };
   private follow: Follow | null = null;
   private noteTimer: ReturnType<typeof setTimeout> | null = null;
+  /** 画面贴着底：只由用户滚改（滚离底部 ⇒ 不贴；滚回底部 · 点「回到最新」⇒ 贴），换会话即回到贴着。 */
+  private pinned = true;
+  /** 页面自己落到底时设的滚动位置（随后那一下滚动事件不算用户滚）；没有 ⇒ `null`。 */
+  private setTop: number | null = null;
+  /** 上回记下的滚动位置（滚动事件 · 落到底时记）：看出用户在事件派发之前就往上滚了、看出往下还是往上。 */
+  private lastTop = 0;
 
   private readonly head: HTMLElement;
   private readonly dot: HTMLSpanElement;
@@ -237,7 +244,12 @@ export class TerminalPage {
     this.screen.tabIndex = 0;
     this.pre = screenPre();
     this.screen.appendChild(this.pre);
-    this.screen.addEventListener("scroll", () => this.syncFollowBtn());
+    this.screen.addEventListener("scroll", () => this.onScroll());
+    // 抽屉拉高拉矮 · 页头页脚变高变矮 ⇒ 画面框跟着变：贴着底就接着落到底。
+    if (typeof ResizeObserver !== "undefined")
+      new ResizeObserver(() => {
+        if (this.pinned) this.stickDown();
+      }).observe(this.screen);
     this.followBox = el("div");
     this.followBox.className = s.termFollow;
     this.followBox.hidden = true;
@@ -297,7 +309,10 @@ export class TerminalPage {
   setVisible(on: boolean): void {
     if (on === this.visible) return;
     this.visible = on;
-    if (on) void this.refresh();
+    if (on) {
+      this.forgetTop();
+      void this.refresh();
+    }
     else {
       this.stopTimers();
       this.stopLive();
@@ -323,6 +338,9 @@ export class TerminalPage {
     this.shotError = null;
     this.note = null;
     this.sending = false;
+    this.pinned = true;
+    this.setTop = null;
+    this.lastTop = 0;
     this.phase = "loading";
     this.box.value = sid === null ? "" : (this.drafts.get(sid) ?? "");
     this.onBoxInput();
@@ -353,25 +371,9 @@ export class TerminalPage {
     try {
       const rows = await this.reads.list(origin);
       if (mine !== this.seq) return;
-      const hits = rows.filter((r) => (w.kind === "tab" ? r.sid === w.tab.sessionId : r.terminal === w.terminal));
-      if (hits.length === 0) {
-        this.stopLive();
-        this.row = null;
-        this.phase = "none";
-        this.paint();
-        return;
-      }
-      if (hits.length > 1) {
-        this.row = null;
-        this.phase = "error";
-        this.error = copyText("terminal.why.ambiguous");
-        this.errorDetail = "";
-        this.paint();
-        return;
-      }
-      if (this.row?.terminal !== hits[0].terminal) this.stopLive();
-      this.row = hits[0];
-      this.phase = "ready";
+      if (!this.pick(rows, w)) return;
+      // 认出来了就当场画（从错误页回来时实时还订着、抓屏那一下不重画，不等下一帧）。
+      this.paint();
     } catch (e) {
       if (mine !== this.seq) return;
       this.phase = "error";
@@ -383,6 +385,53 @@ export class TerminalPage {
     // 抓屏失败（没有 tmux server 之类）⇒ 不订实时：订也会被同样拒，叠出第二条警告；［刷新］抓到了再订。
     const shot = await this.capture(mine);
     if (shot && mine === this.seq && this.visible && this.live.at === "off") this.startLive();
+  }
+
+  /** 名单里认那一行：认出一行 ⇒ 记下、`true`；没有 ⇒ 落「名单里没有」；不止一行 ⇒ 落错；后两样当场重画、`false`。 */
+  private pick(rows: readonly TerminalRow[], w: Watched): boolean {
+    const hits = rows.filter((r) => (w.kind === "tab" ? r.sid === w.tab.sessionId : r.terminal === w.terminal));
+    if (hits.length === 0) {
+      this.stopLive();
+      this.row = null;
+      this.phase = "none";
+      this.paint();
+      return false;
+    }
+    if (hits.length > 1) {
+      this.row = null;
+      this.phase = "error";
+      this.error = copyText("terminal.why.ambiguous");
+      this.errorDetail = "";
+      this.paint();
+      return false;
+    }
+    if (this.row?.terminal !== hits[0].terminal) this.stopLive();
+    this.row = hits[0];
+    this.phase = "ready";
+    return true;
+  }
+
+  /**
+   * 实时流停了、不是那台断开（收尾帧 · 读不懂）：只重问名单，页头照新那一行（窗口数 · 持有者）；终端没了 ⇒ 照名单里没有那一行写。
+   * 不重抓、不重订（画面留着那一屏）；认出的是另一个终端 ⇒ 整个重来（抓屏 · 订实时）；问不到 ⇒ 照旧那一条黄条。
+   * 不动抓屏的代次（送完那几拍 ·「重新看」不盖掉它，它也不盖掉在途的那一屏）：回来时只核还是不是同一个会话、同一个终端。
+   */
+  private async relist(): Promise<void> {
+    const w = this.host.active();
+    const origin = this.origin;
+    const sid = this.sid;
+    const was = this.row?.terminal;
+    if (!w || keyOf(w) !== sid || origin === undefined) return;
+    let rows: TerminalRow[];
+    try {
+      rows = await this.reads.list(origin);
+    } catch {
+      return;
+    }
+    if (sid !== this.sid || this.row?.terminal !== was || this.phase !== "ready") return;
+    if (!this.pick(rows, w)) return;
+    if (this.row?.terminal !== was) void this.refresh();
+    else this.paint();
   }
 
   /** 订这个终端的实时画面（已经订着 ⇒ 先退）。 */
@@ -406,6 +455,8 @@ export class TerminalPage {
         this.follow = null;
         this.live = liveOf(why);
         this.paint();
+        // 停了、不是那台断开 ⇒ 名单里那一行多半也变了（终端没了 · 持有者散了）：当场重问，页头不留开页时那一份。
+        if (why.kind === "stopped" && !why.offline) void this.relist();
       },
     });
     // 订阅这一问是同步交回句柄的；交回之前就停了（那一格已落 `stopped` / `snapOnly`）⇒ 不记这个句柄。
@@ -453,25 +504,61 @@ export class TerminalPage {
     }
   }
 
-  /** 换上一屏：原来贴着底就接着贴底；往上翻着就不动（底部出「回到最新」）。 */
+  /** 换上一屏（贴着底 ⇒ 画完落到底，见 [paint]；往上翻着就不动，底部出「回到最新」）。 */
   private applyShot(shot: TerminalShot): void {
-    const stick = this.shot === null || this.atBottom();
     this.shot = shot;
     this.paint();
-    if (stick) this.screen.scrollTop = this.screen.scrollHeight;
-    this.syncFollowBtn();
   }
 
   private atBottom(): boolean {
     return this.screen.scrollTop + this.screen.clientHeight >= this.screen.scrollHeight - 4;
   }
 
+  /**
+   * 滚了一下：页面自己落到底引起的那一下不算；用户滚的 ⇒ 离开底部即不贴，往下滚到底部才重新贴
+   * （内容缩短被浏览器夹回底那一下是往上变的，不算用户滚回底）。
+   */
+  private onScroll(): void {
+    const top = this.screen.scrollTop;
+    const ours = this.setTop !== null && Math.abs(top - this.setTop) < 1;
+    this.setTop = null;
+    if (!ours) {
+      if (!this.atBottom()) this.pinned = false;
+      else if (top >= this.lastTop - 1) this.pinned = true;
+    }
+    this.lastTop = top;
+    this.syncFollowBtn();
+  }
+
+  /**
+   * 贴着底 ⇒ 落到底（位置真变了才记下，好认出随后那一下滚动事件是自己引起的）。落之前先看：位置比上回记下的小、又不在底部
+   * ⇒ 用户已经往上滚了、那一下事件还没派发 ⇒ 不贴、不落。
+   */
+  private stickDown(): void {
+    const before = this.screen.scrollTop;
+    if (before < this.lastTop - 1 && !this.atBottom()) {
+      this.pinned = false;
+      this.lastTop = before;
+      return;
+    }
+    this.screen.scrollTop = this.screen.scrollHeight;
+    if (this.screen.scrollTop !== before) this.setTop = this.screen.scrollTop;
+    this.lastTop = this.screen.scrollTop;
+  }
+
+  /** 画面框重新挂上 · 页面重新显出来：浏览器把滚动位置归零、不发滚动事件 ⇒ 上回记下的位置作废（不当成用户往上滚了）。 */
+  private forgetTop(): void {
+    this.setTop = null;
+    this.lastTop = this.screen.scrollTop;
+  }
+
   private syncFollowBtn(): void {
-    this.followBox.hidden = this.shot === null || this.atBottom();
+    this.followBox.hidden = this.shot === null || this.pinned;
   }
 
   private toLatest(): void {
-    this.screen.scrollTop = this.screen.scrollHeight;
+    this.pinned = true;
+    this.stickDown();
     this.syncFollowBtn();
   }
 
@@ -736,6 +823,12 @@ export class TerminalPage {
       const copy = copyDetailButton(this.note.text, this.note.detail ?? "");
       if (copy) this.noteEl.appendChild(copy);
     }
-    if (this.body.firstChild !== this.head) this.body.replaceChildren(this.head, this.bar, this.screenWrap, this.inputArea);
+    if (this.body.firstChild !== this.head) {
+      this.body.replaceChildren(this.head, this.bar, this.screenWrap, this.inputArea);
+      this.forgetTop();
+    }
+    // 贴着底 ⇒ 每画一回都落到底（新一帧 · 黄条 · 送完那一句把画面框挤矮都算）。
+    if (this.pinned) this.stickDown();
+    this.syncFollowBtn();
   }
 }

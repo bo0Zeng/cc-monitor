@@ -32,10 +32,28 @@ pub(crate) enum Undeliverable {
     AttachmentGone(Vec<String>),
     /// 终端已经没了，按记下的号恢复这条会话没成（原话记日志）。
     NotResumed,
-    /// 这台 tmux 里没有它的终端、可另有活进程在写它（开在 tmux 之外的终端里）：不另起一个。
-    Elsewhere,
+    /// 这台的终端名单里没有它，恢复那一下却说它在跑（`already_live` · 落在一个在跑的终端里）：会话活着、送字找不到它的终端，
+    /// 不另起一个。
+    Unseen,
     /// 编辑已发的那一句没退成 · 退了没送进（那一句照回退那一串写好的，标在那一条上）。
     NotRewound(String),
+}
+
+impl Undeliverable {
+    /// 标未送达时那一条写的那一句：每一种一句，写清哪一步没成。投递那一处只照它写（`give_up` 的原因）。
+    pub(crate) fn said(&self) -> String {
+        use copy_core::copy_text;
+        match self {
+            Undeliverable::Refused(s) => s.said.clone().unwrap_or_else(|| s.note.clone()),
+            Undeliverable::AttachmentGone(ids) => copy_text(
+                "beQueue.no.attachmentGone",
+                &[("ids", &ids.join(&copy_text("kit.text.sep", &[])))],
+            ),
+            Undeliverable::NotResumed => copy_text("beQueue.no.notResumed", &[]),
+            Undeliverable::Unseen => copy_text("beQueue.no.unseen", &[]),
+            Undeliverable::NotRewound(s) => s.clone(),
+        }
+    }
 }
 
 impl Delivery {
@@ -63,7 +81,7 @@ pub(crate) struct Say {
 
 /// 生产那一份送一句：会话工作目录与哪一家从会话记录读（同恢复那一支）；读不出 ⇒ 每一份附件都算不在。
 pub(crate) fn here(say: &Say, files: Files) -> Result<Delivery, Said> {
-    let home = crate::history::listing::agent_home();
+    let home = crate::agents::local_homes();
     let waiting = |sid: &str| crate::history::live_table::now(&home).waiting(sid);
     let words = if say.attachments.is_empty() {
         plain(&say.text)
@@ -153,29 +171,37 @@ pub(crate) fn typed_of(
     Ok(crate::agents::typed_with(agent, &say.text, &refs))
 }
 
-/// 送一句的本体：`waiting` 答这条会话此刻在不在等人，`send` 照 `terminal-input` 送 `words`（各单独粘一次的 ＋ 正文）。
+/// 送一句的本体：`waiting` 答这条会话此刻在不在等人，`send` 照 `terminal-input` 送 `words`（正文那一份 ＋ 各单独粘一次的那几段）。
 pub(crate) fn say_typed(
     say: &Say,
     words: &crate::agents::Typed,
     waiting: &dyn Fn(&str) -> bool,
-    send: &dyn Fn(&TerminalInputReq) -> Result<Sent, Said>,
+    send: &dyn Fn(&TerminalInputReq, &[String]) -> Result<Sent, Said>,
     resume: &dyn Fn(&Say) -> Option<Reopened>,
 ) -> Result<Delivery, Said> {
     if waiting(&say.sid) {
         return Ok(Delivery::Waiting);
     }
-    let sent = send(&TerminalInputReq {
-        sid: Some(say.sid.to_string()),
-        text: Some(words.text.clone()),
-        enter: Some(true),
-        client: say.client.clone(),
-        pastes: words.pastes.clone(),
-        ..TerminalInputReq::default()
-    })?;
+    let sent = send(
+        &TerminalInputReq {
+            sid: Some(say.sid.to_string()),
+            text: Some(words.text.clone()),
+            enter: Some(true),
+            client: say.client.clone(),
+            ..TerminalInputReq::default()
+        },
+        &words.pastes,
+    )?;
     // 这台已经没有它的终端（名单里没有 · 送的那一刻没了）⇒ 恢复再送；别的被拒原样回。
     if !crate::control::terminals::terminal_gone(sent.why) {
         return Ok(Delivery::of(sent));
     }
+    tracing::info!(
+        "[session-send] {} 判终端没了（{:?}：{}），转恢复",
+        say.sid,
+        sent.why,
+        sent.said.as_deref().unwrap_or(&sent.note)
+    );
     let Some(a) = resume(say) else {
         return Ok(Delivery::of(sent));
     };
@@ -183,10 +209,19 @@ pub(crate) fn say_typed(
         Ok(o) if matches!(o.landed, Landed::Started | Landed::InPlace) => {
             return Ok(Delivery::In { resumed: true })
         }
+        Ok(o) if o.landed == Landed::Running => {
+            tracing::warn!(
+                "[session-send] {} 判终端没了、恢复却说已在跑（{:?}）：本机终端里认不到这条会话，那一句没送",
+                say.sid,
+                o.session
+            );
+            Undeliverable::Unseen
+        }
         Ok(o) => {
             tracing::warn!(
-                "[session-send] {} 终端没了、恢复时已在跑（{:?}），那一句没送",
+                "[session-send] {} 终端没了、恢复落成 {:?}（{:?}），那一句没送",
                 say.sid,
+                o.landed,
                 o.session
             );
             Undeliverable::NotResumed
@@ -195,11 +230,11 @@ pub(crate) fn say_typed(
             tracing::warn!(
                 "[session-send] {} 终端没了、恢复没成：{} {}",
                 say.sid,
-                s.code_or_fallback(),
+                &cmd_wire::failed::Failed::code_or_fallback(s.code.clone()),
                 s.logged()
             );
             if s.code.as_deref() == Some("already_live") {
-                Undeliverable::Elsewhere
+                Undeliverable::Unseen
             } else {
                 Undeliverable::NotResumed
             }

@@ -65,3 +65,43 @@ fn checking_a_dir_names_what_is_wrong_with_it() {
     }
     let _ = std::fs::remove_dir_all(&d);
 }
+
+/// ★ pb 用不了时命令交的报错只照那一格写（[`refused`]）：码照 state（找不到 ⇒ `no_pb` · 太旧 ⇒ `pb_unsupported`），
+/// 那一行 ＝ 那一句 ＋ 分隔 ＋ 下一步（没有下一步 ⇒ 只那一句）；`ok` ⇒ 不报。找不到 · 太旧两处造的报错与它同一份。
+#[test]
+fn an_unusable_pb_refuses_with_the_cells_own_line() {
+    let t = |k: &str, a: &[(&str, &str)]| copy_text(k, a);
+    let sep = t("kit.text.sep", &[]);
+    assert_eq!(refused(&pb_ok()), None);
+
+    let none = refused(&pb_missing(&Missing::NotInstalled)).unwrap();
+    assert_eq!(none.code.as_deref(), Some("no_pb"));
+    assert_eq!(none.said, t("bePlan.face.noPb", &[]));
+
+    let d = PathBuf::from("/synthetic/pb");
+    let set = refused(&pb_missing(&Missing::SetDir(d.clone()))).unwrap();
+    assert_eq!(set.code.as_deref(), Some("no_pb"));
+    assert_eq!(
+        set.said,
+        format!(
+            "{}{sep}{}",
+            t("bePlan.face.pbDirGone", &[]),
+            t("bePlan.face.pbDirGoneHint", &[("dir", "/synthetic/pb")])
+        )
+    );
+
+    let old = refused(&pb_unsupported("缺 dump".into())).unwrap();
+    assert_eq!(old.code.as_deref(), Some("pb_unsupported"));
+    assert_eq!(
+        old.said,
+        format!("{}{sep}缺 dump", t("bePlan.dump.tooOld", &[]))
+    );
+
+    for m in [Missing::NotInstalled, Missing::SetDir(d)] {
+        assert_eq!(Some(no_pb(&m)), refused(&pb_missing(&m)));
+    }
+    assert_eq!(
+        Some(too_old("缺 dump".into())),
+        refused(&pb_unsupported("缺 dump".into()))
+    );
+}

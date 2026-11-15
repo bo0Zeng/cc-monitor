@@ -4,4 +4,8 @@ import type { WirePath } from "./WirePath";
 /**
  * 落了一棵（复制 · 解压）：落点 ＋ 几份文件 · 几个目录 · 几条链接 · 字节之和。
  */
-export type FilesTreeReply = { path: WirePath, bytes: number, files: number, dirs: number, links: number, };
+export type FilesTreeReply = { path: WirePath, bytes: number, 
+/**
+ * `bytes` 写好的字（同 [`LsEntry::size_text`]）。
+ */
+size_text: string, files: number, dirs: number, links: number, };

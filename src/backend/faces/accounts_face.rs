@@ -92,7 +92,7 @@ pub(crate) fn change(
     });
     // 这台此刻的会话（判活与归号住观测侧）：修复不从有活会话的号里挪实体。
     let live = || {
-        let home = crate::history::listing::agent_home();
+        let home = crate::agents::local_homes();
         crate::accounts::manage::library::session_accounts_here(&home)
             .into_iter()
             .map(|r| wire::LiveSession {
@@ -113,8 +113,8 @@ pub(crate) fn change(
         }
     }
     for ev in &done.alias_events {
-        if let wire::AliasEvent::Removed(name) = ev {
-            change.notes.extend(unlist(name));
+        if let wire::AliasEvent::Removed(owner) = ev {
+            change.notes.extend(unlist(&owner.name));
         }
     }
     if !done.alias_events.is_empty() {
@@ -488,7 +488,7 @@ impl crate::wire::typed::Handle for AccountsMcpRemove {
         async move {
             let (files, _own) = (needs.0, &needs.1);
 
-            mcp_share_exec::remove(files, &req.name)
+            mcp_share_exec::remove(files, &req.name, req.agent.as_deref())
                 .map_err(|f| typed::of_fail(f, McpEditErr::IoFailed))
         }
     }
@@ -515,7 +515,7 @@ impl crate::wire::typed::Handle for AccountsMcpPick {
         async move {
             let (files, _own) = (needs.0, &needs.1);
 
-            mcp_share_exec::pick(files, &req.name, req.from.as_deref())
+            mcp_share_exec::pick(files, &req.name, req.from.as_deref(), req.agent.as_deref())
                 .map_err(|f| typed::of_fail(f, McpEditErr::IoFailed))
         }
     }
@@ -678,7 +678,7 @@ fn regen_aliases(d: &dyn Door, events: &[wire::AliasEvent]) -> (AliasChange, Vec
 /// 写没成时说是哪一份（家目录都问不到 ⇒ 空串）。
 fn aliases_path_hint(d: &dyn Door) -> String {
     crate::common::door::home(d)
-        .map(|h| aliases::profile::path_in(&h))
+        .and_then(|h| aliases::profiles_file(&h))
         .unwrap_or_default()
 }
 

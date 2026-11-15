@@ -20,6 +20,6 @@ since: number,
  */
 session: string | null, 
 /**
- * `session` 那个终端住在哪种宿主里（同 `session-open` 回包的 `host`）；开窗起的 ⇒ `null`。
+ * `session` 那个终端住在哪种宿主里（起会话那一下定的）；开窗起的 ⇒ `null`。
  */
 host: TerminalHost | null, };

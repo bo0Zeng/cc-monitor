@@ -17,6 +17,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -67,9 +68,6 @@ class ChatsBoardTest {
         val link = FakeCoreLink()
         var rows: List<Map<String, Any?>> = emptyList()
 
-        /** `history-search` 的回包。 */
-        var search: Reply = Reply.LinkDown
-
         /** `groups-here` 的回包（缺省：没有组、没有带组或固定的会话）。 */
         var groups: Reply = Reply.Ok(mapOf("groups" to emptyList<Any>(), "members" to emptyList<Any>()))
 
@@ -88,7 +86,6 @@ class ChatsBoardTest {
                                 "head" to mapOf("total" to rows.size, "info" to mapOf("groups" to emptyList<Any>(), "notice" to null)),
                             ),
                         )
-                    "history-search" -> search
                     "groups-here" -> groups
                     else -> Reply.LinkDown
                 }
@@ -96,7 +93,7 @@ class ChatsBoardTest {
         }
     }
 
-    /** 核心合一份那一步的替身：记下交进来的那一行，答 [out]（核心那一份另有 Rust 判据管）。 */
+    /** 核心问一圈 ＋ 合那一步的替身：记下交进来的那一行，答 [out]（逐台问与合另有 Rust 判据管）。 */
     private class Merge {
         val got = mutableListOf<String>()
         var out = ""
@@ -107,13 +104,15 @@ class ChatsBoardTest {
         }
     }
 
+    /** 第 i 台那条流的编号 ＝ 10 ＋ i。 */
     private fun TestScope.board(
         vararg hosts: Host,
         merge: Merge = Merge(),
     ): ChatsBoard {
         val by = hosts.associateBy { it.name.id }
+        val handle = hosts.mapIndexed { i, h -> h.name.id to 10L + i }.toMap()
         return ChatsBoard(hosts.first().name.id, MutableStateFlow(hosts.map { it.name }), { h, s ->
-            HostChats(h.id, h.label, by.getValue(h.id).link, emptyFlow(), emptyFlow(), MutableStateFlow(null), {}, ListCache.None, s)
+            HostChats(h.id, h.label, by.getValue(h.id).link, emptyFlow(), emptyFlow(), MutableStateFlow(null), {}, ListCache.None, s) { handle.getValue(h.id) }
         }, merge::run, backgroundScope)
     }
 
@@ -167,6 +166,47 @@ class ChatsBoardTest {
                 board.ui.value.rows
                     .map { it.sessionId },
             )
+        }
+
+    @Test
+    fun `组头两颗照核心那两句：一条待答请求 · 一条需手动 ⇒ 待答请求 1 · 需手动 1（待答请求在前）；行的状态照脸的名字`() =
+        runTest {
+            val a = Host(HostName("h1", "a"))
+            a.groups = slice(listOf(group("g1", "开发")), listOf(member("s1", listOf("g1"), face = "live-asks"), member("s2", listOf("g1"), face = "live-needs-you-tmux")))
+            val board = board(a)
+            runCurrent()
+            val band =
+                board.ui.value.bands
+                    .single()
+            assertEquals(
+                "组头照核心数好写好的两句",
+                listOf(copyText("beGroups.count.asks", "n" to "1"), copyText("beGroups.count.needs", "n" to "1")),
+                band.heads,
+            )
+            assertEquals(
+                "行的状态照那张脸的名字：答得了的叫待答请求、答不了的叫需手动",
+                listOf(copyText("needs.asks.title"), copyText("beSession.needs.unknown")),
+                band.rows.map { it.status.text },
+            )
+        }
+
+    @Test
+    fun `删除确认那一句是核心照那台的称呼写好的：按天 · 固定 · 组里每行都点名，清单里没有的组员多一句说不准`() =
+        runTest {
+            val a = Host(HostName("h1", "a"))
+            val b = Host(HostName("h2", "gpu"))
+            a.rows = listOf(rowMap("s1", 2))
+            b.rows = listOf(rowMap("s2", 3), rowMap("s3", 1))
+            b.groups = slice(listOf(group("g1", "开发")), listOf(member("s3", pinned = true), member("s9", listOf("g1"))))
+            val board = board(a, b)
+            runCurrent()
+            val ui = board.ui.value
+            val named = { m: String -> copyText("history.delete.bodyRemote", "machine" to m) }
+            assertEquals(listOf(named("gpu"), named("a")), ui.sections.flatMap { s -> s.rows.map { it.deleteAsk } })
+            assertEquals(listOf(named("gpu")), ui.pinned.map { it.deleteAsk })
+            val unsure = named("gpu") + "\n" + copyText("history.delete.unsure")
+            val band = ui.bands.single()
+            assertEquals(listOf(unsure), band.rows.map { it.deleteAsk })
         }
 
     @Test
@@ -289,24 +329,19 @@ class ChatsBoardTest {
             )
         }
 
-    /**
-     * 一台 `history-search` 的回包，照帧客户端读进来的那一形（[RawJson.read]：数 ⇒ `Double`）——真形里的整数格 `updatedAt` · `face.order` 都在；
-     * 放一格手机的类不认的（`spanText`），交核心时要原样还在。
-     */
-    private fun hits(sid: String) =
-        RawJson.read(
-            """{"sessions":[{"sessionId":"$sid","updatedAt":1767225600123,"face":{"order":5},"hits":[],"moreHits":1,"spanText":"keep-$sid"}],"unreadable":2,"skipped":["Codex"]}""",
-        )
-
-    /** 核心合好的那一行（替身）。 */
-    private fun mergedOf(vararg rows: Pair<String, String>) =
+    /** 核心合好的那一行（替身）；[down]：没答上的那几台（hostId ⇒ 核心写好的那一句）；[summary] 缺 ⇒ 核心没写结果头。 */
+    private fun mergedOf(
+        vararg rows: Pair<String, String>,
+        down: List<Pair<String, String>> = emptyList(),
+        summary: String? = "核心·结果头",
+        empty: String? = null,
+    ) =
         RawJson.write(
             mapOf(
                 "totalHits" to rows.size,
                 "truncated" to false,
                 "notes" to listOf("核心·读不动 4 份", "核心·Codex 只按标题"),
-                "down" to emptyList<Any>(),
-                "summary" to "核心·结果头",
+                "down" to down.map { (origin, said) -> mapOf("origin" to origin, "said" to said) },
                 "sessions" to
                     rows.map { (origin, sid) ->
                         mapOf(
@@ -333,16 +368,14 @@ class ChatsBoardTest {
                             "deleteAsk" to "",
                         )
                     },
-            ),
+            ) + listOfNotNull(summary?.let { "summary" to it }, empty?.let { "empty" to it }).toMap(),
         )
 
     @Test
-    fun `搜内容：各台回包原样交核心合（每台写它的 hostId，整数照整数写），不交哪一台当信差；合好的行按 origin 对回哪台`() =
+    fun `搜内容：只问核心一次（交词与勾上那几台的编号 · hostId），各台的流上不问、不交哪一台当信差；合好的行按 origin 对回哪台`() =
         runTest {
             val a = Host(HostName("h1", "a"))
             val b = Host(HostName("h2", "gpu"))
-            a.search = Reply.Ok(hits("s1"))
-            b.search = Reply.Ok(hits("s2"))
             val merge = Merge().apply { out = mergedOf("h2" to "s2", "h1" to "s1") }
             val board = board(a, b, merge = merge)
             runCurrent()
@@ -351,13 +384,12 @@ class ChatsBoardTest {
             runCurrent()
             board.searchContent()
             runCurrent()
-            assertEquals(mapOf("query" to "登录"), b.link.calls("history-search").single())
-            assertEquals("哪一台都没被当成信差", emptyList<Any?>(), a.link.calls("history-search-merge") + b.link.calls("history-search-merge"))
-            val input = merge.got.single()
+            for (h in listOf(a, b)) {
+                assertEquals("各台的流上不问", emptyList<Any?>(), h.link.calls("history-search") + h.link.calls("history-search-merge"))
+            }
             assertEquals(
-                """{"q":"登录","answered":[{"origin":"h1","reply":{"sessions":[{"sessionId":"s1","updatedAt":1767225600123,"face":{"order":5},"hits":[],"moreHits":1,"spanText":"keep-s1"}],"unreadable":2,"skipped":["Codex"]}},""" +
-                    """{"origin":"h2","reply":{"sessions":[{"sessionId":"s2","updatedAt":1767225600123,"face":{"order":5},"hits":[],"moreHits":1,"spanText":"keep-s2"}],"unreadable":2,"skipped":["Codex"]}}]}""",
-                input,
+                listOf("""{"q":"登录","hosts":[{"handle":10,"origin":"h1"},{"handle":11,"origin":"h2"}],"withinMs":15000}"""),
+                merge.got,
             )
             val c = board.ui.value.content!!
             assertEquals("结果头照核心写好的那一句", "核心·结果头", c.summary)
@@ -367,13 +399,11 @@ class ChatsBoardTest {
         }
 
     @Test
-    fun `搜内容：一台没答 ⇒ 那台离线 · 未搜索那一句、不交核心，别的台的行照出`() =
+    fun `搜内容：一台没答 ⇒ 那台那一句照核心写好的摆，别的台的行照出；换词收掉`() =
         runTest {
             val a = Host(HostName("h1", "a"))
             val b = Host(HostName("h2", "gpu"))
-            a.search = Reply.TimedOut("t-said", "")
-            b.search = Reply.Ok(hits("s2"))
-            val merge = Merge().apply { out = mergedOf("h2" to "s2") }
+            val merge = Merge().apply { out = mergedOf("h2" to "s2", down = listOf("h1" to "核心·a 没答上")) }
             val board = board(a, b, merge = merge)
             runCurrent()
             board.query("x")
@@ -381,12 +411,74 @@ class ChatsBoardTest {
             runCurrent()
             board.searchContent()
             runCurrent()
-            assertEquals(listOf("h2"), Regex(""""origin":"([^"]+)"""").findAll(merge.got.single()).map { it.groupValues[1] }.toList())
+            assertEquals(1, merge.got.size)
             val c = board.ui.value.content!!
             assertEquals(listOf("h2" to "s2"), c.rows.map { it.hostId to it.row.sessionId })
-            assertEquals(copyText("history.search.machineDown", "machine" to "a"), c.lines.first())
+            assertEquals("核心·a 没答上", c.lines.first())
+            assertEquals("有台答了 ⇒ 结果头照出", "核心·结果头", c.summary)
             board.query("xy")
             runCurrent()
             assertNull("换了词 ⇒ 内容结果收掉", board.ui.value.content)
+        }
+
+    @Test
+    fun `搜内容：出不出结果头只照核心那一格，不自己数没答上的台`() =
+        runTest {
+            val a = Host(HostName("h1", "a"))
+            val b = Host(HostName("h2", "gpu"))
+            val down = listOf("h1" to "核心·a 没答上", "h2" to "核心·gpu 没答上")
+            val merge = Merge().apply { out = mergedOf(down = down, summary = null) }
+            val board = board(a, b, merge = merge)
+            runCurrent()
+            board.query("x")
+            advanceTimeBy(ChatsBoard.QUERY_DEBOUNCE_MS + 1)
+            runCurrent()
+            board.searchContent()
+            runCurrent()
+            val none = board.ui.value.content!!
+            assertNull("核心没写结果头 ⇒ 不出", none.summary)
+            assertEquals(listOf("核心·a 没答上", "核心·gpu 没答上"), none.lines.take(2))
+            merge.out = mergedOf(down = down)
+            board.query("xy")
+            advanceTimeBy(ChatsBoard.QUERY_DEBOUNCE_MS + 1)
+            runCurrent()
+            board.searchContent()
+            runCurrent()
+            val some = board.ui.value.content!!
+            assertEquals("核心写了 ⇒ 照出（台数不在这里数）", "核心·结果头", some.summary)
+        }
+
+    @Test
+    fun `搜内容：一行都没有时空态那一句只照核心那一格（没答上一台与没中各是核心写的那一句）`() =
+        runTest {
+            val a = Host(HostName("h1", "a"))
+            val b = Host(HostName("h2", "gpu"))
+            val down = listOf("h1" to "核心·a 没答上", "h2" to "核心·gpu 没答上")
+            val merge = Merge().apply { out = mergedOf(down = down, summary = null, empty = "核心·没有一台答上") }
+            val board = board(a, b, merge = merge)
+            runCurrent()
+            board.query("x")
+            advanceTimeBy(ChatsBoard.QUERY_DEBOUNCE_MS + 1)
+            runCurrent()
+            board.searchContent()
+            runCurrent()
+            val ui = board.ui
+            val empty = { ui.value.content?.empty }
+            assertEquals("一台都没答上 ⇒ 照核心那一句", "核心·没有一台答上", empty())
+            merge.out = mergedOf(empty = "核心·没有匹配")
+            board.query("xy")
+            advanceTimeBy(ChatsBoard.QUERY_DEBOUNCE_MS + 1)
+            runCurrent()
+            board.searchContent()
+            runCurrent()
+            assertEquals("答了没中 ⇒ 照核心那一句", "核心·没有匹配", empty())
+            merge.out = mergedOf("h1" to "s1")
+            board.query("xyz")
+            advanceTimeBy(ChatsBoard.QUERY_DEBOUNCE_MS + 1)
+            runCurrent()
+            board.searchContent()
+            runCurrent()
+            assertNotNull("合好了", board.ui.value.content)
+            assertNull("有行 ⇒ 没有空态", empty())
         }
 }

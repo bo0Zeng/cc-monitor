@@ -74,3 +74,86 @@ fn replacing_a_file_another_program_holds_is_busy_not_denied() {
         copy_core::copy_text("reason.io.busy", &[])
     );
 }
+
+/// 改权限不跟链接：普通文件与目录改得上；那一格是链接 ⇒ 失败，链接指着的那一份权限不动。
+#[cfg(unix)]
+#[test]
+fn set_permissions_changes_the_cell_and_refuses_a_link() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let d = test_home::scratch("chmod");
+    let face = Face::issue();
+    let mode =
+        |p: &std::path::Path| std::fs::symlink_metadata(p).unwrap().permissions().mode() & 0o7777;
+    std::fs::write(d.join("f"), b"x").unwrap();
+    std::fs::set_permissions(d.join("f"), Perms::from_mode(0o644)).unwrap();
+    face.set_permissions(
+        &Resolved::vouch(d.join("f")).unwrap(),
+        Perms::from_mode(0o751),
+    )
+    .expect("改普通文件");
+    assert_eq!(mode(&d.join("f")), 0o751);
+    std::fs::create_dir(d.join("sub")).unwrap();
+    face.set_permissions(
+        &Resolved::vouch(d.join("sub")).unwrap(),
+        Perms::from_mode(0o700),
+    )
+    .expect("改目录");
+    assert_eq!(mode(&d.join("sub")), 0o700);
+    std::os::unix::fs::symlink(d.join("f"), d.join("l")).unwrap();
+    face.set_permissions(
+        &Resolved::vouch(d.join("l")).unwrap(),
+        Perms::from_mode(0o600),
+    )
+    .expect_err("改权限穿过了链接");
+    assert_eq!(mode(&d.join("f")), 0o751, "链接指着的那一份被改了");
+    std::os::unix::fs::symlink(d.join("gone"), d.join("dangling")).unwrap();
+    face.set_permissions(
+        &Resolved::vouch(d.join("dangling")).unwrap(),
+        Perms::from_mode(0o600),
+    )
+    .expect_err("断链也要失败");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// 「不跟链接」自己做，不交给 `fchmodat` 的 `AT_SYMLINK_NOFOLLOW`：glibc 2.32 以前带这个标志一律回 EOPNOTSUPP，
+/// 链 glibc 的后端在旧发行版上每次改权限都失败。改权限那一下只经 `O_PATH` 开那一格 ＋ `/proc/self/fd/<N>`。
+#[cfg(any(target_os = "linux", target_os = "android"))]
+#[test]
+fn chmod_does_its_own_nofollow_instead_of_the_fchmodat_flag() {
+    let src = include_str!("../../../../src/backend/platform/fs/face.rs");
+    let start = src.find("pub(super) fn chmod(").expect("找不到 at::chmod");
+    let body = &src[start..];
+    let body = &body[..body.find("\n    }\n").expect("at::chmod 的结尾")];
+    assert!(
+        !body.contains("AT_SYMLINK_NOFOLLOW"),
+        "at::chmod 仍带 AT_SYMLINK_NOFOLLOW"
+    );
+    assert!(!body.contains("fchmodat"), "at::chmod 仍调 fchmodat");
+    assert!(
+        body.contains("O_PATH") && body.contains("/proc/self/fd/"),
+        "at::chmod 没走 O_PATH ＋ /proc"
+    );
+}
+
+/// 没挂 /proc 的环境（容器 · chroot）：经 `/proc/self/fd/<N>` 改权限那一步打不开，原因照实说「不支持」，
+/// 不说成「路径不存在」（那一格开着、好好的在）。造法：把那一路的根换成一个不在的目录。权限原样不动。
+#[cfg(any(target_os = "linux", target_os = "android"))]
+#[test]
+fn chmod_without_proc_says_unsupported_not_missing() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let d = test_home::scratch("chmod-noproc");
+    std::fs::write(d.join("f"), b"x").unwrap();
+    std::fs::set_permissions(d.join("f"), Perms::from_mode(0o644)).unwrap();
+    let cell: std::os::fd::OwnedFd = std::fs::File::open(d.join("f")).unwrap().into();
+    let gone = d.join("no-proc/self/fd/");
+    let err = super::at::chmod_held(&cell, 0o600, gone.to_str().unwrap())
+        .expect_err("那一路打不开还改成了");
+    assert_eq!(err.kind(), io::ErrorKind::Unsupported, "{err}");
+    assert_eq!(
+        copy_core::reason::io_reason(err.kind()),
+        copy_core::copy_text("machineState.word.unsupported", &[])
+    );
+    let mode = std::fs::metadata(d.join("f")).unwrap().permissions().mode() & 0o7777;
+    assert_eq!(mode, 0o644);
+    let _ = std::fs::remove_dir_all(&d);
+}

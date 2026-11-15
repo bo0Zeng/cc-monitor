@@ -53,7 +53,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //   ⇒ 两面分家：`files-*` 这个线上前缀底下从此有两族，
     //   由 `inbound_structure_guards` 那两条**互不相交**的相等断言各钉一族。
     //
-    // ⚠ **CLI 面是自动来的，不是选的**：`stream::cli::cli_exposed` = 非 `Run::Builtin`
+    // ⚠ **CLI 面是自动来的，不是选的**：`stream::cli::cli_exposed` = 非帧面硬臂（`!spec.run.on_frame_arm()`）
     //   ⇒ 这一条同拍进了子命令闸门（`stream::cli::is_subcommand`，从本表派生）。
     //   ⇒ 「入口窄」这件事不靠命令面，靠写句柄：本族用 typed 的 `Facing` 那一档，分派那一层才递 `Face`，
     //   别族拿不到它。理由整段在 `files/write.rs` 头注「写怎么被挡住」那一节。
@@ -98,6 +98,13 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // 只收 sid（理由住 `files_session_face` 那一条的 `delete_session`）。阻塞档（同步文件 I/O）。
     super::typed::blocking::<crate::stream::inbound::files_session_face::FilesDeleteSession>(
         "删一份历史会话",
+    ),
+    // 归档 · 取消归档：只收 sid，照那一家的归档面跑它那一条命令。阻塞档（等子进程）。
+    super::typed::blocking::<crate::stream::inbound::files_session_face::FilesArchiveSession>(
+        "归档一条会话",
+    ),
+    super::typed::blocking::<crate::stream::inbound::files_session_face::FilesUnarchiveSession>(
+        "取消归档一条会话",
     ),
     // ── 上传的**提交** ──────────────────────
     //
@@ -160,6 +167,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // 读族第九条：算目录大小。与同族那几条逐字同形、同在阻塞档。
     super::typed::blocking::<crate::stream::inbound::files_face::FilesSize>("算一个目录有多大"),
     super::typed::blocking::<crate::stream::inbound::files_face::FilesHome>("后端这个用户的 home"),
+    // 桌面文件窗口问菜单成品（寻址本机）：照桌面那张表判，不碰盘；同族同形、同在阻塞档。
+    super::typed::blocking::<crate::stream::inbound::files_face::FilesMenu>(
+        "选中这几项 ⇒ 桌面那一份菜单成品",
+    ),
     // 书签归这台后端（`control/bookmarks.rs`，`~/.cc-monitor/bookmarks.json`）：文件窗口与手机按机器名问，本机与远端同一形。
     //   读—改—写在跨进程锁里、原子写 ⇒ 阻塞档（同步文件 I/O），只要写句柄。
     super::typed::blocking::<crate::faces::bookmarks_face::BookmarksReadCmd>("这台的书签"),

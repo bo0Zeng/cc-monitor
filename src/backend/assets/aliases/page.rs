@@ -913,7 +913,7 @@ pub fn read_with(
 ) -> Answer<ProfilesBook> {
     let store = super::load(d).map_err(refused)?;
     let shell = here_shell();
-    let path = profile::path_in(&store.home);
+    let path = super::profiles_file(&store.home).map_err(refused)?;
     let alias_file = super::alias_file_in(&store.home, shell);
     let ccm = door::join_under(&store.home, relay_route_core::BACKEND_LANDING_REL);
     let bare = super::book_in(&store.home, None);
@@ -1636,7 +1636,7 @@ pub fn answer_write(d: &dyn Door, req: &ProfilesWriteReq) -> Answer<ProfilesWrit
     let ops = &req.changes;
     let if_rev = req.if_rev.as_deref();
     let store = super::load(d).map_err(refused)?;
-    let path = profile::path_in(&store.home);
+    let path = super::profiles_file(&store.home).map_err(refused)?;
     if ops.is_empty() {
         return Ok(ProfilesWriteDone {
             rev: super::rev_of(store.text.as_deref()),

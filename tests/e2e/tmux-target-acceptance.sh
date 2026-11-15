@@ -106,8 +106,6 @@ landed cc-p1
 ck "cc-p1 被建出来" "yes" "$(T has-session -t '=cc-p1:' 2>/dev/null && echo yes || echo no)"
 ck "载荷落进新建的 cc-p1" "HIT" "$(pane cc-p1 | grep -q CCMPROBE && echo HIT || echo MISS)"
 ck "兄弟 cc-p1-2 未被污染" "clean" "$(pane cc-p1-2 | grep -q CCMPROBE && echo POLLUTED || echo clean)"
-# ccm 建会话时写的是**意图**那一格（`@ccm_sid_expect`）；事实那一格 `@ccm_sid` 等后端认过会话文件才写。
-ck "@ccm_sid_expect 写在 cc-p1 上" "p1" "$(T show-options -v -t '=cc-p1:' @ccm_sid_expect 2>/dev/null)"
 
 echo
 echo "===== 场景 E：起新会话进 tmux（生产串）+ pty 下 attach 正例 ====="

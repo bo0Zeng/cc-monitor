@@ -1,24 +1,10 @@
-//! 传输台住本机常驻后端：SFTP 只写暂存区，窗口那一侧的 `call` / `subscribe` 不变。
-//!
-//! # 线上四条命令（帧面硬臂：要碰本连接的票表与应答通道，同 `link-*`）
-//!
-//! 开单两条是 typed（入参 · 回包 · 码从 `cmd_wire::transfer` 与下面的错误枚举来，登记 `typed::frame`，硬臂经 `typed::answer` 调本体）；
-//! 起跑 · 撤两条仍是 `Run::Builtin`。
-//!
-//! | 命令 | `args` | 应答 | |
-//! |---|---|---|---|
-//! | `transfer-upload` | `TransferUploadReq {dial, items: [{local_path}], remote_dir, home?, on_exists?, decide?}` | `TransferOpened {items}` | 一组开单（不起跑）：先在远端落点探同名；每项的 `staged` = 暂存件的键，提交时交给远端后端 `files-commit-upload` |
-//! | `transfer-download` | `TransferDownloadReq {dial, items: [{remote_path, name?}], local_dir, on_exists?, decide?}` | `TransferOpened {items}` | 一组开单：本机落点先探同名、当场过路径解析（出声早），起跑时再过一次 |
-//! | `transfer-start` | `{id}` | — | 起跑；进度走出方向 `transfer` 帧（`wire.rs`） |
-//! | `transfer-stop` | `{id}` | — | 撤（幂等）。上传删暂存件；下载留本机暂存区里的半成品 |
-//!
-//! 起跑挂在 `transfer-start` 上、不挂在开单上：monitor 先登记好看的人、再起跑，终局就不会没人收。
+//! 两台之间搬字节的 SFTP 那条腿（`transfer_copy.rs` 照它上传进那台暂存区 · 下载落到本机）：SFTP 只写暂存区。
 //!
 //! # 归原生那一块（两台之间搬字节是拨号那一半的活）
 //!
 //! 它引 `dial::sftp` 拿会话、搬字节；文件管理那一块（`files/`，独立的包）只管本机的读和写，它不引这里
 //! （引不到上层由 Cargo 管）。两块共用的路径解析 · 暂存区与落进用户目录那一下（`common::staging`）· 流式摘要 · 路径字节还原都住 `common/`。
-//! 下载先写进本机暂存区（`~/.cc-monitor/staging/<键>.part`），传完经 `common::staging::land` 落到用户选的落点（与上传提交同一处）：写经票表手里那一份 `Face`（帧面分派那一层造台时交来），
+//! 下载先写进本机暂存区（`~/.cc-monitor/staging/<键>.part`），传完经 `common::staging::land` 落到用户选的落点（与上传提交同一处）：写经调用方交来的那一份 `Face`，
 //! 暂存区里用到的只有 `O_EXCL` 新建 · 接着写 · 改名 · 删文件；每一处改动的路径都是 `common::root_path::walk_in_root` 交回的 `Resolved`。
 //! 远端那一半（暂存区的写）全经 `ssh-dial/sftp.rs` 的写原语（只许两处、先过 `fenced_remote`）。
 //!
@@ -26,122 +12,36 @@
 //!
 //! | 事件 | 上传的暂存件 | 下载的半成品（本机暂存区） |
 //! |---|---|---|
-//! | 撤（`transfer-stop` / 本机流断了） | 删（用户说了不要） | 留（续传的本钱） |
+//! | 撤（撤的旗） | 删（用户说了不要） | 留（续传的本钱） |
 //! | 失败 | 留（续传最值钱的正是这一档） | 留（同一条理由；一个字节都没落的空半成品才清） |
-//! | 成功 | 远端后端那次提交把它变成目标 | `common::staging::land` 上位 |
+//! | 成功 | 那台后端那次提交把它变成目标 | `common::staging::land` 上位 |
 //!
 //! 判的是撤的旗，不是错误文案。续传：两侧都先把尾块逐字节对一遍，对得上才接（半成品只记了「写到哪」，
 //! 没记「那是谁的字节」，只看长度会缝出一个坏文件）。
 //!
 //! # 零定时器
 //!
-//! 撤 = 一面旗 ＋ 一个 `Notify`（等拨号那一段可以被当场打断）；进度 = `watch`（转发任务按变更合并，堵住时只合并不堆积）。
+//! 撤 = 一面旗，逐块看。
 
-use crate::wire::{FrameMake as _, TransferEndExt as _};
 use copy_core::{copy_text, io_reason, Discard, Why};
-use std::collections::HashMap;
-use std::ffi::{OsStr, OsString};
+
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
-use tokio::sync::{mpsc, watch, Notify};
 
 use crate::common::root_path::{walk_in_root, Last};
 use crate::common::said::Said;
 use crate::common::staging::{self, Content, Was, KEY_LEN, PART_SUFFIX};
 use crate::dial::sftp::{self, Dial, Session};
 use crate::platform::fs::{Face, FaceFile, Resolved, Ro};
-use crate::wire::typed::{self, codes};
-use crate::wire::{Frame, TransferEnd};
-use cmd_wire::batch::{Conflict, Conflicts, Decide};
-use cmd_wire::files as cwf;
-use cmd_wire::transfer::{
-    OpenState, OpenedItem, TransferDownloadReq, TransferOpened, TransferStartReq, TransferStopReq,
-    TransferUploadReq,
-};
-
-/// 开单：下载。
-pub(crate) const TRANSFER_DOWNLOAD: &str = <TransferDownload as typed::Command>::NAME;
-/// 起跑。
-pub(crate) const TRANSFER_START: &str = <TransferStart as typed::Command>::NAME;
-/// 撤。
-pub(crate) const TRANSFER_STOP: &str = <TransferStop as typed::Command>::NAME;
-/// 开单（上传）那一条（typed，帧面硬臂那一档：要碰本连接的票表）。
-pub struct TransferUpload;
-
-codes! {
-    /// `transfer-upload` 会回的码（一项没开成不是整组没开成：读不到本机那一份 `io_failed` · 同一份已有一张票 `busy` ·
-    /// 票满了 `too_many_transfers` 都在那一项上）。
-    pub enum UploadErr {
-        /// 远端落点有同名的、还没答怎么办（一单都没开）：`data` 是同名清单。
-        Exists = "exists" => Conflicts,
-    }
-}
-
-impl typed::Command for TransferUpload {
-    typed::by_call!(TransferUploadReq);
-    type Err = UploadErr;
-}
-
-codes! {
-    /// `transfer-start` 会回的码。
-    pub enum StartErr {
-        /// 这条连接上没有这张票。
-        NoSuchTransfer = "no_such_transfer",
-        /// 这张票已经起跑过。
-        AlreadyStarted = "already_started",
-    }
-}
-
-codes! {
-    /// `transfer-stop` 没有别的码（撤不在册的也回 `ok`）。
-    pub enum StopErr {}
-}
-
-/// 起跑那一条（帧面硬臂：之后进度与终局走 `transfer` 帧）。
-pub struct TransferStart;
-
-impl typed::Command for TransferStart {
-    typed::by_call!(TransferStartReq);
-    type Err = StartErr;
-}
-
-/// 撤那一条（帧面硬臂，幂等）。
-pub struct TransferStop;
-
-impl typed::Command for TransferStop {
-    typed::by_call!(TransferStopReq);
-    type Err = StopErr;
-}
-
-/// 开单（下载）那一条（同 [`TransferUpload`]）。
-pub struct TransferDownload;
-
-codes! {
-    /// `transfer-download` 会回的码。
-    pub enum DownloadErr {
-        /// 本机落点目录过不了路径解析。
-        Refused = "refused",
-        /// 本机落点有同名的、还没答怎么办（一单都没开）：`data` 是同名清单。
-        Exists = "exists" => Conflicts,
-    }
-}
-
-impl typed::Command for TransferDownload {
-    typed::by_call!(TransferDownloadReq);
-    type Err = DownloadErr;
-}
 
 /// SFTP 读写的一块（≤32 KiB：SFTP 草案建议；严格的服务端拒超大包）。
 const CHUNK: usize = 32 * 1024;
 
 /// 进度至少隔这么多字节报一次（起止各另报一次）。
 const PROGRESS_EVERY: u64 = 256 * 1024;
-
-/// 一条流连接上同时在册的票数上限（有界资源：每张票起跑后两个任务）。
-pub(crate) const MAX_TICKETS_PER_CONNECTION: usize = 64;
 
 // ═══ 暂存件的键 ════════════════════════════════════════════════════════════════════════
 
@@ -190,14 +90,6 @@ fn local_target(local_path: &Path) -> Result<(PathBuf, OsString), Said> {
         .ok_or_else(|| copy_text("beTransfer.land.noParent", &[("path", &shown)]))?
         .to_path_buf();
     Ok((root, name))
-}
-
-/// 开单时的那一判（不动盘）：落点过得了路径解析。
-pub(crate) fn target_check(local_path: impl AsRef<Path>) -> Result<(), String> {
-    // 只拆路径、只过路径解析：没有下层原话。
-    let (root, name) = local_target(local_path.as_ref()).map_err(|s| s.said)?;
-    walk_in_root(Last::Link, &root, &name)?;
-    Ok(())
 }
 
 /// 一趟下载的半成品在本机暂存区里的名字（`<键>.part`）。
@@ -314,29 +206,18 @@ fn open_part(face: &Face, dir: &Path, part: &str, keep: u64) -> Result<FaceFile,
 
 // ═══ 撤 ════════════════════════════════════════════════════════════════════════════════
 
-/// 一趟传输的「撤了没有」：旗（逐块看）＋ 通知（等拨号那一段可以当场打断）。
+/// 一趟传输的「撤了没有」：一面旗（逐块看）。
 #[derive(Default)]
 pub(crate) struct Cancel {
     flag: AtomicBool,
-    notify: Notify,
 }
 
 impl Cancel {
     pub(crate) fn fire(&self) {
         self.flag.store(true, Ordering::SeqCst);
-        self.notify.notify_waiters();
     }
     pub(crate) fn is_set(&self) -> bool {
         self.flag.load(Ordering::SeqCst)
-    }
-    async fn wait(&self) {
-        loop {
-            let n = self.notify.notified();
-            if self.is_set() {
-                return;
-            }
-            n.await;
-        }
     }
 }
 
@@ -703,7 +584,7 @@ pub(crate) async fn download_to_local(
         }
     };
     let part_at = walk_in_root(Last::Link, &dir, &part)?;
-    // 落点在下载开单时已经答过同名怎么办（覆盖 · 跳过 · 两份都留另起名）⇒ 这里照「在不在都行」上位，盖掉的沿用原权限位。
+    // 落点的同名由调用方（`transfer_copy`）先问过、答过（覆盖 · 跳过 · 两份都留另起名）⇒ 这里照「在不在都行」上位，盖掉的沿用原权限位。
     staging::land(
         face,
         &root,
@@ -717,49 +598,6 @@ pub(crate) async fn download_to_local(
     Ok(done)
 }
 
-// ═══ 票表（每条流连接一张）═══════════════════════════════════════════════════════════════
-
-enum Job {
-    /// `home`：窗口问那台后端拿到的 `$HOME`（给了才比）—— SFTP 起始目录与它不一致 ⇒ 一个字节不写、以 `sftp_home_mismatch` 收场。
-    Upload {
-        local: String,
-        key: String,
-        home: Option<String>,
-    },
-    Download {
-        remote: String,
-        local: PathBuf,
-    },
-}
-
-pub struct Ticket {
-    dial: Dial,
-    /// 还没起跑的那件事（`transfer-start` 取走）。
-    job: Option<Job>,
-    /// 上传那一路的暂存件键（同一个键同时只许一张票）。
-    key: Option<String>,
-    cancel: Arc<Cancel>,
-}
-
-type Tickets = Arc<Mutex<HashMap<String, Ticket>>>;
-
-fn lock(t: &Tickets) -> std::sync::MutexGuard<'_, HashMap<String, Ticket>> {
-    t.lock().unwrap_or_else(|e| e.into_inner())
-}
-
-/// 一条流连接的传输票表。
-pub struct Desk {
-    tickets: Tickets,
-    replies: mpsc::Sender<Frame>,
-    /// 下载落点那一下写用的文件管理写句柄（帧面分派那一层造好交来的；起跑时带一份进那趟任务）。
-    face: Face,
-    /// 这一端的机器表怎么读（生产 = [`crate::dial::machines_now`]；判据给一张固定的）：入参只交那台的名字。
-    machines: Machines,
-}
-
-/// 这一端的机器表怎么读。
-pub(crate) type Machines = Arc<dyn Fn() -> Vec<crate::dial::Host> + Send + Sync>;
-
 /// 那台的名字 ⇒ 照机器表组好的拨号请求（线上形，问那台后端用）＋ 开 sftp 用的那一份。表里没有 · 组不成 ⇒ 那一句。
 pub(crate) fn dial_by_name(
     hosts: &[crate::dial::Host],
@@ -767,660 +605,6 @@ pub(crate) fn dial_by_name(
 ) -> Result<(serde_json::Value, Dial), String> {
     crate::dial::sftp_named(hosts, &machine.to_string())
 }
-
-impl Drop for Desk {
-    /// 连接没了（monitor 走了）⇒ 它开的传输一律撤（= 旧形「连接断了 ⇒ 撤」）。
-    fn drop(&mut self) {
-        for (_, t) in lock(&self.tickets).drain() {
-            t.cancel.fire();
-        }
-    }
-}
-
-/// 这几条命令就地被拒的那一帧（详情里带命令名）。
-fn err(id: &str, cmd: &str, code: &str, message: &str) -> Frame {
-    Frame::refused(id, cmd, code, message)
-}
-
-/// 票号：本进程里单调（票只在一条连接里有意义；`xfer-` 前缀与旧传输台同形）。
-fn next_id() -> String {
-    static N: AtomicU64 = AtomicU64::new(1);
-    format!("xfer-{}", N.fetch_add(1, Ordering::SeqCst))
-}
-
-impl Desk {
-    pub fn new(replies: mpsc::Sender<Frame>, face: Face) -> Self {
-        Self::with_machines(replies, face, Arc::new(crate::dial::machines_now))
-    }
-
-    /// 同 [`Self::new`]，机器表由调用方给（判据用）。
-    pub(crate) fn with_machines(
-        replies: mpsc::Sender<Frame>,
-        face: Face,
-        machines: Machines,
-    ) -> Self {
-        Desk {
-            tickets: Arc::new(Mutex::new(HashMap::new())),
-            replies,
-            face,
-            machines,
-        }
-    }
-
-    /// **本面的答口**（`stream/inbound/` 那几条硬臂都经它进来）。上传开单要先去远端落点探同名（要等那台）⇒ 走 [`Desk::upload_wire`]。
-    pub fn answer_wire(
-        &self,
-        cmd: &str,
-        id: &str,
-        args: &serde_json::Value,
-        tz: &crate::common::time::Tz,
-    ) -> Frame {
-        match cmd {
-            TRANSFER_DOWNLOAD => {
-                typed::answer::<TransferDownload>(id, args, |r| self.download(r, tz))
-            }
-            TRANSFER_START => typed::answer::<TransferStart>(id, args, |r| self.start(r)),
-            TRANSFER_STOP => typed::answer::<TransferStop>(id, args, |r| {
-                self.stop(r);
-                Ok(())
-            }),
-            other => err(
-                id,
-                other,
-                "unknown_command",
-                &crate::common::contract::malformed(&format!("unknown transfer command `{other}`")),
-            ),
-        }
-    }
-
-    /// 此刻在册的票数（生产日志读它）。
-    pub(crate) fn len(&self) -> usize {
-        lock(&self.tickets).len()
-    }
-
-    /// `transfer-download`：一组落到本机一个目录。同名在本机落点那一侧先探：没答的 ⇒ 一单不开、回 `exists` 带同名清单；
-    /// 保留两份 ⇒ 另起 `名 (2).ext`（撞上往后试）；落点当场过路径解析，起跑时再过一次。同名清单里本机那一格的时刻按 `tz` 写好。
-    fn download(
-        &self,
-        req: TransferDownloadReq,
-        tz: &crate::common::time::Tz,
-    ) -> Result<TransferOpened, DownloadErr> {
-        let (_, dial) =
-            dial_by_name(&(self.machines)(), &req.machine).map_err(DownloadErr::BadArgs)?;
-        if req.local_dir.bytes().is_empty() {
-            return Err(DownloadErr::BadArgs(crate::common::contract::malformed(
-                "missing `local_dir` (a string or {\"b16\": …})",
-            )));
-        }
-        let dir = crate::common::path_wire::to_path_buf(req.local_dir.bytes());
-        let on_exists = req.on_exists.unwrap_or_default();
-        // 每一项的落名：给了照给的，没给照远端那一段名字。
-        let names: Vec<OsString> = req
-            .items
-            .iter()
-            .map(|it| match &it.name {
-                Some(n) => crate::common::path_wire::to_path_buf(n.bytes()).into_os_string(),
-                None => OsString::from(it.remote_path.rsplit('/').next().unwrap_or_default()),
-            })
-            .collect();
-        let mut ask = Vec::new();
-        let mut choices: Vec<Option<Option<Decide>>> = Vec::with_capacity(names.len());
-        for (i, name) in names.iter().enumerate() {
-            let key = i.to_string();
-            match Ro::symlink_metadata(dir.join(name)) {
-                Err(_) => choices.push(None),
-                Ok(m) => {
-                    let choice =
-                        crate::common::batch_book::choice_of(&key, on_exists, req.decide.as_ref());
-                    if choice.is_none() {
-                        let there = if m.is_dir() {
-                            cwf::FileKind::Dir
-                        } else {
-                            cwf::FileKind::File
-                        };
-                        ask.push(Conflict {
-                            key,
-                            name: cwf::WirePath(
-                                Path::new(name).as_os_str().as_encoded_bytes().to_vec(),
-                            ),
-                            kind: cwf::FileKind::File,
-                            size: None,
-                            size_text: None,
-                            mtime_text: None,
-                            there,
-                            there_size_text: (m.is_file().then_some(m.len()))
-                                .map(copy_core::size_text),
-                            there_mtime_text: crate::common::batch_book::moment_text(
-                                crate::common::batch_book::mtime_secs(m.modified()),
-                                tz,
-                            ),
-                            answers: crate::common::batch_book::answers_of(m.is_dir(), true),
-                        });
-                    }
-                    choices.push(Some(choice));
-                }
-            }
-        }
-        if !ask.is_empty() {
-            let n = ask.len().to_string();
-            return Err(DownloadErr::Exists(
-                copy_text("beFiles.batch.clash", &[("n", &n)]),
-                Conflicts { conflicts: ask },
-            ));
-        }
-        let items = req
-            .items
-            .into_iter()
-            .zip(names)
-            .zip(choices)
-            .enumerate()
-            .map(|(i, ((it, name), choice))| {
-                let key = i.to_string();
-                let landed = match choice {
-                    None | Some(Some(Decide::Overwrite)) => Some((dir.join(&name), None)),
-                    Some(None) | Some(Some(Decide::Skip)) => None,
-                    Some(Some(Decide::KeepBoth)) => mint_local(&dir, &name)
-                        .map(|p| (p.clone(), p.file_name().map(OsStr::to_os_string))),
-                };
-                let Some((local, new_name)) = landed else {
-                    return opened(key, OpenState::Skipped);
-                };
-                if let Err(m) = target_check(&local) {
-                    return not_opened(key, "refused", m, None);
-                }
-                let t = Ticket {
-                    dial: dial.clone(),
-                    job: Some(Job::Download {
-                        remote: it.remote_path,
-                        local: local.clone(),
-                    }),
-                    key: None,
-                    cancel: Arc::new(Cancel::default()),
-                };
-                match register(&self.tickets, t) {
-                    Ok(id) => OpenedItem {
-                        id: Some(id),
-                        path: Some(cwf::WirePath(local.as_os_str().as_encoded_bytes().to_vec())),
-                        new_name: new_name.map(|n| {
-                            cwf::WirePath(Path::new(&n).as_os_str().as_encoded_bytes().to_vec())
-                        }),
-                        ..opened(key, OpenState::Opened)
-                    },
-                    Err(s) => {
-                        let code = s.code_or_fallback().to_string();
-                        not_opened(key, &code, s.said, s.raw)
-                    }
-                }
-            })
-            .collect();
-        Ok(TransferOpened { items })
-    }
-
-    /// `transfer-stop`：撤。没起跑的票当场摘掉；起跑了的由它自己收场（撤删 / 撤留）后摘掉。
-    fn stop(&self, r: TransferStopReq) {
-        let tid = r.id;
-        let mut g = lock(&self.tickets);
-        if let Some(t) = g.get(&tid) {
-            t.cancel.fire();
-            if t.job.is_some() {
-                g.remove(&tid);
-            }
-        }
-    }
-
-    /// `transfer-start`：起跑。两个任务：传输本体 · 进度转发（`watch` 合并）。
-    fn start(&self, r: TransferStartReq) -> Result<(), StartErr> {
-        let tid = r.id;
-        let (dial, job, cancel) = {
-            let mut g = lock(&self.tickets);
-            let Some(t) = g.get_mut(&tid) else {
-                return Err(StartErr::NoSuchTransfer(copy_text(
-                    "beTransfer.start.unknown",
-                    &[("tid", &tid.to_string())],
-                )));
-            };
-            let Some(job) = t.job.take() else {
-                return Err(StartErr::AlreadyStarted(copy_text(
-                    "beTransfer.start.already",
-                    &[("tid", &tid.to_string())],
-                )));
-            };
-            (t.dial.clone(), job, Arc::clone(&t.cancel))
-        };
-        tracing::info!(
-            "transfer: 起跑 {tid}（这条连接上此刻 {} 趟在册）",
-            self.len()
-        );
-        let (tx, rx) = watch::channel::<Progress>(Progress::default());
-        let forward = tokio::spawn(forward_progress(tid.clone(), rx, self.replies.clone()));
-        let tickets = Arc::clone(&self.tickets);
-        let face = self.face.clone();
-        tokio::spawn(async move {
-            let tx = Arc::new(tx);
-            let sink_tx = Arc::clone(&tx);
-            let sink = move |got: u64, total: u64| {
-                sink_tx.send_modify(|p| {
-                    p.got = got;
-                    p.total = total;
-                });
-            };
-            let r = run(&face, &dial, job, &cancel, &sink).await;
-            let end = match r {
-                Ok((bytes, sha256)) => TransferEnd::Done { bytes, sha256 },
-                Err(_) if cancel.is_set() => TransferEnd::Cancelled,
-                Err((stop, code)) => TransferEnd::failed(
-                    stop.said,
-                    code.map(str::to_string),
-                    TRANSFER_START,
-                    stop.raw.as_deref(),
-                ),
-            };
-            tx.send_modify(|p| p.end = Some(end));
-            // 等转发把终局那一帧送出去再摘票（摘早了，一条同键的新上传可能抢在撤删之前开单）。
-            forward.await.discard(Why::Reap); // 转发任务只往已结束的票上报数
-            lock(&tickets).remove(&tid);
-        });
-        Ok(())
-    }
-}
-
-/// 登记一张票。满册 ⇒ `too_many_transfers`；同一个暂存件键已有一张 ⇒ `busy`（下层那一形：码 ＋ 那一句，各条照自己的码表收）。
-fn register(tickets: &Tickets, t: Ticket) -> Result<String, crate::common::said::Said> {
-    let mut g = lock(tickets);
-    if g.len() >= MAX_TICKETS_PER_CONNECTION {
-        return Err(crate::common::said::Said::new(
-            "too_many_transfers",
-            copy_text(
-                "beTransfer.register.tooMany",
-                &[("max", &MAX_TICKETS_PER_CONNECTION.to_string())],
-            ),
-        ));
-    }
-    if let Some(k) = &t.key {
-        if g.values().any(|o| o.key.as_ref() == Some(k)) {
-            return Err(crate::common::said::Said::new(
-                "busy",
-                copy_text("beTransfer.register.sameFile", &[]),
-            ));
-        }
-    }
-    let tid = next_id();
-    g.insert(tid.clone(), t);
-    Ok(tid)
-}
-
-// ═══ 上传开单：先在远端落点探整组 ═══════════════════════════════════════════════════════
-
-/// 远端落点那台上一格的样子：是什么 · 多大（文件）· 修改时刻（unix 秒）。
-#[derive(Debug, Clone, PartialEq)]
-pub struct Seen {
-    pub(crate) kind: cwf::FileKind,
-    pub(crate) size: Option<u64>,
-    pub(crate) mtime: Option<i64>,
-}
-
-/// 上传的落点那台：一格在不在（生产那一份问那台后端的 `files-stat`，判据用本机目录上的替身）。
-/// 问不出来（那台没答 · 不在）一律当不在：提交时不盖（`overwrite: false`），探完之后才冒出来的同名照旧被拒，不静默盖掉。
-pub(crate) trait Landing: Send + Sync {
-    fn look<'a>(&'a self, path: &'a [u8]) -> super::transfer_copy::Fut<'a, Option<Seen>>;
-}
-
-/// 生产那一份：经照机器表组好的那台的拨号请求问它后端的 `files-stat`（路径按字节，目录名不是 UTF-8 也问得到）。
-struct Dialed {
-    dial: serde_json::Value,
-    tz: crate::common::time::Tz,
-}
-
-impl Landing for Dialed {
-    fn look<'a>(&'a self, path: &'a [u8]) -> super::transfer_copy::Fut<'a, Option<Seen>> {
-        Box::pin(async move {
-            let r = crate::dial::remote_ask::ask_dialed(
-                &self.dial,
-                &cwf::StatReq {
-                    path: cwf::WirePath(path.to_vec()),
-                },
-                &self.tz,
-                &crate::dial::remote_ask::DialRemote,
-            )
-            .await
-            .ok()?;
-            Some(Seen {
-                size: (r.kind == cwf::FileKind::File).then_some(r.size),
-                mtime: r.mtime_secs.and_then(|s| i64::try_from(s).ok()),
-                kind: r.kind,
-            })
-        })
-    }
-}
-
-/// 上传一项探过、答过之后：照这个名字开单（`overwrite` ＝ 提交时盖不盖）· 跳过 · 没开成。
-enum Fate {
-    Open {
-        name: Vec<u8>,
-        minted: bool,
-        overwrite: bool,
-    },
-    Skip,
-    Miss(&'static str, String),
-}
-
-fn under(dir: &[u8], name: &[u8]) -> Vec<u8> {
-    let mut p = dir.to_vec();
-    if !p.ends_with(b"/") {
-        p.push(b'/');
-    }
-    p.extend_from_slice(name);
-    p
-}
-
-/// 上传一组的探与答：每一项落在远端目录里同名那一格；那儿已有、而没答 ⇒ 一单不开，回 `exists` 带同名清单（两头的时刻按 `tz` 写好）；
-/// 答了 ⇒ 跳过 · 覆盖（只对文件：目录不合并 ⇒ 跳过）· 保留两份（远端那一侧另起 `名 (2).ext`，撞上往后试）。
-async fn upload_fates(
-    land: &dyn Landing,
-    req: &TransferUploadReq,
-    tz: &crate::common::time::Tz,
-) -> Result<Vec<Fate>, UploadErr> {
-    use crate::common::batch_book::{choice_of, key_of, moment_text, mtime_secs};
-    let on_exists = req.on_exists.unwrap_or_default();
-    let dir = req.remote_dir.bytes();
-    let mut ask = Vec::new();
-    let mut probed = Vec::with_capacity(req.items.len());
-    for (i, it) in req.items.iter().enumerate() {
-        let key = key_of(i);
-        let Some(name) = Path::new(&it.local_path)
-            .file_name()
-            .map(|n| n.as_encoded_bytes().to_vec())
-        else {
-            probed.push(Err(Fate::Miss(
-                "refused",
-                copy_text("beTransfer.local.notRegular", &[("path", &it.local_path)]),
-            )));
-            continue;
-        };
-        let Some(there) = land.look(&under(dir, &name)).await else {
-            probed.push(Ok((name, None)));
-            continue;
-        };
-        let choice = choice_of(&key, on_exists, req.decide.as_ref());
-        let dir_into = there.kind == cwf::FileKind::Dir;
-        if choice.is_none() {
-            let local = Ro::metadata(&it.local_path).ok();
-            ask.push(Conflict {
-                key,
-                name: cwf::WirePath(name.clone()),
-                kind: cwf::FileKind::File,
-                size: local.as_ref().map(|m| m.len()),
-                size_text: (local.as_ref().map(|m| m.len())).map(copy_core::size_text),
-                mtime_text: moment_text(local.as_ref().and_then(|m| mtime_secs(m.modified())), tz),
-                there: there.kind,
-                there_size_text: there.size.map(copy_core::size_text),
-                there_mtime_text: moment_text(there.mtime, tz),
-                answers: crate::common::batch_book::answers_of(dir_into, true),
-            });
-        }
-        probed.push(Ok((name, Some((choice, dir_into)))));
-    }
-    if !ask.is_empty() {
-        let n = ask.len().to_string();
-        return Err(UploadErr::Exists(
-            copy_text("beFiles.batch.clash", &[("n", &n)]),
-            Conflicts { conflicts: ask },
-        ));
-    }
-    let mut out = Vec::with_capacity(probed.len());
-    for p in probed {
-        out.push(match p {
-            Err(f) => f,
-            Ok((name, None)) => Fate::Open {
-                name,
-                minted: false,
-                overwrite: false,
-            },
-            Ok((_, Some((Some(Decide::Skip) | None, _))))
-            | Ok((_, Some((Some(Decide::Overwrite), true)))) => Fate::Skip,
-            Ok((name, Some((Some(Decide::Overwrite), false)))) => Fate::Open {
-                name,
-                minted: false,
-                overwrite: true,
-            },
-            Ok((name, Some((Some(Decide::KeepBoth), _)))) => {
-                let shown = std::ffi::OsString::from(String::from_utf8_lossy(&name).into_owned());
-                let mut free = None;
-                for k in 2..=999u32 {
-                    let n = crate::common::batch_book::minted(Path::new(&shown), k)
-                        .into_os_string()
-                        .into_encoded_bytes();
-                    if land.look(&under(dir, &n)).await.is_none() {
-                        free = Some(n);
-                        break;
-                    }
-                }
-                match free {
-                    Some(name) => Fate::Open {
-                        name,
-                        minted: true,
-                        overwrite: false,
-                    },
-                    None => Fate::Miss("exists", copy_text("beFiles.batch.mintSpent", &[])),
-                }
-            }
-        });
-    }
-    Ok(out)
-}
-
-/// 上传那一项开单：读不到本机那一份 ⇒ `io_failed`（原话另带）；不是普通文件 ⇒ `refused`。
-fn open_upload(
-    tickets: &Tickets,
-    dial: &Dial,
-    local: &str,
-    home: Option<String>,
-) -> Result<(String, String), crate::common::said::Said> {
-    let meta = Ro::metadata(local).map_err(|e| {
-        let said = copy_text(
-            "beTransfer.local.readFailed",
-            &[("path", local), ("why", &io_reason(e.kind()))],
-        );
-        crate::common::said::Said::with_raw(said, &e).coded("io_failed")
-    })?;
-    if !meta.is_file() {
-        return Err(crate::common::said::Said::new(
-            "refused",
-            copy_text("beTransfer.local.notRegular", &[("path", local)]),
-        ));
-    }
-    let mtime_ns = meta
-        .modified()
-        .ok()
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let key = staging_key(local, meta.len(), mtime_ns);
-    let t = Ticket {
-        dial: dial.clone(),
-        job: Some(Job::Upload {
-            local: local.to_string(),
-            key: key.clone(),
-            home,
-        }),
-        key: Some(key.clone()),
-        cancel: Arc::new(Cancel::default()),
-    };
-    let id = register(tickets, t)?;
-    Ok((id, key))
-}
-
-/// `transfer-upload` 的本体：远端落点探整组（[`upload_fates`]）→ 照答逐项开单（不起跑）。一项没开成那一项回 `failed`（码 ＋ 原因词 ＋ 原话），别的照开。
-pub(crate) async fn upload_with(
-    tickets: &Tickets,
-    land: &dyn Landing,
-    req: TransferUploadReq,
-    tz: &crate::common::time::Tz,
-    dial: Dial,
-) -> Result<TransferOpened, UploadErr> {
-    if req.remote_dir.bytes().is_empty() {
-        return Err(UploadErr::BadArgs(crate::common::contract::malformed(
-            "missing `remote_dir` (a string or {\"b16\": …})",
-        )));
-    }
-    let fates = upload_fates(land, &req, tz).await?;
-    let items = req
-        .items
-        .iter()
-        .zip(fates)
-        .enumerate()
-        .map(|(i, (it, fate))| {
-            let key = i.to_string();
-            match fate {
-                Fate::Skip => opened(key, OpenState::Skipped),
-                Fate::Miss(code, said) => not_opened(key, code, said, None),
-                Fate::Open {
-                    name,
-                    minted,
-                    overwrite,
-                } => match open_upload(tickets, &dial, &it.local_path, req.home.clone()) {
-                    Ok((id, staged)) => OpenedItem {
-                        id: Some(id),
-                        staged: Some(staged),
-                        new_name: minted.then_some(cwf::WirePath(name)),
-                        overwrite,
-                        ..opened(key, OpenState::Opened)
-                    },
-                    Err(s) => {
-                        let code = s.code_or_fallback().to_string();
-                        not_opened(key, &code, s.said, s.raw)
-                    }
-                },
-            }
-        })
-        .collect();
-    Ok(TransferOpened { items })
-}
-
-impl Desk {
-    /// `transfer-upload` 那一发（帧面硬臂；探同名要等远端那台 ⇒ 交出一个异步处理器）：入参按类型收 → 探 → 照答开单 → 回包。
-    pub fn upload_wire_for(&self) -> crate::wire::spec::DataHandler {
-        let tickets = Arc::clone(&self.tickets);
-        let machines = Arc::clone(&self.machines);
-        typed::answer_async::<TransferUpload, _, _>(move |req, cx| async move {
-            let (wire, dial) =
-                dial_by_name(&machines(), &req.machine).map_err(UploadErr::BadArgs)?;
-            let land = Dialed {
-                dial: wire,
-                tz: cx.tz.clone(),
-            };
-            upload_with(&tickets, &land, req, &cx.tz, dial).await
-        })
-    }
-}
-
-/// 开单的一项：只有键与那一样（别的格缺席）。
-fn opened(key: String, state: OpenState) -> OpenedItem {
-    OpenedItem {
-        key,
-        state,
-        id: None,
-        staged: None,
-        path: None,
-        new_name: None,
-        overwrite: false,
-        code: None,
-        reason: None,
-        detail: None,
-    }
-}
-
-/// 没开成的那一项：码 ＋ 原因词 ＋ 那一句与原话进复制详情。
-fn not_opened(key: String, code: &str, said: String, raw: Option<String>) -> OpenedItem {
-    OpenedItem {
-        code: Some(code.to_string()),
-        reason: Some(copy_core::code_reason(code, raw.as_deref())),
-        detail: Some(match raw {
-            Some(r) => format!("{said}\n{r}"),
-            None => said,
-        }),
-        ..opened(key, OpenState::Failed)
-    }
-}
-
-/// 保留两份：本机落点目录里第一个没被占的 `名 (k).ext`（k 从 2 起）。
-fn mint_local(dir: &Path, name: &OsStr) -> Option<PathBuf> {
-    (2..=crate::common::batch_book::MINT_TRIES)
-        .map(|k| dir.join(crate::common::batch_book::minted(Path::new(name), k)))
-        .find(|p| Ro::symlink_metadata(p).is_err())
-}
-
-/// 一趟传输此刻的样子（整份快照，合并掉中间几格不丢信息）。
-#[derive(Clone, Default)]
-struct Progress {
-    got: u64,
-    total: u64,
-    end: Option<TransferEnd>,
-}
-
-/// 进度转发：第一格是此刻，之后每变一次出一格，终局那一格是最后一格。走应答通道（不丢）。
-async fn forward_progress(
-    id: String,
-    mut rx: watch::Receiver<Progress>,
-    replies: mpsc::Sender<Frame>,
-) {
-    loop {
-        let p = rx.borrow_and_update().clone();
-        let last = p.end.is_some();
-        let frame = Frame::Transfer(crate::wire::Transfer {
-            id: id.clone(),
-            got: p.got,
-            total: p.total,
-            end: p.end,
-        });
-        if replies.send(frame).await.is_err() || last {
-            return;
-        }
-        if rx.changed().await.is_err() {
-            return;
-        }
-    }
-}
-
-/// 一趟：拨号 ＋ 开会话（过传输车道；这一段可以被撤当场打断）→ 按单子传。
-/// 回传完的字节数；上传那一路另带整份的摘要（提交时的对拍依据），下载那一路 `None`。
-async fn run(
-    face: &Face,
-    dial: &Dial,
-    job: Job,
-    cancel: &Cancel,
-    sink: &Sink<'_>,
-) -> Result<(u64, Option<String>), (Said, Option<&'static str>)> {
-    let session = tokio::select! {
-        s = sftp::open_for_transfer(dial) => s.map_err(|e| (e, None))?,
-        _ = cancel.wait() => return Err((Said::from(copy_text("reason.op.cancelled", &[])), None)),
-    };
-    match job {
-        Job::Upload { local, key, home } => {
-            // 连上时比：SFTP 起始目录（`realpath(".")`）≠ 那台后端的 `$HOME` ⇒ 暂存件会落到后端看不见的地方
-            //   （chroot / `internal-sftp -d`），一个字节不写，交窗口改走后端链路分块写。
-            if let Some(why) = home
-                .as_deref()
-                .and_then(|h| start_dir_mismatch(session.home(), h))
-            {
-                return Err((Said::from(why), Some(SFTP_HOME_MISMATCH)));
-            }
-            upload_to_staging(&session, &local, &key, cancel, sink)
-                .await
-                .map(|(n, sha)| (n, Some(sha)))
-                .map_err(|e| (e, None))
-        }
-        Job::Download { remote, local } => {
-            download_to_local(face, &session, &remote, &local, cancel, sink)
-                .await
-                .map(|n| (n, None))
-                .map_err(|e| (e, None))
-        }
-    }
-}
-
-/// 上传收场码：SFTP 起始目录不是那台后端的 home。
-pub(crate) const SFTP_HOME_MISMATCH: &str = "sftp_home_mismatch";
 
 /// SFTP 起始目录与后端 `$HOME` 不一致 ⇒ 那一句话；一致（去掉尾 `/` 逐字节相等）⇒ `None`。
 /// ⚠ 认下的：home 经符号链接指过去（`/home` → `/usr/home`）时两串不等 ⇒ 判成不一致、走慢路（仍做得成，只是慢）。

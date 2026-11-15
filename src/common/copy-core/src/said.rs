@@ -1,16 +1,13 @@
-//! 一次失败**码 ＋ 给人看的那一句 ＋ 下层原话 ＋ 按码定形的 `data`**（除那一句外都可缺）。句子只带原因词（[`crate::io_reason`] 那一类）；原话不上句子，
+//! 一次失败**码 ＋ 给人看的那一句 ＋ 下层原话 ＋ 按码定形的 `data` ＋ 别台已写好的复制详情**（除那一句外都可缺）。句子只带原因词（[`crate::io_reason`] 那一类）；原话不上句子，
 //! 走到应答 / 收场帧那一层进「复制详情」（[`crate::detail`]）。
 //!
 //! 纯数据（后端 · 共享契约 crate 都用这一份）：记日志那一口（成不了应答、只成别处一句时把原话记一行）要日志库，
 //! 住后端 `common/said.rs`，不在这里。
 
-// 码缺着的那一次失败投成应答时补的码：线上那一格的值，住两端的契约（`cmd_wire::failed`）。
-use cmd_wire::failed::FALLBACK_CODE;
-
-/// 码 ＋ 那一句 ＋ 下层原话 ＋ `data`。各处只经构造函数造它（[`Said::new`] · `From` · [`Said::with_raw`]），不写结构字面量。
+/// 码 ＋ 那一句 ＋ 下层原话 ＋ `data` ＋ 别台写好的详情。各处只经构造函数造它（[`Said::new`] · `From` · [`Said::with_raw`]），不写结构字面量。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Said {
-    /// 缺 ＝ 下层还说不出是哪一种；投成应答那一下补成 [`FALLBACK_CODE`]。
+    /// 缺 ＝ 下层还说不出是哪一种；投成应答那一下补兜底码（只经 [`cmd_wire::failed::Failed::code_or_fallback`]）。
     pub code: Option<String>,
     /// 给人看的那一句（只带原因词）。
     pub said: String,
@@ -18,6 +15,8 @@ pub struct Said {
     pub raw: Option<String>,
     /// 只给协议文档里按码定了形的那几个码。
     pub data: Option<serde_json::Value>,
+    /// 别台已写好的那一份复制详情（转回那一跳原样带回的）：投出去照抄，不再按这台写一份、不当原话再包一层。
+    pub written: Option<String>,
 }
 
 /// 原话去掉首尾空白；空 ⇒ 不带。
@@ -34,6 +33,7 @@ impl From<String> for Said {
             said,
             raw: None,
             data: None,
+            written: None,
         }
     }
 }
@@ -73,9 +73,10 @@ impl Said {
         self
     }
 
-    /// 投成应答那一下的码：缺着 ⇒ [`FALLBACK_CODE`]。
-    pub fn code_or_fallback(&self) -> &str {
-        self.code.as_deref().unwrap_or(FALLBACK_CODE)
+    /// 带上别台已写好的复制详情（[`Said::written`]）。
+    pub fn with_written(mut self, detail: String) -> Said {
+        self.written = Some(detail);
+        self
     }
 
     /// 带上按码定了形的 `data`。

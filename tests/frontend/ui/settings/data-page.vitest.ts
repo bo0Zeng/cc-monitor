@@ -7,11 +7,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { WALL_CEILING_MS } from "../../../test-support/wall-ceiling";
 import { fakeClipboard } from "../../../test-support/clipboard-fake";
 
-const { disk, answers, opened, marks, seen, fileWin, localOpened, localRevealed, merges, SEEN } = vi.hoisted(() => ({
+const { disk, answers, opened, marks, reverts, seen, fileWin, localOpened, localRevealed, merges, SEEN } = vi.hoisted(() => ({
   /** 本机后端写好的上次读数那一格（一句认得出的字：界面照摆，不自己算时长）。 */
   SEEN: { atMs: 7, said: "采样于 夹具那一刻" },
-  /** 交给本机后端 `chores-merge` 的每一趟问的那几台（替身照 `answers` 逐台答；`reply` 设了合计就照它，否则逐格相加）。 */
-  merges: { asked: [] as unknown[][], reply: null as Record<string, number> | null },
+  /** 交给本机后端 `chores-merge` 的每一趟问的那几台（替身照 `answers` 逐台答；`reply` 设了合计就照它，否则逐格相加；`fail` 设了 ⇒ 整问照它失败）。 */
+  merges: { asked: [] as unknown[][], reply: null as Record<string, number> | null, fail: null as Error | null },
   localOpened: [] as string[],
   localRevealed: [] as string[],
   seen: new Map<string, Record<string, unknown>>(),
@@ -21,6 +21,8 @@ const { disk, answers, opened, marks, seen, fileWin, localOpened, localRevealed,
   answers: new Map<string, unknown>(),
   opened: vi.fn(),
   marks: [] as Array<{ origin: string; args: unknown }>,
+  /** 交给那台 `mcp-project-revert` 的每一问；`after` 设了 ⇒ 撤回之后那台照它答（清单里那一行没了）。 */
+  reverts: { asked: [] as Array<{ origin: string; args: unknown }>, after: null as unknown, fail: null as Error | null },
 }));
 
 vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
@@ -45,9 +47,12 @@ vi.mock("../../../../src/comms/inward/chan", () => ({
         const req = JSON.parse(new TextDecoder().decode(body)) as { machines?: unknown; client: unknown };
         if (req.client === undefined) return Promise.reject(new Error("本机那几条事实没带"));
         if ("machines" in req) return Promise.reject(new Error("名单不是入参：本机后端照自己的机器表问"));
+        if (merges.fail) return Promise.reject(merges.fail);
         // 本机后端照它自己的机器表问：本机 ＋ 盘上那几台里「连接这台」开着的（名字照表，同 `machines-read`）。
         const machines = ["<local>", ...disk.machines.filter((h) => h.connect !== false).map((h) => String(h.label || h.host))];
         merges.asked.push(machines);
+        // 没连的那几台不问，照表列在后面、带那台离线那一句。
+        const unasked = disk.machines.filter((h) => h.connect === false).map((h) => ({ origin: String(h.label || h.host), said: `${String(h.label || h.host)} 离线` }));
         const sum: Record<string, number> = {};
         const rows = machines.map((o) => {
           const a = answers.get(o) as { counts: Record<string, number> } | undefined;
@@ -56,7 +61,14 @@ vi.mock("../../../../src/comms/inward/chan", () => ({
           return { origin: o, report: a };
         });
         const total = merges.reply ?? { badge: 0, open: 0, must: 0, decide: 0, install: 0, optional: 0, done: 0, ...sum };
-        return Promise.resolve(new TextEncoder().encode(JSON.stringify({ total, machines: rows })));
+        return Promise.resolve(new TextEncoder().encode(JSON.stringify({ total, machines: [...rows, ...unasked] })));
+      }
+      if (op === "mcp-project-revert") {
+        const args = JSON.parse(new TextDecoder().decode(body)) as { file: string };
+        reverts.asked.push({ origin, args });
+        if (reverts.fail) return Promise.reject(reverts.fail);
+        if (reverts.after !== null) answers.set(origin, reverts.after);
+        return Promise.resolve(new TextEncoder().encode(JSON.stringify({ path: args.file, removed: false })));
       }
       if (op === "chores-mark") {
         marks.push({ origin, args: JSON.parse(new TextDecoder().decode(body)) });
@@ -92,8 +104,8 @@ vi.mock("../../../../src/comms/inward/chan", () => ({
 vi.mock("../../../../src/frontend/ui/machine-prefs", () => ({
   readPrefs: async () => ({ state: "ok", reason: null, detail: null, path: null, prefs: { launchers: {}, resumeWhere: "tmux", models: {}, permissionModes: {}, contextLimits: {} } }),
 }));
-vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
-vi.mock("../../../../src/frontend/ui/file-window", () => ({ openOnMachine: (host: unknown, at: unknown) => (fileWin.push({ host, at }), Promise.resolve()) }));
+vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn(), failToast: vi.fn() }));
+vi.mock("../../../../src/frontend/ui/file-window", () => ({ openFileWindow: (host: unknown, at: unknown) => (fileWin.push({ host, at }), Promise.resolve(true)) }));
 
 import { DataPage } from "../../../../src/frontend/ui/settings/data-page";
 import { recallDataReport } from "../../../../src/frontend/ui/settings/data-reads";
@@ -129,8 +141,14 @@ const chore = (over: Record<string, unknown>) => ({
 
 const counts = (over: Record<string, number> = {}) => ({ badge: 0, open: 0, must: 0, decide: 0, install: 0, optional: 0, done: 0, ...over });
 
+/** 那台家里那几样（后端写好显示名与绝对路径，`home` 只是台架拼 `abs` 用）。 */
+const ownAt = (home: string) => [
+  { id: "profiles", what: copyText("rsDataPaths.backend.profiles"), path: "~/.cc-monitor/profiles.toml", label: "profiles.toml", abs: `${home}/.cc-monitor/profiles.toml`, dir: false, class: "truth", exists: true, absent_said: null, size_text: "2 KB" },
+  { id: "accounts", what: copyText("rsDataPaths.backend.accounts"), path: "~/.cc-monitor/accounts", label: "accounts/", abs: `${home}/.cc-monitor/accounts`, dir: true, class: "truth", exists: true, absent_said: null, size_text: null },
+  { id: "bin", what: copyText("rsDataPaths.backend.bin"), path: "~/.cc-monitor/bin", label: "bin/", abs: `${home}/.cc-monitor/bin`, dir: true, class: "cache", exists: false, absent_said: "台架：后端写的不在盘上那一句", size_text: null },
+];
+
 const report = (over: Record<string, unknown> = {}) => ({
-  home: "/h",
   changedFiles: [{ path: "~/.bashrc", what: copyText("rsToolRegistry.tools.ccmName"), undo: { page: "machine", tab: "config", anchor: "connect-terminal" } }],
   todo: [
     chore({ id: "install:claude-cli", kind: "install", name: "Claude Code", action: "how", howUrl: "https://example.invalid/claude", tag: { text: copyText("dataPage.install.kind"), kind: "install" }, tone: "warn" }),
@@ -139,11 +157,7 @@ const report = (over: Record<string, unknown> = {}) => ({
   tmux: false,
   counts: counts({ badge: 1, open: 2, install: 1, optional: 1 }),
   rank: 0,
-  own: [
-    { id: "profiles", what: copyText("rsDataPaths.backend.profiles"), path: "~/.cc-monitor/profiles.toml", dir: false, class: "truth", exists: true, size: 2048 },
-    { id: "accounts", what: copyText("rsDataPaths.backend.accounts"), path: "~/.cc-monitor/accounts", dir: true, class: "truth", exists: true, size: null },
-    { id: "bin", what: copyText("rsDataPaths.backend.bin"), path: "~/.cc-monitor/bin", dir: true, class: "cache", exists: false, size: null },
-  ],
+  own: ownAt("/h"),
   ...over,
 });
 
@@ -174,6 +188,10 @@ beforeEach(() => {
   marks.length = 0;
   merges.asked.length = 0;
   merges.reply = null;
+  merges.fail = null;
+  reverts.asked.length = 0;
+  reverts.after = null;
+  reverts.fail = null;
   clipFake = fakeClipboard();
   disk.cfg = {};
   disk.machines = [{ label: "devbox", host: "d.lan", user: "u", port: 22 }, { label: "gpu", host: "g.lan", user: "u", port: 22 }];
@@ -321,6 +339,46 @@ describe("cc-monitor 放了什么", () => {
     expect(went).toEqual([{ machine: "devbox", tab: "config", anchor: "connect-terminal" }]);
   });
 
+  it("★ 带 revert 的那一行就地［撤回］：问那台 mcp-project-revert {file: 那一行的路径}，撤回之后重读、那一行没了；不带的那一行没有", async () => {
+    const mcp = { path: "/work/proj/.mcp.json", what: "项目 MCP 配置那一句", undo: null, revert: true };
+    answers.set(LOCAL, report());
+    answers.set("devbox", report({ changedFiles: [...report().changedFiles, mcp] }));
+    reverts.after = report();
+    const { page } = mount();
+    page.openTab("placed");
+    page.loadNow();
+    await settle();
+    [...page.element.querySelectorAll<HTMLButtonElement>(".data-chip")].find((b) => b.textContent === "devbox")!.click();
+    const pane = page.element.querySelector<HTMLElement>('[data-pane="placed"]')!;
+    const revertButtons = () => [...pane.querySelectorAll("button")].filter((b) => b.textContent === copyText("kit.act.revert"));
+    expect(pane.textContent).toContain("/work/proj/.mcp.json");
+    expect(revertButtons()).toHaveLength(1);
+    revertButtons()[0]!.click();
+    await settle();
+    expect(reverts.asked).toEqual([{ origin: "devbox", args: { file: "/work/proj/.mcp.json" } }]);
+    expect(pane.textContent).not.toContain("/work/proj/.mcp.json");
+    expect(revertButtons()).toHaveLength(0);
+  });
+
+  it("［撤回］那台拒了（之后又被改过）⇒ 照那台那一句报错，那一行还在", async () => {
+    const mcp = { path: "/work/proj/.mcp.json", what: "项目 MCP 配置那一句", undo: null, revert: true };
+    answers.set(LOCAL, report({ changedFiles: [mcp] }));
+    reverts.fail = new Error("那台说：改过之后又被改过");
+    const { failToast } = await import("../../../../src/frontend/ui/kit/toast");
+    vi.mocked(failToast).mockClear();
+    const { page } = mount();
+    page.openTab("placed");
+    page.loadNow();
+    await settle();
+    const pane = page.element.querySelector<HTMLElement>('[data-pane="placed"]')!;
+    [...pane.querySelectorAll("button")].find((b) => b.textContent === copyText("kit.act.revert"))!.click();
+    await settle();
+    expect(reverts.asked).toHaveLength(1);
+    // 照那台那一句报（`failToast` 拿着那台交回的错）。
+    expect(vi.mocked(failToast).mock.calls.map((c) => String(c[1])).join("\n")).toContain("改过之后又被改过");
+    expect(pane.textContent).toContain("/work/proj/.mcp.json");
+  });
+
   it("本机那两块只在本机 chip 上出现；连不上的那台给一条离线条 ＋［重试］", async () => {
     answers.set(LOCAL, report());
     const { page } = mount();
@@ -353,7 +411,7 @@ describe("cc-monitor 放了什么", () => {
 
   it("★ 远端那台的「cc-monitor 的文件」照那台 own 排：名字 · 是什么 · 删了会怎样 · 大小；不在的不给打开；打开 ＝ 在文件窗口里打开那一样", async () => {
     answers.set(LOCAL, report());
-    answers.set("devbox", report({ home: "/home/u", own: [...report().own, { id: "fresh", what: "编的一句：界面照抄", path: "~/.cc-monitor/fresh", dir: true, class: "cache", exists: false, size: null }] }));
+    answers.set("devbox", report({ own: [...ownAt("/home/u"), { id: "fresh", what: "编的一句：界面照抄", path: "~/.cc-monitor/fresh", label: "fresh/", abs: "/home/u/.cc-monitor/fresh", dir: true, class: "cache", exists: false, absent_said: "台架：不在", size_text: null }] }));
     const { page } = mount();
     page.openTab("placed");
     page.loadNow();
@@ -371,13 +429,15 @@ describe("cc-monitor 放了什么", () => {
     expect(rows[1].textContent).toContain("accounts/");
     expect(rows[2].textContent).toContain(copyText("data.class.disposable"));
     expect(rows[2].querySelector("button")!.disabled, "不在的那一样没有可打开的").toBe(true);
+    expect(rows[2].textContent, "不在盘上那一句照抄那台后端写的").toContain("台架：后端写的不在盘上那一句");
+    expect(rows[0].querySelector("button")!.textContent, "与本机那一颗同一句").toBe(copyText("data.item.reveal"));
     rows[0].querySelector("button")!.click();
     await settle();
     expect(fileWin.map((f) => f.at)).toEqual([{ revealFile: "/home/u/.cc-monitor/profiles.toml" }]);
   });
 
-  it("★ 本机那一块「cc-monitor 的文件」也照本机后端 data-report 的 own 排（与远端同一套行）；打开 ＝ 本机打开 · 在文件夹中显示；不在的两颗都不给", async () => {
-    answers.set(LOCAL, report({ home: "/l", own: [...report().own, { id: "fresh", what: "编的一句：本机也照抄", path: "~/.cc-monitor/fresh.json", dir: false, class: "cache", exists: true, size: 7 }] }));
+  it("★ 本机那一块「cc-monitor 的文件」也照本机后端 data-report 的 own 排（与远端同一套行）；打开 ＝ 本机打开 · 在文件窗口里打开；不在的两颗都置灰", async () => {
+    answers.set(LOCAL, report({ own: [...ownAt("/l"), { id: "fresh", what: "编的一句：本机也照抄", path: "~/.cc-monitor/fresh.json", label: "fresh.json", abs: "/l/.cc-monitor/fresh.json", dir: false, class: "cache", exists: true, absent_said: null, size_text: "7 B" }] }));
     const own = document.createElement("div");
     own.dataset.host = "monitor-own";
     const page = new DataPage({ claudeDir: document.createElement("div"), ownFiles: own, goTo: () => {}, setBadge: () => {} });
@@ -394,16 +454,19 @@ describe("cc-monitor 放了什么", () => {
     expect(rows[0].textContent).toContain(copyText("data.class.keep"));
     expect(rows[2].querySelectorAll("button:not([disabled])").length, "不在的那一样没有可打开的").toBe(0);
     const btn = (r: HTMLElement, text: string) => [...r.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === text)!;
+    // 不在盘上：「在文件窗口里打开」同远端那一颗照给、置灰，提示是后端写的那一句。
+    const gone = btn(rows[2], copyText("data.item.reveal"));
+    expect([gone?.disabled, gone?.title]).toEqual([true, "台架：后端写的不在盘上那一句"]);
     btn(rows[0], copyText("mobTerms.row.attach")).click();
     btn(rows[0], copyText("data.item.reveal")).click();
     await settle();
     expect(localOpened).toEqual(["/l/.cc-monitor/profiles.toml"]);
-    expect(localRevealed).toEqual(["/l/.cc-monitor/profiles.toml"]);
-    expect(fileWin, "本机不开文件窗口").toEqual([]);
-    // 宿主交进来的 monitor 那一块照旧挂在后面（界面自己那几份：数据目录 · 网页引擎 · 本地存储）。
+    expect(localRevealed, "不交系统文件管理器").toEqual([]);
+    expect(fileWin, "本机也是文件窗口定位到它").toEqual([{ host: LOCAL, at: { revealFile: "/l/.cc-monitor/profiles.toml" } }]);
+    // 宿主交进来的界面这一侧那一块（本地存储 · 卸载说明）照旧挂在后面。
     const host = pane.querySelector<HTMLElement>('[data-host="monitor-own"]')!;
     expect(host.closest<HTMLElement>(".data-local-only")!.hidden).toBe(false);
-    expect(box.compareDocumentPosition(host) & Node.DOCUMENT_POSITION_FOLLOWING, "后端那几样在前、界面那几份在后").toBeTruthy();
+    expect(box.compareDocumentPosition(host) & Node.DOCUMENT_POSITION_FOLLOWING, "后端那几样在前、本地存储那一块在后").toBeTruthy();
   });
 
   it("★ 连不上的那台：本机后端记着上次读成的那一份 ⇒ 照上次的画 ＋ 警告条说多旧（跨重启：上次值不住界面）", async () => {
@@ -426,9 +489,39 @@ describe("cc-monitor 放了什么", () => {
     expect(pane.textContent).toContain("~/.zshrc");
     expect(pane.textContent).toContain(copyText("dataPage.placed.stale", { machine: "devbox", seen: SEEN.said }));
     expect(pane.querySelectorAll(".data-own-files [data-own]").length).toBe(3);
-    expect([...pane.querySelectorAll<HTMLButtonElement>(".data-own-files [data-own] button")].every((b) => b.disabled), "断开的那台打不开文件窗口 ⇒ 置灰").toBe(true);
+    const dead = [...pane.querySelectorAll<HTMLButtonElement>(".data-own-files [data-own] button")];
+    expect(dead.every((b) => b.disabled), "断开的那台打不开文件窗口 ⇒ 置灰").toBe(true);
+    expect(dead.map((b) => b.title), "按钮旁那一句是本机后端给的那台没问到的那一句").toEqual(dead.map(() => "devbox 断开"));
     // 从没读成过的那台照旧说读不到。
     [...page.element.querySelectorAll<HTMLButtonElement>(".data-chip")].find((b) => b.textContent === "gpu")!.click();
     expect(pane.textContent).toContain(copyText("dataPage.placed.offline", { machine: "gpu" }));
+  });
+
+  it("★★ 没连的那台：回包里带它那一句 ⇒ 列出来、按钮提示照抄；整问失败 ⇒ 提示是失败回的那一句，JS 自己抛的原文不上屏", async () => {
+    disk.machines = [...disk.machines, { label: "pi", host: "p.lan", user: "u", port: 22, connect: false }];
+    answers.set(LOCAL, report());
+    answers.set("devbox", report());
+    seen.set("pi", { data: { state: "kept", seen: SEEN, value: report() } });
+    const first = mount();
+    first.page.openTab("placed");
+    first.page.loadNow();
+    await settle();
+    const titles = (page: DataPage, m: string) => {
+      [...page.element.querySelectorAll<HTMLButtonElement>(".data-chip")].find((b) => b.textContent === m)!.click();
+      return [...page.element.querySelectorAll<HTMLButtonElement>('[data-pane="placed"] .data-own-files [data-own] button')].map((b) => [b.disabled, b.title]);
+    };
+    expect(new Set(titles(first.page, "pi").map(String)), "照回包里那台那一句").toEqual(new Set([String([true, "pi 离线"])]));
+    // 再问一趟、整问失败（通道写好了那一句）：照上一趟列的那几台，提示是那一句。
+    merges.fail = Object.assign(new Error("台架：本机后端没答那一句"), { detail: "台架：那一趟的详情" });
+    first.page.loadNow();
+    await settle();
+    expect(new Set(titles(first.page, "devbox").map(String))).toEqual(new Set([String([true, "台架：本机后端没答那一句"])]));
+    // JS 自己抛的（没有写好的那一句）：原文不上屏。
+    merges.fail = new TypeError("台架：x is undefined");
+    first.page.loadNow();
+    await settle();
+    const shown = titles(first.page, "devbox");
+    expect(shown.length).toBeGreaterThan(0);
+    expect(shown.every(([d, t]) => d === true && t !== "" && !String(t).includes("x is undefined")), JSON.stringify(shown)).toBe(true);
   });
 });

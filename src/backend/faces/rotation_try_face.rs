@@ -39,22 +39,22 @@ impl crate::wire::typed::Handle for RotationTry {
             let cx = &cx;
 
             let ctx = crate::faces::rotation_face::Ctx::here();
-            let agent = match &req.agent {
-                None => crate::faces::rotation_face::LIBRARY_AGENT,
-                Some(k) => crate::agents::pick_route(Some(k))
-                    .map_err(RotationTryErr::BadArgs)?
-                    .id(),
-            };
+            // 没写家 ⇒ 默认那一家（照请求的规整，`pick_route`）。
+            let agent = crate::agents::pick_route(req.agent.as_ref())
+                .map_err(RotationTryErr::BadArgs)?
+                .id();
             let row = ctx.row(agent);
             let now = crate::common::time::now_secs();
             let mut facts: Vec<Acct> = ctx
                 .hop
                 .facts(agent, &row, now, &cx.tz)
                 .iter()
-                .map(Acct::of_fact)
+                .map(|x| Acct::of_fact(agent, x))
                 .collect();
             ctx.hop.with_past(agent, &mut facts, now);
-            try_with(&req, &facts, now, &cx.tz)
+            // 同真判：别家的号接在后面，策略选了别家的号试跑里也认得出。
+            facts.extend(ctx.hop.elsewhere(agent, now));
+            try_with(&req, agent, &facts, now, &cx.tz)
         }
     }
 }
@@ -62,6 +62,7 @@ impl crate::wire::typed::Handle for RotationTry {
 /// 本体（测试给假的事实与钟）。`tz` ＝ 看的那一台的时区（时刻的字照它写）。
 pub(crate) fn try_with(
     req: &RotationTryReq,
+    agent: &str,
     facts: &[Acct],
     now: u64,
     tz: &crate::common::time::Tz,
@@ -80,9 +81,16 @@ pub(crate) fn try_with(
     let start = req
         .start
         .clone()
-        .or_else(|| facts.first().map(|f| f.id.clone()))
+        .or_else(|| {
+            facts
+                .iter()
+                .find(|f| f.agent == agent)
+                .map(|f| f.id.clone())
+        })
         .unwrap_or_default();
     let mut sigma = Sigma {
+        // 试跑的会话是 `agent` 那一家的（`facts` 本家的号在前、别家的号接在后）。
+        agent: agent.to_string(),
         current: req.current.clone().unwrap_or_else(|| start.clone()),
         start,
         temp: req.temp.clone(),
@@ -124,7 +132,7 @@ pub(crate) fn try_with(
         source,
         use_now_refused,
         decision: decision_of(&d),
-        timeline: timeline_of(&tl, now, now + hours * 3600, tz),
+        timeline: timeline_of(&tl, agent, now, now + hours * 3600, tz),
     })
 }
 
@@ -155,9 +163,11 @@ pub(crate) fn decision_of(d: &decide::Decision) -> RotTryDecision {
 }
 
 /// 推演写成线上的形（`rotation-try` · `rotation-view` 设置页那一形同用）。
-/// `[now, end)` 是推演的那一截；`tz` 是看的那一台的时区（钟面都按它写）。刻度从此刻起，步长照往后推多久定。
+/// `agent` 是推演的那条会话那一家（推演只换本家的号，号名照它问）；`[now, end)` 是推演的那一截；
+/// `tz` 是看的那一台的时区（钟面都按它写）。刻度从此刻起，步长照往后推多久定。
 pub(crate) fn timeline_of(
     tl: &simulate::Timeline,
+    agent: &str,
     now: u64,
     end: u64,
     tz: &crate::common::time::Tz,
@@ -184,7 +194,7 @@ pub(crate) fn timeline_of(
                 RotTryUse {
                     from: u.from,
                     to: u.to,
-                    text: use_text(account.as_deref()),
+                    text: use_text(agent, account.as_deref()),
                     account,
                     from_temp: u.from_temp,
                     skipped: u.skipped.clone(),
@@ -227,10 +237,10 @@ pub(crate) fn timeline_of(
     }
 }
 
-/// 最上那条一段写的字：用哪个号 ⇒ 它的号名（同号牌那一格）；停发 ⇒ 「停下」那一句。
-fn use_text(account: Option<&str>) -> String {
+/// 最上那条一段写的字：用 `agent` 那一家哪个号 ⇒ 它的号名（同号牌那一格）；停发 ⇒ 「停下」那一句。
+fn use_text(agent: &str, account: Option<&str>) -> String {
     match account {
-        Some(a) => crate::accounts::quota::name_words::account_text(a),
+        Some(a) => crate::accounts::quota::name_words::account_text_of(agent, a),
         None => copy_core::copy_text("rot.sim.hold", &[]),
     }
 }

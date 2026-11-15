@@ -91,7 +91,8 @@ fn search_end_to_end_and_rejects_traversal() {
 }
 
 /// agent 回报（子 agent 交回 / 发来的话 · 另一个会话发来的话）搜得到，
-/// 命中种类单列 `report`；`scope` 认 `report`（只要它）、`user` 不含它（只要人说的）。正控：人说的那一条照旧是 `user`。
+/// 命中的 `who` 写回报那个词（谁说的只 `who_of` 一处判）；`scope` 认 `report`（只要它）、`user` 不含它（只要人说的）。
+/// 正控：人说的那一条照旧写人那个词。
 #[test]
 fn agent_reports_are_searchable_as_their_own_kind() {
     let lines = [
@@ -117,13 +118,19 @@ fn agent_reports_are_searchable_as_their_own_kind() {
         hits_v(path, &entry, "部署脚本", &opts, &mut b, 1)
     };
     let all = ask(None).expect("三条都命中");
-    let kinds: Vec<&str> = all["hits"]
+    let who: Vec<&str> = all["hits"]
         .as_array()
         .unwrap()
         .iter()
-        .map(|h| h["kind"].as_str().unwrap())
+        .map(|h| h["who"].as_str().unwrap())
         .collect();
-    assert_eq!(kinds, vec!["user", "report", "report"]);
+    let (user, report) = (
+        who_of(crate::agents::claudecode::AGENT_KIND, "user"),
+        who_of(crate::agents::claudecode::AGENT_KIND, "report"),
+    );
+    assert_ne!(user, report, "人说的与回报写成两个词");
+    assert_eq!(who, vec![user.as_str(), report.as_str(), report.as_str()]);
+    assert!(all["hits"][0].get("kind").is_none(), "命中不再带 kind");
     let n = |r: Value| r["hits"].as_array().unwrap().len();
     assert_eq!(n(ask(Some("report")).unwrap()), 2);
     assert_eq!(n(ask(Some("user")).unwrap()), 1, "user 只要人说的");
@@ -431,12 +438,13 @@ fn a_hit_carries_this_machines_face_and_can() {
     let prefix = home.canonicalize().unwrap().to_string_lossy().into_owned();
     std::fs::remove_dir_all(&home).ok();
     let pick = |r: &Value| json!([r["sessionId"], r["face"]["dot"], r["isBg"], r["can"]]);
+    let bg_why = copy_core::copy_text("history.row.bgHint", &[]);
     assert_eq!(
         rows.iter().map(pick).collect::<Vec<_>>(),
         vec![
             json!(["live1", "idle", false, {"resume": "switch", "accounts": true, "fork": true, "delete": "live"}]),
             json!(["ended1", "ended", false, {"resume": "yes", "accounts": true, "fork": true, "delete": "yes"}]),
-            json!(["bg1", "ended", true, {"resume": "bg", "accounts": true, "fork": false, "delete": "yes"}]),
+            json!(["bg1", "ended", true, {"resume": "bg", "resumeWhy": bg_why, "accounts": true, "fork": false, "delete": "yes"}]),
         ],
         "命中的状态与能做什么不是这台按 pidfile 与记录判的"
     );
@@ -587,4 +595,131 @@ fn lock_a_search_that_panics_midway_does_not_leave_the_index_lent() {
         matches!(after, Some(Ok(_))),
         "半路 panic 的那一问把常驻索引留在「借出去了」：{after:?}"
     );
+}
+
+/// 「谁说的」那一格照这条会话是哪一家：Codex 会话里 agent 那一侧的命中写 Codex 那家对说话一方的叫法（适配层的
+/// `speaker_name`），不是 Claude 那家的。全文搜索的 `who` 与会话内查找 `meta` 头上那一格同出一判。
+/// 正控：Claude 会话里同一侧的命中写 Claude 那家的叫法。期望值写死，不拿实现那一判算。
+#[test]
+fn the_agent_side_of_a_hit_is_named_after_that_sessions_agent() {
+    // 期望值写死（两家各自声明的说话一方短名），不拿实现那一判自己算。
+    let (codex, claude) = (
+        crate::agents::codex::AGENT_KIND,
+        crate::agents::claudecode::AGENT_KIND,
+    );
+    let (codex_said, claude_said) = ("Codex", "Claude");
+
+    let turns = include_str!("../../__fixtures__/codex-rollout.turns.jsonl");
+    let path = std::path::Path::new(
+        "/x/codex/sessions/2026/10/20/rollout-2026-10-20T00-00-00-0000beef-0000-4000-8000-0000000000d3.jsonl",
+    );
+    let mut entry = FileEntry::empty(codex, true);
+    entry
+        .take(None, &mut Blocks::new(turns.as_bytes(), 1 << 20))
+        .expect("读得动");
+    let opts = SearchOpts {
+        include_tools: false,
+        scope: None,
+        after_ms: 0,
+        limit: 300,
+        titles: false,
+    };
+    let mut b = SnippetBudget::new(opts.limit);
+    let row = hits_v(path, &entry, "two files", &opts, &mut b, 1).expect("assistant 那一句命中");
+    assert_eq!(row["hits"][0]["who"], codex_said, "{row}");
+
+    let mut found = Vec::new();
+    scan_session_find(
+        codex,
+        std::io::Cursor::new(turns.as_bytes()),
+        "two files",
+        false,
+        None,
+        FindPage { skip: 0, limit: 50 },
+        |h| {
+            found.push(with_hit_text(h, &Default::default(), false));
+            Ok(())
+        },
+    )
+    .expect("扫得动");
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert!(
+        found[0].meta.starts_with(codex_said),
+        "会话内查找头一行写 Codex 那家的叫法：{}",
+        found[0].meta
+    );
+
+    let line = r#"{"type":"assistant","uuid":"a1","timestamp":"2026-01-01T00:00:01Z","message":{"role":"assistant","content":[{"type":"text","text":"two files here"}]}}"#;
+    let mut c = FileEntry::empty(claude, true);
+    c.take(None, &mut Blocks::new(line.as_bytes(), 1 << 20))
+        .expect("读得动");
+    let mut b = SnippetBudget::new(opts.limit);
+    let row = hits_v(
+        Path::new("/x/projects/p/s1.jsonl"),
+        &c,
+        "two files",
+        &opts,
+        &mut b,
+        1,
+    )
+    .expect("正控命中");
+    assert_eq!(row["hits"][0]["who"], claude_said);
+}
+
+/// agent 那一侧「谁说的」：有起会话面的家写它说话一方的短名；没有起会话面的家写它对人的叫法；
+/// 叫法没声明 · 注册表里认不出 ⇒ 照实那一句。哪一形都不露 kind（替身家）。
+#[test]
+fn the_agent_side_says_a_name_never_the_kind() {
+    use crate::agents::fake;
+    let reg = [
+        fake::family_row("fake", "CCM_FAKE_A", "fakea", true, fake::home),
+        fake::unlaunched_row("stand-said", Some("替身丙")),
+        fake::unlaunched_row("stand-unsaid", None),
+    ];
+    let unsaid = copy_core::copy_text("rsAgents.family.unsaid", &[]);
+    let speaker = fake::LAUNCH.speaker_name;
+    for (agent, want) in [
+        ("fake", speaker),
+        ("stand-said", "替身丙"),
+        ("stand-unsaid", unsaid.as_str()),
+        ("nope", unsaid.as_str()),
+    ] {
+        let got = who_of_among(&reg, agent, "assistant");
+        assert_eq!(got, want, "{agent}");
+        assert!(!got.contains(agent), "{agent} 露了 kind：{got}");
+    }
+    // 人那一侧照文案表写，不看是哪一家。
+    assert_eq!(
+        who_of_among(&reg, "nope", "user"),
+        copy_core::copy_text("machineForm.field.user", &[])
+    );
+}
+
+/// 会话内查找的命中上线不带 `kind` 也不带 `tsText`（界面只照 `meta` 摆：谁说的 · 时刻都已写进那一行）。
+#[test]
+fn a_find_hit_on_the_wire_carries_only_the_finished_meta() {
+    let mut found = Vec::new();
+    scan_session_find(
+        crate::agents::claudecode::AGENT_KIND,
+        std::io::Cursor::new(
+            concat!(
+                r#"{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","message":{"role":"user","content":"needle"}}"#,
+                "\n"
+            )
+            .as_bytes(),
+        ),
+        "needle",
+        false,
+        None,
+        FindPage { skip: 0, limit: 50 },
+        |h| {
+            found.push(serde_json::to_value(with_hit_text(h, &Default::default(), false)).unwrap());
+            Ok(())
+        },
+    )
+    .expect("扫得动");
+    assert_eq!(found.len(), 1);
+    assert!(found[0].get("kind").is_none(), "{}", found[0]);
+    assert!(found[0].get("tsText").is_none(), "{}", found[0]);
+    assert!(found[0]["meta"].as_str().is_some_and(|m| !m.is_empty()));
 }

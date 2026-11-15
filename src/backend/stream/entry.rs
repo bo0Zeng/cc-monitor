@@ -24,7 +24,6 @@ use crate::{accounts, agents, assets, control, dial, faces, history, observe, st
 use comms_inward::line::{read_capped_line, CappedLine};
 use copy_core::discard::{Discard, Why};
 
-use std::path::PathBuf;
 use tokio::io::BufWriter;
 
 /// watcher 看见、别处去做 / 去判的那几件事（观测侧不改世界、不认识账号库，只在那一刻报一声或问一声；两处起 watcher 都接这一份）。
@@ -33,6 +32,7 @@ const WATCH_REACTIONS: observe::watcher::Reactions = observe::watcher::Reactions
     session_seen: control::launch_account::adopt_seen,
     tag: control::identity_tag::tag_seen,
     account_of: crate::accounts::manage::library::account_of_process_here,
+    quota_said: crate::accounts::manage::library::quota_said_here,
 };
 
 /// `ccm -- <词>` 里那个词归不归后端：一次性子命令（闸门 [`cli::is_subcommand`]）∪ 流模式旗标。交给 `control::ccm::route` 那一问就是它。
@@ -63,7 +63,7 @@ pub async fn run() {
     //      混进后端的日志行就把「正常路径一个字都不说」这条契约破了；
     //   ② 排在 `split_stream_flags` 之前 —— 那一步会把 `--stream` / `--tz`
     //      从 argv **任意位置**剥掉，而 `ccm --tz x` 里那个要原样透传给 agent；
-    //   ③ 排在 `resolve_agent_home()` 之前 —— 一次性模式不必去解析 agent 家目录。
+    //   ③ 排在解析各家家目录（`agents::local_homes`）之前 —— 一次性模式不必去解析 agent 家目录。
     // 分流只经 `control::ccm::route`：当后端用时，后端认的 argv 是它交回来的那一串（去掉了打头的 `--`）。
     // argv 只在这里取一次：分流看 `[1..]`，ccm 那一趟要的「我被怎么叫的」由这里交（`ccm::run` 的 `process_argv`）。
     // 起第一个子进程之前：各家「我是哪个会话」的变量一律不往下传（常驻后端若在某个会话里起，它起的会话不许认错父）。
@@ -84,6 +84,8 @@ pub async fn run() {
     observe::skeleton::install(&own);
     // 历史清单缓存落在数据目录底下：这里装一次那个家（重启照它接着认，不整台重扫）。
     history::listing::install(&own);
+    // 托管终端状态行那几格的值住上层（会话事实 · 额度账 · 队）：瘦客户端（`host`）不引上层 ⇒ 这里装一次那只耳朵（`ccm --attach` 那一趟用）。
+    crate::host::managed::attach::install_status(faces::status_line_face::ears);
     let backend_args: Vec<String> = {
         let rest: Vec<String> = process_argv.iter().skip(1).cloned().collect();
         match control::ccm::route(
@@ -145,8 +147,10 @@ pub async fn run() {
     tracing::info!("{}", crate::platform::raise_open_files_limit());
     // 这台设了的各家数据目录（本机 `prefs.json` 的 `agentHomes`）交成那一家的目录环境变量：排在解析家目录、起任何会话之前。
     control::apply_agent_homes();
-    let agent_home = resolve_agent_home();
-    tracing::info!("agent_home = {}", agent_home.display());
+    let agent_home = agents::local_homes();
+    for h in &agent_home {
+        tracing::info!("agent_home[{}] = {}", h.kind, h.home.display());
+    }
 
     // **脱离常驻那条载体的 stderr 落盘**：宿主交了路径才接（monitor 只在起脱离那条时交），先抢口、抢到了才接（[`claim_then_log`]）。
     //   放在一次性子命令全部 `exit` 之后：它们的 stderr 是给人 / 给 JSON 解析看的，不动。放在起中转之前：接上之后这一行起的
@@ -193,12 +197,21 @@ pub async fn run() {
     if resident {
         accounts::manage::wire::colors_here(&inbound::LocalFiles);
         accounts::manage::wire::align_here(&inbound::LocalFiles);
+        // 自家状态里读得懂的旧版（偏好 · skill 装记录）写回成这一版一次（读口不写盘，升级只此一处；原文留 `.v<N>`）。
+        if let Err(e) = crate::common::machine_prefs::bring_forward(&own) {
+            tracing::warn!("这台偏好旧版没能写回成新版：{}", e.said);
+        }
+        if let Err(e) = crate::assets::skill_ledger::bring_forward(&own) {
+            tracing::warn!("skill 装记录旧版没能写回成新版：{}", e.said);
+        }
     }
     // 历史清单的缓存起来就后台热（低优先级的一次性线程）：第一次打开历史页 / 按 sid 开查看窗不再现扫整台。
     history::listing::warm_listing_in_background(agent_home.clone());
     // 照这台的配置文件 `profiles.toml` 把别名文件与链接对齐一次（写法变了的那一份当场换）。
     //   经本进程自己的文件管理面，写经 `inbound::LocalFiles`（与帧命令同一扇门）。
     assets::aliases::align_here(&inbound::LocalFiles);
+    // 桌面附件草稿那一圈（`control/attach_upload.rs`）会话就在本机时问这台自己那几条：经入方向那一扇门（`inbound::AttachHere`，只放那几条）。
+    control::attach_upload::install_here(std::sync::Arc::new(inbound::AttachHere));
     // 各台常驻流上每一行先过资产同步用的写句柄（见下面那一段）。
     let sync_own = own.clone();
     if resident {
@@ -211,6 +224,8 @@ pub async fn run() {
             }
             observe::watcher::relay(f);
         }));
+        // 一条连接挤丢过那台一格 ⇒ 补 `gap` 时紧跟那台此刻的整本（取整本的口交给 watcher）。
+        observe::watcher::relayed_wholes(control::feeds::whole_now);
     }
 
     // ★★ **同一个流模式，两种载体**。
@@ -233,6 +248,18 @@ pub async fn run() {
     //   盯这台的 `rotation.json` · 策略目录 · `quota.json` · 账号库（别的进程写了也发节点、推 `changed`）。
     accounts::quota::setup::uses::watch_here(&own);
     accounts::quota::nodes::watch_logins_here(faces::rotation_face::account_dirs());
+    // 额度账上一窗的重置时刻一过，用那个号的用量查询重读一次（不发消息、不开窗）；只这一处。
+    accounts::quota::reread::watch_here(own.clone(), faces::rotation_face::books());
+    // 各家各号的记录根（根表：认家 · 围栏 · 清单 · 删与归档）：适配层不读账号库，由这里把「那一家各号的家」接给它。
+    agents::on_account_homes(accounts::manage::library::account_homes_here).discard(Why::SetOnce);
+    // 只在没有活会话用这个号时才续的那一家：续之前问账号库这个号此刻有没有会话（服务那一块不引账号库，由这里接上）。
+    accounts::oauth::on_dir_in_use(accounts::manage::library::dir_in_use_here)
+        .discard(Why::SetOnce);
+    // 不从环境变量读中转地址的那一家：会话归号认「经本机中转」问起会话时留的上游描述（账号库不引上游选择，由这里接上）。
+    accounts::manage::library::on_launched_relay(
+        accounts::upstream_select::session_upstream::relayed_here,
+    )
+    .discard(Why::SetOnce);
     match listening {
         None => run_over_stdio(hello, agent_home, wants, own).await,
         Some((listener, held)) => {
@@ -323,7 +350,7 @@ fn build_hello() -> Frame {
 /// ⚠ 常驻是**另一条载体**，与这条并列、行为一致。改这一段之前先问：另一条载体要不要跟着改？
 async fn run_over_stdio(
     hello: Frame,
-    agent_home: PathBuf,
+    agent_home: Vec<agents::AgentHome>,
     wants: StreamWants,
     own: crate::platform::Own,
 ) -> ! {
@@ -358,9 +385,9 @@ async fn run_over_stdio(
     tap::adopt(&book);
     let (tz, view) = (wants.tz.clone(), wants.view.clone());
     // stdio 载体没有 attach 行 ⇒ 名单等 `stream-watch` 报上来（之前全发）。
-    let (rx, attached) = poke.attach(&wants.tz, None);
+    let (rx, attached) = poke.attach(&wants.tz, None, false);
     // 这条流连接最低优先那一路（活卡的发件箱 ＋ 几种推送）；名单与 watcher 那份同拍交给它。
-    let tap_rx = tap::attach(tz.clone(), None);
+    let tap_rx = tap::attach(tz.clone(), None, false);
     let mut inbound_task = inbound::spawn(
         tokio::io::stdin(),
         reply_tx.clone(),
@@ -385,12 +412,53 @@ async fn run_over_stdio(
     let poke_task = spawn_sigusr1_task();
 
     // (d) Run the stdout writer until the channel closes or a signal fires.
-    // 收信号那一支**不丢写者**：排空期间它照常把在飞命令的最终应答写回去（`drain::exit_after_drain`）；
+    // 收信号那一支**不丢写者、也不放这条流在 watcher 上的那一份**（[`stdio_ends`]）：出方向开着，排空期间写者照常把在飞命令的
+    //   最终应答写回去（`drain::exit_after_drain`：先等票落 —— 应答已送进应答通道 —— 再叫写者收尾、等它写完 flush 返回，才退）；
     //   入方向 reader 也留着 —— 新来的阻塞命令要有人回它一句 `shutting_down`。
     let stop = drain::shutdown_listener();
-    let writer = writer_task(stdout, rx, reply_rx, tap_rx, tz, view);
+    let writer = async move {
+        writer_task(stdout, rx, reply_rx, tap_rx, tz, view).await;
+    };
     tokio::pin!(writer, stop);
-    // 入方向读到 EOF（对端关了写半边）不退：只说一句（带 `STDIN_EOF_KEPT` 那个记号，判据等的就是它），接着等上面两件。
+    // P5：写者停了 ⇒ **显式告诉 reader 停** —— 删掉 8s ticker 之后，reader 那边的
+    // `sink.is_closed()` 复查再没有定期醒来的机会，只会一直阻塞在 `recv()`。
+    // 漏这一句不会红任何测试（进程退出时线程随之消亡），所以它与删 ticker 是同一步。
+    let release = move || {
+        drop(attached);
+        poke_for_shutdown.shutdown();
+        poke_task.abort();
+    };
+    if let StdioEnd::Signalled(_watching) =
+        stdio_ends(writer.as_mut(), stop, &mut inbound_task, release).await
+    {
+        drain::exit_after_drain("收到停机信号", Some(writer)).await
+    }
+    // 写者断了 = 对端走了（SSH 断 / monitor 退）：入方向不会再有东西来，收掉它再排空。
+    inbound_task.abort();
+    drop(reply_tx);
+    drain::exit_after_drain("对端走了（写不出去）", None::<std::future::Ready<()>>).await
+}
+
+/// stdio 那条流等到了哪一下（[`stdio_ends`]）。
+enum StdioEnd<R> {
+    /// 收到停机信号：写者还在跑；`R` 是还没放的那几样（握到退出）。
+    Signalled(R),
+    /// 写者停了（写不出去）：那几样已放。
+    WriterGone,
+}
+
+/// stdio 那条流等到收场：写者停了 ⇒ 放掉 `release` 握着的那几样（这条流在 watcher 上的那一份 · 叫 watcher 停 · SIGUSR1 处理器），回 [`StdioEnd::WriterGone`]；
+/// 收到停机信号 ⇒ 回 [`StdioEnd::Signalled`]。入方向读到 EOF（对端关了写半边）不退：只说一句（带 `STDIN_EOF_KEPT` 那个记号，判据等的就是它），接着等上面两件。
+async fn stdio_ends<W, R>(
+    mut writer: std::pin::Pin<&mut W>,
+    mut stop: std::pin::Pin<&mut impl std::future::Future<Output = ()>>,
+    inbound_task: &mut tokio::task::JoinHandle<()>,
+    release: R,
+) -> StdioEnd<R>
+where
+    W: std::future::Future<Output = ()>,
+    R: FnOnce(),
+{
     let mut reading = true;
     let signalled = loop {
         tokio::select! {
@@ -402,25 +470,20 @@ async fn run_over_stdio(
                 tracing::info!("shutdown signal received; exiting");
                 break true;
             }
-            _ = &mut inbound_task, if reading => {
+            _ = &mut *inbound_task, if reading => {
                 reading = false;
                 tracing::info!("{STDIN_EOF_KEPT}：入方向读到 EOF，流照开（只在写不出去或收到停机信号时退）");
             }
         }
     };
-    // P5：**显式告诉 reader 停** —— 删掉 8s ticker 之后，reader 那边的
-    // `sink.is_closed()` 复查再没有定期醒来的机会，只会一直阻塞在 `recv()`。
-    // 漏这一句不会红任何测试（进程退出时线程随之消亡），所以它与删 ticker 是同一步。
-    drop(attached);
-    poke_for_shutdown.shutdown();
-    poke_task.abort();
     if signalled {
-        drain::exit_after_drain("收到停机信号", Some(writer)).await
+        // 先排空写完、再放（同写者收尾那一处的次序，`stream/writer.rs`）：这条流在 watcher 上的那一份一放，watcher 摘掉这条连接、
+        //   出方向随即关，写者照「出方向关了」收尾、关上应答收件口 —— 排空期间做完的在飞命令，最终应答就送不进来了。
+        //   ⇒ 原样交回，跟着写者活到退出（`exit_after_drain` 不回来）。
+        return StdioEnd::Signalled(release);
     }
-    // 写者断了 = 对端走了（SSH 断 / monitor 退）：入方向不会再有东西来，收掉它再排空。
-    inbound_task.abort();
-    drop(reply_tx);
-    drain::exit_after_drain("对端走了（写不出去）", None::<std::future::Ready<()>>).await
+    release();
+    StdioEnd::WriterGone
 }
 
 /// stdio 流模式入方向读到 EOF、照开之后 stderr 那一行的记号（e2e 与起真后端的判据等它，再判「还活着」）。
@@ -500,6 +563,8 @@ struct Attached {
     tz: crate::common::time::Tz,
     /// attach 行带的在看名单（没带 ⇒ 全发，等 `stream-watch`）。
     watch: Option<crate::wire::WatchAsk>,
+    /// attach 行要了折好的成品（桌面壳）：这条连接的会话帧后紧跟 `session_seats`、活卡交 `live_now`。
+    folded: bool,
 }
 
 /// 一条连接的**握手**：先写 hello，再读一行 attach 请求，然后分档。
@@ -508,8 +573,7 @@ struct Attached {
 ///
 /// 否则「这台机上有没有一个长驻后端」只能从「`connect()` 成没成」推 ——
 /// 而 TCP 的 backlog 会让**没人 accept 的口照样连得上** ⇒ 那是个「一直说是」的假信号。
-/// 写在前面之后，那一问的答案是**读一行**，协议一个字节都不用加
-/// （`shared/ccm:1182-1185` 自陈「后者今天没有便宜的问法」，说的就是这一格）。
+/// 写在前面之后，那一问的答案是**读一行**，协议一个字节都不用加。
 ///
 /// 多客户：attach 行形状对就接成流，不再有「谁拿到那一张牌」（原 `busy.swap` 那一格）；门在 accept 那一下（对端 uid）。
 async fn handshake_one(
@@ -554,7 +618,12 @@ async fn handshake_one(
                 .discard(Why::DeadLink);
             tracing::warn!("拒绝一条 attach 请求：{reason}");
         }
-        listen::Admit::Stream { tz, reply, watch } => {
+        listen::Admit::Stream {
+            tz,
+            reply,
+            watch,
+            folded,
+        } => {
             if listen::write_line(&mut w, &reply.line()).await.is_err() {
                 return;
             }
@@ -571,6 +640,7 @@ async fn handshake_one(
                     hello_flushed,
                     tz,
                     watch,
+                    folded,
                 })
                 .await
                 .discard(Why::PeerGone);
@@ -605,7 +675,7 @@ async fn serve_listening(
     // 目录独占锁：随这个函数（＝ 常驻载体）活着。
     _held: crate::platform::OwnLock,
     hello: Frame,
-    agent_home: PathBuf,
+    agent_home: Vec<agents::AgentHome>,
     own: crate::platform::Own,
 ) {
     tracing::info!("常驻后端已在听这台家里的套接字（多条流 + 不限次「只读 hello 就走」）");
@@ -646,9 +716,9 @@ async fn serve_listening(
             // ② 有人认证通过 ⇒ 接上这台那份 watcher（先收一份此刻的样子），起流。
             Some(att) = attached_rx.recv() => {
                 let id = clients.join();
-                let Attached { reader, writer, hello_flushed, tz, watch } = att;
+                let Attached { reader, writer, hello_flushed, tz, watch, folded } = att;
                 // 名单在接上那一刻就定（watcher 那份与活卡同拍）：这条流从第一帧起只发名单里的。
-                let (rx, poke) = watcher.attach(&tz, watch.clone());
+                let (rx, poke) = watcher.attach(&tz, watch.clone(), folded);
                 // 应答走**独立通道**：出方向丢一条内容帧可恢复，丢一条应答会让客户端永远等下去。
                 let (reply_tx, reply_rx) =
                     tokio::sync::mpsc::channel::<Frame>(inbound::REPLY_CHANNEL_CAPACITY);
@@ -661,8 +731,8 @@ async fn serve_listening(
                     }
                 }
                 // 这条流连接最低优先那一路（活卡的发件箱：整台一份活卡、每条连接按名单一个发件箱）。
-                let tap_rx = tap::attach(tz.clone(), watch.as_ref().map(|w| &w.sids[..]));
-                let mut inbound_task =
+                let tap_rx = tap::attach(tz.clone(), watch.as_ref().map(|w| &w.sids[..]), folded);
+                let inbound_task =
                     inbound::spawn(reader, reply_tx.clone(), watch_desk(&poke, &tap_rx), own.clone(), hello_flushed);
                 let done = done_tx.clone();
                 tracing::info!("一条流已接上（此刻 {} 条）", clients.count());
@@ -672,18 +742,10 @@ async fn serve_listening(
                     // ⚠ 这一格是 e2e **实测**逼出来的：只等 `writer_task`（它靠**写**拿到错误才结束）时，
                     // 一个**空闲**的后端根本没有东西可写 ⇒ 客户走了也不知道 ⇒ 连接计数永远不归零。
                     // ⇒ 再认一个事件：**入方向读到 EOF**（客户端关了它的写半边 / 进程没了）。
-                    tokio::select! {
-                        _ = writer_task(writer, rx, reply_rx, tap_rx, tz, None) => {
-                            tracing::info!("流结束：写不出去了（客户端走了）");
-                        }
-                        _ = &mut inbound_task => {
-                            tracing::info!("流结束：入方向读到 EOF（客户端关了它的写半边）");
-                        }
-                    }
+                    drop(reply_tx);
+                    stream_ends(writer_task(writer, rx, reply_rx, tap_rx, tz, None), inbound_task).await;
                     // 这条连接的投影摘掉（watcher 照跑：这台一份）。
                     drop(poke);
-                    inbound_task.abort();
-                    drop(reply_tx);
                     done.send(id).await.discard(Why::Signal);
                 });
             }
@@ -744,12 +806,33 @@ fn init_tracing(oneshot: bool) {
         .init();
 }
 
-/// 解析会话数据根：后端盯着的那一家的家目录（注册表 `LocalFace::home_at`）。
-///
-/// 要的是**恒定**答得出的那个 home（流式 watcher 与所有一次性子命令都拿它当根），
-/// 不是 `agents::visible_homes()`（那只报目录已存在的几家；新机器上 home 还没建出来时后端照样起、等第一个会话）。
-fn resolve_agent_home() -> PathBuf {
-    agents::home_at(None, true)
+/// 一条流等到哪一下算收场：入方向读到 EOF ⇒ 已收的那几条命令的应答写完再收场（对端可能只关了写半边、还在读）——
+/// 应答那一路的发送端此刻只剩在飞命令手里的（调用方起收场之前放掉自己那一份，读循环那一份随它停而落）⇒ 它们都交了，
+/// 写者照「应答那一路没人再送」写完、flush、返回；对端整个走了 ⇒ 写那一下报断、写者随即返回。
+/// 写者停了 ⇒ 照它为什么停（[`crate::stream::writer::WriterEnd`]）：
+/// 对端走了 ⇒ 读循环照样把已收的读完、派出去再收场（对端已关 ⇒ 它随即读到 EOF；对端写完一行就关的那一种 —— 答题 hook 只交不等 ——
+/// 那一行不在这一下丢掉）；别的缘故（对端可能还连着、读循环等不到 EOF）⇒ 当场掐掉读循环收场。
+pub(crate) async fn stream_ends(
+    writer: impl std::future::Future<Output = crate::stream::writer::WriterEnd>,
+    mut inbound: tokio::task::JoinHandle<()>,
+) {
+    tokio::pin!(writer);
+    tokio::select! {
+        end = &mut writer => {
+            if end == crate::stream::writer::WriterEnd::PeerGone {
+                tracing::info!("流结束：写不出去了（客户端走了）；读完已收的再收场");
+                // 读循环自己出了错（panic · 被取消）也照样收场：这里只等它停。
+                (&mut inbound).await.discard(Why::Signal);
+            } else {
+                tracing::info!("流结束：写者停了（客户端还可能连着）");
+                inbound.abort();
+            }
+        }
+        _ = &mut inbound => {
+            tracing::info!("流结束：入方向读到 EOF（客户端关了它的写半边）；已收的那几条应答写完再收场");
+            writer.await;
+        }
+    }
 }
 
 #[cfg(test)]

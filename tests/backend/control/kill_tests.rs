@@ -197,6 +197,74 @@ impl Iso {
         let t = crate::common::tmux_utf8::exact_target(name);
         self.tmux(&["set-option", "-t", &t, "@ccm_sid", sid]);
     }
+    /// 起一个单窗口会话，窗格里的命令照真起法那样**换两次身**（`$SHELL -c cat` 那一形：先是一个壳、再 exec 成
+    /// 真正的命令），头一段停在一个按键上：没按 `go` 之前，窗格进程是头一段那个壳（环境里已经有 `TMUX_PANE`），
+    /// 还没换成最后那一段。最后那一段起来就在 `up-<name>` 上报一声、之后原地停着（不再 exec）。
+    fn held(&self, name: &str) -> HeldPane {
+        let sock = self.sock.to_string_lossy().into_owned();
+        let last = format!("tmux -S \"$0\" wait-for -S up-{name}; while read x; do :; done");
+        let first = format!("read go; exec /bin/sh -c '{last}' \"$0\"");
+        let o = self.tmux(&[
+            "-f",
+            "/dev/null",
+            "new-session",
+            "-d",
+            "-s",
+            name,
+            "/bin/sh",
+            "-c",
+            &first,
+            &sock,
+        ]);
+        assert!(
+            o.status.success(),
+            "建会话失败：{}",
+            String::from_utf8_lossy(&o.stderr)
+        );
+        HeldPane {
+            name: name.to_string(),
+            last: vec!["/bin/sh".into(), "-c".into(), last, sock],
+        }
+    }
+    /// 窗格里的命令起来了 ⇒ 回它的 pid（[`HeldPane`]：起来 ＝ 最后那一段在跑）。等的是事件、不读环境猜：
+    /// 按下 `go`，等最后那一段在 `up-<name>` 上报的那一声（tmux 的 `wait-for`：先报后等也接得住）；
+    /// 墙钟只当兜底上限（[`guard_core::wall::CEILING`]），到期照实红。
+    fn pane_up(&self, pane: &HeldPane) -> u32 {
+        let target = format!("={}:", pane.name);
+        assert!(
+            self.tmux(&["send-keys", "-t", &target, "go", "Enter"])
+                .status
+                .success(),
+            "按不下 go"
+        );
+        let (tx, rx) = std::sync::mpsc::channel();
+        let sock = self.sock.clone();
+        let ch = format!("up-{}", pane.name);
+        // 到期不收这条线：收尾的 kill-server 让它那一发 tmux 退出。
+        std::thread::spawn(move || {
+            let o = std::process::Command::new("tmux")
+                .env_remove("TMUX")
+                .env_remove("TMUX_PANE")
+                .arg("-S")
+                .arg(&sock)
+                .args(["wait-for", &ch])
+                .output();
+            let _ = tx.send(o.is_ok_and(|o| o.status.success()));
+        });
+        assert_eq!(
+            rx.recv_timeout(guard_core::wall::CEILING),
+            Ok(true),
+            "窗格里的命令一直没起来"
+        );
+        String::from_utf8_lossy(
+            &self
+                .tmux(&["display-message", "-p", "-t", &target, "#{pane_pid}"])
+                .stdout,
+        )
+        .trim()
+        .parse()
+        .expect("窗格的 pid")
+    }
     fn id_of(&self, name: &str) -> String {
         let t = crate::common::tmux_utf8::exact_target(name);
         String::from_utf8_lossy(
@@ -207,6 +275,41 @@ impl Iso {
         .trim()
         .to_string()
     }
+}
+
+/// [`Iso::held`] 起的那个窗格：会话名，与最后那一段的 argv（窗格进程换到它才算起来了）。
+struct HeldPane {
+    name: String,
+    last: Vec<String>,
+}
+
+/// 这个进程此刻的 argv（`/proc/<pid>/cmdline` 按 NUL 切开）。
+fn argv_of(pid: u32) -> Vec<String> {
+    std::fs::read(format!("/proc/{pid}/cmdline"))
+        .map(|b| {
+            b.split(|c| *c == 0)
+                .filter(|a| !a.is_empty())
+                .map(|a| String::from_utf8_lossy(a).into_owned())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// 这个进程的环境里有没有 `TMUX_PANE`。
+fn in_pane(pid: u32) -> bool {
+    std::fs::read(format!("/proc/{pid}/environ"))
+        .is_ok_and(|b| String::from_utf8_lossy(&b).contains("TMUX_PANE="))
+}
+
+/// ★ 「窗格里的命令起来了」只认最后那一段在跑：头一段的壳环境里已经有 `TMUX_PANE`、可还要再 exec 一次
+/// （exec 换身那一刻 environ 读出来是空的，打标就读成「不在 tmux 里」）⇒ 等到的必须是最后那一段，argv 逐项对上。
+#[test]
+fn a_pane_counts_as_up_only_once_its_last_command_runs() {
+    let iso = Iso::new("up");
+    let pane = iso.held("g");
+    let pid = iso.pane_up(&pane);
+    assert_eq!(argv_of(pid), pane.last, "等到的不是窗格最后那一段命令");
+    assert!(in_pane(pid), "窗格进程的环境里没有 TMUX_PANE");
 }
 
 impl Drop for Iso {
@@ -357,31 +460,9 @@ fn a_terminal_missing_from_one_listing_is_looked_up_again() {
 #[test]
 fn ending_a_session_whose_identity_tag_failed_once_still_works() {
     let iso = Iso::new("retag");
-    let o = iso.tmux(&["-f", "/dev/null", "new-session", "-d", "-s", "mine", "cat"]);
-    assert!(
-        o.status.success(),
-        "建会话失败：{}",
-        String::from_utf8_lossy(&o.stderr)
-    );
-    let pid: u32 = String::from_utf8_lossy(
-        &iso.tmux(&["display-message", "-p", "-t", "=mine:", "#{pane_pid}"])
-            .stdout,
-    )
-    .trim()
-    .parse()
-    .expect("窗格的 pid");
-    // 窗格进程 exec 之前 environ 还是 tmux server 那一份（没有 `TMUX_PANE`）：等它换成窗格自己的（有界）。
-    let in_pane = || {
-        std::fs::read(format!("/proc/{pid}/environ"))
-            .is_ok_and(|b| String::from_utf8_lossy(&b).contains("TMUX_PANE="))
-    };
-    for () in guard_core::wall::rounds() {
-        if in_pane() {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
-    assert!(in_pane(), "窗格进程的环境里一直没有 TMUX_PANE");
+    // 窗格进程照真起法换两次身：等到最后那一段起来（事件，不读环境猜）⇒ 此后这个 pid 的环境不再变。
+    let pid = iso.pane_up(&iso.held("mine"));
+    assert!(in_pane(pid), "窗格进程的环境里没有 TMUX_PANE");
     let dir = iso.sock.parent().expect("目录").to_path_buf();
     let once = dir.join("failed-once");
     let fake = dir.join("tmux.sh");
@@ -395,7 +476,7 @@ fn ending_a_session_whose_identity_tag_failed_once_still_works() {
     )
     .expect("写假 tmux");
     let _door = crate::control::identity_tag::door::isolate_with(&fake);
-    let (_, wrote) = crate::control::identity_tag::tag_seen(pid, "sid-retag-1");
+    let wrote = crate::control::identity_tag::tag_seen(pid, "sid-retag-1").wrote;
     assert!(!wrote && once.exists(), "打标那一发该失败一次");
     let (rows, _, _) = crate::host::list_with(iso.on(), &|| Default::default()).expect("名单");
     let row = rows

@@ -140,7 +140,7 @@ subscribe(origin, kind)    → 流
 - `platform/`：平台原语与平台 cfg 的唯一住处（独立 crate `backend-platform`，不引后端里任何别的层；路径 · 进程 · 判活的读法 · 信号 · 文件原语 · 脱离）；`platform/shell/` 是 shell 方言知识的唯一住处（引号 · 定义函数 · 导出环境 · rc / `$PROFILE` 在哪）。
 - `host/`：宿主口（终端住在哪种宿主里：tmux · 托管）（独立 crate `backend-host`，只引 `agents/` · `wire/` · `common/` · `platform/`）。`host/tmux.rs` 是起 `tmux` 进程的唯一一处（`child`：别处对 tmux 下命令经它拿命令、argv 自给）与终端名单 · 会话快照探测器 · 观测那两跳 `sh -c`；`host/managed.rs` 是托管那一臂；`host::list` 把两种宿主的行合成一份。`wire/ccm_line/`：`ccm` 这一行的词与解析（旗标 · 默认值 · 自己叫什么 · 配置那一段的记号）；起会话 · 账号域 · 别名那一族都引它，做事那一半住 `control/ccm/`。`control/` 与 `observe/` 都引它，它引不到那两层（包的依赖管着）；「真起 tmux 的生产文件恰好是 `host/tmux.rs`」由 `target_parity_guard` 判。
 - `observe/`：产出观测帧的读（会话文件 watcher · 会话账本 · 划段 · tmux 观测 · 历史 / 搜索 / 任务 / 账号查询）。
-- `control/`：改状态的动作，以及只喂控制决策的只读查询（起会话与命令渲染 · kill · 送键 · 抓屏 · 分叉落盘 · 常驻与退出行为 · 部署计划 · 写用户文件的那一族 · 传输台）。
+- `control/`：改状态的动作，以及只喂控制决策的只读查询（起会话与命令渲染 · kill · 送键 · 抓屏 · 分叉落盘 · 常驻与退出行为 · 部署计划 · 写用户文件的那一族 · 两台之间复制 `transfer-copy`）。
 - `files/`：文件管理的读面（常驻文件名索引 · 列 · 读 · 按内容搜）。
 - `accounts/`：账号域。账号库管理（`manage/`）· 登录令牌（`oauth/`）· 额度账与轮换（`quota/`）· 上游选择（`upstream_select/`：这一发走哪个上游、注入什么凭据、钉在哪个号）。
 - `agents/`：用户的 AI CLI 的适配面（claudecode · codex · 测试用的 fake），一家一行注册表，含记录解释与用量读法。
@@ -157,7 +157,7 @@ subscribe(origin, kind)    → 流
 - `stream/`：进后端的口，最上面那一层（命令表 · 帧面的信封与分派 · CLI 面的分派 · 对后端其余部分开的门 · 总期限 · 出口声明 · tee 消费侧与活卡），引所有功能，除 `main.rs` / `lib.rs` 谁都不引它（它住主 crate，拆出去的那些包够不着）。本机后端问别台：转界面带 `machine` 的那一问与本机后端自己的有类型那一问走那台的常驻流（`control/feeds.rs` 的 `forward` · `call`），其余经 `dial/remote_ask.rs` 的 `--resident-call`。
 - `footprint/`：足迹（这台机器上 cc-monitor 写过什么、能不能撤）；`common/`：共用判定与成品的格类型；`stderr_log/`：脱离起的常驻后端把 stderr 落进一份有上限、滚动的文件（设置页「日志」里看得到）。
 
-后端分两块、零互相依赖：**原生后端**（会话 · tmux · 账号 · SSH 与两台之间的传输 · 资产 · 历史 · 中转宿主）与**文件管理后端**（只管本机的读和写：列 · 读 · 搜 · 写用户的文件 · 上传块 · 解压 · 提交，即 `files/`：读族 ＋ `write.rs` · `upload_chunks.rs` · `extract.rs` · `commit.rs` · `batch.rs`），两块只共用 `platform/` · `common/`；原生那一块够到文件管理那一块只经命令那一层（`stream/inbound/files_*_face.rs`）。传输台 `control/transfer.rs` 归原生那一块（拨号拿会话、搬字节），它要的路径解析 · 暂存件命名 · 摘要住 `common/`。文件管理那一块是独立的包 `backend-files`：只依赖纯工具与平台两层由它的 `Cargo.toml` 管，上层够得到的只有它的 `pub` 项（谁读哪一项由 `pub_reader_registry` 数着）。
+后端分两块、零互相依赖：**原生后端**（会话 · tmux · 账号 · SSH 与两台之间的传输 · 资产 · 历史 · 中转宿主）与**文件管理后端**（只管本机的读和写：列 · 读 · 搜 · 写用户的文件 · 上传块 · 解压 · 提交，即 `files/`：读族 ＋ `write.rs` · `upload_chunks.rs` · `extract.rs` · `commit.rs` · `batch.rs`），两块只共用 `platform/` · `common/`；原生那一块够到文件管理那一块只经命令那一层（`stream/inbound/files_*_face.rs`）。两台之间复制 `transfer-copy`（`control/transfer_copy.rs`，SFTP 腿 `control/transfer.rs`）归原生那一块（拨号拿会话、搬字节），它要的路径解析 · 暂存件命名 · 摘要住 `common/`。文件管理那一块是独立的包 `backend-files`：只依赖纯工具与平台两层由它的 `Cargo.toml` 管，上层够得到的只有它的 `pub` 项（谁读哪一项由 `pub_reader_registry` 数着）。
 
 ### 2.3 `observe/` 与 `control/`：按用途分，不按读写分
 
@@ -166,6 +166,8 @@ subscribe(origin, kind)    → 流
 - 只有产出观测帧的读才归 `observe/`。
 
 两层互不引用：`control/` 与 `observe/` 谁都不引用谁（两个包谁都没把对方列进依赖，引了编不过；观测侧要用控制侧的东西，由进程入口 `stream/entry.rs` 经 `Reactions` 交进来，如打标的 `tag`）。按读写分的话，那次 `@ccm_sid` 探测会被判给 `observe/`，而它唯一的调用方在 `control/`，平白造出一条反向边。
+
+两边共用的那一层是 `history/`：活会话表（`live_table`）· 需手动那一声（`needs_changed`）· 会话输入队（`session_queue`）都住它，`observe/` 与 `control/` 都引这几样、它不引两边。它就是两层之间的共享中间层，不另开包。
 
 ### 2.4 monitor：宿主 ＋ 通信层
 
@@ -244,9 +246,9 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 
 「这一格是值还是写好的字」由它的 Rust 类型说，不按格名猜：`blocks[].text` 是原文（值），`cost.text` 是核心写的字。界面自己的骨架字（按钮、菜单、标题、空状态）留在界面、也从文案表取；凡是描述数据或状态的字都由核心写。
 
-**出口扫描判据**：按意思判两句——出口取的文案键只许骨架那几档（文案表 `kind` 的 title · control · action · aria · body）且不带插值；拿一个值去比字面的码的分支里不许取文。扫的树照上表「输出适配层」那一行：界面 TS（`tests/frontend/ui/exit-rules.ts`，typescript 语法树）、壳与文件窗口的 Rust（`tests/frontend/filewin/exit_scan_tests.rs`）、手机 Kotlin（`src/mobile/detekt-rules` 的 detekt 规则）。存量登在欠账名单 `tests/frontend/ui/exit-debt.json`，三门语言共用，逐格恒等、只许删不许加。
+**出口扫描判据**：按意思判两句——出口取的文案键只许骨架那几档（文案表 `kind` 的 title · control · action · aria · body）且不带插值；拿一个值去比码（字面的码；Kotlin 另认从线上类型那一包引进来的 `类型.值`）的分支里不许取文。扫的树照上表「输出适配层」那一行：界面 TS（`tests/frontend/ui/exit-rules.ts`，typescript 语法树）、壳与文件窗口的 Rust（`tests/frontend/filewin/exit_scan_tests.rs`）、手机 Kotlin（`src/mobile/detekt-rules` 的 detekt 规则）。存量登在欠账名单 `tests/frontend/ui/exit-debt.json`，三门语言共用，逐格恒等、只许删不许加。
 
-**会走的钟**：核心写的时刻字是发出那一刻的字。秒级要走的那几处（过程行 `{dur}` · 「已等」）核心交起点或答出那一刻已等多久，出口从收到起按本机的钟接着走，不重问那台。时长只一个读口：桌面 TS `duration-format.ts::fmtDur`，手机 `core-copy` 的 `DurationFormat`（经 JNI 调 `copy_core::short_duration`），对同一份金样 `short-duration.golden.json`。
+**会走的钟**：核心写的时刻字是发出那一刻的字。秒级要走的那几处（过程行 `{dur}` · 「已等」）核心交起点或答出那一刻已等多久，出口从收到起按本机的钟接着走，不重问那台。时长只一个读口：桌面 TS `duration-format.ts::fmtDur`，手机 `core-rs` 的 `DurationFormat`（经 `Core` 调 `copy_core::short_duration`），对同一份金样 `short-duration.golden.json`。
 
 #### 格目录
 
@@ -326,8 +328,8 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 - **窗口**：`cc-monitor-filewin`（独立包 `src/frontend/filewin/`，egui，一窗一进程）经父子管道只说 `call` / `subscribe`；开窗那一侧在壳 `filewin/`，契约在共享 crate `src/common/filewin-contract/`。配色读同一份界面令牌。
 - **读**：后端 `files/`（常驻文件名索引 · 列目录 · 元数据 · 按块读 · 按内容搜）。
 - **写**：只经那台后端的文件管理面 `files/write.rs`（`Door::peek` · `Door::put` 带期望值 · `files-delete` …，规矩见 INVARIANTS §4），本机远端同一条路；上传块 · 解压 · 提交在 `files/upload_chunks.rs` · `files/extract.rs` · `files/commit.rs`。monitor 碰用户文件只有这一个开口，只差 `origin`。
-- **传输**：两台之间搬字节归原生那一块的传输台 `control/transfer.rs`（经 `dial/` 的 SFTP 写暂存区，远端那台的 `files-commit-upload` 提交）；下载的本机落点也由它写（过同一套路径解析，经帧面分派交来的写句柄）。
-- **手机**：文件屏（`app` 的 `ui/files/`）读写都问那台后端的 `files-*`（经这台的常驻流，入参与桌面窗口同一套切法：`root` ＝ 当前目录、`rel` ＝ 一段名字）；手机进程里没有后端，`transfer-*` 用不上：上传走块形（`files-stage-chunk` → `files-commit-upload`，同名那台问、答了同一份暂存件再交），下载走 `files-read-chunk`；分块那一圈在嵌的核心里（`chunk-core`，桌面同一份），本机那一份交文件描述符。手机经 SFTP 只剩部署那两处（写规矩 `Deploy`，与后端同一种）。
+- **传输**：两台之间搬字节归原生那一块的 `transfer-copy`（`control/transfer_copy.rs` 编排；SFTP 腿 `control/transfer.rs` 经 `dial/` 写暂存区，不走 SFTP 的走分块腿，远端那台的 `files-commit-upload` 提交）；下载的本机落点也由它写（过同一套路径解析，经帧面分派交来的写句柄）。
+- **手机**：文件屏（`app` 的 `ui/files/`）读写都问那台后端的 `files-*`（经这台的常驻流，入参与桌面窗口同一套切法：`root` ＝ 当前目录、`rel` ＝ 一段名字）；手机进程里没有后端，`transfer-copy` 用不上：上传走块形（`files-stage-chunk` → `files-commit-upload`，同名那台问、答了同一份暂存件再交），下载走 `files-read-chunk`；分块那一圈在嵌的核心里（`chunk-core`，桌面同一份），本机那一份交文件描述符。手机经 SFTP 只剩部署那两处（写规矩 `Deploy`，与后端同一种）。
 
 ### 3.5 终端与 tmux
 
@@ -359,7 +361,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 ### 3.6 文案表
 
 - 对外的每一句话都从一张表来：`src/shared/copy/table.json`（键 → 每种语言一句 ＋ 具名插值点；`rules.json` · `terms.json` 是写法规矩与用词表）。
-- 取文口各一份、读同一张表：Rust `src/common/copy-core/`（后端 · monitor · `creds-core` 共用，编译期内嵌）· 界面 `copy-table.ts::copyText`（Vite 读）· 手机 `core-copy`（经 JNI 调手机那份 `.so` 里的 `copy-core`，大小 · 时长同）。
+- 取文口各一份、读同一张表：Rust `src/common/copy-core/`（后端 · monitor · `creds-core` 共用，编译期内嵌）· 界面 `copy-table.ts::copyText`（Vite 读）· 手机 `core-rs` 的 `copyText`（经 `Core` 调手机那份 `.so` 里的 `copy-core`，时长同）。
 - 键必须是字面量，参数名集合等于表里那一条的 `args`；判据 `tests/copy/copy-table.vitest.ts`，手机生产源码不写死界面中文由 `src/mobile/app/src/test/kotlin/com/ccmonitor/mobile/copy/MobileLiteralsTest.kt` 钉。
 - 描述数据与状态的句子由核心写（§2.9），出口只取自己骨架上的字。
 
@@ -383,13 +385,14 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 | `core-claude` | `link/`：那台常驻流交来的事（会话簿 · 活卡 · 记录行 · 一问一答的结局 · 那台的状态成品）落成手机这一侧的几条流（`CoreLink`）；接 · 重连 · 握手 · 版本门 · 一问一答整条在 `core-rs` 里那份 `resident-client`（桌面同一份）；`model/` 把通用记录映射成渲染单元 |
 | `core-wire` | 线上契约的 Kotlin 那一头：生成的类与编解码（`gen/`，不手改），不放判定 |
 | `core-ssh` | 终端 · 文件走的那层 SSH 连接（按机器单飞）与 `RustTransport`：SSH 本身走 `core-rs`；自己不拨重连、不判死、不退避，跟着常驻流那条循环换连接 |
-| `core-rs` | 手机嵌的 Rust 核心 `libmobcore.so`：与后端同一份的拨号核心（`src/comms/ssh-dial`）的 FFI 外壳（手写 JNI · 走消息）——竞速 · 跳板 · host key · 鉴权 · SFTP · 钥匙派生与生成 · `~/.ssh/config` 解析都在这一份里；常驻流宿主（`resident.rs`，会话簿照端核心那一份折好再交）· 装后端（`install.rs`，同一份 `deploy` crate）· 分块传与一组一条命令（`transfer.rs` · `batch.rs`，桌面文件窗口同一份） |
+| `core-rs` | 手机嵌的 Rust 核心 `libmobcore.so`：与后端同一份的拨号核心（`src/comms/ssh-dial`）的 FFI 外壳（手写 JNI · 走消息）——竞速 · 跳板 · host key · 鉴权 · SFTP · 钥匙派生与生成 · `~/.ssh/config` 解析都在这一份里；常驻流宿主（`resident.rs`，会话簿照端核心那一份折好再交；几台的需手动 · 搜内容逐台问一圈再合也在这里，`needs_all` · `search_all`，合法是 `face_core` 那一份）· 装后端（`install.rs`，同一份 `deploy` crate）· 分块传与一组一条命令（`transfer.rs` · `batch.rs`，桌面文件窗口同一份）。Kotlin 认识这份 `.so` 的只有 `Core`（导出只有 `Java_…_Core_*`）；取文口 `copyText` 与 `DurationFormat` 也住这里，别的模块要核心经 `Core` 或交进来的 `ResidentCore` |
 | `core-terminal` | 终端引擎（termlib） |
 | `core-data` | 本地库（Room） |
 | `core-ui` | 共用主题与反馈 |
-| `core-copy` | 取文口与大小 · 时长格式（同一张文案表） |
 
 谁调谁：`core-rs` 里那份 `resident-client` 用 Kotlin 交的拨号请求开链路跑 `ccm -- --resident-attach`（与桌面连远端同一条路、同一份后端），交上来的事 → `core-claude` 照生成的类解 → `app` 排版；`core-ssh` 那层跟着它报的通断换连接。手机与桌面共吃同一批冻结格与金样（IPC-PROTOCOL §7）；界面令牌两端同一份 `src/shared/theme/tokens.css`（`core-ui` 构建时生成 Kotlin 那一份）。
+
+重问节奏归出口：几台合一份的那几样（需手动 · 搜内容），逐台问与合在核心做一次、出口一圈只问核心一次（同桌面「界面问本机后端一次」）；什么时候再问一圈（推送 · 换了一条流 · 没答上之后退避）· 去抖 · 留上一份在出口（手机 `ui/needs/NeedsBoard.kt`，桌面 `needs-book.ts`），核心不主动推合好的成品。
 
 ### 3.10 组
 

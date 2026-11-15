@@ -9,7 +9,7 @@
 //!
 //! 起会话 / resume 那一行由 `ccm` 按适配层这几格拼（`agents::LaunchFace`）。
 
-use crate::agents::Choice;
+use crate::agents::{Choice, PermissionMode};
 
 /// 默认启动器。
 pub const DEFAULT_COMMAND: &str = "claude";
@@ -92,22 +92,26 @@ pub(crate) fn model_confirm_on_screen(lines: &[String]) -> bool {
 }
 
 /// `claude --permission-mode` 收的、起会话框给的档（不给越过批准那一档）。`auto` 也在开着时 Shift+Tab 那一圈里（`plan` 之后）。字与答批计划那一组同字。
-pub(crate) const PERMISSION_MODES: &[Choice] = &[
-    Choice {
+pub(crate) const PERMISSION_MODES: &[PermissionMode] = &[
+    PermissionMode {
         value: "default",
         text: || copy_core::copy_text("beAsk.choice.planManual", &[]),
+        args: &[PERMISSION_MODE_FLAG, "default"],
     },
-    Choice {
+    PermissionMode {
         value: "acceptEdits",
         text: || copy_core::copy_text("beAsk.choice.planEdits", &[]),
+        args: &[PERMISSION_MODE_FLAG, "acceptEdits"],
     },
-    Choice {
+    PermissionMode {
         value: "plan",
         text: || copy_core::copy_text("beSessionNew.mode.plan", &[]),
+        args: &[PERMISSION_MODE_FLAG, "plan"],
     },
-    Choice {
+    PermissionMode {
         value: "auto",
         text: || copy_core::copy_text("beAsk.choice.planAuto", &[]),
+        args: &[PERMISSION_MODE_FLAG, "auto"],
     },
 ];
 
@@ -196,8 +200,13 @@ pub(crate) fn model_pick(raw: &str) -> Option<&'static str> {
     }
 }
 
-/// 会话开着时换模型送的那一行：`/model <值>`（它也把这个模型存成这个号以后新会话的默认，那一家自己说的）。
-pub(crate) fn model_command(value: &str) -> String {
+/// 起会话选了模型交给 claude 的那两个参数（`--model <模型>`）。claude 的模型不分推理档（清单里 `efforts` 空）⇒ 推理档不交。
+pub(crate) fn model_args(value: &str, _effort: Option<&str>) -> Vec<String> {
+    vec!["--model".to_string(), value.to_string()]
+}
+
+/// 会话开着时换模型送的那一行：`/model <值>`（它也把这个模型存成这个号以后新会话的默认，那一家自己说的）。推理档 claude 的 `/model` 不收 ⇒ 不带。
+pub(crate) fn model_command(value: &str, _effort: Option<&str>) -> String {
     format!("/model {value}")
 }
 

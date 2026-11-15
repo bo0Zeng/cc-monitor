@@ -220,7 +220,11 @@ fn live_mcp_failed_takes_the_latest_word_from_live_sessions_only() {
         "sid-d",
         &[delta("2026-10-09T11:00:00.000Z", "m-1", "stale")],
     );
-    let got = live_mcp_failed(&[a.clone(), b.clone(), dead.clone()]);
+    let homes: Vec<crate::agents::AgentHome> = [&a, &b, &dead]
+        .into_iter()
+        .flat_map(crate::agents::IntoHomes::into_homes)
+        .collect();
+    let got = live_mcp_failed(&homes);
     for h in [&a, &b, &dead] {
         let _ = fs::remove_dir_all(h);
     }
@@ -295,7 +299,9 @@ fn live_doing_reads_activity_and_what_it_waits_for() {
         "{\"type\":\"assistant\",\"timestamp\":\"t1\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"b1\",\"name\":\"Bash\",\"input\":{\"command\":\"ls\"}}]}}\n",
     )
     .unwrap();
-    let pids = crate::agents::pidfile_dir(&home);
+    let pids = crate::agents::IntoHomes::into_homes(&home)[0]
+        .pidfile_dir()
+        .unwrap();
     fs::create_dir_all(&pids).unwrap();
     let mut kids = Vec::new();
     let mut put = |sid: &str, status: &str| {
@@ -342,6 +348,58 @@ fn live_doing_reads_activity_and_what_it_waits_for() {
     assert_eq!(got, want);
 }
 
+/// 「要不要人」只有一个判法（`LiveTable::wait_of`，会话事实的 `needs` 也照它），不照前台后台判：只有后台进程的 pidfile 说在等
+/// （后台子 agent 挡着终端的批准也要人答）⇒ 需手动列表列它、在干什么那一格照那份 pidfile 说的框配种类，会话事实照的那一格同样说在等。
+#[cfg(target_os = "linux")]
+#[test]
+fn a_background_pidfile_saying_it_waits_is_judged_like_a_foreground_one() {
+    let home = test_home::scratch("bgwait");
+    let pids = crate::agents::IntoHomes::into_homes(&home)[0]
+        .pidfile_dir()
+        .unwrap();
+    fs::create_dir_all(&pids).unwrap();
+    let mut kids = Vec::new();
+    let mut put = |sid: &str, kind: &str| {
+        let c = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .unwrap();
+        let ticks = crate::platform::proc::proc_starttime(c.id()).expect("起始时刻");
+        fs::write(
+            pids.join(format!("{}.json", c.id())),
+            format!(r#"{{"pid":{},"sessionId":"{sid}","kind":"{kind}","procStart":"{ticks}","status":"waiting","waitingFor":"permission prompt","statusUpdatedAt":1700000000000}}"#, c.id()),
+        )
+        .unwrap();
+        kids.push(c);
+    };
+    put("s-bg", "bg");
+    put("s-fg", "interactive");
+    let rows = live_needs(&home, &|w, _| w, &|_, _| None);
+    let doing = live_doing(&home);
+    let table = crate::history::live_table::now(&crate::agents::IntoHomes::into_homes(&home));
+    for mut c in kids {
+        let _ = c.kill();
+        let _ = c.wait();
+    }
+    let _ = fs::remove_dir_all(&home);
+    use crate::observe::recognize::facts::NeedsKind as K;
+    let mut listed: Vec<&str> = rows.iter().map(|r| r.sid.as_str()).collect();
+    listed.sort();
+    assert_eq!(listed, ["s-bg", "s-fg"], "前台后台一样列");
+    for sid in ["s-bg", "s-fg"] {
+        assert_eq!(
+            doing.get(sid).and_then(|d| d.needs),
+            Some(K::Approve),
+            "{sid}"
+        );
+        assert_eq!(
+            table.wait_of(sid).and_then(|w| w.waiting_for),
+            Some(crate::agents::WaitOn::Permission),
+            "{sid}：会话事实照的那一格同样说在等批准框"
+        );
+    }
+}
+
 /// 「这条会话此刻谁持着它」只有一处（[`session_holders_by`]），照适配层声明的判活方式走：
 /// 开着写那一家 ⇒ 此刻开着记录写的进程（关了 ⇒ 判过了、没人）；pidfile 那一家 ⇒ 这台 pidfile（一份都没有 ⇒ 判过了、没人）；
 /// 判不了的那一家 ⇒ `None`，哪怕此刻正有进程开着它写（不冒充判过）。
@@ -386,4 +444,77 @@ fn each_adapter_declares_how_its_sessions_are_judged_alive() {
     assert_eq!(live_by("claude"), LiveBy::Pidfiles);
     assert_eq!(live_by("codex"), LiveBy::HeldOpen);
     assert_eq!(live_by("no-such-agent"), LiveBy::Unknown);
+}
+
+/// ★ 照路径认不出是哪一家的那份记录（替身家：记录根不在任何历史根底下、文件名谁都不认）⇒ 判不了谁持着它（`None`），
+/// 不照哪一家的判活方式冒充判过了，会话也就不归任何号。
+#[test]
+fn a_record_of_an_unknown_family_is_held_by_nobody_we_can_tell() {
+    let home = test_home::scratch("holders-unknown");
+    let rec = home.join("p").join("sess-x.ndjson");
+    fs::create_dir_all(rec.parent().unwrap()).unwrap();
+    fs::write(&rec, "{}\n").unwrap();
+    let _f = fs::OpenOptions::new().append(true).open(&rec).unwrap();
+    assert_eq!(
+        crate::agents::record_kind_of(&rec),
+        None,
+        "夹具要的是照路径认不出"
+    );
+    assert_eq!(session_holders(&home, &rec), None);
+    let _ = fs::remove_dir_all(&home);
+}
+
+/// ★ 照路径认不出是哪一家的那份记录（替身家）⇒ MCP 那一格不照哪一家的格式硬读：写着一条 Claude 形的断开也交空。
+#[test]
+fn the_mcp_word_of_an_unknown_familys_record_is_not_read_as_any_family() {
+    let dir = test_home::scratch("mcp-unknown");
+    let rec = dir.join("p").join("sess-x.ndjson");
+    fs::create_dir_all(rec.parent().unwrap()).unwrap();
+    let line = serde_json::json!({"type": "attachment", "timestamp": "2026-10-09T10:00:00.000Z", "attachment": {"type": "deferred_tools_delta", "failedMcpServers": [{"name": "m-a", "error": "e"}]}});
+    fs::write(&rec, format!("{line}\n")).unwrap();
+    assert_eq!(
+        crate::agents::record_kind_of(&rec),
+        None,
+        "夹具要的是照路径认不出"
+    );
+    assert!(McpBook::default().read(&rec).unwrap().is_empty());
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// ★ 需手动列表那一行不带整份脸：两端那一行只读 sid · label · needs · hidden，没有读者的那一格不造
+/// —— 原先那张脸住哪判不出、终端那几格恒说「无法确定所在终端」，是假话。一行只有这四格：缺 `face` 照样解得开，写回也不带它。
+#[test]
+fn a_needs_row_carries_no_face_of_its_own() {
+    use crate::observe::recognize::facts::{needs_of, PidWait};
+    let needs = needs_of(
+        Some(crate::agents::claudecode::AGENT_KIND),
+        &[],
+        Some(&PidWait {
+            waiting_for: Some(crate::agents::WaitOn::Worker),
+            since_ms: Some(1),
+            read_at_ms: 2,
+        }),
+    )
+    .expect("在等就有需手动");
+    let wire = serde_json::json!({
+        "sid": "s-1",
+        "label": "t",
+        "needs": serde_json::to_value(&needs).unwrap(),
+        "hidden": null,
+    });
+    let row: NeedsRow = serde_json::from_value(wire.clone()).expect("需手动那一行不要整份脸那一格");
+    let back = serde_json::to_value(&row).unwrap();
+    let mut keys: Vec<&str> = back
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    keys.sort();
+    assert_eq!(
+        keys,
+        vec!["hidden", "label", "needs", "sid"],
+        "一行只有这四格：{back}"
+    );
+    assert_eq!(back, wire);
 }

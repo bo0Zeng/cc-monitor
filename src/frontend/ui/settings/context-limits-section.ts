@@ -80,10 +80,9 @@ export class ContextLimitsSection {
     if (head?.getAttribute("aria-expanded") === "false") head.click();
   }
 
-  /** 标题行右侧「已改 N」（覆盖几条；0 不写）。 */
-  private paintCount(t: ContextLimitOverrides): void {
-    const n = Object.keys(t).length;
-    setFoldSummary(this.element, n > 0 ? copyText("contextLimits.editor.count", { n }) : "");
+  /** 标题行右侧「已改 N」：照抄后端写好的那一格（一条都没覆盖 ⇒ 不写）。 */
+  private paintCount(said: string | null): void {
+    setFoldSummary(this.element, said ?? "");
   }
 
   /** 问那台（建好不问：机器页第一次可见时宿主调）。 */
@@ -92,7 +91,7 @@ export class ContextLimitsSection {
       const r = await readPrefs(this.origin);
       const t = r.prefs.contextLimits;
       this.box.value = limitsToText(t);
-      this.paintCount(t);
+      this.paintCount(r.contextLimitsText);
       if (r.state === "unreadable") {
         sayWithDetail(this.status, r.reason ?? copyText("machinePrefs.read.failed"), r.detail ?? "");
         return;
@@ -114,7 +113,7 @@ export class ContextLimitsSection {
     try {
       const r = await setPrefs(this.origin, { contextLimits: parsed.ok });
       this.status.textContent = empty ? copyText("contextLimits.editor.cleared") : copyText("contextLimits.editor.saved");
-      this.paintCount(r.prefs.contextLimits);
+      this.paintCount(r.contextLimitsText);
       emit(SETTINGS_APPLIED_EVENT).catch((e: unknown) => console.warn("[context-limits] 通知不到主窗口：", e));
     } catch (e) {
       sayFailure(this.status, copyText("remote.save.failed"), e);

@@ -104,10 +104,16 @@ fn record_lines_number_countable_lines_and_keep_only_displayable() {
 #[test]
 fn the_record_face_follows_the_root_the_file_lives_under() {
     let codex_msg = r#"{"timestamp":"t","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"hi"}]}}"#;
-    fn codex_root() -> Option<std::path::PathBuf> {
-        Some(std::path::PathBuf::from("/codex-root"))
+    fn codex_home() -> Option<std::path::PathBuf> {
+        Some(std::path::PathBuf::from("/codex-home"))
     }
-    fn no_sessions() -> Vec<crate::agents::SynthSession> {
+    fn codex_roots(homes: &[crate::agents::AccountHome]) -> Vec<std::path::PathBuf> {
+        homes
+            .iter()
+            .map(|_| std::path::PathBuf::from("/codex-root"))
+            .collect()
+    }
+    fn no_sessions(_: &[crate::agents::AccountHome]) -> Vec<crate::agents::SynthSession> {
         Vec::new()
     }
     fn no_excerpt(_: &std::path::Path) -> String {
@@ -119,6 +125,7 @@ fn the_record_face_follows_the_root_the_file_lives_under() {
     fn bare(kind: &'static str) -> crate::agents::Adapter {
         crate::agents::Adapter {
             kind,
+            display_name: None,
             home,
             account_env: None,
             assets: None,
@@ -143,9 +150,10 @@ fn the_record_face_follows_the_root_the_file_lives_under() {
             history: Some(crate::agents::HistoryFace {
                 sessions: no_sessions,
                 excerpt: no_excerpt,
-                root: codex_root,
+                roots: codex_roots,
             }),
             records: Some(crate::agents::codex::RECORDS),
+            home: codex_home,
             ..bare("codex-like")
         },
         crate::agents::Adapter {
@@ -159,7 +167,7 @@ fn the_record_face_follows_the_root_the_file_lives_under() {
     let p = (face.parse)(&crate::agents::Line::new(codex_msg, 0))
         .unwrap()
         .unwrap();
-    let r = p.record.expect("Codex 那一家没出记录");
+    let r = p.record.expect("Codex 那一家没出记录").rec;
     assert_eq!((r.agent.as_str(), &r.body), ("codex", &r.body));
     assert!(matches!(r.body, crate::agents::record::Body::Reply { .. }));
     let face = crate::agents::record_face_among(
@@ -171,7 +179,7 @@ fn the_record_face_follows_the_root_the_file_lives_under() {
         .unwrap()
         .unwrap();
     assert_eq!(p.cwd.as_deref(), Some("/w"));
-    assert_eq!(p.record.unwrap().agent, "claude");
+    assert_eq!(p.record.unwrap().rec.agent, "claude");
     // Codex 的事件行 ⇒ 不出记录（不上线）；空行两家都 `Ok(None)`。
     let evt =
         r#"{"timestamp":"t","type":"event_msg","payload":{"type":"task_complete","turn_id":"x"}}"#;
@@ -468,4 +476,63 @@ fn a_call_beyond_one_page_before_the_page_start_leaves_the_result_untimed() {
     assert_eq!(c["text"], "", "{c}");
     assert!(c.get("timed").is_none(), "{c}");
     let _ = std::fs::remove_dir_all(file.parent().unwrap());
+}
+
+/// 一份 `n` 行的记录（结构占位）落在家目录的记录树下，回家目录与路径。
+fn many_lines(tag: &str, n: usize) -> (std::path::PathBuf, String) {
+    let home = test_home::scratch(tag);
+    let dir = home.join("projects").join("-p");
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut text = String::new();
+    for k in 0..n {
+        text.push_str(&format!(
+            r#"{{"type":"user","uuid":"u-{k:06}","timestamp":"t","message":{{"role":"user","content":"p{k:06}"}}}}"#
+        ));
+        text.push('\n');
+    }
+    let p = dir.join(format!("{tag}.jsonl"));
+    std::fs::write(&p, text).unwrap();
+    (home, p.to_string_lossy().into_owned())
+}
+
+/// 按行号取尾部一小段：读的字节跟取的那一段同量级、跟整份多大无关（大的那份是小的四倍、行一样宽，读的一样多）；取回的就是那几行。
+#[test]
+fn lines_by_number_read_only_around_the_asked_span() {
+    let mut read = Vec::new();
+    for (tag, n) in [("lines-near-small", 5_000usize), ("lines-near-big", 20_000)] {
+        let (home, path) = many_lines(tag, n);
+        let homes = crate::agents::IntoHomes::into_homes(&home);
+        let from = n as u64 - 3;
+        let (page, got) = read_lines_counted(&homes, &path, from, None, 1 << 20, 1 << 20).unwrap();
+        let want: Vec<String> = (n - 3..n)
+            .map(|k| format!(r#"{{"type":"user","uuid":"u-{k:06}","timestamp":"t","message":{{"role":"user","content":"p{k:06}"}}}}"#))
+            .collect();
+        assert_eq!(page.lines, want, "{tag}");
+        assert!(page.eof, "{tag}");
+        assert!(got < 64 << 10, "{tag}：取 3 行读了 {got} 字节");
+        read.push(got);
+        let _ = std::fs::remove_dir_all(&home);
+    }
+    assert_eq!(read[0], read[1], "读的量跟着整份变大了");
+}
+
+/// 取到起点以后文件被截短 · 整份换掉（起点越过末尾 · 落在一行中间）⇒ 那个起点作废、照实从头数：交的就是此刻文件里的那几行。
+#[test]
+fn a_start_taken_before_the_file_shrank_is_not_read_from() {
+    let (home, path) = many_lines("lines-shrunk", 40);
+    let homes = crate::agents::IntoHomes::into_homes(&home);
+    let line = |k: usize, w: &str| {
+        format!(
+            r#"{{"type":"user","uuid":"u-{k:06}","timestamp":"t","message":{{"role":"user","content":"{w}{k}"}}}}"#
+        )
+    };
+    for (shape, k_new, width) in [("越过末尾", 3usize, "q"), ("落在行中", 40, "wider-")] {
+        let (target, seek) = crate::observe::query::locate::line_seek(&homes, &path, 30).unwrap();
+        assert!(seek.0 > 0, "{shape}：起点该在文件中间");
+        let text: String = (0..k_new).map(|k| line(k, width) + "\n").collect();
+        std::fs::write(&target, text).unwrap();
+        let (page, _) = read_lines_after(&target, seek, 1, Some(3), 1 << 20, 1 << 20).unwrap();
+        assert_eq!(page.lines, vec![line(1, width), line(2, width)], "{shape}");
+    }
+    let _ = std::fs::remove_dir_all(&home);
 }

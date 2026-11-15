@@ -113,11 +113,29 @@ const LEAKS: &[&str] = &[
 /// 台架 / 人交给判据的输入：照留（反控：清单没把 `CCM_` 一族一刀切）。
 const KEPT: &[&str] = &["CCM_E2E_WORK", "CCM_SHOTS_NOW_MS", "CCM_SANDBOX"];
 const CHILD: &str = "CCM_E2E_TEST_HOME_CHILD";
+/// 子进程那一半的另一形：只看裸 tmux 落在哪（[`bare_tmux_in_a_test_process_lands_in_its_sandbox`] 拉起时带它）。
+const TMUX_CHILD: &str = "CCM_E2E_TEST_HOME_TMUX";
 
 /// 子进程那一半：只在下面那条判据带着一身外面会话的变量把本测试二进制再拉起来时跑。
 #[test]
 #[ignore = "子进程入口：只在 a_test_process_never_sees_the_outer_session 拉起时跑"]
 fn child_sees_no_outer_session() {
+    if std::env::var_os(TMUX_CHILD).is_some() {
+        let tx = test_home::sandbox_root().join("tx");
+        assert_eq!(
+            std::env::var_os("TMUX_TMPDIR").map(std::path::PathBuf::from),
+            Some(tx.clone()),
+            "TMUX_TMPDIR 不是本进程沙箱的 tx"
+        );
+        assert!(tx.is_dir(), "{} 不在 —— tmux 会退回 /tmp", tx.display());
+        for k in ["TMUX", "TMUX_PANE"] {
+            assert!(
+                std::env::var_os(k).is_none(),
+                "{k} 留在了测试进程里 —— 裸 tmux 照它连回外面那台"
+            );
+        }
+        return;
+    }
     if std::env::var_os(CHILD).is_none() {
         return;
     }
@@ -190,6 +208,46 @@ fn a_test_process_never_sees_the_outer_session() {
         );
     }
     let _ = std::fs::remove_dir_all(&scratch);
+}
+
+/// ★ 测试进程里的裸 tmux 落在它自己的沙箱：外面给了 `TMUX_TMPDIR=/tmp`、`TMUX` 指着缺省那台，家是那条路径的前缀（`/` · `/tmp`）
+/// 或真家，子测试进程里看到的 `TMUX_TMPDIR` 都是自己沙箱根底下的 `tx`（目录在），`TMUX` / `TMUX_PANE` 都没了。
+/// 外面那几个值只是字串：子进程不起 tmux。
+#[test]
+fn bare_tmux_in_a_test_process_lands_in_its_sandbox() {
+    let exe = std::env::current_exe().expect("拿不到测试二进制自己的路径");
+    let homes = [
+        Some(std::path::PathBuf::from("/")),
+        Some(std::path::PathBuf::from("/tmp")),
+        test_home::account_home(),
+    ];
+    for home in homes.into_iter().flatten() {
+        let out = std::process::Command::new(&exe)
+            .args([
+                "--exact",
+                "test_home_tests::child_sees_no_outer_session",
+                "--ignored",
+                "--test-threads=1",
+            ])
+            .env_remove(test_home::SANDBOX_MARK)
+            .env(TMUX_CHILD, "1")
+            .env("HOME", &home)
+            .env("TMUX_TMPDIR", "/tmp")
+            .env("TMUX", "/tmp/tmux-0/default,1,0")
+            .env("TMUX_PANE", "%0")
+            .output()
+            .expect("起子测试进程");
+        let text = format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(
+            out.status.success() && text.contains("1 passed"),
+            "HOME={}：子测试进程里的裸 tmux 没落在它自己的沙箱：\n{text}",
+            home.display()
+        );
+    }
 }
 
 /// 摘哪一格：真家（或没设家）⇒ 表里的都摘；给了别的家 ⇒ 只摘指向那个家以外的绝对路径，家里的路径与不是路径的值（父判据交给
@@ -306,5 +364,51 @@ fn a_test_process_leaves_the_temp_dir_as_it_found_it() {
             left.is_none(),
             "子测试进程（{mode}）退出后临时目录里留下了东西：{left:?}\n{text}"
         );
+    }
+}
+
+/// `set_dir_mode` 只收目录：目录照设；文件 · 指向目录的链接一律当场红（给文件设可执行位只经 `write_exe`），文件的权限位一点不动。
+#[cfg(unix)]
+#[test]
+fn set_dir_mode_takes_only_a_directory() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let d = test_home::scratch("dirmode");
+    let mode =
+        |p: &std::path::Path| std::fs::metadata(p).expect("meta").permissions().mode() & 0o777;
+    let sub = d.join("sub");
+    std::fs::create_dir(&sub).expect("建目录");
+    test_home::set_dir_mode(&sub, 0o555);
+    assert_eq!(mode(&sub), 0o555);
+    test_home::set_dir_mode(&sub, 0o755);
+    assert_eq!(mode(&sub), 0o755);
+    let file = d.join("f");
+    std::fs::write(&file, "x").expect("写");
+    let before = mode(&file);
+    let link = d.join("link");
+    std::os::unix::fs::symlink(&sub, &link).expect("链接");
+    for p in [&file, &link] {
+        let got = std::panic::catch_unwind(|| test_home::set_dir_mode(p, 0o755));
+        assert!(got.is_err(), "{} 不是目录却设上了", p.display());
+    }
+    assert_eq!(mode(&file), before, "文件的权限位被改了");
+    assert_eq!(mode(&sub), 0o755, "链接那头的目录被改了");
+}
+
+/// 旁边不停 fork 时，`write_exe` 写的假程序马上 exec 也起得来：一次 ETXTBSY 都没有（撞上一次当场红、不重试）。
+#[cfg(unix)]
+#[test]
+fn a_fake_program_written_while_others_fork_execs_without_etxtbsy() {
+    let d = test_home::scratch("wexe");
+    let _f = test_home::forking(4);
+    for i in 0..300 {
+        let p = d.join(format!("p{i}"));
+        test_home::write_exe(&p, "#!/bin/sh\nexit 0\n");
+        match std::process::Command::new(&p).status() {
+            Ok(st) => assert!(st.success(), "第 {i} 次：假程序退出不是 0：{st}"),
+            Err(e) => panic!(
+                "第 {i} 次：exec 刚写好的假程序起不来：{e}（{:?}）",
+                e.kind()
+            ),
+        }
     }
 }

@@ -1,6 +1,6 @@
 /**
  * 时长与距今的那一个读口（桌面）：共用金样 `tests/__fixtures__/short-duration.golden.json` 逐条喂给 `fmtDur` · `clockNow`，
- * 期望是金样里手写的；Rust 那一侧 `tests/common/copy-core/lib_tests.rs` 读同一份（`short_duration` · `rel_duration`），手机经 JNI 调的就是那一份，只对 clock 段（`CopyCoreTest.kt`）。
+ * 期望是金样里手写的；Rust 那一侧 `tests/common/copy-core/lib_tests.rs` 读同一份（`short_duration` · `rel_duration`），手机经 JNI 调其中的 `short_duration`，只对 clock 段（core-rs 的 `CopyCoreTest.kt`）。
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";

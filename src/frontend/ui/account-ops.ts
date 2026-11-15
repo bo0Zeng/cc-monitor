@@ -161,10 +161,11 @@ export async function accountsMcpRead(origin: Machine): Promise<AccountMcpView> 
   );
 }
 
-/** 从各号共用的用户级 MCP 里删一条（所有号一起撤）。 */
+/** 从各号共用的用户级 MCP 里删 `agent` 那一家的一条（那一家所有号一起撤；别家那一格不动）。`agent` 照回包那一条原样交，缺 ⇒ 后端认缺省那一家。 */
 export async function accountsMcpRemove(
   origin: Machine,
   name: string,
+  agent: string | undefined,
 ): Promise<AccountMcpView> {
   return settleTyped(
     origin,
@@ -172,19 +173,20 @@ export async function accountsMcpRemove(
     callTyped(
       origin,
       "accounts-mcp-remove",
-      { name },
+      agent === undefined ? { name } : { name, agent },
       budgetWithin(CHANGE_BUDGET_MS),
     ),
   );
 }
 
-/** 两边都改了的那一条用哪一版：`from` = 那个号里的；`null` = 共享的那一版。 */
+/** `agent` 那一家两边都改了的那一条用哪一版：`from` = 那个号里的；`null` = 共享的那一版。`agent` 缺 ⇒ 后端认缺省那一家。 */
 export async function accountsMcpPick(
   origin: Machine,
   name: string,
   from: string | null,
+  agent: string | undefined,
 ): Promise<AccountMcpView> {
-  const req = from === null ? { name } : { name, from };
+  const req = { name, ...(from === null ? {} : { from }), ...(agent === undefined ? {} : { agent }) };
   return settleTyped(
     origin,
     "accounts-mcp-pick",

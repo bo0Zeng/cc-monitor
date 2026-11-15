@@ -34,12 +34,8 @@ pub struct ExitPolicySetReq {
 )]
 #[serde(rename_all = "camelCase")]
 pub struct ExitPolicy {
-    /// `absent`（没设过）· `chosen` · `unreadable`（读不出：也照答，不是失败）—— 后端 `exit_policy::Read::state` 那三个词。
-    #[cfg_attr(
-        any(test, feature = "ts"),
-        ts(type = "\"absent\" | \"chosen\" | \"unreadable\"")
-    )]
-    pub state: String,
+    /// 没设过 · 选过 · 读不出（也照答，不是失败）：同一张文件三态（[`crate::FileState`]）。
+    pub state: crate::FileState,
     /// 生效值：monitor 退出时结束本机常驻后端。
     pub kill_on_exit: bool,
     /// `unreadable` 时的原因（那一句不带原话）。

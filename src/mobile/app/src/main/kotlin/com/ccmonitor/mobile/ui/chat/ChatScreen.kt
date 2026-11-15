@@ -46,6 +46,7 @@ import com.ccmonitor.mobile.ui.claude.ClaudeReadingPane
 import com.ccmonitor.mobile.ui.claude.LocalMdDoc
 import com.ccmonitor.mobile.ui.claude.LocalSaidImages
 import com.ccmonitor.mobile.ui.claude.LocalSegHl
+import com.ccmonitor.mobile.ui.common.CopyDetailButton
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
@@ -184,10 +185,17 @@ fun ChatTranscript(
             )
         }
 
-        state.failedWhy?.let {
-            // 会话那一层的失败：核心那一句原样（起不来 · 读不出记录）。
-            ErrorLine(it, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
-        }
+        state.failure?.let { FailedLine(it) }
+    }
+}
+
+/** 会话那一层的失败（起不来 · 读不出记录 · 等不到报到）：标题 · 那一句上屏，原话进［复制详情］，同桌面那张卡。 */
+@Composable
+private fun FailedLine(f: SessionFailure) {
+    val lines = failedLines(f)
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+        ErrorLine(lines)
+        CopyDetailButton(lines, f.detail)
     }
 }
 
@@ -242,6 +250,9 @@ private fun NewContentButton(
         Text(copyText("sessionViewer.stream.newContent"))
     }
 }
+
+/** 会话那一层失败上屏的那几行：标题（那台分了才有）一行 · 那一句一行，都照原样。 */
+internal fun failedLines(f: SessionFailure): String = listOfNotNull(f.title, f.said).joinToString("\n")
 
 /** 往上翻没读成：核心写好的那一句原样一行，「再上滑一次可重试」另起一行。 */
 internal fun historyErrorLines(why: String): List<String> = listOf(why, copyText("mobChat.history.retry"))

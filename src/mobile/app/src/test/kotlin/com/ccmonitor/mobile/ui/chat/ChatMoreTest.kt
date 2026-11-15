@@ -62,7 +62,10 @@ class ChatMoreTest {
         widen: Boolean = false,
     ) = Reply.Ok(mapOf("total" to total, "hits" to hits, "head" to head, "widen" to widen))
 
-    private fun hit(line: Long) = mapOf("uuid" to "u$line", "line" to line, "kind" to "user", "before" to "", "matched" to "问", "after" to " $line", "turn" to 1L, "tsMs" to 0L, "tsText" to "", "tool" to null)
+    private fun hit(
+        line: Long,
+        meta: String = "",
+    ) = mapOf("uuid" to "u$line", "line" to line, "before" to "", "matched" to "问", "after" to " $line", "turn" to 1L, "meta" to meta, "tool" to null)
 
     @Test
     fun `⋯ 的清单：收到脸 · 有运行表 · 知道目录 ⇒ 七项照这个顺序；缺哪样少哪一项`() =
@@ -100,6 +103,16 @@ class ChatMoreTest {
             assertEquals(listOf(100L, 120L), f.hits.map { it.line })
             assertEquals("结果头是那台写好的那一句", "前 2 · 共 9", f.head)
             assertEquals(false, f.widen)
+        }
+
+    @Test
+    fun `命中行头一行照抄那台写好的 meta（与桌面同一份成品）；那台没写 ⇒ 不摆`() =
+        runTest {
+            val o = opened(extra = { cmd, _ -> if (cmd == "history-find") found(2L, listOf(hit(100, "那台写的头 · 甲"), hit(120)), "匹配 2") else null })
+            o.more.find("问")
+            runCurrent()
+            val hits = o.found.hits
+            assertEquals(listOf("那台写的头 · 甲", null), hits.map(::findHitHead))
         }
 
     @Test

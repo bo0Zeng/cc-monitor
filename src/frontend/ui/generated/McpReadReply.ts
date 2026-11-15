@@ -4,12 +4,4 @@ import type { McpReadEntry } from "./McpReadEntry";
 /**
  * `mcp-read` 的回包。
  */
-export type McpReadReply = { entries: Array<McpReadEntry>, 
-/**
- * agent 用户级配置里那张项目表的键（排序）：用过的项目目录。
- */
-dirs: Array<string>, 
-/**
- * 在而读不出 / 不是 JSON 的那几份各一句；不在的静默。
- */
-problems: Array<string>, };
+export type McpReadReply = { entries: Array<McpReadEntry>, };

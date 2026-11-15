@@ -89,7 +89,6 @@ pub const CAPABILITIES: &[&str] = &[
     "cwd",
     "agent",
     "launcher",
-    "ccm-sid",
     "print",
     "detach",
     "tmux-size",
@@ -107,7 +106,6 @@ pub const CAPABILITIES: &[&str] = &[
 /// `attach` 不在这里：接回按宿主分 —— `--attach <名>` 先认托管名单（瘦客户端接上，哪个平台都做得到），认不到才落 `tmux attach`。
 pub const CCM_TMUX_CARRIED: &[&str] = &[
     "base-url-across-tmux", // 名字就是「跨 tmux 的边界」
-    "ccm-sid",              // 写的是 tmux 会话上的意图标（`@ccm_sid_expect`）；直路上没有可写的地方
     "detach",               // 实现就是 `tmux detach`
     "tmux",                 // 它本身
     "tmux-base",            // tmux 的 `base-index`
@@ -134,6 +132,9 @@ pub fn ccm_launcher_with(p: crate::platform::tmux::TmuxPlatform) -> Vec<&'static
 pub(crate) static NAME_TAKEN_FMT: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("beCcm.nameTaken.say", &[("name", "%s")]) + "\\n");
 
+/// 撞名（[`NAME_TAKEN_FMT`] 那一句）时 ccm 退的码：真跑那一出口、`--ccm-print` 那一串、交那一行的一方（`session_open` 认它判「会话名被占」）都取它。
+pub(crate) const NAME_TAKEN_EXIT: i32 = 3;
+
 /// 容器里那条内层命令**自检没过**时的那句话。形状与理由同 [`NAME_TAKEN_FMT`]
 /// （`printf` 格式串，结尾是反斜杠 + n）。退出码 `4`（起不来）；它前面一行是自检那一趟**自己的原话**。
 ///
@@ -153,7 +154,7 @@ pub(crate) static USAGE: std::sync::LazyLock<String> =
 
 /// 入口注入的「这台的账号清单成品」（`accounts-list` 那一份，入参 = 家目录 · 起哪一家）：起会话用哪个号只经 `launch_account::pick` 判，
 /// 它要的「能不能用」在观测层算（control 不引用 observe）。只在真要判号的时候读。
-pub(crate) type AccountsScan = fn(&str, &str) -> AccountsList;
+pub(crate) type AccountsScan = fn(&std::path::Path, &str) -> AccountsList;
 
 /// 被叫成的那个名字若是一段配置的名字 ⇒ 那个名字（`argv[0]` 取最后一段；Windows 上去掉 `.exe`）。
 /// 是 ccm 自己、或根本当不了配置名（形状不对）⇒ `None`，照 ccm 本身走。
@@ -178,16 +179,11 @@ pub enum Entry {
 }
 
 /// ccm 那一串是不是托管进程那一跳：`-- --host-run …`（只许紧跟打头的 `--`）。交回 `--host-run` 之后那一串。
+/// 二进制入口（`main.rs`）照它分岔：是 ⇒ 托管进程那一形（`host::managed::run::process`，自己的单线程运行时），不进 ccm 也不进后端。
 pub fn host_run_args(args: &[String]) -> Option<&[String]> {
     (args.first().map(String::as_str) == Some(argv::flag::END)
         && args.get(1).map(String::as_str) == Some(argv::flag::HOST_RUN))
     .then(|| &args[2..])
-}
-
-/// 托管进程（`host/managed/run.rs`）：持伪终端直到子进程退出、收完尾；交回进程退出码。
-/// `ccm` 这一趟本身同步，入口那个多线程运行时还在 ⇒ 让出这条线、在它上面跑完（同 [`attach_managed`]）。
-fn host_run(args: &[String], own: &crate::platform::fs::Own) -> i32 {
-    block_on(crate::host::managed::run::main(args, own))
 }
 
 /// 在入口那个运行时上跑完一段异步的（没有运行时 ⇒ 当场起一个单线程的）。
@@ -294,10 +290,6 @@ pub fn run(
     accounts: AccountsScan,
 ) -> i32 {
     use std::io::IsTerminal;
-    // 托管终端的托管进程那一跳（脱离起、没有终端）：不进起会话那一套。
-    if let Some(rest) = host_run_args(args) {
-        return host_run(rest, own);
-    }
     // 托管名单的家：铸托管名避让 · resume 认托管那几行 · `--attach` 都凭它（`host::managed::installed`）。
     crate::host::managed::install(own);
     let env = Env::from_process(process_argv);
@@ -340,7 +332,7 @@ pub fn run(
             let me = env
                 .self_argv
                 .iter()
-                .map(|a| plan::qarg(a))
+                .map(|a| crate::platform::shell::dialect::posix_word(a))
                 .collect::<Vec<_>>()
                 .join(" ");
             print!("{}", probe_output(&me));
@@ -438,6 +430,7 @@ fn plan_of(
     let upstream = egress::onto(
         &mut plan,
         crate::agents::proxy_of(&o.agent),
+        crate::agents::bind_among(crate::agents::REGISTRY, &o.agent),
         if inherit_account { &get } else { &nothing },
     );
     if let Plan::Direct(d) = &mut plan {
@@ -448,6 +441,31 @@ fn plan_of(
         env,
         upstream,
     })
+}
+
+/// 派活那一口要的一件活的计划（[`plan::task_among`] 在生产注册表上），在常驻后端里算：
+/// 环境照「从这台家目录起」那一份（[`Env::for_preview`]：不继承本进程的号 · 不铸来处 · 中转问本进程自己那一口），
+/// 出网设置与启动器同起会话的直路（[`egress::onto`] · [`launcher_resolved`]）。不铸来处 ⇒ 没有要留的上游描述。
+pub fn task_plan(ask: &plan::TaskAsk) -> Result<plan::Task, Die> {
+    let mut env = Env::for_preview();
+    agent_env(&ask.agent, &mut env, None);
+    let plan::Task { direct, text, out } = plan::task_among(crate::agents::REGISTRY, ask, &env)?;
+    let mut p = Plan::Direct(direct);
+    let get = |k: &str| std::env::var(k).ok();
+    let left = egress::onto(
+        &mut p,
+        crate::agents::proxy_of(&ask.agent),
+        crate::agents::bind_among(crate::agents::REGISTRY, &ask.agent),
+        &get,
+    );
+    debug_assert!(left.is_none(), "不铸来处 ⇒ 不留上游描述");
+    let Plan::Direct(mut direct) = p else {
+        unreachable!("出网设置只改直路里的几格");
+    };
+    launcher_resolved(&mut direct, &|p| {
+        crate::platform::shell::agent_launch(p, None)
+    })?;
+    Ok(plan::Task { direct, text, out })
 }
 
 /// 直路最后起的那个启动器**在计划里**就换成要起的那个文件（＋ 前导参数）：找法只一处（`find` 生产是
@@ -494,6 +512,7 @@ const PRINT_MAX_WORD_BYTES: cap_core::Cap = cap_core::Cap {
 #[derive(Debug, serde::Serialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(rename_all = "camelCase")]
 pub struct CcmCard {
     /// CLI 契约版本（`CCM_VERSION`）。
     pub(crate) version: &'static str,
@@ -502,7 +521,6 @@ pub struct CcmCard {
     /// 这一份的 `BUILD_ID`。
     pub(crate) build: &'static str,
     /// 终端里敲 `ccm` 走到的是不是这一份，与那一句。
-    #[serde(rename = "onPath")]
     pub(crate) on_path: on_path::OnPath,
 }
 
@@ -643,11 +661,10 @@ pub fn preview_resolved(
     let Parsed::Opts(o) = p else {
         return Err(copy_text("beCcm.preview.noSession", &[]));
     };
-    let mut env = Env::for_preview_in(home.to_string());
+    let mut env = Env::for_preview_in(home.into());
     if let Some(a) = at.map(str::trim).filter(|a| !a.is_empty()) {
-        env.pwd = plan::expand_home(a, &env.home);
+        env.pwd = plan::expand_home(a, &env.home).map_err(|Die(m)| m)?;
     }
-    let home = env.home.clone();
     let plan = plan_of(&o, env, false, accounts).map_err(|Die(m)| m)?.plan;
     Ok((
         plan::render_for(&plan, plan::terminal_shell()),
@@ -759,11 +776,7 @@ fn die(msg: &str) -> i32 {
 
 /// 接上一个托管终端（瘦客户端）。`ccm` 这一趟本身同步，入口那个多线程运行时还在 ⇒ 让出这条线、在它上面跑完。
 fn attach_managed(own: &crate::platform::fs::Own, id: &str) -> i32 {
-    block_on(crate::host::managed::attach::attach(
-        own,
-        id,
-        crate::history::session_queue::host_line_ears,
-    ))
+    block_on(crate::host::managed::attach::attach(own, id))
 }
 
 /// 真跑。
@@ -817,7 +830,13 @@ fn execute(plan: Plan, upstream: Option<&egress::Taken>, own: &crate::platform::
             // 跨进程那一形（编成 JSON 发给后端）走的也是这同一道门；同一个进程里**别把门丢了**。
             let req = match crate::control::launch::parse_request(launch_args(c)) {
                 Ok(r) => r,
-                Err(f) => return die(&format!("{}: {}", f.code_or_fallback(), f.said)),
+                Err(f) => {
+                    return die(&format!(
+                        "{}: {}",
+                        cmd_wire::failed::Failed::code_or_fallback(f.code.clone()),
+                        f.said
+                    ))
+                }
             };
             match crate::control::launch::run(&req) {
                 Ok(out) if out.created => {}
@@ -829,7 +848,7 @@ fn execute(plan: Plan, upstream: Option<&egress::Taken>, own: &crate::platform::
                             .replacen("%s", &c.name, 1)
                             .replace("\\n", "\n")
                     );
-                    return 3;
+                    return NAME_TAKEN_EXIT;
                 }
                 Err(mut f) => {
                     // 命令行：那一句 ＋ tmux 原话一起上 stderr（终端里没有复制详情）。
@@ -845,7 +864,13 @@ fn execute(plan: Plan, upstream: Option<&egress::Taken>, own: &crate::platform::
                         "{}",
                         copy_text(
                             "beCcm.execute.launchFailed",
-                            &[("kind", f.code_or_fallback()), ("message", &msg)]
+                            &[
+                                (
+                                    "kind",
+                                    &cmd_wire::failed::Failed::code_or_fallback(f.code.clone())
+                                ),
+                                ("message", &msg)
+                            ]
                         )
                     );
                     match reaped {
@@ -1139,7 +1164,7 @@ fn after_launch_fail(
 
 /// 容器路 ⇒ `launch` 那道门认得的那份入参（同帧面那一形 [`crate::control::launch::LaunchReq`]：
 /// 少一格编不过，不会再「静默丢掉」哪一件 —— `@ccm_agent` 就这么丢过一次）。
-fn launch_args(c: &plan::Container) -> crate::control::launch::LaunchReq {
+pub(crate) fn launch_args(c: &plan::Container) -> crate::control::launch::LaunchReq {
     let some = |s: &str| (!s.is_empty()).then(|| s.to_string());
     crate::control::launch::LaunchReq {
         mode: crate::control::launch::Mode::CreateOrAttach,
@@ -1147,8 +1172,8 @@ fn launch_args(c: &plan::Container) -> crate::control::launch::LaunchReq {
         payload: c.payload.clone(),
         agent: Some(c.agent.clone()),
         cwd: some(&c.cwd),
-        // `--ccm-sid` 在读命令行那一下已按会话 id 的值域判过（`ccm_line::argv`）：空 ⇒ 没给。
-        ccm_sid: c.ccm_sid.parse().ok(),
+        // 只有 `send-into` 认它（键入挂着那个 sid 的窗格）；建会话不写身份，事实标由 `identity_tag` 认过会话文件才打。
+        ccm_sid: None,
         width: c.size.as_ref().map(|(w, _)| w.clone()),
         height: c.size.as_ref().map(|(_, h)| h.clone()),
         // ccm 起的会话是用户在终端里起的：不归任何一个前端（「哪个前端的会话」那一维，`gate_rules::CLIENT_TERMINAL`）。
@@ -1185,7 +1210,7 @@ pub(crate) static WHY_SHELL_CONTAINER_TAIL: std::sync::LazyLock<String> =
 ///
 /// `CCM_ENV` **是真的要 shell**，本函数不假装它不要
 /// ⇒ 在没有 `sh` 的机器上它照旧做不到，只是从今天起**说得出口**（`no_shell:`）。
-fn needs_shell(d: &plan::Direct) -> Option<&'static str> {
+pub(crate) fn needs_shell(d: &plan::Direct) -> Option<&'static str> {
     if !d.ccm_env.is_empty() {
         return Some(WHY_SHELL_CCM_ENV.as_str());
     }
@@ -1248,54 +1273,23 @@ fn exec_direct(
         tab: d.tab.clone(),
         alias: d.alias.clone(),
         host: host_here(|k| std::env::var(k).ok()),
+        // `sh -c` 那一趟照它最后 exec 的那个程序判（[`shell_hop_wraps`]）；直起那一趟照起的那个程序判（下面）。
+        wraps: shell_hop_wraps(d, cfg!(windows)),
     };
     // 非得要 shell 的那几趟（判定与归因都只住 `needs_shell` 一处）⇒ 整条走 `sh -c`（它最后一句 `exec`，pid 不变）。
     if let Some(why) = needs_shell(d) {
         return exec_shell(&plan::render(&Plan::Direct(d.clone())), why, note, own);
     }
-    for k in &d.nested {
-        std::env::remove_var(k);
-    }
-    let cfg_env = &d.account_env;
-    if !d.config_dir.is_empty() {
-        std::env::set_var(cfg_env, &d.config_dir);
-    }
-    // 没有账号载体的那一家：`--base` 什么都不做。
-    if let Some(off) = d.answer_hook_off {
-        std::env::set_var(crate::agents::asks::ANSWER_HOOK_OFF_ENV, off.env_value());
-    }
-    if let Some((var, value)) = &d.plugin_dirs {
-        std::env::set_var(var, value);
-    }
-    if d.unset_config_dir && !cfg_env.is_empty() {
-        std::env::remove_var(cfg_env);
-    }
-    // 钥匙从这台的钥匙文件读进来、exec 那一刻才插（不进打印出来的命令）；插哪一把按地址的路由，放哪按那一家的注入格。
-    //   读不到 ⇒ 不起（注进去每一发都被中转拒）。
     let get = |k: &str| std::env::var(k).ok();
-    let mut argv = d.argv.clone();
-    let keyed = match &d.relay {
-        Some(url) => match crate::accounts::upstream_select::endpoint::keyed_for_exec(url, &get) {
-            Some(keyed) => Some((url, keyed)),
-            None => return die(&copy_text("beCcm.relay.noKey", &[])),
-        },
-        None => None,
+    let (argv, ops) = match direct_launch(d, &get) {
+        Ok(v) => v,
+        Err(say) => return die(&say),
     };
-    match (keyed, &d.relay_via) {
-        (Some((_, keyed)), plan::RelayVia::Env(var)) => std::env::set_var(var, keyed),
-        (Some((url, keyed)), plan::RelayVia::Args) => {
-            for a in argv.iter_mut() {
-                if plan::split_at_key(a, url).is_some() {
-                    *a = a.replacen(url.as_str(), &keyed, 1);
-                }
-            }
+    for (k, v) in &ops {
+        match v {
+            Some(v) => std::env::set_var(k, v),
+            None => std::env::remove_var(k),
         }
-        (None, plan::RelayVia::Env(var)) if d.clears_inherited_relay => std::env::remove_var(var),
-        _ => {}
-    }
-    // 随地址一起设的那几条（打印那一行同一份，`plan::render_direct`）。
-    for (k, v) in &d.relay_env {
-        std::env::set_var(k, v);
     }
     if !d.cwd.is_empty() && std::env::set_current_dir(&d.cwd).is_err() {
         return die(&copy_text(
@@ -1312,7 +1306,81 @@ fn exec_direct(
         reason = "一次性 ccm 最后那一下换成用户要起的 agent（程序名来自这一趟的参数，argv 不过 shell）：它就是用户敲 `cc` 想要发生的那件事"
     )]
     let agent = Child::new(prog).args(rest);
+    let note = Note {
+        wraps: crate::platform::shell::launch_wraps(std::ffi::OsStr::new(prog), cfg!(windows)),
+        ..note
+    };
     exec_or_spawn(agent, &format!("'{prog}'"), note, own)
+}
+
+/// `sh -c` 那一趟的那一跳在 agent 外面包没包一层：照它最后 exec 的那个程序 —— 计划 argv 的头一个（启动器已换成要起的那个文件，
+/// [`launcher_resolved`]）。sh -c 只跑这一条：Windows 上 sh.exe 的 exec 把那个程序起成它的直接子进程 ⇒ 包一层（那个程序自己又包一层 ⇒ 两层，不算）；
+/// POSIX 上就地 exec、pid 不变，不包；argv 空着（没东西可起）⇒ 不包。
+fn shell_hop_wraps(d: &plan::Direct, windows: bool) -> bool {
+    d.argv.first().is_some_and(|p| {
+        crate::platform::shell::shell_launch_wraps(std::ffi::OsStr::new(p), windows)
+    })
+}
+
+/// 直路那一跳交给那个进程的 argv 与环境（照先后：`Some` 设、`None` 摘）：exec 掉自己那一趟（[`exec_direct`]）与派活起的那个子进程
+/// （`control::launch::run_task`）同出这一处，打印那一行（`plan::render_direct`）说的是同一组。
+/// 钥匙从这台的钥匙文件读进来、这一刻才插（不进打印出来的命令）；插哪一把按地址的路由，放哪按那一家的注入格。
+/// 读不到 ⇒ `Err(那一句)`：不起（注进去每一发都被中转拒）。
+#[expect(
+    clippy::type_complexity,
+    reason = "（argv, 照先后的设 · 摘）只在这一处出、两处读，另起类型名只为过这条提示"
+)]
+pub(crate) fn direct_launch(
+    d: &plan::Direct,
+    get: &dyn Fn(&str) -> Option<String>,
+) -> Result<(Vec<String>, Vec<(String, Option<String>)>), String> {
+    let mut ops: Vec<(String, Option<String>)> = Vec::new();
+    let mut set = |k: &str, v: Option<&str>| ops.push((k.to_string(), v.map(str::to_string)));
+    for k in &d.nested {
+        set(k, None);
+    }
+    let cfg_env = &d.account_env;
+    if !d.config_dir.is_empty() {
+        set(cfg_env, Some(d.config_dir.as_str()));
+    }
+    if let Some(off) = d.answer_hook_off {
+        set(
+            crate::agents::asks::ANSWER_HOOK_OFF_ENV,
+            Some(off.env_value()),
+        );
+    }
+    if let Some((var, value)) = &d.plugin_dirs {
+        set(var, Some(value.as_str()));
+    }
+    // 没有账号载体的那一家：`--base` 什么都不做。
+    if d.unset_config_dir && !cfg_env.is_empty() {
+        set(cfg_env, None);
+    }
+    let mut argv = d.argv.clone();
+    let keyed = match &d.relay {
+        Some(url) => match crate::accounts::upstream_select::endpoint::keyed_for_exec(url, get) {
+            Some(keyed) => Some((url, keyed)),
+            None => return Err(copy_text("beCcm.relay.noKey", &[])),
+        },
+        None => None,
+    };
+    match (keyed, &d.relay_via) {
+        (Some((_, keyed)), plan::RelayVia::Env(var)) => set(var, Some(keyed.as_str())),
+        (Some((url, keyed)), plan::RelayVia::Args) => {
+            for a in argv.iter_mut() {
+                if plan::split_at_key(a, url).is_some() {
+                    *a = a.replacen(url.as_str(), &keyed, 1);
+                }
+            }
+        }
+        (None, plan::RelayVia::Env(var)) if d.clears_inherited_relay => set(var, None),
+        _ => {}
+    }
+    // 随地址一起设的那几条（打印那一行同一份，`plan::render_direct`）。
+    for (k, v) in &d.relay_env {
+        set(k, Some(v.as_str()));
+    }
+    Ok((argv, ops))
 }
 
 /// 最后那一跳给那个进程留的便条里写什么：用的号（说得出名字才有）· 答题插件是不是经环境交下去的 · `--tab` · 经哪条别名起的 ·
@@ -1324,6 +1392,8 @@ struct Note<'a> {
     tab: Option<crate::control::launch_account::LaunchTab>,
     alias: Option<String>,
     host: Option<crate::wire::TerminalHost>,
+    /// 那一跳在 agent 外面包一层（[`crate::platform::shell::launch_wraps`]）：住在托管终端里时随 pid 交给托管进程。
+    wraps: bool,
 }
 
 impl Note<'_> {
@@ -1334,6 +1404,7 @@ impl Note<'_> {
         tab: None,
         alias: None,
         host: None,
+        wraps: false,
     };
 }
 
@@ -1346,6 +1417,7 @@ fn leave_upstream(t: &egress::Taken, own: &crate::platform::fs::Own) -> Result<(
     let desc = UpstreamDesc {
         egress: t.egress.clone(),
         base: t.base.clone(),
+        account: t.account.clone(),
         pid: std::process::id(),
         at: crate::common::time::now_secs(),
     };
@@ -1433,6 +1505,25 @@ fn write_plugin(
     Ok(())
 }
 
+/// 住在托管终端里（[`host_here`] 认出托管，id 是 `CCM_HOST` 的值）：把起好的那一跳交给那个托管进程
+/// （事实 `hop_pid` · `hop_wrapped`，**只这一处写**；读不到终端的平台照它认前台，`host::managed`）。只发不等回话（起 agent 不多等）：
+/// 写没写成看事实，落了盘后端的观测侧当场重对一次打标；连接失败 · 写不出去只记一笔、照常起，那边照实落说不清。
+fn tell_hop(own: &crate::platform::fs::Own, pid: u32, wraps: bool) {
+    use crate::host::managed::{client, home, run::HOST_ENV};
+    let Some(id) = std::env::var(HOST_ENV).ok() else {
+        return;
+    };
+    let sent = home::sock_of(own, id.trim())
+        .map_err(|s| s.logged())
+        .and_then(|sock| {
+            client::hop_started(&sock, std::process::id(), pid, wraps).map_err(|e| e.to_string())
+        });
+    match sent {
+        Ok(()) => tracing::debug!("托管终端 {id}：那一跳（pid {pid}）已发出，不等回话"),
+        Err(why) => tracing::warn!("托管终端 {id}：那一跳（pid {pid}）没交上：{why}"),
+    }
+}
+
 /// 最终那一跳（`Child::exec_replace`：POSIX 就地 `exec`，Windows 起它、等它、交回退出码）。
 ///
 /// `subject` = **起不来的是什么**。🔴 它不是装饰（`D7`）：只吐
@@ -1447,6 +1538,9 @@ fn exec_or_spawn(
     own: &crate::platform::fs::Own,
 ) -> i32 {
     let note = |pid: u32| {
+        if leave.host == Some(crate::wire::TerminalHost::Managed) {
+            tell_hop(own, pid, leave.wraps);
+        }
         let now = crate::common::time::now_secs();
         if leave.account.is_none()
             && !leave.plugin

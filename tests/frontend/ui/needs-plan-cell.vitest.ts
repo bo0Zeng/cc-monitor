@@ -16,16 +16,21 @@ import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 import type { NeedsMerged } from "../../../src/frontend/ui/generated/NeedsMerged";
 
 const merged: NeedsMerged = {
-  items: [
-    { origin: LOCAL, item: { kind: "plan", rank: 1, workspace: "/work/ledger", slice: "ledger", cell: { id: "A2-1", label: "A2-1 编码探测" } } },
-    { origin: LOCAL, item: { kind: "plan", rank: 1, workspace: "/work/ledger", slice: "ledger" } },
-    { origin: LOCAL, item: { kind: "plan", rank: 1, workspace: "/work/ledger", slice: "ledger", cell: { id: "A3", label: "A3 导出" } } },
-  ],
-  total: 3,
+  asks: { items: [], total: 0, head: "", sure: true },
+  manual: {
+    items: [
+      { origin: LOCAL, item: { kind: "plan", rank: 1, workspace: "/work/ledger", slice: "ledger", cell: { id: "A2-1", label: "A2-1 编码探测" } } },
+      { origin: LOCAL, item: { kind: "plan", rank: 1, workspace: "/work/ledger", slice: "ledger" } },
+      { origin: LOCAL, item: { kind: "plan", rank: 1, workspace: "/work/ledger", slice: "ledger", cell: { id: "A3", label: "A3 导出" } } },
+    ],
+    total: 3,
+    head: "",
+    sure: true,
+  },
   unreadable: [],
   down: [],
-  head: "",
-  sure: true,
+  ended: [],
+  windowTitle: "",
 };
 
 async function book(): Promise<NeedsBook> {
@@ -35,7 +40,7 @@ async function book(): Promise<NeedsBook> {
 }
 
 function facts(b: NeedsBook): PanelFacts {
-  return { sessions: [], plans: planRows(b.plans()), manual: [], offline: [], unreadable: [] };
+  return { col: "manual", sure: true, sessions: [], plans: planRows(b.plans()), manual: [], offline: [], unreadable: [] };
 }
 
 describe("需手动的计划项直达那一格", () => {
@@ -46,7 +51,7 @@ describe("需手动的计划项直达那一格", () => {
 
   it("★ 浮层计划一条一行：第一行是「编号 标题」（没有格 ⇒ 片名），同一片的几条不收成一行", async () => {
     const b = await book();
-    const { root } = renderNeedsPanel(facts(b), { answer: () => {}, plan: () => {}, login: () => {} }, 0);
+    const { root } = renderNeedsPanel(facts(b), { answer: () => {}, plan: () => {}, login: () => {}, toAccount: () => {} }, 0);
     const rows = [...root.querySelectorAll<HTMLElement>("[data-row=plan]")];
     expect(rows.length).toBe(3);
     expect(rows.map((r) => r.firstElementChild!.nextElementSibling!.firstElementChild!.textContent)).toEqual(["A2-1 编码探测", "ledger", "A3 导出"]);
@@ -55,7 +60,7 @@ describe("需手动的计划项直达那一格", () => {
   it("★ 点哪一行交出哪一条的下标（计划页照它那一条的格走）", async () => {
     const b = await book();
     const got: number[] = [];
-    const { root } = renderNeedsPanel(facts(b), { answer: () => {}, plan: (i) => got.push(i), login: () => {} }, 0);
+    const { root } = renderNeedsPanel(facts(b), { answer: () => {}, plan: (i) => got.push(i), login: () => {}, toAccount: () => {} }, 0);
     const rows = [...root.querySelectorAll<HTMLElement>("[data-row=plan]")];
     rows[2].click();
     rows[1].click();

@@ -75,7 +75,7 @@ class FileOpsTest {
             val kinds = mapOf("/w/src" to ("dir" to "/w"), "/w/src/a.kt" to ("file" to "/w/src"), "C:\\w\\b.kt" to ("file" to "C:\\w"))
             val link =
                 FakeCoreLink().apply {
-                    answer = { _, a -> kinds[a!!["path"]]?.let { (kind, up) -> Reply.Ok(mapOf("path" to a["path"], "up" to up, "kind" to kind, "size" to 0.0, "readonly" to false, "owner" to null, "link_target" to null)) } ?: Reply.Failed(Failed("not_found", "不在", "")) }
+                    answer = { _, a -> kinds[a!!["path"]]?.let { (kind, up) -> Reply.Ok(mapOf("path" to a["path"], "up" to up, "kind" to kind, "size" to 0.0, "size_text" to "0 B", "readonly" to false, "owner" to null, "link_target" to null)) } ?: Reply.Failed(Failed("not_found", "不在", "")) }
                 }
             val ops = FileOps(link) { "box" }
             assertEquals(FileOps.Opening.Dir(RemotePath.of("/w/src")), ops.open("/w/src").getOrThrow())

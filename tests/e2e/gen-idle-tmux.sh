@@ -3,8 +3,17 @@
 #   - fake-claude 前台 sleep,pane 持有它 → backend 判活 SessionAdded(live) + tmux ls 带 @ccm_sid;
 #   - `; exec sh`:kill fake-claude(读 pidfile pid)后 pane 落回 shell,**tmux 会话仍在、@ccm_sid 仍在**
 #     → 灰灯态(claude 退但 tmux 未亡);随后 `tmux kill-session` 才 → archived。
-# 打印会话名(cc-<sid8>)。TMUX_LS_FMT / @ccm_sid 是后端与 monitor 双写点,勿改格式(红线)。
+# 只在调用方装了 shim 时跑(见下面开头那一道)。打印会话名(cc-<sid8>)。TMUX_LS_FMT / @ccm_sid 是后端与 monitor 双写点,勿改格式(红线)。
 set -euo pipefail
+
+# 隔离只靠调用方 PATH 上那份强插 `-L` 的 shim（`tmux-shim.sh` 装的，或套件自建的同形那一份：`exec <tmux> -L <名> "$@"`）。
+# PATH 上的 tmux 不是它 ⇒ 一条 tmux 都不起、退 2：下面的裸 `tmux` 会落到缺省 server（开发机上是用户正在用的那台）。
+# 认的是 shim 本身，不认 `TMUX_SHIM_SOCK`：那个名字 `tmux-shim.sh` 不 export，被调起的本脚本看不见。
+_tmux="$(command -v tmux || true)"
+if [ -z "$_tmux" ] || ! grep -qE '^exec .* -L [^ ]+ "\$@"$' "$_tmux" 2>/dev/null; then
+  echo "gen-idle-tmux.sh：PATH 上的 tmux（${_tmux:-没有}）不是强插私有选择器的 shim —— 不造，免得落到缺省 server（先 . tmux-shim.sh <前缀>）" >&2
+  exit 2
+fi
 
 SID="${1:?usage: gen-idle-tmux.sh <sid>}"
 SID8="${SID:0:8}"

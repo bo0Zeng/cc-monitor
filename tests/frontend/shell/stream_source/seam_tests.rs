@@ -31,24 +31,21 @@ fn a_local_only_frame_from_a_remote_is_said_and_dropped() {
     let origin = crate::origin::Origin::named("devbox");
     let got = tracing::subscriber::with_default(subscriber, || {
         tracing::callsite::rebuild_interest_cache();
-        [
-            r#"{"kind":"transfer","id":"x","got":1,"total":2}"#,
-            r#"{"kind":"probe","ticket":"t","cell":{"reached":"ssh"}}"#,
-        ]
-        .iter()
-        .map(|l| {
-            let f = super::decode(l).unwrap();
-            super::route(&origin, None, f).is_some()
-        })
-        .collect::<Vec<_>>()
+        [r#"{"kind":"probe","ticket":"t","cell":{"reached":"ssh"}}"#]
+            .iter()
+            .map(|l| {
+                let f = super::decode(l).unwrap();
+                super::route(&origin, None, f).is_some()
+            })
+            .collect::<Vec<_>>()
     });
-    assert_eq!(got, [false; 2], "远端来的传输 / 测试连接帧被往下送了");
+    assert_eq!(got, [false; 1], "远端来的测试连接帧被往下送了");
     let log = String::from_utf8(warns.0.lock().unwrap().clone()).unwrap();
     assert_eq!(
         log.matches("[devbox] 远端后端发来了只开在本机后端上的帧")
             .count(),
-        2,
-        "远端来的那几帧没有照实说：\n{log}"
+        1,
+        "远端来的那一帧没有照实说：\n{log}"
     );
 }
 

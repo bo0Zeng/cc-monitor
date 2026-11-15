@@ -2,8 +2,18 @@ use super::*;
 use crate::platform::fs::NewFile;
 use std::path::PathBuf;
 
+/// 按 sid 找到的那一条的替身：哪一家 · 哪份文件（家与根这几条判据用不到）。
+fn at_of(kind: &'static str, file: PathBuf) -> crate::agents::SessionAt {
+    crate::agents::SessionAt {
+        kind,
+        home: PathBuf::new(),
+        root: PathBuf::new(),
+        file,
+    }
+}
+
 /// 帧面那一格 `launch` 的替身（推断本身由 `fork_launch_tests.rs` 钉）。
-fn no_launch(_: &Path, _: &str) -> crate::control::fork_launch::Launch {
+fn no_launch(_: &crate::agents::SessionAt, _: &str) -> crate::control::fork_launch::Launch {
     use crate::control::fork_launch::{Launch, Slot, Why};
     Launch {
         cwd: Slot::Unknown { why: Why::NoCwd },
@@ -16,7 +26,7 @@ fn no_launch(_: &Path, _: &str) -> crate::control::fork_launch::Launch {
 fn ask(
     root: &Path,
     args: serde_json::Value,
-    launch: &dyn Fn(&Path, &str) -> crate::control::fork_launch::Launch,
+    launch: &dyn Fn(&crate::agents::SessionAt, &str) -> crate::control::fork_launch::Launch,
 ) -> Result<serde_json::Value, crate::common::said::Said> {
     use crate::wire::typed::Codes;
     let req: ForkReq = crate::wire::typed::take(&args)?;
@@ -88,7 +98,7 @@ fn write_new_file_refuses_existing_target() {
     let p = root.join("projects").join("proj").join("dup.jsonl");
     std::fs::write(&p, "PREEXISTING\n").unwrap();
     let err = write_new_file(&NewFile::issue(), &p, &[serde_json::json!({"x":1})]).unwrap_err();
-    assert!(err.contains("create"), "got: {err}");
+    assert!(matches!(err, NewFileFail::Create(_)), "落在新建那一步");
     assert_eq!(
         std::fs::read_to_string(&p).unwrap(),
         "PREEXISTING\n",
@@ -99,7 +109,7 @@ fn write_new_file_refuses_existing_target() {
 
 /// 找那一份走的是注册表那一格（本体住适配层 `agents/claudecode/branch.rs`）—— 这里钉的是**这条路真的经过它**。
 fn find_here(root: &Path, sid: &str) -> Result<PathBuf, String> {
-    crate::agents::find_session(root, sid).map(|at| at.file)
+    crate::agents::find_session_in(root, sid).map(|at| at.file)
 }
 
 #[test]
@@ -133,10 +143,32 @@ fn an_unknown_session_id_is_refused_not_silently_substituted() {
     seed(&root, "bbb");
     // 反向自检：树上真有东西可被「随手挑」。
     assert!(find_here(&root, "aaa").is_ok(), "夹具没造出可被挑中的会话");
+    let names = test_home::list(&root.join("projects").join("proj"));
     let err = run_inner(&NewFile::issue(), &root, "ccc", "u2").unwrap_err();
+    assert_eq!(
+        err.said, "未分叉 · 未找到会话记录 · ccc",
+        "上屏只出文案表那一句"
+    );
     assert!(
-        err.contains("not found") && err.contains("ccc"),
-        "查不到的 sid 应当报错并点名，实得：{err}"
+        err.raw.as_deref().is_some_and(|r| r.contains("not found")),
+        "下层说的进原话：{err:?}"
+    );
+    // 起新会话那一条带 fork 找同一份：码照 fork_failed，那一句同上。
+    let err = fork_for_launch_among(
+        crate::agents::REGISTRY,
+        &NewFile::issue(),
+        &root,
+        "ccc",
+        "u2",
+    )
+    .unwrap_err();
+    assert_eq!(err.code.as_deref(), Some("fork_failed"));
+    assert_eq!(err.said, "未分叉 · 未找到会话记录 · ccc");
+    assert!(err.raw.is_some(), "下层说的进原话");
+    assert_eq!(
+        test_home::list(&root.join("projects").join("proj")),
+        names,
+        "一份都不写"
     );
     std::fs::remove_dir_all(&root).ok();
 }
@@ -174,7 +206,139 @@ fn sidechain_reject_reaches_backend_path() {
     body.push('\n');
     std::fs::write(&f, body).unwrap();
     let err = run_inner(&NewFile::issue(), &root, "sc", "s1").unwrap_err();
-    assert!(err.contains("sidechain"), "got: {err}");
+    assert_eq!(
+        err.said, "未分叉 · 会话记录无法改写成分支 · sc",
+        "上屏只出文案表那一句"
+    );
+    assert!(
+        err.raw.as_deref().is_some_and(|r| r.contains("sidechain")),
+        "那一家说的进原话：{err:?}"
+    );
+    // 起新会话那一条带 fork 走同一份改写：码照 fork_failed，那一句同上。
+    let err = fork_for_launch_among(
+        crate::agents::REGISTRY,
+        &NewFile::issue(),
+        &root,
+        "sc",
+        "s1",
+    )
+    .unwrap_err();
+    assert_eq!(err.code.as_deref(), Some("fork_failed"));
+    assert_eq!(err.said, "未分叉 · 会话记录无法改写成分支 · sc");
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// ★ 认家只照按 sid 找到的那一家（`SessionAt::kind`），不照路径另认（替身家：两家都认这个文件名、照路径认不出；
+/// 会话住在自己叉的那一家的根下）⇒ 照那一家自己叉，回它交回的 sid，通用层一份都不写。
+#[test]
+fn a_launch_fork_goes_by_the_family_that_found_it_not_by_the_path() {
+    let (reg, at) = crate::agents::fake::found_in_the_other("fork-by-kind", |l| l);
+    std::fs::write(&at.file, "{\"node\":\"n1\"}\n").unwrap();
+    let dir = at.file.parent().unwrap().to_path_buf();
+    let names = test_home::list(&dir);
+    let homes = [crate::agents::AgentHome {
+        kind: at.kind,
+        home: at.home.clone(),
+    }];
+    let sid = "00000000-0000-4000-8000-0000000000c7";
+    crate::agents::fake::own_fork_calls();
+    let got = fork_for_launch_among(&reg, &NewFile::issue(), &homes, sid, "n1");
+    assert_eq!(got.ok().as_deref(), Some("new-1"), "照那一家自己叉");
+    assert_eq!(
+        crate::agents::fake::own_fork_calls(),
+        vec![(sid.to_string(), "n1".to_string())],
+        "那一家收到源 sid 与那条消息"
+    );
+    assert_eq!(test_home::list(&dir), names, "通用层一份都不写");
+    std::fs::remove_dir_all(&at.home).ok();
+}
+
+/// ★ 源会话起在哪个目录也只照找到它的那一家问（同上夹具：照路径认不出）⇒ 那一家记录面说的那一个。
+#[test]
+fn the_source_cwd_goes_by_the_family_that_found_it_not_by_the_path() {
+    fn here(_: &Path) -> Option<String> {
+        Some("/w/proj".to_string())
+    }
+    let (mut reg, at) = crate::agents::fake::found_in_the_other("fork-cwd", |l| l);
+    for row in reg.iter_mut().filter(|r| r.kind == at.kind) {
+        if let Some(r) = row.records.as_mut() {
+            r.project_dir = Some(here);
+        }
+    }
+    assert_eq!(
+        source_cwd_among(&reg, &at).as_deref(),
+        Some("/w/proj"),
+        "照那一家记录面给出"
+    );
+    std::fs::remove_dir_all(&at.home).ok();
+}
+
+/// ★ 改写那一形的每种拒法上屏只出文案表那一句（下层说的进原话）：源记录读不出 · 那一家没有会话文件命名 · 新记录建不成。
+#[test]
+fn each_rewrite_refusal_says_the_copy_table_sentence() {
+    // 读不出：认得是哪一家的（文件名），盘上没有。
+    let root = tmp("fork-read");
+    let gone = root.join("projects").join("proj").join("gone.jsonl");
+    let kind =
+        crate::agents::record_kind_among(crate::agents::REGISTRY, &gone).expect("认得是哪一家");
+    let err = rewrite(
+        crate::agents::REGISTRY,
+        &NewFile::issue(),
+        at_of(kind, gone),
+        "gone",
+        "u2",
+    )
+    .unwrap_err();
+    assert_eq!(err.said, "未分叉 · 会话记录无法读取 · gone");
+    assert!(err.raw.is_some(), "读不出的原因进原话");
+
+    // 没有会话文件命名：替身家的合成历史那一家（会话不住记录树），改写面换成原样交回。
+    fn chats_home() -> Option<PathBuf> {
+        Some(std::env::temp_dir().join(format!("ccm-fork-chats-{}", std::process::id())))
+    }
+    fn as_is(
+        lines: &[serde_json::Value],
+        _: &str,
+        _: &str,
+        _: &str,
+    ) -> Result<Vec<serde_json::Value>, String> {
+        Ok(lines.to_vec())
+    }
+    let mut row = crate::agents::fake::runs::history::row(chats_home);
+    if let Some(r) = row.records.as_mut() {
+        r.branch = Some(crate::agents::BranchFace::Rewrite(as_is));
+    }
+    let chats = crate::agents::fake::runs::history::records_root(&chats_home().unwrap());
+    std::fs::create_dir_all(&chats).unwrap();
+    let src = chats.join(crate::agents::fake::runs::history::file_name("c1"));
+    std::fs::write(&src, "{\"chat\":\"c1\"}\n").unwrap();
+    let chats_kind = row.kind;
+    let err = rewrite(&[row], &NewFile::issue(), at_of(chats_kind, src), "c1", "u").unwrap_err();
+    assert_eq!(err.said, "未分叉 · 该家的会话不支持分叉 · c1");
+    std::fs::remove_dir_all(chats_home().unwrap()).ok();
+
+    // 新记录建不成：源记录所在目录只读（以 root 跑时只读挡不住，这一段不判）。
+    #[cfg(unix)]
+    {
+        seed(&root, "ro");
+        let proj = root.join("projects").join("proj");
+        test_home::set_dir_mode(&proj, 0o555);
+        let probe = proj.join("probe");
+        let read_only = std::fs::write(&probe, "").is_err();
+        let res = rewrite(
+            crate::agents::REGISTRY,
+            &NewFile::issue(),
+            at_of(kind, proj.join("ro.jsonl")),
+            "ro",
+            "u2",
+        );
+        test_home::set_dir_mode(&proj, 0o755);
+        if read_only {
+            let err = res.err().expect("只读目录里建不成");
+            assert_eq!(err.said, "未分叉 · 分支记录无法新建 · ro");
+            assert!(err.raw.is_some(), "建不成的原因进原话");
+        }
+    }
     std::fs::remove_dir_all(&root).ok();
 }
 
@@ -210,7 +374,7 @@ fn the_frame_face_and_the_core_are_one_fork() {
         &|source, sid| {
             asked
                 .borrow_mut()
-                .push((source.to_path_buf(), sid.to_string()));
+                .push((source.file.clone(), sid.to_string()));
             no_launch(source, sid)
         },
     )
@@ -224,7 +388,7 @@ fn the_frame_face_and_the_core_are_one_fork() {
     );
     assert_eq!(
         via_wire["launch"],
-        serde_json::to_value(no_launch(Path::new(""), "")).unwrap()
+        serde_json::to_value(no_launch(&at_of("", PathBuf::new()), "")).unwrap()
     );
     let keys = |v: &serde_json::Value| -> Vec<String> {
         let mut k: Vec<String> = v.as_object().unwrap().keys().cloned().collect();

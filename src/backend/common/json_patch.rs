@@ -31,7 +31,48 @@ pub fn push_item(src: &str, path: &[&str], item: &Value) -> Option<Plan> {
     edit(src, path, item, true)
 }
 
+/// 几格按序就地改（每格同 [`set_member`]），末了再解开核一次：新原文解开 ＝ 原文解开之后照样放上这几格（沿途缺的层补成对象）——
+/// 不对就不交出去（`None`：同名键出现两次、就地换落错了地方的，都在这里拒）。读不懂 · 根或沿途某层不是对象 ⇒ `None`。
+/// 开头的 BOM 原样留着；原文是空的 ⇒ 只有这几格的新文件。只出合好的整份，不算 diff。
+pub fn set_checked(src: &str, edits: &[(&[&str], Value)]) -> Option<String> {
+    let body = src.strip_prefix('\u{feff}').unwrap_or(src);
+    let mut out = body.to_string();
+    for (path, v) in edits {
+        out = splice(&out, path, v, false)?;
+    }
+    let mut want = if body.trim().is_empty() {
+        Value::Object(Default::default())
+    } else {
+        serde_json::from_str(body).ok()?
+    };
+    for (path, v) in edits {
+        put_at(&mut want, path, v.clone())?;
+    }
+    (serde_json::from_str::<Value>(&out).ok()? == want)
+        .then(|| format!("{}{out}", &src[..src.len() - body.len()]))
+}
+
+/// 在解开的值上沿键路放上 `v`（沿途缺的层补成空对象）；沿途某一层不是对象 ⇒ `None`。
+fn put_at(root: &mut Value, path: &[&str], v: Value) -> Option<()> {
+    let (last, lead) = path.split_last()?;
+    let mut at = root;
+    for k in lead {
+        at = at
+            .as_object_mut()?
+            .entry((*k).to_string())
+            .or_insert_with(|| Value::Object(Default::default()));
+    }
+    at.as_object_mut()?.insert((*last).to_string(), v);
+    Some(())
+}
+
 fn edit(src: &str, path: &[&str], v: &Value, push: bool) -> Option<Plan> {
+    let whole = splice(src, path, v, push)?;
+    finish(src, whole)
+}
+
+/// 就地插 / 换那一半：合好的整份（不核、不算 diff）。
+fn splice(src: &str, path: &[&str], v: &Value, push: bool) -> Option<String> {
     let (last, parents) = path.split_last()?;
     let leaf = |v: &Value| {
         if push {
@@ -45,8 +86,7 @@ fn edit(src: &str, path: &[&str], v: &Value, push: bool) -> Option<Plan> {
         whole = leaf(&whole);
         whole = nest(&[*last], whole);
         let whole = nest(parents, whole);
-        let text = serde_json::to_string_pretty(&whole).ok()? + "\n";
-        return finish(src, text);
+        return Some(serde_json::to_string_pretty(&whole).ok()? + "\n");
     }
     let root: Value = serde_json::from_str(src).ok()?;
     if !root.is_object() {
@@ -60,7 +100,7 @@ fn edit(src: &str, path: &[&str], v: &Value, push: bool) -> Option<Plan> {
             Some(_) => return None,
             None => {
                 let rest = nest(&path[i + 1..], leaf(v));
-                return finish(src, insert_member(src, obj, step, &rest)?);
+                return insert_member(src, obj, step, &rest);
             }
         }
     }
@@ -78,7 +118,7 @@ fn edit(src: &str, path: &[&str], v: &Value, push: bool) -> Option<Plan> {
             append_item(src, m.value, m.end, v)?
         }
     };
-    finish(src, text)
+    Some(text)
 }
 
 /// 核对合好的那份、算 diff。

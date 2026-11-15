@@ -3,8 +3,12 @@ use guard_core::{production_code, ScanReport};
 use std::collections::HashSet;
 
 /// 受管工具**全集**（本表 ＋ 注册表里各家足迹面带来的那一半）—— 下面的判据按全集判。
-static TOOLS: std::sync::LazyLock<Vec<ToolSpec>> =
-    std::sync::LazyLock::new(|| tools().into_iter().cloned().collect());
+static TOOLS: std::sync::LazyLock<Vec<ToolSpec>> = std::sync::LazyLock::new(|| {
+    tools_among(crate::agents::REGISTRY)
+        .into_iter()
+        .cloned()
+        .collect()
+});
 
 /// 申报表的源码：本表（`footprint/registry.rs`）＋ 这一家的那一半（`agents/claudecode/footprint.rs`）＋ 词（`agents/footprint_decl.rs`）。
 const REGISTRY_SRC: &str = include_str!("../../../src/backend/footprint/registry.rs");
@@ -273,6 +277,9 @@ fn declarations_carry_no_unread_prose() {
         vec![
             "id",
             "display_name",
+            "required",
+            "how",
+            "asks_install",
             "who",
             "probe",
             "named",
@@ -295,7 +302,7 @@ fn declarations_carry_no_unread_prose() {
         variants_of(&code, "EnvProbe"),
         vec!["OnPath", "InSessionShell", "SshClient", "CannotProbe"]
     );
-    // 手写那一半的全集没人调（人群只走 `environment`）。
+    // 手写那一半的全集没人调（人群只走 `environment_among`）。
     assert!(
         !code.contains("fn unmanaged()"),
         "`registry::unmanaged()` 生产里没人调"
@@ -1679,7 +1686,7 @@ fn claims() -> Vec<Claim> {
             home: Some(deploy()),
             install: Some(ImplSite {
                 addr: "control/deploy_plan.rs::install",
-                definition: "pub(crate) async fn install(\n    req: &DeployInstallReq,\n    home: &std::path::Path,\n    host: &dyn deploy::Place,\n    on: &(dyn Fn(deploy::Step) + Send + Sync),\n) -> Result<Installed, Said> {",
+                definition: "pub(crate) async fn install(\n    req: &DeployInstallReq,\n    home: &std::path::Path,\n    host: &dyn deploy::Place,\n    on: &(dyn Fn(deploy::Step) + Send + Sync),\n) -> Result<Plan, Said> {",
             }),
             uninstall: Some(ImplSite {
                 addr: "control/deploy_plan.rs::uninstall",
@@ -1692,14 +1699,14 @@ fn claims() -> Vec<Claim> {
                 addr: "assets/mcp_edit.rs",
                 text: MCP,
             }),
-            // 原文怎么变只有这两样纯函数：装（`mcp-sync-apply`）与卸（`ext-uninstall-apply`）都经它们算新原文。
+            // 原文怎么变只有这两样照那一家格式（`McpCells`）的纯函数：装（`mcp-sync-apply`）与卸（`ext-uninstall-apply`）都经它们算新原文。
             install: Some(ImplSite {
                 addr: "assets/mcp_edit.rs::upsert_mcp_server_value",
-                definition: "pub(crate) fn upsert_mcp_server_value(\n    root: &mut Value,\n    name: String,\n    server: Value,\n) -> Result<(), String> {",
+                definition: "pub(crate) fn upsert_mcp_server_value(\n    cells: &McpCells,\n    what: &str,\n    existing: Option<&str>,\n    name: &str,\n    server: &Value,\n) -> Result<String, String> {",
             }),
             uninstall: Some(ImplSite {
-                addr: "assets/mcp_edit.rs::remove_mcp_server_value",
-                definition: "pub(crate) fn remove_mcp_server_value(root: &mut Value, name: &str) -> Result<bool, String> {",
+                addr: "assets/mcp_edit.rs::remove_mcp_server",
+                definition: "pub(crate) fn remove_mcp_server(\n    cells: &McpCells,\n    what: &str,\n    existing: &str,\n    name: &str,\n) -> Result<String, String> {",
             }),
         },
         // 资产目录里「装到这台」的 skill；卸只删装记录里那几个文件。
@@ -1712,7 +1719,7 @@ fn claims() -> Vec<Claim> {
             }),
             install: Some(ImplSite {
                 addr: "assets/skill_flow.rs::answer_install",
-                definition: "pub(crate) fn answer_install(\n    d: &dyn Door,\n    facts: &dyn Facts,\n    root: Option<&std::path::Path>,\n    record: Record,\n    req: &SkillApplyReq,\n) -> Result<SkillApplied, crate::common::said::Said> {",
+                definition: "pub(crate) fn answer_install(\n    d: &dyn Door,\n    facts: &dyn Facts,\n    roots: Roots<'_>,\n    record: Record,\n    req: &SkillApplyReq,\n) -> Result<SkillApplied, crate::common::said::Said> {",
             }),
             uninstall: Some(ImplSite {
                 addr: "assets/skill_flow.rs::answer_uninstall",
@@ -2107,7 +2114,7 @@ fn the_declarations_spell_our_home_only_through_the_contract() {
 /// （别的平台那台问不出它在不在 ⇒ 那一行恒「未确定」，判在 `rows_tests`。）
 #[test]
 fn the_windows_closed_set_declares_the_user_path_we_change() {
-    let e = environment_on(true)
+    let e = environment_among(crate::agents::REGISTRY, true)
         .into_iter()
         .find(|e| e.id == "ccm-user-path")
         .expect("Windows 那一台的闭集里该有用户级 PATH 那一格");

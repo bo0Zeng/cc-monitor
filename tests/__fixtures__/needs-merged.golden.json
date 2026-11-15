@@ -43,50 +43,60 @@
         "<local>"
       ],
       "merged": {
+        "asks": {
+          "head": "待答请求 0",
+          "items": [],
+          "sure": true,
+          "total": 0
+        },
         "down": [],
-        "head": "需手动 2",
-        "items": [
-          {
-            "item": {
-              "kind": "manual",
-              "manual": {
-                "account": "w1",
-                "fix": null,
-                "kind": "mcpLogin",
-                "said": "核心·MCP s1 需登录",
-                "scope": "user",
-                "server": "s1",
-                "why": "核心·不支持在 app 里登录"
-              },
-              "rank": 2000000000000000
-            },
-            "origin": "<local>"
-          },
-          {
-            "item": {
-              "kind": "manual",
-              "manual": {
-                "account": "t1",
-                "agent": "claude",
-                "fix": {
-                  "args": {
-                    "account": "t1",
-                    "agent": "claude",
-                    "kind": "account"
-                  },
-                  "command": "login-start"
+        "ended": [],
+        "manual": {
+          "head": "需手动 2",
+          "items": [
+            {
+              "item": {
+                "kind": "manual",
+                "manual": {
+                  "account": "w1",
+                  "fix": null,
+                  "kind": "mcpLogin",
+                  "said": "核心·MCP s1 需登录",
+                  "scope": "user",
+                  "server": "s1",
+                  "why": "核心·不支持在 app 里登录"
                 },
-                "kind": "accountLogin",
-                "said": "核心·t1 需登录"
+                "rank": 2000000000000000
               },
-              "rank": 2000000000000000
+              "origin": "<local>"
             },
-            "origin": "<local>"
-          }
-        ],
-        "sure": true,
-        "total": 2,
-        "unreadable": []
+            {
+              "item": {
+                "kind": "manual",
+                "manual": {
+                  "account": "t1",
+                  "agent": "claude",
+                  "fix": {
+                    "args": {
+                      "account": "t1",
+                      "agent": "claude",
+                      "kind": "account"
+                    },
+                    "command": "login-start"
+                  },
+                  "kind": "accountLogin",
+                  "said": "核心·t1 需登录"
+                },
+                "rank": 2000000000000000
+              },
+              "origin": "<local>"
+            }
+          ],
+          "sure": true,
+          "total": 2
+        },
+        "unreadable": [],
+        "windowTitle": "cc-monitor · 需手动 2"
       }
     },
     {
@@ -111,26 +121,36 @@
         "<local>"
       ],
       "merged": {
+        "asks": {
+          "head": "待答请求 0",
+          "items": [],
+          "sure": true,
+          "total": 0
+        },
         "down": [],
-        "head": "需手动 1",
-        "items": [
-          {
-            "item": {
-              "kind": "manual",
-              "manual": {
-                "fix": null,
-                "kind": "secretFile",
-                "said": "核心·钥匙文件 /h/k：太宽",
-                "why": "核心·只给本人"
+        "ended": [],
+        "manual": {
+          "head": "需手动 1",
+          "items": [
+            {
+              "item": {
+                "kind": "manual",
+                "manual": {
+                  "fix": null,
+                  "kind": "secretFile",
+                  "said": "核心·钥匙文件 /h/k：太宽",
+                  "why": "核心·只给本人"
+                },
+                "rank": 2000000000000000
               },
-              "rank": 2000000000000000
-            },
-            "origin": "<local>"
-          }
-        ],
-        "sure": true,
-        "total": 1,
-        "unreadable": []
+              "origin": "<local>"
+            }
+          ],
+          "sure": true,
+          "total": 1
+        },
+        "unreadable": [],
+        "windowTitle": "cc-monitor · 需手动 1"
       }
     },
     {
@@ -163,34 +183,44 @@
         "<local>"
       ],
       "merged": {
+        "asks": {
+          "head": "待答请求 0",
+          "items": [],
+          "sure": true,
+          "total": 0
+        },
         "down": [],
-        "head": "需手动 1",
-        "items": [
-          {
-            "item": {
-              "kind": "manual",
-              "manual": {
-                "account": "t1",
-                "agent": "claude",
-                "fix": {
-                  "args": {
-                    "account": "t1",
-                    "agent": "claude",
-                    "kind": "account"
+        "ended": [],
+        "manual": {
+          "head": "需手动 1",
+          "items": [
+            {
+              "item": {
+                "kind": "manual",
+                "manual": {
+                  "account": "t1",
+                  "agent": "claude",
+                  "fix": {
+                    "args": {
+                      "account": "t1",
+                      "agent": "claude",
+                      "kind": "account"
+                    },
+                    "command": "login-start"
                   },
-                  "command": "login-start"
+                  "kind": "accountLogin",
+                  "said": "核心·t1 需登录"
                 },
-                "kind": "accountLogin",
-                "said": "核心·t1 需登录"
+                "rank": 2000000000000000
               },
-              "rank": 2000000000000000
-            },
-            "origin": "<local>"
-          }
-        ],
-        "sure": true,
-        "total": 1,
-        "unreadable": []
+              "origin": "<local>"
+            }
+          ],
+          "sure": true,
+          "total": 1
+        },
+        "unreadable": [],
+        "windowTitle": "cc-monitor · 需手动 1"
       }
     },
     {
@@ -204,12 +234,22 @@
         "<local>"
       ],
       "merged": {
+        "asks": {
+          "head": "待答请求 0",
+          "items": [],
+          "sure": true,
+          "total": 0
+        },
         "down": [],
-        "head": "需手动 0",
-        "items": [],
-        "sure": true,
-        "total": 0,
-        "unreadable": []
+        "ended": [],
+        "manual": {
+          "head": "需手动 0",
+          "items": [],
+          "sure": true,
+          "total": 0
+        },
+        "unreadable": [],
+        "windowTitle": "cc-monitor"
       }
     },
     {
@@ -221,65 +261,6 @@
               "kind": "session",
               "rank": 1,
               "session": {
-                "face": {
-                  "can": {
-                    "attach": {
-                      "can": "yes"
-                    },
-                    "close": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "end": {
-                      "can": "yes"
-                    },
-                    "front": {
-                      "can": "yes"
-                    },
-                    "model": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "permission": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "reattach": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "resume": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "say": {
-                      "can": "yes",
-                      "hint": "发消息…"
-                    },
-                    "stop": {
-                      "can": "no",
-                      "why": "需手动"
-                    },
-                    "view": {
-                      "can": "yes",
-                      "open": {
-                        "kind": "attach"
-                      },
-                      "said": "在 cc-monitor 里打开它的终端"
-                    }
-                  },
-                  "dot": "needs-you",
-                  "life": {
-                    "activity": "needs_you",
-                    "is": "live"
-                  },
-                  "line": "需手动",
-                  "name": "需手动",
-                  "order": 0,
-                  "settled": false,
-                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
-                  "tone": "need"
-                },
                 "hidden": null,
                 "label": "a",
                 "needs": {
@@ -288,7 +269,7 @@
                   "head": "核心·需手动",
                   "headCode": null,
                   "kind": "approve",
-                  "manualText": null,
+                  "manualText": "核心·只能在终端里答",
                   "rank": 1,
                   "text": "核心·需手动",
                   "tone": "need",
@@ -369,543 +350,115 @@
         "gpu-01"
       ],
       "merged": {
+        "asks": {
+          "head": "待答请求 0",
+          "items": [],
+          "sure": true,
+          "total": 0
+        },
         "down": [],
-        "head": "需手动 4",
-        "items": [
-          {
-            "item": {
-              "kind": "session",
-              "rank": 1,
-              "session": {
-                "face": {
-                  "can": {
-                    "attach": {
-                      "can": "yes"
-                    },
-                    "close": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "end": {
-                      "can": "yes"
-                    },
-                    "front": {
-                      "can": "yes"
-                    },
-                    "model": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "permission": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "reattach": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "resume": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "say": {
-                      "can": "yes",
-                      "hint": "发消息…"
-                    },
-                    "stop": {
-                      "can": "no",
-                      "why": "需手动"
-                    },
-                    "view": {
-                      "can": "yes",
-                      "open": {
-                        "kind": "attach"
-                      },
-                      "said": "在 cc-monitor 里打开它的终端"
-                    }
-                  },
-                  "dot": "needs-you",
-                  "life": {
-                    "activity": "needs_you",
-                    "is": "live"
-                  },
-                  "line": "需手动",
-                  "name": "需手动",
-                  "order": 0,
-                  "settled": false,
-                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
-                  "tone": "need"
-                },
-                "hidden": null,
-                "label": "a",
-                "needs": {
-                  "ask": null,
-                  "call": null,
-                  "head": "核心·需手动",
-                  "headCode": null,
-                  "kind": "approve",
-                  "manualText": null,
-                  "rank": 1,
-                  "text": "核心·需手动",
-                  "tone": "need",
-                  "tool": null,
-                  "waitedMs": null,
-                  "what": null
-                },
-                "sid": "a"
-              }
-            },
-            "origin": "<local>"
-          },
-          {
-            "item": {
-              "kind": "manual",
-              "manual": {
-                "account": "t1",
-                "agent": "claude",
-                "fix": {
-                  "args": {
-                    "account": "t1",
-                    "agent": "claude",
-                    "kind": "account"
-                  },
-                  "command": "login-start"
-                },
-                "kind": "accountLogin",
-                "said": "核心·t1 需登录"
-              },
-              "rank": 2000000000000000
-            },
-            "origin": "<local>"
-          },
-          {
-            "item": {
-              "kind": "manual",
-              "manual": {
-                "account": "w1",
-                "fix": {
-                  "args": {
-                    "account": "w1",
-                    "agent": "claude",
-                    "kind": "mcp",
-                    "projectDir": null,
-                    "server": "s1"
-                  },
-                  "command": "login-start"
-                },
-                "kind": "mcpLogin",
-                "said": "核心·MCP s1 需登录",
-                "scope": "user",
-                "server": "s1"
-              },
-              "rank": 2000000000000000
-            },
-            "origin": "<local>"
-          },
-          {
-            "item": {
-              "kind": "manual",
-              "manual": {
-                "account": "t2",
-                "agent": "claude",
-                "fix": {
-                  "args": {
-                    "account": "t2",
-                    "agent": "claude",
-                    "kind": "account"
-                  },
-                  "command": "login-start"
-                },
-                "kind": "accountLogin",
-                "said": "核心·t2 需登录"
-              },
-              "rank": 2000000000000000
-            },
-            "origin": "gpu-01"
-          }
-        ],
-        "sure": true,
-        "total": 4,
-        "unreadable": []
-      }
-    },
-    {
-      "answers": {
-        "<local>": {
-          "ended": [],
+        "ended": [],
+        "manual": {
+          "head": "需手动 4",
           "items": [
             {
-              "kind": "session",
-              "rank": 1,
-              "session": {
-                "face": {
-                  "can": {
-                    "attach": {
-                      "can": "yes"
-                    },
-                    "close": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "end": {
-                      "can": "yes"
-                    },
-                    "front": {
-                      "can": "yes"
-                    },
-                    "model": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "permission": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "reattach": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "resume": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "say": {
-                      "can": "yes",
-                      "hint": "发消息…"
-                    },
-                    "stop": {
-                      "can": "no",
-                      "why": "需手动"
-                    },
-                    "view": {
-                      "can": "yes",
-                      "open": {
-                        "kind": "attach"
-                      },
-                      "said": "在 cc-monitor 里打开它的终端"
-                    }
-                  },
-                  "dot": "needs-you",
-                  "life": {
-                    "activity": "needs_you",
-                    "is": "live"
-                  },
-                  "line": "需手动",
-                  "name": "需手动",
-                  "order": 0,
-                  "settled": false,
-                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
-                  "tone": "need"
-                },
-                "hidden": null,
-                "label": "a",
-                "needs": {
-                  "ask": {
-                    "choices": [],
-                    "detail": "",
-                    "id": "ask-1",
+              "item": {
+                "kind": "session",
+                "rank": 1,
+                "session": {
+                  "hidden": null,
+                  "label": "a",
+                  "needs": {
+                    "ask": null,
+                    "call": null,
+                    "head": "核心·需手动",
+                    "headCode": null,
                     "kind": "approve",
-                    "questions": [],
-                    "run": {
-                      "id": "a1",
-                      "text": "核心·agent「Audit」 · Explore"
-                    },
-                    "tool": "Bash",
-                    "what": "核心·sed -n 1,40p"
+                    "manualText": "核心·只能在终端里答",
+                    "rank": 1,
+                    "text": "核心·需手动",
+                    "tone": "need",
+                    "tool": null,
+                    "waitedMs": null,
+                    "what": null
                   },
-                  "call": null,
-                  "head": "核心·需手动",
-                  "headCode": null,
-                  "kind": "approve",
-                  "manualText": null,
-                  "rank": 1,
-                  "text": "核心·需手动",
-                  "tone": "need",
-                  "tool": null,
-                  "waitedMs": null,
-                  "what": "核心·sed -n 1,40p"
-                },
-                "sid": "a"
-              }
+                  "sid": "a"
+                }
+              },
+              "origin": "<local>"
             },
             {
-              "kind": "session",
-              "rank": 1,
-              "session": {
-                "face": {
-                  "can": {
-                    "attach": {
-                      "can": "yes"
+              "item": {
+                "kind": "manual",
+                "manual": {
+                  "account": "t1",
+                  "agent": "claude",
+                  "fix": {
+                    "args": {
+                      "account": "t1",
+                      "agent": "claude",
+                      "kind": "account"
                     },
-                    "close": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "end": {
-                      "can": "yes"
-                    },
-                    "front": {
-                      "can": "yes"
-                    },
-                    "model": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "permission": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "reattach": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "resume": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "say": {
-                      "can": "yes",
-                      "hint": "发消息…"
-                    },
-                    "stop": {
-                      "can": "no",
-                      "why": "需手动"
-                    },
-                    "view": {
-                      "can": "yes",
-                      "open": {
-                        "kind": "attach"
-                      },
-                      "said": "在 cc-monitor 里打开它的终端"
-                    }
+                    "command": "login-start"
                   },
-                  "dot": "needs-you",
-                  "life": {
-                    "activity": "needs_you",
-                    "is": "live"
+                  "kind": "accountLogin",
+                  "said": "核心·t1 需登录"
+                },
+                "rank": 2000000000000000
+              },
+              "origin": "<local>"
+            },
+            {
+              "item": {
+                "kind": "manual",
+                "manual": {
+                  "account": "w1",
+                  "fix": {
+                    "args": {
+                      "account": "w1",
+                      "agent": "claude",
+                      "kind": "mcp",
+                      "projectDir": null,
+                      "server": "s1"
+                    },
+                    "command": "login-start"
                   },
-                  "line": "需手动",
-                  "name": "需手动",
-                  "order": 0,
-                  "settled": false,
-                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
-                  "tone": "need"
+                  "kind": "mcpLogin",
+                  "said": "核心·MCP s1 需登录",
+                  "scope": "user",
+                  "server": "s1"
                 },
-                "hidden": null,
-                "label": "b",
-                "needs": {
-                  "ask": null,
-                  "call": null,
-                  "head": "核心·需手动",
-                  "headCode": null,
-                  "kind": "approve",
-                  "manualText": null,
-                  "rank": 1,
-                  "text": "核心·需手动",
-                  "tone": "need",
-                  "tool": null,
-                  "waitedMs": null,
-                  "what": null
+                "rank": 2000000000000000
+              },
+              "origin": "<local>"
+            },
+            {
+              "item": {
+                "kind": "manual",
+                "manual": {
+                  "account": "t2",
+                  "agent": "claude",
+                  "fix": {
+                    "args": {
+                      "account": "t2",
+                      "agent": "claude",
+                      "kind": "account"
+                    },
+                    "command": "login-start"
+                  },
+                  "kind": "accountLogin",
+                  "said": "核心·t2 需登录"
                 },
-                "sid": "b"
-              }
+                "rank": 2000000000000000
+              },
+              "origin": "gpu-01"
             }
-          ]
-        }
-      },
-      "asked": [
-        "<local>"
-      ],
-      "merged": {
-        "down": [],
-        "head": "需手动 2",
-        "items": [
-          {
-            "item": {
-              "kind": "session",
-              "rank": 1,
-              "session": {
-                "face": {
-                  "can": {
-                    "attach": {
-                      "can": "yes"
-                    },
-                    "close": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "end": {
-                      "can": "yes"
-                    },
-                    "front": {
-                      "can": "yes"
-                    },
-                    "model": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "permission": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "reattach": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "resume": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "say": {
-                      "can": "yes",
-                      "hint": "发消息…"
-                    },
-                    "stop": {
-                      "can": "no",
-                      "why": "需手动"
-                    },
-                    "view": {
-                      "can": "yes",
-                      "open": {
-                        "kind": "attach"
-                      },
-                      "said": "在 cc-monitor 里打开它的终端"
-                    }
-                  },
-                  "dot": "needs-you",
-                  "life": {
-                    "activity": "needs_you",
-                    "is": "live"
-                  },
-                  "line": "需手动",
-                  "name": "需手动",
-                  "order": 0,
-                  "settled": false,
-                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
-                  "tone": "need"
-                },
-                "hidden": null,
-                "label": "a",
-                "needs": {
-                  "ask": {
-                    "choices": [],
-                    "detail": "",
-                    "id": "ask-1",
-                    "kind": "approve",
-                    "questions": [],
-                    "run": {
-                      "id": "a1",
-                      "text": "核心·agent「Audit」 · Explore"
-                    },
-                    "tool": "Bash",
-                    "what": "核心·sed -n 1,40p"
-                  },
-                  "call": null,
-                  "head": "核心·需手动",
-                  "headCode": null,
-                  "kind": "approve",
-                  "manualText": null,
-                  "rank": 1,
-                  "text": "核心·需手动",
-                  "tone": "need",
-                  "tool": null,
-                  "waitedMs": null,
-                  "what": "核心·sed -n 1,40p"
-                },
-                "sid": "a"
-              }
-            },
-            "origin": "<local>"
-          },
-          {
-            "item": {
-              "kind": "session",
-              "rank": 1,
-              "session": {
-                "face": {
-                  "can": {
-                    "attach": {
-                      "can": "yes"
-                    },
-                    "close": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "end": {
-                      "can": "yes"
-                    },
-                    "front": {
-                      "can": "yes"
-                    },
-                    "model": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "permission": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "reattach": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "resume": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "say": {
-                      "can": "yes",
-                      "hint": "发消息…"
-                    },
-                    "stop": {
-                      "can": "no",
-                      "why": "需手动"
-                    },
-                    "view": {
-                      "can": "yes",
-                      "open": {
-                        "kind": "attach"
-                      },
-                      "said": "在 cc-monitor 里打开它的终端"
-                    }
-                  },
-                  "dot": "needs-you",
-                  "life": {
-                    "activity": "needs_you",
-                    "is": "live"
-                  },
-                  "line": "需手动",
-                  "name": "需手动",
-                  "order": 0,
-                  "settled": false,
-                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
-                  "tone": "need"
-                },
-                "hidden": null,
-                "label": "b",
-                "needs": {
-                  "ask": null,
-                  "call": null,
-                  "head": "核心·需手动",
-                  "headCode": null,
-                  "kind": "approve",
-                  "manualText": null,
-                  "rank": 1,
-                  "text": "核心·需手动",
-                  "tone": "need",
-                  "tool": null,
-                  "waitedMs": null,
-                  "what": null
-                },
-                "sid": "b"
-              }
-            },
-            "origin": "<local>"
-          }
-        ],
-        "sure": true,
-        "total": 2,
-        "unreadable": []
+          ],
+          "sure": true,
+          "total": 4
+        },
+        "unreadable": [],
+        "windowTitle": "cc-monitor · 需手动 4"
       }
     },
     {
@@ -917,65 +470,6 @@
               "kind": "session",
               "rank": 1,
               "session": {
-                "face": {
-                  "can": {
-                    "attach": {
-                      "can": "yes"
-                    },
-                    "close": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "end": {
-                      "can": "yes"
-                    },
-                    "front": {
-                      "can": "yes"
-                    },
-                    "model": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "permission": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "reattach": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "resume": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "say": {
-                      "can": "yes",
-                      "hint": "发消息…"
-                    },
-                    "stop": {
-                      "can": "no",
-                      "why": "需手动"
-                    },
-                    "view": {
-                      "can": "yes",
-                      "open": {
-                        "kind": "attach"
-                      },
-                      "said": "在 cc-monitor 里打开它的终端"
-                    }
-                  },
-                  "dot": "needs-you",
-                  "life": {
-                    "activity": "needs_you",
-                    "is": "live"
-                  },
-                  "line": "需手动",
-                  "name": "需手动",
-                  "order": 0,
-                  "settled": false,
-                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
-                  "tone": "need"
-                },
                 "hidden": null,
                 "label": "a",
                 "needs": {
@@ -984,7 +478,7 @@
                   "head": "核心·需手动",
                   "headCode": null,
                   "kind": "approve",
-                  "manualText": null,
+                  "manualText": "核心·只能在终端里答",
                   "rank": 1,
                   "text": "核心·需手动",
                   "tone": "need",
@@ -1047,143 +541,94 @@
         "gpu-01"
       ],
       "merged": {
+        "asks": {
+          "head": "待答请求 0",
+          "items": [],
+          "sure": true,
+          "total": 0
+        },
         "down": [],
-        "head": "需手动 3",
-        "items": [
-          {
-            "item": {
-              "kind": "session",
-              "rank": 1,
-              "session": {
-                "face": {
-                  "can": {
-                    "attach": {
-                      "can": "yes"
-                    },
-                    "close": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "end": {
-                      "can": "yes"
-                    },
-                    "front": {
-                      "can": "yes"
-                    },
-                    "model": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "permission": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "reattach": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "resume": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "say": {
-                      "can": "yes",
-                      "hint": "发消息…"
-                    },
-                    "stop": {
-                      "can": "no",
-                      "why": "需手动"
-                    },
-                    "view": {
-                      "can": "yes",
-                      "open": {
-                        "kind": "attach"
-                      },
-                      "said": "在 cc-monitor 里打开它的终端"
-                    }
+        "ended": [],
+        "manual": {
+          "head": "需手动 3",
+          "items": [
+            {
+              "item": {
+                "kind": "session",
+                "rank": 1,
+                "session": {
+                  "hidden": null,
+                  "label": "a",
+                  "needs": {
+                    "ask": null,
+                    "call": null,
+                    "head": "核心·需手动",
+                    "headCode": null,
+                    "kind": "approve",
+                    "manualText": "核心·只能在终端里答",
+                    "rank": 1,
+                    "text": "核心·需手动",
+                    "tone": "need",
+                    "tool": null,
+                    "waitedMs": null,
+                    "what": null
                   },
-                  "dot": "needs-you",
-                  "life": {
-                    "activity": "needs_you",
-                    "is": "live"
-                  },
-                  "line": "需手动",
-                  "name": "需手动",
-                  "order": 0,
-                  "settled": false,
-                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
-                  "tone": "need"
-                },
-                "hidden": null,
-                "label": "a",
-                "needs": {
-                  "ask": null,
-                  "call": null,
-                  "head": "核心·需手动",
-                  "headCode": null,
-                  "kind": "approve",
-                  "manualText": null,
-                  "rank": 1,
-                  "text": "核心·需手动",
-                  "tone": "need",
-                  "tool": null,
-                  "waitedMs": null,
-                  "what": null
-                },
-                "sid": "a"
-              }
-            },
-            "origin": "<local>"
-          },
-          {
-            "item": {
-              "kind": "manual",
-              "manual": {
-                "account": "t1",
-                "agent": "claude",
-                "fix": {
-                  "args": {
-                    "account": "t1",
-                    "agent": "claude",
-                    "kind": "account"
-                  },
-                  "command": "login-start"
-                },
-                "kind": "accountLogin",
-                "said": "核心·t1 需登录"
+                  "sid": "a"
+                }
               },
-              "rank": 2000000000000000
+              "origin": "<local>"
             },
-            "origin": "<local>"
-          },
-          {
-            "item": {
-              "kind": "manual",
-              "manual": {
-                "account": "w1",
-                "fix": {
-                  "args": {
-                    "account": "w1",
-                    "agent": "claude",
-                    "kind": "mcp",
-                    "projectDir": null,
-                    "server": "s1"
+            {
+              "item": {
+                "kind": "manual",
+                "manual": {
+                  "account": "t1",
+                  "agent": "claude",
+                  "fix": {
+                    "args": {
+                      "account": "t1",
+                      "agent": "claude",
+                      "kind": "account"
+                    },
+                    "command": "login-start"
                   },
-                  "command": "login-start"
+                  "kind": "accountLogin",
+                  "said": "核心·t1 需登录"
                 },
-                "kind": "mcpLogin",
-                "said": "核心·MCP s1 需登录",
-                "scope": "user",
-                "server": "s1"
+                "rank": 2000000000000000
               },
-              "rank": 2000000000000000
+              "origin": "<local>"
             },
-            "origin": "gpu-01"
-          }
-        ],
-        "sure": true,
-        "total": 3,
-        "unreadable": []
+            {
+              "item": {
+                "kind": "manual",
+                "manual": {
+                  "account": "w1",
+                  "fix": {
+                    "args": {
+                      "account": "w1",
+                      "agent": "claude",
+                      "kind": "mcp",
+                      "projectDir": null,
+                      "server": "s1"
+                    },
+                    "command": "login-start"
+                  },
+                  "kind": "mcpLogin",
+                  "said": "核心·MCP s1 需登录",
+                  "scope": "user",
+                  "server": "s1"
+                },
+                "rank": 2000000000000000
+              },
+              "origin": "gpu-01"
+            }
+          ],
+          "sure": true,
+          "total": 3
+        },
+        "unreadable": [],
+        "windowTitle": "cc-monitor · 需手动 3"
       }
     },
     {
@@ -1195,65 +640,6 @@
               "kind": "session",
               "rank": 1,
               "session": {
-                "face": {
-                  "can": {
-                    "attach": {
-                      "can": "yes"
-                    },
-                    "close": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "end": {
-                      "can": "yes"
-                    },
-                    "front": {
-                      "can": "yes"
-                    },
-                    "model": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "permission": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "reattach": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "resume": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "say": {
-                      "can": "yes",
-                      "hint": "发消息…"
-                    },
-                    "stop": {
-                      "can": "no",
-                      "why": "需手动"
-                    },
-                    "view": {
-                      "can": "yes",
-                      "open": {
-                        "kind": "attach"
-                      },
-                      "said": "在 cc-monitor 里打开它的终端"
-                    }
-                  },
-                  "dot": "needs-you",
-                  "life": {
-                    "activity": "needs_you",
-                    "is": "live"
-                  },
-                  "line": "需手动",
-                  "name": "需手动",
-                  "order": 0,
-                  "settled": false,
-                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
-                  "tone": "need"
-                },
                 "hidden": null,
                 "label": "a",
                 "needs": {
@@ -1262,7 +648,7 @@
                   "head": "核心·需手动",
                   "headCode": null,
                   "kind": "approve",
-                  "manualText": null,
+                  "manualText": "核心·只能在终端里答",
                   "rank": 1,
                   "text": "核心·需手动",
                   "tone": "need",
@@ -1299,6 +685,12 @@
         "devbox"
       ],
       "merged": {
+        "asks": {
+          "head": "待答请求",
+          "items": [],
+          "sure": false,
+          "total": 0
+        },
         "down": [
           {
             "detail": "",
@@ -1306,118 +698,63 @@
             "said": "devbox 后端未在运行"
           }
         ],
-        "head": "需手动",
-        "items": [
-          {
-            "item": {
-              "kind": "session",
-              "rank": 1,
-              "session": {
-                "face": {
-                  "can": {
-                    "attach": {
-                      "can": "yes"
-                    },
-                    "close": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "end": {
-                      "can": "yes"
-                    },
-                    "front": {
-                      "can": "yes"
-                    },
-                    "model": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "permission": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "reattach": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "resume": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "say": {
-                      "can": "yes",
-                      "hint": "发消息…"
-                    },
-                    "stop": {
-                      "can": "no",
-                      "why": "需手动"
-                    },
-                    "view": {
-                      "can": "yes",
-                      "open": {
-                        "kind": "attach"
-                      },
-                      "said": "在 cc-monitor 里打开它的终端"
-                    }
+        "ended": [],
+        "manual": {
+          "head": "需手动",
+          "items": [
+            {
+              "item": {
+                "kind": "session",
+                "rank": 1,
+                "session": {
+                  "hidden": null,
+                  "label": "a",
+                  "needs": {
+                    "ask": null,
+                    "call": null,
+                    "head": "核心·需手动",
+                    "headCode": null,
+                    "kind": "approve",
+                    "manualText": "核心·只能在终端里答",
+                    "rank": 1,
+                    "text": "核心·需手动",
+                    "tone": "need",
+                    "tool": null,
+                    "waitedMs": null,
+                    "what": null
                   },
-                  "dot": "needs-you",
-                  "life": {
-                    "activity": "needs_you",
-                    "is": "live"
-                  },
-                  "line": "需手动",
-                  "name": "需手动",
-                  "order": 0,
-                  "settled": false,
-                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
-                  "tone": "need"
-                },
-                "hidden": null,
-                "label": "a",
-                "needs": {
-                  "ask": null,
-                  "call": null,
-                  "head": "核心·需手动",
-                  "headCode": null,
-                  "kind": "approve",
-                  "manualText": null,
-                  "rank": 1,
-                  "text": "核心·需手动",
-                  "tone": "need",
-                  "tool": null,
-                  "waitedMs": null,
-                  "what": null
-                },
-                "sid": "a"
-              }
-            },
-            "origin": "<local>"
-          },
-          {
-            "item": {
-              "kind": "manual",
-              "manual": {
-                "account": "t1",
-                "agent": "claude",
-                "fix": {
-                  "args": {
-                    "account": "t1",
-                    "agent": "claude",
-                    "kind": "account"
-                  },
-                  "command": "login-start"
-                },
-                "kind": "accountLogin",
-                "said": "核心·t1 需登录"
+                  "sid": "a"
+                }
               },
-              "rank": 2000000000000000
+              "origin": "<local>"
             },
-            "origin": "<local>"
-          }
-        ],
-        "sure": false,
-        "total": 2,
-        "unreadable": []
+            {
+              "item": {
+                "kind": "manual",
+                "manual": {
+                  "account": "t1",
+                  "agent": "claude",
+                  "fix": {
+                    "args": {
+                      "account": "t1",
+                      "agent": "claude",
+                      "kind": "account"
+                    },
+                    "command": "login-start"
+                  },
+                  "kind": "accountLogin",
+                  "said": "核心·t1 需登录"
+                },
+                "rank": 2000000000000000
+              },
+              "origin": "<local>"
+            }
+          ],
+          "sure": false,
+          "total": 2
+        },
+        "unreadable": [],
+        "windowTitle": "cc-monitor · 需手动 2"
       }
     },
     {
@@ -1429,65 +766,6 @@
               "kind": "session",
               "rank": 1,
               "session": {
-                "face": {
-                  "can": {
-                    "attach": {
-                      "can": "yes"
-                    },
-                    "close": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "end": {
-                      "can": "yes"
-                    },
-                    "front": {
-                      "can": "yes"
-                    },
-                    "model": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "permission": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "reattach": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "resume": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "say": {
-                      "can": "yes",
-                      "hint": "发消息…"
-                    },
-                    "stop": {
-                      "can": "no",
-                      "why": "需手动"
-                    },
-                    "view": {
-                      "can": "yes",
-                      "open": {
-                        "kind": "attach"
-                      },
-                      "said": "在 cc-monitor 里打开它的终端"
-                    }
-                  },
-                  "dot": "needs-you",
-                  "life": {
-                    "activity": "needs_you",
-                    "is": "live"
-                  },
-                  "line": "需手动",
-                  "name": "需手动",
-                  "order": 0,
-                  "settled": false,
-                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
-                  "tone": "need"
-                },
                 "hidden": null,
                 "label": "a",
                 "needs": {
@@ -1496,7 +774,7 @@
                   "head": "核心·需手动",
                   "headCode": null,
                   "kind": "approve",
-                  "manualText": null,
+                  "manualText": "核心·只能在终端里答",
                   "rank": 1,
                   "text": "核心·需手动",
                   "tone": "need",
@@ -1532,119 +810,70 @@
         "<local>"
       ],
       "merged": {
+        "asks": {
+          "head": "待答请求 0",
+          "items": [],
+          "sure": true,
+          "total": 0
+        },
         "down": [],
-        "head": "需手动 2",
-        "items": [
-          {
-            "item": {
-              "kind": "session",
-              "rank": 1,
-              "session": {
-                "face": {
-                  "can": {
-                    "attach": {
-                      "can": "yes"
-                    },
-                    "close": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "end": {
-                      "can": "yes"
-                    },
-                    "front": {
-                      "can": "yes"
-                    },
-                    "model": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "permission": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "reattach": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "resume": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "say": {
-                      "can": "yes",
-                      "hint": "发消息…"
-                    },
-                    "stop": {
-                      "can": "no",
-                      "why": "需手动"
-                    },
-                    "view": {
-                      "can": "yes",
-                      "open": {
-                        "kind": "attach"
-                      },
-                      "said": "在 cc-monitor 里打开它的终端"
-                    }
+        "ended": [],
+        "manual": {
+          "head": "需手动 2",
+          "items": [
+            {
+              "item": {
+                "kind": "session",
+                "rank": 1,
+                "session": {
+                  "hidden": null,
+                  "label": "a",
+                  "needs": {
+                    "ask": null,
+                    "call": null,
+                    "head": "核心·需手动",
+                    "headCode": null,
+                    "kind": "approve",
+                    "manualText": "核心·只能在终端里答",
+                    "rank": 1,
+                    "text": "核心·需手动",
+                    "tone": "need",
+                    "tool": null,
+                    "waitedMs": null,
+                    "what": null
                   },
-                  "dot": "needs-you",
-                  "life": {
-                    "activity": "needs_you",
-                    "is": "live"
-                  },
-                  "line": "需手动",
-                  "name": "需手动",
-                  "order": 0,
-                  "settled": false,
-                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
-                  "tone": "need"
-                },
-                "hidden": null,
-                "label": "a",
-                "needs": {
-                  "ask": null,
-                  "call": null,
-                  "head": "核心·需手动",
-                  "headCode": null,
-                  "kind": "approve",
-                  "manualText": null,
-                  "rank": 1,
-                  "text": "核心·需手动",
-                  "tone": "need",
-                  "tool": null,
-                  "waitedMs": null,
-                  "what": null
-                },
-                "sid": "a"
-              }
-            },
-            "origin": "<local>"
-          },
-          {
-            "item": {
-              "kind": "manual",
-              "manual": {
-                "account": "t1",
-                "agent": "claude",
-                "fix": {
-                  "args": {
-                    "account": "t1",
-                    "agent": "claude",
-                    "kind": "account"
-                  },
-                  "command": "login-start"
-                },
-                "kind": "accountLogin",
-                "said": "核心·t1 需登录"
+                  "sid": "a"
+                }
               },
-              "rank": 2000000000000000
+              "origin": "<local>"
             },
-            "origin": "<local>"
-          }
-        ],
-        "sure": true,
-        "total": 2,
-        "unreadable": []
+            {
+              "item": {
+                "kind": "manual",
+                "manual": {
+                  "account": "t1",
+                  "agent": "claude",
+                  "fix": {
+                    "args": {
+                      "account": "t1",
+                      "agent": "claude",
+                      "kind": "account"
+                    },
+                    "command": "login-start"
+                  },
+                  "kind": "accountLogin",
+                  "said": "核心·t1 需登录"
+                },
+                "rank": 2000000000000000
+              },
+              "origin": "<local>"
+            }
+          ],
+          "sure": true,
+          "total": 2
+        },
+        "unreadable": [],
+        "windowTitle": "cc-monitor · 需手动 2"
       }
     },
     {
@@ -1656,65 +885,6 @@
               "kind": "session",
               "rank": 1,
               "session": {
-                "face": {
-                  "can": {
-                    "attach": {
-                      "can": "yes"
-                    },
-                    "close": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "end": {
-                      "can": "yes"
-                    },
-                    "front": {
-                      "can": "yes"
-                    },
-                    "model": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "permission": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "reattach": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "resume": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "say": {
-                      "can": "yes",
-                      "hint": "发消息…"
-                    },
-                    "stop": {
-                      "can": "no",
-                      "why": "需手动"
-                    },
-                    "view": {
-                      "can": "yes",
-                      "open": {
-                        "kind": "attach"
-                      },
-                      "said": "在 cc-monitor 里打开它的终端"
-                    }
-                  },
-                  "dot": "needs-you",
-                  "life": {
-                    "activity": "needs_you",
-                    "is": "live"
-                  },
-                  "line": "需手动",
-                  "name": "需手动",
-                  "order": 0,
-                  "settled": false,
-                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
-                  "tone": "need"
-                },
                 "hidden": null,
                 "label": "b",
                 "needs": {
@@ -1723,7 +893,7 @@
                   "head": "核心·等批准 · Bash",
                   "headCode": "rm -rf build/",
                   "kind": "approve",
-                  "manualText": null,
+                  "manualText": "核心·只能在终端里答",
                   "rank": 1,
                   "text": "等批准",
                   "tone": "need",
@@ -1741,98 +911,49 @@
         "<local>"
       ],
       "merged": {
+        "asks": {
+          "head": "待答请求 0",
+          "items": [],
+          "sure": true,
+          "total": 0
+        },
         "down": [],
-        "head": "需手动 1",
-        "items": [
-          {
-            "item": {
-              "kind": "session",
-              "rank": 1,
-              "session": {
-                "face": {
-                  "can": {
-                    "attach": {
-                      "can": "yes"
-                    },
-                    "close": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "end": {
-                      "can": "yes"
-                    },
-                    "front": {
-                      "can": "yes"
-                    },
-                    "model": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "permission": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "reattach": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "resume": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "say": {
-                      "can": "yes",
-                      "hint": "发消息…"
-                    },
-                    "stop": {
-                      "can": "no",
-                      "why": "需手动"
-                    },
-                    "view": {
-                      "can": "yes",
-                      "open": {
-                        "kind": "attach"
-                      },
-                      "said": "在 cc-monitor 里打开它的终端"
-                    }
+        "ended": [],
+        "manual": {
+          "head": "需手动 1",
+          "items": [
+            {
+              "item": {
+                "kind": "session",
+                "rank": 1,
+                "session": {
+                  "hidden": null,
+                  "label": "b",
+                  "needs": {
+                    "ask": null,
+                    "call": "toolu_b",
+                    "head": "核心·等批准 · Bash",
+                    "headCode": "rm -rf build/",
+                    "kind": "approve",
+                    "manualText": "核心·只能在终端里答",
+                    "rank": 1,
+                    "text": "等批准",
+                    "tone": "need",
+                    "tool": "Bash",
+                    "waitedMs": 10000,
+                    "what": "rm -rf build/"
                   },
-                  "dot": "needs-you",
-                  "life": {
-                    "activity": "needs_you",
-                    "is": "live"
-                  },
-                  "line": "需手动",
-                  "name": "需手动",
-                  "order": 0,
-                  "settled": false,
-                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
-                  "tone": "need"
-                },
-                "hidden": null,
-                "label": "b",
-                "needs": {
-                  "ask": null,
-                  "call": "toolu_b",
-                  "head": "核心·等批准 · Bash",
-                  "headCode": "rm -rf build/",
-                  "kind": "approve",
-                  "manualText": null,
-                  "rank": 1,
-                  "text": "等批准",
-                  "tone": "need",
-                  "tool": "Bash",
-                  "waitedMs": 10000,
-                  "what": "rm -rf build/"
-                },
-                "sid": "b"
-              }
-            },
-            "origin": "<local>"
-          }
-        ],
-        "sure": true,
-        "total": 1,
-        "unreadable": []
+                  "sid": "b"
+                }
+              },
+              "origin": "<local>"
+            }
+          ],
+          "sure": true,
+          "total": 1
+        },
+        "unreadable": [],
+        "windowTitle": "cc-monitor · 需手动 1"
       }
     },
     {
@@ -1844,65 +965,6 @@
               "kind": "session",
               "rank": 1,
               "session": {
-                "face": {
-                  "can": {
-                    "attach": {
-                      "can": "yes"
-                    },
-                    "close": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "end": {
-                      "can": "yes"
-                    },
-                    "front": {
-                      "can": "yes"
-                    },
-                    "model": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "permission": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "reattach": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "resume": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "say": {
-                      "can": "yes",
-                      "hint": "发消息…"
-                    },
-                    "stop": {
-                      "can": "no",
-                      "why": "需手动"
-                    },
-                    "view": {
-                      "can": "yes",
-                      "open": {
-                        "kind": "attach"
-                      },
-                      "said": "在 cc-monitor 里打开它的终端"
-                    }
-                  },
-                  "dot": "needs-you",
-                  "life": {
-                    "activity": "needs_you",
-                    "is": "live"
-                  },
-                  "line": "需手动",
-                  "name": "需手动",
-                  "order": 0,
-                  "settled": false,
-                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
-                  "tone": "need"
-                },
                 "hidden": null,
                 "label": "b",
                 "needs": {
@@ -1911,7 +973,7 @@
                   "head": "核心·等批准 · Bash",
                   "headCode": "rm -rf build/",
                   "kind": "approve",
-                  "manualText": null,
+                  "manualText": "核心·只能在终端里答",
                   "rank": 1,
                   "text": "等批准",
                   "tone": "need",
@@ -1926,65 +988,6 @@
               "kind": "session",
               "rank": 1,
               "session": {
-                "face": {
-                  "can": {
-                    "attach": {
-                      "can": "yes"
-                    },
-                    "close": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "end": {
-                      "can": "yes"
-                    },
-                    "front": {
-                      "can": "yes"
-                    },
-                    "model": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "permission": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "reattach": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "resume": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "say": {
-                      "can": "yes",
-                      "hint": "发消息…"
-                    },
-                    "stop": {
-                      "can": "no",
-                      "why": "需手动"
-                    },
-                    "view": {
-                      "can": "yes",
-                      "open": {
-                        "kind": "attach"
-                      },
-                      "said": "在 cc-monitor 里打开它的终端"
-                    }
-                  },
-                  "dot": "needs-you",
-                  "life": {
-                    "activity": "needs_you",
-                    "is": "live"
-                  },
-                  "line": "需手动",
-                  "name": "需手动",
-                  "order": 0,
-                  "settled": false,
-                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
-                  "tone": "need"
-                },
                 "hidden": null,
                 "label": "a",
                 "needs": {
@@ -1993,7 +996,7 @@
                   "head": "核心·等批准 · Bash",
                   "headCode": "rm -rf build/",
                   "kind": "approve",
-                  "manualText": null,
+                  "manualText": "核心·只能在终端里答",
                   "rank": 1,
                   "text": "等批准",
                   "tone": "need",
@@ -2011,183 +1014,75 @@
         "<local>"
       ],
       "merged": {
+        "asks": {
+          "head": "待答请求 0",
+          "items": [],
+          "sure": true,
+          "total": 0
+        },
         "down": [],
-        "head": "需手动 2",
-        "items": [
-          {
-            "item": {
-              "kind": "session",
-              "rank": 1,
-              "session": {
-                "face": {
-                  "can": {
-                    "attach": {
-                      "can": "yes"
-                    },
-                    "close": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "end": {
-                      "can": "yes"
-                    },
-                    "front": {
-                      "can": "yes"
-                    },
-                    "model": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "permission": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "reattach": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "resume": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "say": {
-                      "can": "yes",
-                      "hint": "发消息…"
-                    },
-                    "stop": {
-                      "can": "no",
-                      "why": "需手动"
-                    },
-                    "view": {
-                      "can": "yes",
-                      "open": {
-                        "kind": "attach"
-                      },
-                      "said": "在 cc-monitor 里打开它的终端"
-                    }
+        "ended": [],
+        "manual": {
+          "head": "需手动 2",
+          "items": [
+            {
+              "item": {
+                "kind": "session",
+                "rank": 1,
+                "session": {
+                  "hidden": null,
+                  "label": "b",
+                  "needs": {
+                    "ask": null,
+                    "call": "toolu_b",
+                    "head": "核心·等批准 · Bash",
+                    "headCode": "rm -rf build/",
+                    "kind": "approve",
+                    "manualText": "核心·只能在终端里答",
+                    "rank": 1,
+                    "text": "等批准",
+                    "tone": "need",
+                    "tool": "Bash",
+                    "waitedMs": 60000,
+                    "what": "rm -rf build/"
                   },
-                  "dot": "needs-you",
-                  "life": {
-                    "activity": "needs_you",
-                    "is": "live"
-                  },
-                  "line": "需手动",
-                  "name": "需手动",
-                  "order": 0,
-                  "settled": false,
-                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
-                  "tone": "need"
-                },
-                "hidden": null,
-                "label": "b",
-                "needs": {
-                  "ask": null,
-                  "call": "toolu_b",
-                  "head": "核心·等批准 · Bash",
-                  "headCode": "rm -rf build/",
-                  "kind": "approve",
-                  "manualText": null,
-                  "rank": 1,
-                  "text": "等批准",
-                  "tone": "need",
-                  "tool": "Bash",
-                  "waitedMs": 60000,
-                  "what": "rm -rf build/"
-                },
-                "sid": "b"
-              }
+                  "sid": "b"
+                }
+              },
+              "origin": "<local>"
             },
-            "origin": "<local>"
-          },
-          {
-            "item": {
-              "kind": "session",
-              "rank": 1,
-              "session": {
-                "face": {
-                  "can": {
-                    "attach": {
-                      "can": "yes"
-                    },
-                    "close": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "end": {
-                      "can": "yes"
-                    },
-                    "front": {
-                      "can": "yes"
-                    },
-                    "model": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "permission": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "reattach": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "resume": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "say": {
-                      "can": "yes",
-                      "hint": "发消息…"
-                    },
-                    "stop": {
-                      "can": "no",
-                      "why": "需手动"
-                    },
-                    "view": {
-                      "can": "yes",
-                      "open": {
-                        "kind": "attach"
-                      },
-                      "said": "在 cc-monitor 里打开它的终端"
-                    }
+            {
+              "item": {
+                "kind": "session",
+                "rank": 1,
+                "session": {
+                  "hidden": null,
+                  "label": "a",
+                  "needs": {
+                    "ask": null,
+                    "call": "toolu_b",
+                    "head": "核心·等批准 · Bash",
+                    "headCode": "rm -rf build/",
+                    "kind": "approve",
+                    "manualText": "核心·只能在终端里答",
+                    "rank": 1,
+                    "text": "等批准",
+                    "tone": "need",
+                    "tool": "Bash",
+                    "waitedMs": 10000,
+                    "what": "rm -rf build/"
                   },
-                  "dot": "needs-you",
-                  "life": {
-                    "activity": "needs_you",
-                    "is": "live"
-                  },
-                  "line": "需手动",
-                  "name": "需手动",
-                  "order": 0,
-                  "settled": false,
-                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
-                  "tone": "need"
-                },
-                "hidden": null,
-                "label": "a",
-                "needs": {
-                  "ask": null,
-                  "call": "toolu_b",
-                  "head": "核心·等批准 · Bash",
-                  "headCode": "rm -rf build/",
-                  "kind": "approve",
-                  "manualText": null,
-                  "rank": 1,
-                  "text": "等批准",
-                  "tone": "need",
-                  "tool": "Bash",
-                  "waitedMs": 10000,
-                  "what": "rm -rf build/"
-                },
-                "sid": "a"
-              }
-            },
-            "origin": "<local>"
-          }
-        ],
-        "sure": true,
-        "total": 2,
-        "unreadable": []
+                  "sid": "a"
+                }
+              },
+              "origin": "<local>"
+            }
+          ],
+          "sure": true,
+          "total": 2
+        },
+        "unreadable": [],
+        "windowTitle": "cc-monitor · 需手动 2"
       }
     },
     {
@@ -2199,65 +1094,6 @@
               "kind": "session",
               "rank": 1,
               "session": {
-                "face": {
-                  "can": {
-                    "attach": {
-                      "can": "yes"
-                    },
-                    "close": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "end": {
-                      "can": "yes"
-                    },
-                    "front": {
-                      "can": "yes"
-                    },
-                    "model": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "permission": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "reattach": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "resume": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "say": {
-                      "can": "yes",
-                      "hint": "发消息…"
-                    },
-                    "stop": {
-                      "can": "no",
-                      "why": "需手动"
-                    },
-                    "view": {
-                      "can": "yes",
-                      "open": {
-                        "kind": "attach"
-                      },
-                      "said": "在 cc-monitor 里打开它的终端"
-                    }
-                  },
-                  "dot": "needs-you",
-                  "life": {
-                    "activity": "needs_you",
-                    "is": "live"
-                  },
-                  "line": "需手动",
-                  "name": "需手动",
-                  "order": 0,
-                  "settled": false,
-                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
-                  "tone": "need"
-                },
                 "hidden": null,
                 "label": "a",
                 "needs": {
@@ -2266,7 +1102,7 @@
                   "head": "核心·等批准 · Bash",
                   "headCode": "rm -rf build/",
                   "kind": "approve",
-                  "manualText": null,
+                  "manualText": "核心·只能在终端里答",
                   "rank": 1,
                   "text": "等批准",
                   "tone": "need",
@@ -2284,98 +1120,49 @@
         "<local>"
       ],
       "merged": {
+        "asks": {
+          "head": "待答请求 0",
+          "items": [],
+          "sure": true,
+          "total": 0
+        },
         "down": [],
-        "head": "需手动 1",
-        "items": [
-          {
-            "item": {
-              "kind": "session",
-              "rank": 1,
-              "session": {
-                "face": {
-                  "can": {
-                    "attach": {
-                      "can": "yes"
-                    },
-                    "close": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "end": {
-                      "can": "yes"
-                    },
-                    "front": {
-                      "can": "yes"
-                    },
-                    "model": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "permission": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "reattach": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "resume": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "say": {
-                      "can": "yes",
-                      "hint": "发消息…"
-                    },
-                    "stop": {
-                      "can": "no",
-                      "why": "需手动"
-                    },
-                    "view": {
-                      "can": "yes",
-                      "open": {
-                        "kind": "attach"
-                      },
-                      "said": "在 cc-monitor 里打开它的终端"
-                    }
+        "ended": [],
+        "manual": {
+          "head": "需手动 1",
+          "items": [
+            {
+              "item": {
+                "kind": "session",
+                "rank": 1,
+                "session": {
+                  "hidden": null,
+                  "label": "a",
+                  "needs": {
+                    "ask": null,
+                    "call": "toolu_b",
+                    "head": "核心·等批准 · Bash",
+                    "headCode": "rm -rf build/",
+                    "kind": "approve",
+                    "manualText": "核心·只能在终端里答",
+                    "rank": 1,
+                    "text": "等批准",
+                    "tone": "need",
+                    "tool": "Bash",
+                    "waitedMs": 10000,
+                    "what": "rm -rf build/"
                   },
-                  "dot": "needs-you",
-                  "life": {
-                    "activity": "needs_you",
-                    "is": "live"
-                  },
-                  "line": "需手动",
-                  "name": "需手动",
-                  "order": 0,
-                  "settled": false,
-                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
-                  "tone": "need"
-                },
-                "hidden": null,
-                "label": "a",
-                "needs": {
-                  "ask": null,
-                  "call": "toolu_b",
-                  "head": "核心·等批准 · Bash",
-                  "headCode": "rm -rf build/",
-                  "kind": "approve",
-                  "manualText": null,
-                  "rank": 1,
-                  "text": "等批准",
-                  "tone": "need",
-                  "tool": "Bash",
-                  "waitedMs": 10000,
-                  "what": "rm -rf build/"
-                },
-                "sid": "a"
-              }
-            },
-            "origin": "<local>"
-          }
-        ],
-        "sure": true,
-        "total": 1,
-        "unreadable": []
+                  "sid": "a"
+                }
+              },
+              "origin": "<local>"
+            }
+          ],
+          "sure": true,
+          "total": 1
+        },
+        "unreadable": [],
+        "windowTitle": "cc-monitor · 需手动 1"
       }
     },
     {
@@ -2387,65 +1174,6 @@
               "kind": "session",
               "rank": 1,
               "session": {
-                "face": {
-                  "can": {
-                    "attach": {
-                      "can": "yes"
-                    },
-                    "close": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "end": {
-                      "can": "yes"
-                    },
-                    "front": {
-                      "can": "yes"
-                    },
-                    "model": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "permission": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "reattach": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "resume": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "say": {
-                      "can": "yes",
-                      "hint": "发消息…"
-                    },
-                    "stop": {
-                      "can": "no",
-                      "why": "需手动"
-                    },
-                    "view": {
-                      "can": "yes",
-                      "open": {
-                        "kind": "attach"
-                      },
-                      "said": "在 cc-monitor 里打开它的终端"
-                    }
-                  },
-                  "dot": "needs-you",
-                  "life": {
-                    "activity": "needs_you",
-                    "is": "live"
-                  },
-                  "line": "需手动",
-                  "name": "需手动",
-                  "order": 0,
-                  "settled": false,
-                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
-                  "tone": "need"
-                },
                 "hidden": null,
                 "label": "b",
                 "needs": {
@@ -2454,7 +1182,7 @@
                   "head": "核心·等批准",
                   "headCode": null,
                   "kind": "approve",
-                  "manualText": null,
+                  "manualText": "核心·只能在终端里答",
                   "rank": 1,
                   "text": "等批准",
                   "tone": "need",
@@ -2472,98 +1200,49 @@
         "<local>"
       ],
       "merged": {
+        "asks": {
+          "head": "待答请求 0",
+          "items": [],
+          "sure": true,
+          "total": 0
+        },
         "down": [],
-        "head": "需手动 1",
-        "items": [
-          {
-            "item": {
-              "kind": "session",
-              "rank": 1,
-              "session": {
-                "face": {
-                  "can": {
-                    "attach": {
-                      "can": "yes"
-                    },
-                    "close": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "end": {
-                      "can": "yes"
-                    },
-                    "front": {
-                      "can": "yes"
-                    },
-                    "model": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "permission": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "reattach": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "resume": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "say": {
-                      "can": "yes",
-                      "hint": "发消息…"
-                    },
-                    "stop": {
-                      "can": "no",
-                      "why": "需手动"
-                    },
-                    "view": {
-                      "can": "yes",
-                      "open": {
-                        "kind": "attach"
-                      },
-                      "said": "在 cc-monitor 里打开它的终端"
-                    }
+        "ended": [],
+        "manual": {
+          "head": "需手动 1",
+          "items": [
+            {
+              "item": {
+                "kind": "session",
+                "rank": 1,
+                "session": {
+                  "hidden": null,
+                  "label": "b",
+                  "needs": {
+                    "ask": null,
+                    "call": "toolu_b",
+                    "head": "核心·等批准",
+                    "headCode": null,
+                    "kind": "approve",
+                    "manualText": "核心·只能在终端里答",
+                    "rank": 1,
+                    "text": "等批准",
+                    "tone": "need",
+                    "tool": "Bash",
+                    "waitedMs": 60000,
+                    "what": "占位命令"
                   },
-                  "dot": "needs-you",
-                  "life": {
-                    "activity": "needs_you",
-                    "is": "live"
-                  },
-                  "line": "需手动",
-                  "name": "需手动",
-                  "order": 0,
-                  "settled": false,
-                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
-                  "tone": "need"
-                },
-                "hidden": null,
-                "label": "b",
-                "needs": {
-                  "ask": null,
-                  "call": "toolu_b",
-                  "head": "核心·等批准",
-                  "headCode": null,
-                  "kind": "approve",
-                  "manualText": null,
-                  "rank": 1,
-                  "text": "等批准",
-                  "tone": "need",
-                  "tool": "Bash",
-                  "waitedMs": 60000,
-                  "what": "占位命令"
-                },
-                "sid": "b"
-              }
-            },
-            "origin": "<local>"
-          }
-        ],
-        "sure": true,
-        "total": 1,
-        "unreadable": []
+                  "sid": "b"
+                }
+              },
+              "origin": "<local>"
+            }
+          ],
+          "sure": true,
+          "total": 1
+        },
+        "unreadable": [],
+        "windowTitle": "cc-monitor · 需手动 1"
       }
     },
     {
@@ -2575,65 +1254,6 @@
               "kind": "session",
               "rank": 1,
               "session": {
-                "face": {
-                  "can": {
-                    "attach": {
-                      "can": "yes"
-                    },
-                    "close": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "end": {
-                      "can": "yes"
-                    },
-                    "front": {
-                      "can": "yes"
-                    },
-                    "model": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "permission": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "reattach": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "resume": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "say": {
-                      "can": "yes",
-                      "hint": "发消息…"
-                    },
-                    "stop": {
-                      "can": "no",
-                      "why": "需手动"
-                    },
-                    "view": {
-                      "can": "yes",
-                      "open": {
-                        "kind": "attach"
-                      },
-                      "said": "在 cc-monitor 里打开它的终端"
-                    }
-                  },
-                  "dot": "needs-you",
-                  "life": {
-                    "activity": "needs_you",
-                    "is": "live"
-                  },
-                  "line": "需手动",
-                  "name": "需手动",
-                  "order": 0,
-                  "settled": false,
-                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
-                  "tone": "need"
-                },
                 "hidden": null,
                 "label": "a",
                 "needs": {
@@ -2642,7 +1262,7 @@
                   "head": "核心·需手动",
                   "headCode": null,
                   "kind": "approve",
-                  "manualText": null,
+                  "manualText": "核心·只能在终端里答",
                   "rank": 1,
                   "text": "核心·需手动",
                   "tone": "need",
@@ -2685,6 +1305,12 @@
         "gpu-01"
       ],
       "merged": {
+        "asks": {
+          "head": "待答请求",
+          "items": [],
+          "sure": false,
+          "total": 0
+        },
         "down": [
           {
             "detail": "",
@@ -2692,441 +1318,69 @@
             "said": "devbox 后端未在运行"
           }
         ],
-        "head": "需手动",
-        "items": [
-          {
-            "item": {
-              "kind": "session",
-              "rank": 1,
-              "session": {
-                "face": {
-                  "can": {
-                    "attach": {
-                      "can": "yes"
-                    },
-                    "close": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "end": {
-                      "can": "yes"
-                    },
-                    "front": {
-                      "can": "yes"
-                    },
-                    "model": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "permission": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "reattach": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "resume": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "say": {
-                      "can": "yes",
-                      "hint": "发消息…"
-                    },
-                    "stop": {
-                      "can": "no",
-                      "why": "需手动"
-                    },
-                    "view": {
-                      "can": "yes",
-                      "open": {
-                        "kind": "attach"
-                      },
-                      "said": "在 cc-monitor 里打开它的终端"
-                    }
+        "ended": [],
+        "manual": {
+          "head": "需手动",
+          "items": [
+            {
+              "item": {
+                "kind": "session",
+                "rank": 1,
+                "session": {
+                  "hidden": null,
+                  "label": "a",
+                  "needs": {
+                    "ask": null,
+                    "call": null,
+                    "head": "核心·需手动",
+                    "headCode": null,
+                    "kind": "approve",
+                    "manualText": "核心·只能在终端里答",
+                    "rank": 1,
+                    "text": "核心·需手动",
+                    "tone": "need",
+                    "tool": null,
+                    "waitedMs": null,
+                    "what": null
                   },
-                  "dot": "needs-you",
-                  "life": {
-                    "activity": "needs_you",
-                    "is": "live"
-                  },
-                  "line": "需手动",
-                  "name": "需手动",
-                  "order": 0,
-                  "settled": false,
-                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
-                  "tone": "need"
-                },
-                "hidden": null,
-                "label": "a",
-                "needs": {
-                  "ask": null,
-                  "call": null,
-                  "head": "核心·需手动",
-                  "headCode": null,
-                  "kind": "approve",
-                  "manualText": null,
-                  "rank": 1,
-                  "text": "核心·需手动",
-                  "tone": "need",
-                  "tool": null,
-                  "waitedMs": null,
-                  "what": null
-                },
-                "sid": "a"
-              }
-            },
-            "origin": "<local>"
-          },
-          {
-            "item": {
-              "kind": "manual",
-              "manual": {
-                "account": "t1",
-                "agent": "claude",
-                "fix": {
-                  "args": {
-                    "account": "t1",
-                    "agent": "claude",
-                    "kind": "account"
-                  },
-                  "command": "login-start"
-                },
-                "kind": "accountLogin",
-                "said": "核心·t1 需登录"
+                  "sid": "a"
+                }
               },
-              "rank": 2000000000000000
+              "origin": "<local>"
             },
-            "origin": "<local>"
-          }
-        ],
-        "sure": false,
-        "total": 2,
+            {
+              "item": {
+                "kind": "manual",
+                "manual": {
+                  "account": "t1",
+                  "agent": "claude",
+                  "fix": {
+                    "args": {
+                      "account": "t1",
+                      "agent": "claude",
+                      "kind": "account"
+                    },
+                    "command": "login-start"
+                  },
+                  "kind": "accountLogin",
+                  "said": "核心·t1 需登录"
+                },
+                "rank": 2000000000000000
+              },
+              "origin": "<local>"
+            }
+          ],
+          "sure": false,
+          "total": 2
+        },
         "unreadable": [
           {
             "line": "gpu-01 · 需手动清单无法读取",
             "origin": "gpu-01",
             "said": "核心·账号库无法解析"
           }
-        ]
-      }
-    },
-    {
-      "answers": {
-        "<local>": {
-          "ended": [],
-          "items": [
-            {
-              "kind": "session",
-              "rank": 1,
-              "session": {
-                "face": {
-                  "can": {
-                    "attach": {
-                      "can": "yes"
-                    },
-                    "close": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "end": {
-                      "can": "yes"
-                    },
-                    "front": {
-                      "can": "yes"
-                    },
-                    "model": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "permission": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "reattach": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "resume": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "say": {
-                      "can": "yes",
-                      "hint": "发消息…"
-                    },
-                    "stop": {
-                      "can": "no",
-                      "why": "需手动"
-                    },
-                    "view": {
-                      "can": "yes",
-                      "open": {
-                        "kind": "attach"
-                      },
-                      "said": "在 cc-monitor 里打开它的终端"
-                    }
-                  },
-                  "dot": "needs-you",
-                  "life": {
-                    "activity": "needs_you",
-                    "is": "live"
-                  },
-                  "line": "需手动",
-                  "name": "需手动",
-                  "order": 0,
-                  "settled": false,
-                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
-                  "tone": "need"
-                },
-                "hidden": null,
-                "label": "a",
-                "needs": {
-                  "ask": null,
-                  "call": null,
-                  "head": "核心·需手动",
-                  "headCode": null,
-                  "kind": "approve",
-                  "manualText": null,
-                  "rank": 1,
-                  "text": "核心·需手动",
-                  "tone": "need",
-                  "tool": null,
-                  "waitedMs": null,
-                  "what": null
-                },
-                "sid": "a"
-              }
-            },
-            {
-              "kind": "manual",
-              "manual": {
-                "account": "t1",
-                "agent": "claude",
-                "fix": {
-                  "args": {
-                    "account": "t1",
-                    "agent": "claude",
-                    "kind": "account"
-                  },
-                  "command": "login-start"
-                },
-                "kind": "accountLogin",
-                "said": "核心·t1 需登录"
-              },
-              "rank": 2000000000000000
-            },
-            {
-              "kind": "manual",
-              "manual": {
-                "account": "w1",
-                "fix": {
-                  "args": {
-                    "account": "w1",
-                    "agent": "claude",
-                    "kind": "mcp",
-                    "projectDir": null,
-                    "server": "s1"
-                  },
-                  "command": "login-start"
-                },
-                "kind": "mcpLogin",
-                "said": "核心·MCP s1 需登录",
-                "scope": "user",
-                "server": "s1"
-              },
-              "rank": 2000000000000000
-            }
-          ]
-        },
-        "gpu-01": {
-          "ended": [],
-          "items": [
-            {
-              "kind": "manual",
-              "manual": {
-                "account": "t2",
-                "agent": "claude",
-                "fix": {
-                  "args": {
-                    "account": "t2",
-                    "agent": "claude",
-                    "kind": "account"
-                  },
-                  "command": "login-start"
-                },
-                "kind": "accountLogin",
-                "said": "核心·t2 需登录"
-              },
-              "rank": 2000000000000000
-            }
-          ]
-        }
-      },
-      "asked": [
-        "<local>",
-        "gpu-01"
-      ],
-      "merged": {
-        "down": [],
-        "head": "需手动 4",
-        "items": [
-          {
-            "item": {
-              "kind": "session",
-              "rank": 1,
-              "session": {
-                "face": {
-                  "can": {
-                    "attach": {
-                      "can": "yes"
-                    },
-                    "close": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "end": {
-                      "can": "yes"
-                    },
-                    "front": {
-                      "can": "yes"
-                    },
-                    "model": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "permission": {
-                      "can": "no",
-                      "why": "先答完需手动"
-                    },
-                    "reattach": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "resume": {
-                      "can": "no",
-                      "why": "运行中"
-                    },
-                    "say": {
-                      "can": "yes",
-                      "hint": "发消息…"
-                    },
-                    "stop": {
-                      "can": "no",
-                      "why": "需手动"
-                    },
-                    "view": {
-                      "can": "yes",
-                      "open": {
-                        "kind": "attach"
-                      },
-                      "said": "在 cc-monitor 里打开它的终端"
-                    }
-                  },
-                  "dot": "needs-you",
-                  "life": {
-                    "activity": "needs_you",
-                    "is": "live"
-                  },
-                  "line": "需手动",
-                  "name": "需手动",
-                  "order": 0,
-                  "settled": false,
-                  "tip": "在 tmux 会话里运行 · 程序退出后可接回",
-                  "tone": "need"
-                },
-                "hidden": null,
-                "label": "a",
-                "needs": {
-                  "ask": null,
-                  "call": null,
-                  "head": "核心·需手动",
-                  "headCode": null,
-                  "kind": "approve",
-                  "manualText": null,
-                  "rank": 1,
-                  "text": "核心·需手动",
-                  "tone": "need",
-                  "tool": null,
-                  "waitedMs": null,
-                  "what": null
-                },
-                "sid": "a"
-              }
-            },
-            "origin": "<local>"
-          },
-          {
-            "item": {
-              "kind": "manual",
-              "manual": {
-                "account": "t1",
-                "agent": "claude",
-                "fix": {
-                  "args": {
-                    "account": "t1",
-                    "agent": "claude",
-                    "kind": "account"
-                  },
-                  "command": "login-start"
-                },
-                "kind": "accountLogin",
-                "said": "核心·t1 需登录"
-              },
-              "rank": 2000000000000000
-            },
-            "origin": "<local>"
-          },
-          {
-            "item": {
-              "kind": "manual",
-              "manual": {
-                "account": "w1",
-                "fix": {
-                  "args": {
-                    "account": "w1",
-                    "agent": "claude",
-                    "kind": "mcp",
-                    "projectDir": null,
-                    "server": "s1"
-                  },
-                  "command": "login-start"
-                },
-                "kind": "mcpLogin",
-                "said": "核心·MCP s1 需登录",
-                "scope": "user",
-                "server": "s1"
-              },
-              "rank": 2000000000000000
-            },
-            "origin": "<local>"
-          },
-          {
-            "item": {
-              "kind": "manual",
-              "manual": {
-                "account": "t2",
-                "agent": "claude",
-                "fix": {
-                  "args": {
-                    "account": "t2",
-                    "agent": "claude",
-                    "kind": "account"
-                  },
-                  "command": "login-start"
-                },
-                "kind": "accountLogin",
-                "said": "核心·t2 需登录"
-              },
-              "rank": 2000000000000000
-            },
-            "origin": "gpu-01"
-          }
         ],
-        "sure": true,
-        "total": 4,
-        "unreadable": []
+        "windowTitle": "cc-monitor · 需手动 2"
       }
     }
   ],

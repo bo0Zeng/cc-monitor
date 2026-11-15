@@ -18,12 +18,12 @@ pub(crate) fn agent_homes_in(l: &Loaded) -> BTreeMap<String, PathBuf> {
             .iter()
             .map(|(k, d)| (k.clone(), PathBuf::from(d.trim())))
             .collect(),
-        Loaded::Absent | Loaded::Unreadable(_) => BTreeMap::new(),
+        Loaded::Absent | Loaded::Unreadable(_) | Loaded::Older(_) => BTreeMap::new(),
     }
 }
 
 /// 流模式起来时调一次（`stream/entry.rs`，在解析 agent 家目录、起任何线程之前）：这台给某一家设了数据目录 ⇒ 交成本进程里
-/// 那一家的目录环境变量（变量名问注册表那一格 `account_env_of`；解析只在 `agents::home_at` 一处，起的会话照旧继承）；
+/// 那一家的目录环境变量（变量名问注册表那一格 `account_env_of`；解析只在那一家的 `LocalFace::home_at`（经 `agents::home_of(kind, …)`）一处，起的会话照旧继承）；
 /// 没设 / 那一家没有这个变量 ⇒ 不动。改了要重启后端才生效。
 pub fn apply_agent_homes() {
     for (env, d) in agent_home_envs(agent_homes_in(&read_now())) {
@@ -55,30 +55,44 @@ pub(crate) use cmd_wire::FileState;
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
 pub struct PrefsReply {
-    /// `absent`（没设过）· `ok` · `unreadable`（读不懂：也照答，不是失败）。
+    /// `absent`（没设过 · 格式比下限老当没有，后者带 `reason`）· `ok` · `unreadable`（读不懂：也照答，不是失败）。
     pub(crate) state: FileState,
-    /// `unreadable` 时的原因（那一句不带原话）。
+    /// `unreadable` 时的原因（那一句不带原话）；`absent` 而盘上那份格式比下限老（当没有）⇒ 也带那一句。
     pub(crate) reason: Option<String>,
-    /// `unreadable` 时的复制详情。
+    /// 带原因时的复制详情。
     pub(crate) detail: Option<String>,
     /// 那份文件的路径（家目录说不出 ⇒ `null`）。
     pub(crate) path: Option<String>,
     /// 照用的那一份。
     pub(crate) prefs: Prefs,
+    /// 上下文上限那一段标题右侧「已改 N」（覆盖几条；一条都没有 ⇒ `null`），界面照抄。
+    pub(crate) context_limits_text: Option<String>,
 }
 
 fn reply(l: &Loaded, path: Option<&Path>) -> PrefsReply {
-    let why = match l {
-        Loaded::Unreadable(w) => Some(w),
-        _ => None,
+    let (reason, detail) = match l {
+        // 详情的码照回包那一格（当没有 ⇒ absent），不写成读不懂。
+        Loaded::Older(w) => (
+            Some(w.said.clone()),
+            Some(crate::wire::detail::of(
+                Some("prefs-read"),
+                "absent",
+                w.raw.as_deref(),
+            )),
+        ),
+        Loaded::Unreadable(w) => crate::wire::detail::unreadable("prefs-read", Some(w)),
+        Loaded::Absent | Loaded::Present(_) => (None, None),
     };
-    let (reason, detail) = crate::wire::detail::unreadable("prefs-read", why);
+    let prefs = l.prefs();
+    let n = prefs.context_limits.len();
     PrefsReply {
         state: l.state(),
         reason,
         detail,
         path: path.map(|p| p.display().to_string()),
-        prefs: l.prefs(),
+        context_limits_text: (n > 0)
+            .then(|| copy_core::copy_text("contextLimits.editor.count", &[("n", &n.to_string())])),
+        prefs,
     }
 }
 
@@ -100,10 +114,8 @@ fn offered_modes(req: &PrefsSet) -> Result<(), String> {
 pub fn offered(kind: &str, mode: &str) -> Option<crate::agents::Choice> {
     crate::agents::launch_face_among(crate::agents::REGISTRY, kind)?
         .permission?
-        .modes
-        .iter()
-        .find(|c| c.value == mode)
-        .copied()
+        .offered(mode)
+        .map(crate::agents::PermissionMode::choice)
 }
 
 /// 从这台起 `kind` 那一家的新会话默认的权限档：设了且还在那一家清单里 ⇒ 那一档；清单里没了 ⇒ 不带、记一行。
@@ -168,6 +180,23 @@ pub struct PrefsSet {
     #[serde(default)]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub(crate) pb_dir: Option<String>,
+    /// 计划页手加的目录（整节换掉；空表 ⇒ 一个都不加）。
+    #[serde(default)]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub(crate) plan_dirs: Option<Vec<String>>,
+    /// 状态行模板：`null` ⇒ 回到随包的缺省；字串 ⇒ 照存（空串 ⇒ 不留那一行；认不出的键照存）。没给 ⇒ 不动。
+    #[serde(default, deserialize_with = "given")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "string | null"))]
+    pub(crate) status_line: Option<Option<String>>,
+}
+
+/// 给了那一格（连 `null`）⇒ `Some`；没给 ⇒ `#[serde(default)]` 的 `None`。
+fn given<'de, D, T>(d: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::Deserialize<'de>,
+{
+    T::deserialize(d).map(Some)
 }
 
 /// 整份当补丁（交给一台还没设过的：每一节都给）。
@@ -193,12 +222,14 @@ impl From<&Prefs> for PrefsSet {
             child_tab: Some(p.child_tab),
             bg_tab: Some(p.bg_tab),
             pb_dir: p.pb_dir.clone(),
+            plan_dirs: Some(p.plan_dirs.clone()),
+            status_line: Some(p.status_line.clone()),
         }
     }
 }
 
 /// 补丁打到 `p` 上（纯）。
-pub(crate) fn patched(mut p: Prefs, s: &PrefsSet) -> Prefs {
+pub fn patched(mut p: Prefs, s: &PrefsSet) -> Prefs {
     for (k, v) in s.launchers.iter().flatten() {
         match v.trim() {
             "" => p.launchers.remove(k),
@@ -238,6 +269,12 @@ pub(crate) fn patched(mut p: Prefs, s: &PrefsSet) -> Prefs {
     if let Some(d) = &s.pb_dir {
         p.pb_dir = Some(d.trim().to_string()).filter(|d| !d.is_empty());
     }
+    if let Some(d) = &s.plan_dirs {
+        p.plan_dirs = d.clone();
+    }
+    if let Some(t) = &s.status_line {
+        p.status_line = t.clone();
+    }
     p
 }
 
@@ -245,7 +282,7 @@ pub(crate) fn patched(mut p: Prefs, s: &PrefsSet) -> Prefs {
 pub fn pb_dir_now() -> Option<PathBuf> {
     match read_now() {
         Loaded::Present(p) => p.pb_dir.map(PathBuf::from),
-        Loaded::Absent | Loaded::Unreadable(_) => None,
+        Loaded::Absent | Loaded::Unreadable(_) | Loaded::Older(_) => None,
     }
 }
 

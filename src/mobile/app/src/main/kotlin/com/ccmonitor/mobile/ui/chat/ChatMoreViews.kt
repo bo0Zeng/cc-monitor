@@ -40,6 +40,7 @@ import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.dialog.DangerConfirmDialog
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
+import com.ccmonitor.mobile.core.wire.gen.FindHit
 
 /**
  * ⋯ 里有哪几项、什么顺序（纯函数，判据读；顶栏照它画）：[agents] ＝ 这条会话有运行表，[openDir] ＝ 知道它的目录；
@@ -161,7 +162,10 @@ private fun FindHead(
     }
 }
 
-/** 会话里找：框里敲、按回车问那台；命中照那台的先后（头一行是那台写好的时刻），点一条跳过去。没问成 ⇒ 那台那一句。 */
+/** 命中行头一行：照抄那台按范围写好的 `meta`（谁 · 第几轮 · 时刻，与桌面会话内查找同一份成品）；那台没写 ⇒ 不摆。 */
+internal fun findHitHead(h: FindHit): String? = h.meta.takeIf { it.isNotEmpty() }
+
+/** 会话里找：框里敲、按回车问那台；命中照那台的先后（头一行是那台写好的 `meta`），点一条跳过去。没问成 ⇒ 那台那一句。 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun FindSheet(
@@ -192,7 +196,7 @@ private fun FindSheet(
             LazyColumn(Modifier.heightIn(max = 420.dp)) {
                 items(ui.hits) { h ->
                     Column(Modifier.fillMaxWidth().clickable { more.pickHit(h) }.padding(vertical = tokens.spacing.xs)) {
-                        if (h.tsText.isNotEmpty()) Text(h.tsText, style = MaterialTheme.typography.bodySmall, color = tokens.textFaint)
+                        findHitHead(h)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = tokens.textFaint) }
                         Text(
                             buildAnnotatedString {
                                 append(h.before)

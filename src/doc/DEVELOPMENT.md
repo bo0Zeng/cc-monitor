@@ -83,7 +83,7 @@ cargo clippy --all-targets
   末尾另印一行墙钟（整趟合计与最慢的几格）。`GATE_ONLY="<格> …"` 只跑点名的几格（e2e 可写组名 `e2e`），裁决行是 `GATE: PARTIAL`；CI 的 Linux job 就是这么调它的。
 - 平时不直接敲 `npm run gate`，也不拿它当调试回路；写的时候只跑改到的那几块测试，之后走这几个入口（都在 `tests/scripts/`，跑法见各自头注与 [`tests/scripts/README.md`](../../tests/scripts/README.md)）：
   - 交门禁之前：`bash tests/scripts/quick-check.sh`（不拿门禁锁；跑哪几段、按什么挑见上面那份 README）。
-  - 合并用的工作树推送之前：`bash tests/scripts/gate-affected.sh --trust-ci`（按改动挑格，`--dry-run` 只印计划），绿了 `bash tests/scripts/push-candidate.sh <合并工作树名>`（先推候选分支 `next`，CI 全绿才快进 `main`）。
+  - 推送：不推合并用的工作树本身，另开发版分支把它的头压成一个提交（父是 `origin/main`），在发版树里 `bash tests/scripts/gate-affected.sh --trust-ci`（或 `--full`；按改动挑格，`--dry-run` 只印计划），绿了 `bash tests/scripts/push-candidate.sh <发版名>`（先推候选分支 `next`，CI 全绿才快进 `main`）。为什么压成一个、红了怎么重压见 [RELEASING.md](RELEASING.md) §2。
   - 发版：照 [RELEASING.md](RELEASING.md) 走，步骤只写在那里。
   - 重活（编译 · 测试 · 门禁）经 `bash tests/scripts/heavy.sh <命令…>`：单独一个封顶内存的 systemd scope ＋ 槽位排队；没有 `systemd-run --user` 的机器上直接跑。
   - 门禁锁 · 槽位 · 推送日志在 `GATE_STATE_DIR`（默认 `${XDG_RUNTIME_DIR:-/tmp}/cc-monitor-gate/`）；私人扫描的脚本与词表不在仓里，只认 PATH 上的 `private-scan.sh`，找不到时门禁不说绿、推送拒推。

@@ -92,8 +92,7 @@ pub(crate) fn call_in(
 )]
 pub enum FailKind {
     /// 编不过 · 跑出错（`line` 是第几行）。
-    #[serde(rename = "failed")]
-    Broke,
+    Failed,
     /// 操作数超了 · 墙钟到了。
     Timeout,
     /// 回的形状不对。
@@ -161,6 +160,13 @@ impl Fail {
         }
     }
 
+    /// 策略交的先后里有别家的号（一个会话只用本家的号）：当形状不对。
+    pub(crate) fn foreign(id: &str) -> Self {
+        Self::shape(format!(
+            "account `{id}` belongs to another agent; a session only uses its own agent's accounts"
+        ))
+    }
+
     /// 跑出来的错：超操作数 / 墙钟 ⇒ 超时（带出处）；其余 ⇒ 出错（带行）。
     /// 行与哪一种都照最里头那一层：Rhai 把函数里出的错一层层包成「调用某函数时出错」，外层的位置是调用处（`decide` 那一层是空的）。
     pub(crate) fn of_eval(e: &EvalAltResult) -> Self {
@@ -180,7 +186,7 @@ impl Fail {
             kind: if timeout {
                 FailKind::Timeout
             } else {
-                FailKind::Broke
+                FailKind::Failed
             },
             line: pos.line(),
             col: pos.position(),

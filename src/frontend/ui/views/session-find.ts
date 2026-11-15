@@ -3,14 +3,14 @@
  *
  * - 锚在会话头下、正文区右上；不挡读（浮层外的流照样能滚）。切走 tab ⇒ 收起并出弹层栈。
  * - 搜索：共用 [`FindStrip`] 的面板摆法 —— 停 300ms 自己找、回车立刻找；框下一行范围「全部 | 用户」＋「含工具输出与思考」；
- *   每条「谁 · 第几轮 · 时刻」（范围「用户」不写谁）＋ 一行片段；
+ *   每条那台写好的「谁 · 第几轮 · 时刻」（范围「用户」不写谁）＋ 一行片段；
  *   ↑↓ / 回车 / `F3` 选，选中即跳；没加载的那一段取到就跳。
  * - 大纲：你说的每一句一行（`UserInputPanel` 那份清单原样挂进来），点了跳；与轮次刻度同一份数据。
  * - `Ctrl+F` ⇒ 打开到「搜索」、焦点进框；同一个入口再按一次 ⇒ 收起。Esc ⇒ 收起，焦点回到打开前的地方，跳过去的高亮一并去掉。
  */
 import { UserInputPanel, OUTLINE_LABEL, type JumpResult, type JumpTarget } from "./user-input-panel";
-import { FindStrip, type FindScope } from "../find-strip";
-import type { FindHit, FindResult } from "../session-reads";
+import { FindStrip } from "../find-strip";
+import type { FindResult } from "../session-reads";
 import { dispatcher, type OverlayHandle } from "../keybindings/registry";
 import { button } from "../kit/button";
 import { tabs } from "../kit/tabs";
@@ -28,27 +28,6 @@ export interface SessionFindHost {
   jumpTo(to: JumpTarget, tool?: string): JumpResult;
   /** 跳空时那一行下面写的一句。 */
   readonly unjumpableHint: string;
-}
-
-/** 命中行头一行：谁 · 第几轮 · 时刻（第一句之前的不写轮；范围「用户」整张都是用户的 ⇒ 不写谁）。 */
-export function hitMeta(h: FindHit, scope: FindScope = "all"): string {
-  if (scope === "user") {
-    if (h.turn > 0 && h.tsText) return copyText("sessionFind.hit.metaNoWho", { n: h.turn, time: h.tsText });
-    return h.tsText;
-  }
-  // 种类由那台给（`history-find` 的 `kind`）：你 · agent 回报（子 agent 交回 / 发来的话 · 另一个会话发来的话）· 工具 · 那一家。
-  const who =
-    h.kind === "user"
-      ? copyText("machineForm.field.user")
-      : h.kind === "report"
-        ? copyText("sessionFind.who.report")
-        : h.kind === "tool"
-          ? copyText("sessionFind.who.tool")
-          : copyText("history.searchHit.agent");
-  const time = h.tsText;
-  if (h.turn > 0 && time) return copyText("sessionFind.hit.meta", { who, n: h.turn, time });
-  if (h.turn > 0) return copyText("sessionFind.hit.metaNoTime", { who, n: h.turn });
-  return time ? copyText("sessionFind.hit.metaNoTurn", { who, time }) : who;
 }
 
 export class SessionFindPanel {
@@ -77,7 +56,7 @@ export class SessionFindPanel {
     });
     this.find = new FindStrip(
       { search: (q, tools, skip, scope) => (scope ? host.search(q, tools, skip, scope) : host.search(q, tools, skip)), jumpTo: (to, tool) => host.jumpTo(to, tool), unjumpableHint: host.unjumpableHint },
-      { autoMs: 300, panel: true, meta: (h, scope) => hitMeta(h, scope) },
+      { autoMs: 300, panel: true, meta: true },
     );
 
     this.box = document.createElement("div");

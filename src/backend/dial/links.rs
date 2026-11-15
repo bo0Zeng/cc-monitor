@@ -7,7 +7,7 @@
 //! 对上的进那台；对不上（机器表改过、旧身份的连接还没收掉 · 测试连接那种表外的）哪台都不进。
 //! 住拨号层不住观测层：用它的是控制面（`control/machine_state.rs`），控制面不许引观测面（控制面那个包不依赖观测面）。
 //!
-//! 本进程起的中转去上游那一跳（读数与那一句住中转核心 `comms_outward::hop`）归本机那台（[`local_from`]），同 SSH 那几跳进复制详情末尾那一段。
+//! 本进程起的中转去上游那一跳（读数住中转核心 `comms_outward::hop`，那一句住这里 [`hop_line`]）归本机那台（[`local_from`]），同 SSH 那几跳进复制详情末尾那一段。
 
 use std::collections::BTreeMap;
 
@@ -30,10 +30,36 @@ pub fn now(hosts: &[Host]) -> Links {
 
 /// 中转那一跳的读数 ⇒ 本机那台的那一段（**纯函数**）：一条连接那一句，不另起「怎么连过去的」。
 pub(crate) fn local_from(facts: Option<relay::HopFacts>) -> Option<Way> {
-    let line = facts?.line()?;
+    let line = hop_line(&facts?)?;
     Some(Way {
         route: None,
         hops: vec![line],
+    })
+}
+
+/// 中转那一跳那一句（「中转 上游〔· 经代理〕· 收 · 发〔· 上次卡在…〕」，同 SSH 那几跳一形）；一发都没往上游走过 ⇒ 没有。
+pub(crate) fn hop_line(f: &relay::HopFacts) -> Option<String> {
+    use copy_core::{copy_text, size_text};
+    let endpoint = f.endpoint.as_ref()?;
+    let place = if f.via_proxy {
+        copy_text("beLinks.route.proxy", &[("endpoint", endpoint)])
+    } else {
+        endpoint.clone()
+    };
+    let line = copy_text(
+        "beLinks.relay.line",
+        &[
+            ("endpoint", &place),
+            ("in", &size_text(f.bytes_in)),
+            ("out", &size_text(f.bytes_out)),
+        ],
+    );
+    Some(match f.last {
+        Some(relay::Last::Failed(at)) => copy_text(
+            "beLinks.relay.failed",
+            &[("line", &line), ("hop", at.words().1)],
+        ),
+        Some(relay::Last::Up) | None => line,
     })
 }
 

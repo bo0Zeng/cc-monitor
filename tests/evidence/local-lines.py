@@ -8,8 +8,9 @@
 缺省二进制是 `.build/backend/debug/cc-monitor-backend`（先 `cd src/backend && cargo build`）。
 它带 `CF1_BACKEND` 跑 `local_lines_tests::a_real_backend_feeds_local_lines_through_the_production_read_loop`
 （平时 `#[ignore]`）：起一个**流模式**的真后端（stdio 载体；起参就是生产那一份 `LOCAL_STREAM_ARGS`；私有 HOME /
-`CLAUDE_CONFIG_DIR` / `TMUX_TMPDIR`、摘掉 `TMUX` —— `C7i` 红线，不碰用户真实的 tmux server），用生产那条
-`local_stdio_consumer` 接上它，从本机内容通道上直接看送进来的东西。
+`CLAUDE_CONFIG_DIR`、摘掉 `TMUX` / `TMUX_PANE`），用生产那条 `local_stdio_consumer` 接上它，从本机内容通道上直接看送进来的东西。
+tmux 隔离照 `C7i` 走 shim：`cargo test` 经 `tests/e2e/tmux-shim.sh` 装好本趟私有的那一份再跑，目录经 `CCM_E2E_TMUX_SHIM_BIN`
+交给判据（判据拿不到就停），后端裸调的 tmux 被强插 `-L`，碰不到用户真实的 tmux server；收尾只收本趟那一台。
 
 覆盖：
   ① 一个活会话（冒充的 `sleep`，pidfile 的 `procStart` 取它自己的 `/proc` 启动时刻）被宣告，帧带 `path`、`lines == 2`
@@ -28,6 +29,9 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DEFAULT_BIN = os.path.join(ROOT, ".build", "backend", "debug", "cc-monitor-backend")
 TEST = "a_real_backend_feeds_local_lines_through_the_production_read_loop"
+SHIM = os.path.join(ROOT, "tests", "e2e", "tmux-shim.sh")
+# 先装 shim（装不上 tmux-shim.sh 自己退 2），再把目录交给判据；收尾只收本趟那一台私有 tmux。
+WITH_SHIM = ["bash", "-c", '. "$1" e2eLocalLines || exit 2; trap tmux_shim_cleanup EXIT; shift; CCM_E2E_TMUX_SHIM_BIN="$TMUX_SHIM_BIN" "$@"', "_", SHIM]
 
 
 def main():
@@ -39,7 +43,7 @@ def main():
     env.pop("TMUX", None)
     env.pop("TMUX_PANE", None)
     r = subprocess.run(
-        ["cargo", "test", "-p", "monitor", "--lib", TEST, "--", "--ignored", "--nocapture", "--exact", f"local_lines::tests::{TEST}"],
+        WITH_SHIM + ["cargo", "test", "-p", "monitor", "--lib", TEST, "--", "--ignored", "--nocapture", "--exact", f"local_lines::tests::{TEST}"],
         cwd=os.path.join(ROOT, "src", "frontend", "shell"),
         env=env,
         capture_output=True,

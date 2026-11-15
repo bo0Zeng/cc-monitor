@@ -87,7 +87,7 @@ pub(crate) struct FsProbe<'a> {
 
 /// **从哪台机器上看**这张表 —— 「足迹」per-origin 那一维。
 ///
-/// | 取值 | `home` / `agent_home` / 探针是谁的 | 远端落点（`HostScope::Remote`）| monitor 那台的落点（`HostScope::Client`）|
+/// | 取值 | `home` / `agent_homes` / 探针是谁的 | 远端落点（`HostScope::Remote`）| monitor 那台的落点（`HostScope::Client`）|
 /// |---|---|---|---|
 /// | [`Vantage::Monitor`] | monitor 所在那台（本机后端答）| 「远端路径，本页不连 SSH」| 真查（事实由 monitor 答）|
 /// | [`Vantage::Remote`] | **那台远端**（它自己的后端答）| 真查（它就在这台上）| **不进表**（它不在这台上，`build_rows` 按人群滤掉）|
@@ -102,15 +102,16 @@ pub(crate) enum Vantage {
     Remote,
 }
 
-// agent 家由调用方按 `agents/claudecode/paths.rs` 那一条规则算好交进来（[`SurfaceEnv::agent_home`]）。
+// 各家的家由调用方逐家算好交进来（[`SurfaceEnv::agent_homes`]，生产 = `agents::local_homes`）。
 
 /// 把申报路径解析成本机可查的形态。
 ///
 /// **「本机还是远端」从 `dest` 推导，不新增字段**（`TouchedFile` 的文档写了理由）。
-/// `~/.claude/...` 以 `agent_home` 为基准（Claude 布局那一条：`agents/claudecode/footprint.rs::under_agent_home`）——
-/// 那条 `CLAUDE_CONFIG_DIR` 规则只准解释一次，在调用方算 `agent_home` 的那一处。
+/// `~/<某家的配置根>/...` 以那一家的家为基准（哪一段算那一家的家底下由那一家的足迹面答，`FootprintFace::under_agent_home`）——
+/// 那一家家目录的环境规则只准解释一次，在调用方算各家的家的那一处。
 ///
 /// 第一个参数是视角（[`Vantage`]）：判据一律显式写 `Vantage::Monitor`。
+/// 哪几家、各家的足迹面照 `registry`（生产 `agents::REGISTRY`，经 [`SurfaceEnv::registry`]；判据喂替身家）。
 /// `None` ＝ 申报自相矛盾（散文 · 落点与路径对不上 · glob 写法不许）：那一行报「查不动」，不静默跳过。
 pub(crate) fn resolve_touched_path(
     vantage: Vantage,
@@ -118,8 +119,10 @@ pub(crate) fn resolve_touched_path(
     dest: &ToolDestination,
     host: HostScope,
     home: &Path,
-    agent_home: &Path,
+    agent_homes: impl crate::agents::IntoHomes,
+    registry: &[crate::agents::Adapter],
 ) -> Option<PathResolution> {
+    let agent_homes = agent_homes.into_homes_among(registry);
     // **先把散文挡在门外。** 这条是被自己的反向自检抓出来加的：
     // `~/.local/bin/cc-*（12 条软链）` 原先能"成功"解析成
     // `LocalGlob { prefix: "cc-", suffix: "（12 条软链）" }`——glob 分支把散文吞进了 suffix，
@@ -149,7 +152,7 @@ pub(crate) fn resolve_touched_path(
     // （更正我自己上一版注释里说过头的一句：我写"`UserConfiguredPath` 的占位符校验
     //  变成死代码"——不对。那条 `Err` 分支在更早一步就已经改成了"不是占位符就按本机路径解析"，
     //  本来就没有可被跳过的校验。真正被短路掉的是上面那两条。）
-    let by_dest = resolve_by_destination(vantage, declared, dest, home, agent_home)?;
+    let by_dest = resolve_by_destination(vantage, declared, dest, home, &agent_homes, registry)?;
     Some(project_onto_host(vantage, by_dest, host))
 }
 
@@ -187,7 +190,8 @@ fn resolve_by_destination(
     declared: &str,
     dest: &ToolDestination,
     home: &Path,
-    agent_home: &Path,
+    agent_homes: &[crate::agents::AgentHome],
+    registry: &[crate::agents::Adapter],
 ) -> Option<PathResolution> {
     match dest {
         ToolDestination::UserShellProfile(p) => {
@@ -210,16 +214,20 @@ fn resolve_by_destination(
         // 从远端那台看，「远端家目录相对」就是**这台**的家目录相对 ⇒ 照本机路径解析（`home` 是那台的）。
         ToolDestination::RemoteHomeRelative(_) => match vantage {
             Vantage::Monitor => Some(PathResolution::Remote),
-            Vantage::Remote => resolve_local_home(declared, home, agent_home),
+            Vantage::Remote => resolve_local_home(declared, home, agent_homes, registry),
         },
         // 一个工具两个落点 ⇒ 两个载体（`ccm`：远端 `RemoteHomeRelative`、本机 `LocalHomeRelative`，各带各的 touch），
         //    这里没有双值那一臂。理由住 `agents::footprint_decl::Carrier` 的头注。
-        ToolDestination::LocalHomeRelative(_) => resolve_local_home(declared, home, agent_home),
+        ToolDestination::LocalHomeRelative(_) => {
+            resolve_local_home(declared, home, agent_homes, registry)
+        }
         // 「不是我们装的」**不等于「查不了」** —— 恰恰相反：
         // 这一档的全部意义就是「我们查得到它在不在，但装不了」。
         // ⇒ 照本机路径解析（`host` 是 `Either` 时 `project_onto_host` 会再包一层，
         //    于是「本机没找到」照样不会被说成「不存在」）。
-        ToolDestination::NotInstalledByUs => resolve_local_home(declared, home, agent_home),
+        ToolDestination::NotInstalledByUs => {
+            resolve_local_home(declared, home, agent_homes, registry)
+        }
         // 不是文件：申报路径只许是那一个占位（注册表里的位置），别的写法 ⇒ 自相矛盾。
         ToolDestination::UserPath => {
             (declared == USER_PATH_TOKEN).then_some(PathResolution::UserPath)
@@ -229,13 +237,21 @@ fn resolve_by_destination(
 
 /// 解析一个 `~/…` 形态的**本机**路径。抽出来是因为两条臂共用它
 /// （`LocalHomeRelative` 与 `NotInstalledByUs`）。
-fn resolve_local_home(declared: &str, home: &Path, agent_home: &Path) -> Option<PathResolution> {
+fn resolve_local_home(
+    declared: &str,
+    home: &Path,
+    agent_homes: &[crate::agents::AgentHome],
+    registry: &[crate::agents::Adapter],
+) -> Option<PathResolution> {
     let rest = declared.strip_prefix("~/")?;
-    // `~/.claude/…` 的真实基准目录是 `CLAUDE_CONFIG_DIR`（若它确实是个目录）
-    // 哪一段算「agent 家底下」是那一家的布局知识（注册表里的足迹面答，`agents/claudecode/footprint.rs`）。
-    let under = crate::agents::footprint_faces().find_map(|f| (f.under_agent_home)(rest));
+    // 哪一段算「那一家的家底下」是那一家的布局知识（注入的注册表里那一家的足迹面答）；基准取那一家自己的家（逐家交进来的那一份）。
+    let under = agent_homes.iter().find_map(|h| {
+        crate::agents::footprint_face_among(registry, h.kind)
+            .and_then(|f| (f.under_agent_home)(rest))
+            .map(|r| (h.home.clone(), r))
+    });
     let (base, rel) = match under {
-        Some(r) => (agent_home.to_path_buf(), r.to_string()),
+        Some((agent_home, r)) => (agent_home, r.to_string()),
         None => (home.to_path_buf(), rest.to_string()),
     };
     let rel = rel.trim_end_matches('/');
@@ -333,7 +349,8 @@ pub struct SurfaceRow {
     pub tool_name: String,
     /// 档：「不该由我们装」与「该我们装而还没写」按**值**分，不按措辞猜。
     pub tier: EnvTier,
-    pub path_declared: &'static str,
+    /// 申报的那一形；各号目录里那几份是现算的（`~/…`，不在家目录底下 ⇒ 绝对路径）。
+    pub path_declared: std::borrow::Cow<'static, str>,
     pub state: SurfaceState,
 }
 
@@ -353,19 +370,28 @@ fn row(
 ) -> SurfaceRow {
     let SurfaceEnv {
         home,
-        agent_home,
+        agent_homes,
         fs,
         vantage,
+        registry,
         ..
     } = *env;
     // **声明自相矛盾也要如实报**（查不动），不能静默跳过一行——那会让表看着很干净而实际漏了东西
-    let state = resolve_touched_path(vantage, f.path, &c.destination, f.host, home, agent_home)
-        .map_or(SurfaceState::Undetermined, |r| observe(&r, fs));
+    let state = resolve_touched_path(
+        vantage,
+        f.path,
+        &c.destination,
+        f.host,
+        home,
+        agent_homes,
+        registry,
+    )
+    .map_or(SurfaceState::Undetermined, |r| observe(&r, fs));
     SurfaceRow {
         tool_id: t.id,
         tool_name: t.display_name.get(),
         tier: e.tier,
-        path_declared: f.path,
+        path_declared: std::borrow::Cow::Borrowed(f.path),
         state,
     }
 }
@@ -377,8 +403,8 @@ fn row(
 /// 具名结构加一样不会让每个调用点都改一遍。
 pub(crate) struct SurfaceEnv<'a> {
     pub home: &'a Path,
-    /// agent 家（`~/.claude/…` 的基准），调用方按 `agents/claudecode/paths.rs` 那一条规则算好交进来。
-    pub agent_home: &'a Path,
+    /// 各家的家（`~/<那一家的配置根>/…` 的基准，逐家；生产 = `agents::local_homes`）。
+    pub agent_homes: &'a [crate::agents::AgentHome],
     pub fs: &'a FsProbe<'a>,
     /// `$PATH` 原样。
     ///
@@ -393,6 +419,53 @@ pub(crate) struct SurfaceEnv<'a> {
     pub windows: bool,
     /// 从哪台机器上看（见 [`Vantage`]）。探针与上面几样必须是**同一台**的。
     pub vantage: Vantage,
+    /// 认得的那几家（各家足迹面 · 账号面照它收）：生产是 `agents::REGISTRY`，判据喂替身家。
+    pub registry: &'a [crate::agents::Adapter],
+    /// 这台账号库里的具名号（照清单顺序）：各号目录底下碰的那几份各出一行（[`account_rows`]）。
+    pub accounts: &'a [AccountDir],
+}
+
+/// 账号库里一个具名号：清单里那一格 `agent` 原样（缺席 ⇒ 缺省那一家）· 号名 · 配置目录。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct AccountDir {
+    pub agent: Option<String>,
+    pub name: String,
+    pub dir: PathBuf,
+}
+
+/// 足迹里各号那几行的工具 id（一个号一个工具名，路径各一行）。
+pub(crate) const ACCOUNT_FILES_ID: &str = "account-files";
+
+/// 各号目录底下碰的那几份：每个具名号照它那一家账号面的身份表各出一行（`agents::account_files_among`），
+/// 这台自己 stat；认不出是哪一家的号 ⇒ 那个号不出行（说不出它碰哪几份）。路径在家目录底下写 `~/…`，否则绝对路径。
+fn account_rows(env: &SurfaceEnv) -> Vec<SurfaceRow> {
+    env.accounts
+        .iter()
+        .flat_map(|a| {
+            let files = crate::agents::account_kind_among(env.registry, a.agent.as_deref())
+                .map(|k| crate::agents::account_files_among(env.registry, k, &a.dir))
+                .unwrap_or_default();
+            let name = copy_core::copy_text(
+                "rsToolRegistry.tools.accountFilesName",
+                &[("name", &a.name)],
+            );
+            files.into_iter().map(move |p| SurfaceRow {
+                tool_id: ACCOUNT_FILES_ID,
+                tool_name: name.clone(),
+                tier: EnvTier::AppInstalls,
+                path_declared: std::borrow::Cow::Owned(shown_path(env.home, &p)),
+                state: observe(&PathResolution::Local(p), env.fs),
+            })
+        })
+        .collect()
+}
+
+/// 一条这台的路径照足迹的写法：在家目录 `home` 底下 ⇒ `~/…`（`/` 分隔）；否则原样。
+fn shown_path(home: &Path, p: &Path) -> String {
+    match p.strip_prefix(home) {
+        Ok(rel) => format!("~/{}", rel.to_string_lossy().replace('\\', "/")),
+        Err(_) => p.display().to_string(),
+    }
 }
 
 /// 清单里**没有 `ToolSpec`** 的那一项，在这一页上长什么样。
@@ -419,7 +492,7 @@ fn unmanaged_row(
         tool_id: e.id,
         tool_name: e.display_name.clone(),
         tier: e.tier,
-        path_declared: named,
+        path_declared: std::borrow::Cow::Borrowed(named),
         state: observe_unmanaged(named, probe, env),
     }
 }
@@ -467,7 +540,7 @@ fn observe_unmanaged(named: &'static str, probe: EnvProbe, env: &SurfaceEnv) -> 
 
 /// 遍历**环境清单的闭集**建表。纯函数（探针全从 [`SurfaceEnv`] 注入）。
 ///
-/// 🔴 **人群从 `TOOLS` 换成了 [`environment`]。**
+/// 🔴 **人群从 `TOOLS` 换成了 [`super::registry::environment_among`]。**
 /// 原来它只遍历 `TOOLS` 的 `touches`，于是这一页能答的是模块头注那句
 /// 「cc-monitor 动过你哪些文件」，而**答不了**「app 要的东西齐了没有」——
 /// 后者的人群里有一整档是 app 装不了也不查的东西，它们一条都不在 `TOOLS` 里。
@@ -484,7 +557,7 @@ pub(crate) fn build_rows(env: &SurfaceEnv, client: Option<&SurfaceEnv>) -> Vec<S
         (HostScope::Client, None) if env.vantage == Vantage::Remote => None,
         _ => Some(env),
     };
-    super::registry::environment()
+    super::registry::environment_among(env.registry, cfg!(windows))
         .iter()
         .flat_map(|e| match e.backing {
             // 有 ToolSpec ⇒ 路径 / effect / host 全从那一份读，这里一个字都不复述
@@ -499,6 +572,7 @@ pub(crate) fn build_rows(env: &SurfaceEnv, client: Option<&SurfaceEnv>) -> Vec<S
                 .into_iter()
                 .collect(),
         })
+        .chain(account_rows(env))
         .collect()
 }
 

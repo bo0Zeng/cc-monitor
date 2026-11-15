@@ -116,7 +116,7 @@ cc-bus peek --max-lines 20                 # 分段读:积压太大时一轮只�
 bash ~/.claude/skills/cc-bus/scripts/cc-bus-install.sh
 ```
 
-只把 `cc-bus` 一个链进 `~/.local/bin`(那个目录里别的东西不碰),再印需手动做的:Stop 钩子 `cc-bus stop-hook` 合进 `~/.claude/settings.json`(Codex 合进 `~/.codex/hooks.json` 并 `/hooks` 信任)。不建运行时目录(收件箱住 cc-monitor 后端的数据目录 `cc-bus/`)、不改全局设置、不起守护进程。skill 目录本身由 cc-monitor 扩展页那一行装(内嵌在后端里)。
+只把 `cc-bus` 一个链进 `~/.local/bin`(那个目录里别的东西不碰),再印需手动做的:各家的 Stop 钩子那一段(要信任的那一家再加信任那一段)照印 cc-monitor 后端的钩子诊断给的(`ccm -- --hooks-diag` 每一家的 `.snippet` 与 `.trust.line`,指向扩展页装进的那个入口;后端不在或还没装 ⇒ 说先在扩展页装)。不建运行时目录(收件箱住 cc-monitor 后端的数据目录 `cc-bus/`)、不改全局设置、不起守护进程。skill 目录本身由 cc-monitor 扩展页那一行装(内嵌在后端里)。
 
 ## 适配面
 

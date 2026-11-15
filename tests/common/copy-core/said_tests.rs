@@ -37,15 +37,6 @@ fn an_outer_layer_names_the_code_and_adds_the_raw_text() {
 }
 
 #[test]
-fn a_missing_code_answers_as_the_fallback() {
-    assert_eq!(Said::from("x").code_or_fallback(), "failed");
-    assert_eq!(
-        Said::new("bad_args", "x".into()).code_or_fallback(),
-        "bad_args"
-    );
-}
-
-#[test]
 fn retelling_moves_the_old_sentence_into_the_raw_text() {
     let s = Said::new("io_failed", "下层那句".into()).retold("那一句".into());
     assert_eq!(s.said, "那一句");

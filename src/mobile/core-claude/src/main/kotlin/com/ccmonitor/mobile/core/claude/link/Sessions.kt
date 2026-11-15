@@ -75,9 +75,13 @@ object SessionOpen {
         account: String? = null,
         /** 改过轮换 ⇒ 那一份（不轮换 ＝ `strategy: null`）；没改 ⇒ `null`、不交（那台按「新会话用」那份）。 */
         rotation: Rotation? = null,
+        /** 选了模型 ⇒ 那一家 `models` 里一项的原值；跟随 ⇒ `null`、不交。 */
+        model: String? = null,
+        /** 选的模型分档 ⇒ 那一档的原值（只跟 [model]）；不分档 ⇒ `null`、不交。 */
+        effort: String? = null,
     ): Map<String, Any?> =
         ask(
-            OpenWhat.New(agent = agent, cwd = cwd, prompt = prompt, rotation = rotation?.let { RotationPick(it.strategy) }),
+            OpenWhat.New(agent = agent, cwd = cwd, prompt = prompt, model = model, effort = effort, rotation = rotation?.let { RotationPick(it.strategy) }),
             ticket = ticket,
             account = account,
         )
@@ -153,7 +157,7 @@ object SessionArrive {
 
     fun args(ask: ArriveAsk): Map<String, Any?> = Commands.SessionArrive.args(ask)
 
-    /** 报到了 ⇒ `sid`；没见到 ⇒ `said`（那台写好的那一句）。 */
+    /** 报到了 ⇒ `sid`；没见到 ⇒ 那台分好的三格：`title`（标题）· `said`（那一句）· `words`（画面末几行，进复制详情）。 */
     fun of(data: Any?): ArriveEnd? = Commands.SessionArrive.reply(data)
 }
 
@@ -191,10 +195,12 @@ object HistoryFacts {
 object SessionModel {
     const val COMMAND: String = Commands.SessionModel.NAME
 
+    /** [effort] 是那个模型 `efforts` 里选的那一档的原值；没选 ⇒ `null`，不带这一格（那一家照它自己的缺省）。 */
     fun args(
         sid: String,
         model: String,
-    ): Map<String, Any?> = Commands.SessionModel.args(SessionModelReq(sid = sid, model = model, client = CLIENT))
+        effort: String? = null,
+    ): Map<String, Any?> = Commands.SessionModel.args(SessionModelReq(sid = sid, model = model, client = CLIENT, effort = effort))
 
     /** 结局（`done` · `unsure` · `refused`）＋ 读回的显示名 ＋ 那台写好的那一句。 */
     fun of(data: Any?): ModelSwitched? = Commands.SessionModel.reply(data)
@@ -231,7 +237,7 @@ object SessionQueuePut {
     const val COMMAND: String = Commands.SessionQueuePut.NAME
 
     /**
-     * [attachments]：随这一句发的附件编号（[SessionAttachmentCommit] 回的，按草稿里的先后）；没有 ⇒ 不带这一格。
+     * [attachments]：随这一句发的附件编号（核心附件那一排提交后交的，按草稿里的先后）；没有 ⇒ 不带这一格。
      * [rewind]：编辑已发的那一句（确认那一下）：会话那台投递时先退到 `rewind.to` 之前再说它；普通的一句 ⇒ 不带。
      */
     fun args(

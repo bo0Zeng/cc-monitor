@@ -55,7 +55,8 @@ function make(): LaunchSlots {
 const ASK = { by: { kind: "cwd", cwd: "/home/u/srv/billing" }, since: 3, session: "billing-2", host: "tmux" } as const;
 const SPEC: SlotSpec = { origin: "devbox", cwd: "/home/u/srv/billing", tmuxName: "billing-2", arrival: ASK };
 const TITLE = copyText("beSessionArrive.missed.title");
-const SAID = `${TITLE}\n已等 18s 未报到 · tmux 会话「billing-2」末几行\nclaude: error: unknown option '--modle'\n(Did you mean --model?)`;
+const SAID = "已等 18s 未报到 · tmux 会话「billing-2」末几行";
+const WORDS = "claude: error: unknown option '--modle'\n(Did you mean --model?)";
 
 const rows = (): HTMLElement[] => [...tail.querySelectorAll<HTMLElement>("[data-slot]")];
 const panelText = (): string => (root.firstElementChild as HTMLElement).textContent ?? "";
@@ -65,8 +66,9 @@ const tick = async (): Promise<void> => {
   for (let i = 0; i < 5; i++) await Promise.resolve();
 };
 
+/** 那台答的三格：标题照表 · 那一句 · 画面末几行（有句柄的那几种才有）。 */
 async function missWith(said: string, terminal: string | null): Promise<void> {
-  await answer({ kind: "missed", said, terminal });
+  await answer({ kind: "missed", title: TITLE, said, words: terminal === null ? null : WORDS, terminal });
 }
 
 beforeEach(() => {
@@ -172,7 +174,7 @@ describe("没见到", () => {
 
   it("★ 那个终端已不在 / 读不到 / 开窗起的（那台不给句柄）⇒ 只有那一句 ＋［再查一次］［关闭标签页］、不出画面那一块", async () => {
     make().add(SPEC);
-    await missWith(`${TITLE}\n已等 18s 未报到 · tmux 会话「billing-2」已不在`, null);
+    await missWith("已等 18s 未报到 · tmux 会话「billing-2」已不在", null);
     expect(panelText()).toContain("已等 18s 未报到 · tmux 会话「billing-2」已不在");
     expect(root.querySelector("pre")).toBeNull();
     expect(actsOnCard()).toEqual([`again:${copyText("launch.slot.again")}`, `close:${copyText("launch.slot.close")}`]);

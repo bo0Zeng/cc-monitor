@@ -102,6 +102,50 @@ pub struct PlanFileDup {
     pub title: Option<String>,
 }
 
+/// `plan-list` 的入参。问哪些目录是那台的事（活会话的工作目录 ∪ 那台偏好里手加的目录），不由问的一方带。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct PlanListReq {
+    /// `true` ⇒ 认过的目录也重问 pb。
+    #[serde(default)]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
+    pub fresh: Option<bool>,
+}
+
+/// `plan-read` 的入参。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct PlanReadReq {
+    /// 工作区根（`plan-list` 给的那个）。
+    pub workspace: String,
+}
+
+/// `plan-cell-view` 的入参。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct PlanCellViewReq {
+    /// 工作区根。
+    pub workspace: String,
+    /// 片名。
+    pub slice: String,
+    /// 格的编号。
+    pub id: String,
+}
+
+/// `plan-cell-view` 的回包：pb 印给站在这一格的 agent 的那一段，原样。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct PlanCellView {
+    pub view: String,
+}
+
 /// `plan-files` 的入参：文件窗口在看的那个目录。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -114,7 +158,7 @@ pub struct PlanFilesReq {
 
 /// `plan-files` 的回包：这个目录落在哪一片的仓库里（不在 ⇒ `slice: null`）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct PlanFiles {
@@ -126,7 +170,6 @@ pub struct PlanFiles {
     /// 这个目录里无主的那几份（文件名）；不在任何一片里 · 那一片读不成 · 仓库读不出 ⇒ `null`。
     pub unowned: Option<Vec<String>>,
     /// 仓库读不出、判不了无主的那一句（pb 原样）；判得了 ⇒ `null`。
-    #[serde(rename = "unownedWhy")]
     pub unowned_why: Option<String>,
 }
 
@@ -150,9 +193,9 @@ pub struct PlanWho {
     pub needs: Option<String>,
     /// 此刻那条会话的整份脸（认不出 ⇒ 状态不明）。
     pub face: crate::frame::SessionFace,
-    /// 写好的那一个名字：子 agent ⇒「{主会话} 的 agent」；认不出 ⇒ 认不出那一句（id 截成前后几位）；
-    /// 会话本身 ⇒ `null`（两端写那条会话的名字）。
-    pub label: Option<String>,
+    /// 后端写好的那一个名字，两端照显：会话本身 ⇒ 那条会话的标题（与标签页 · 会话列表同一条规则）；
+    /// 子 agent ⇒「{主会话} 的 agent」；认不出 ⇒ 认不出那一句（id 截成前后几位）。
+    pub label: String,
 }
 
 /// 一片随数据变的那几句（后端照这台的文案表写好）：桌面整页 · 手机一屏一层摆的是同一份，两端不拼。
@@ -193,7 +236,7 @@ pub struct PlanBlockSaid {
 pub struct PlanCellSaid {
     /// 上面几层的「编号 标题」，从顶层往下连好；顶层 ⇒ `null`。
     pub trail: Option<String>,
-    /// 它是一块的根节点 ⇒ 那一句（插它的「编号 标题」）；不是 ⇒ `null`。
+    /// 根格 ⇒ 整句「块根那句 · 负责人名字 · 阶段」（没有负责人 · 阶段那一段不写）；不是根格 ⇒ `null`。
     pub block_root: Option<String>,
 }
 
@@ -280,19 +323,8 @@ pub struct PlanPendingSet {
     pub target: Option<String>,
     /// 那一笔写好的字：值（pb 的协议值写成字）；去一笔 ⇒ `-值`。没有值 ⇒ `null`。
     pub said: Option<String>,
-    /// pb 的值与加 · 去：只用来判节点为什么开着（`whyCode`），不上线。
-    #[serde(skip)]
-    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
-    pub value: Option<String>,
-    #[serde(skip)]
-    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
-    pub op: String,
     /// pb 那一句。
     pub blocked_reason: Option<String>,
-    /// pb 给程序的代号（`source_delegated` …）：只用来判节点为什么开着（`whyCode`），不上线。
-    #[serde(skip)]
-    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
-    pub blocked_code: Option<String>,
 }
 
 /// 划出了、还没建的权力范围（下一趟 update 建）。
@@ -321,7 +353,6 @@ pub struct PlanDomain {
     pub name: Option<String>,
     pub error: Option<String>,
     pub kinds: Vec<PlanKind>,
-    pub phases: Vec<PlanPhase>,
 }
 
 /// 画线的四种边（指向 · 连着 · 排在后面 · 替换），各一列编号。covers 画圈、sets 画虚线、file 列在格上，不在这里。
@@ -330,23 +361,9 @@ pub struct PlanDomain {
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct PlanEdges {
     pub to: Vec<String>,
-    #[serde(rename = "with")]
-    #[cfg_attr(any(test, feature = "ts"), ts(rename = "with"))]
-    pub with_: Vec<String>,
+    pub with: Vec<String>,
     pub after: Vec<String>,
     pub replaces: Vec<String>,
-}
-
-/// 没签收的原因（后端照 dump 数好）：叶子没签 · 底下 d/m · 等上一级执行交回的那一条 · 待定还没人定。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "lowercase")]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub enum PlanWhyCode {
-    Nosign,
-    Inside { done: u32, of: u32 },
-    Upper,
-    Undecided,
 }
 
 /// 行尾那一个原因短词（写好的字）；`wait` ⇒ 等上一级（用正文色）。
@@ -433,14 +450,14 @@ pub struct PlanCell {
     /// 状态那一节什么都没有（没记值、也没有指着它没执行的 sets）时那一句：算活、底下有格 ⇒ 跟着底下走；别的 ⇒ 没记状态。
     /// 有东西可摆 ⇒ `null`。
     pub quiet: Option<String>,
-    /// 没签收（或待定没人定）的原因；签收了 · 不算活 ⇒ `null`。
-    pub why_code: Option<PlanWhyCode>,
     /// 行尾那一个原因短词；没有原因 ⇒ `null`。
     pub why_short: Option<PlanWhyShort>,
     /// 它自己写的、还没执行的 sets。
     pub sets: Vec<PlanSetsTo>,
     /// 在它底下加节点要在哪个权力范围里做（pb 的 `children_in`；最上面那一个 ⇒ `project`）。
     pub block: Option<String>,
+    /// 它是哪一块的根格 ⇒ 那一块的编号（同 `blocks[].id`）；`project` 的根格与不是根格的 ⇒ `null`。
+    pub root_of: Option<String>,
     /// 那个权力范围的负责人（要改它，该说给的那一位）。
     pub owner: Option<PlanWho>,
     /// 写得动它元数据的那一位（pb 的 `signer`）。
@@ -475,13 +492,14 @@ pub struct PlanNeed {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub red: Option<u32>,
-    pub acked: bool,
     /// 那一条的标题（后端照种类写好）。
     pub title: String,
     /// 标题底下那几行（顶层签了几格 · pb 那一句与修法 · 底下签了几格 · 子 agent 由主会话收）；负责人那一枚由出口挂，不在这里。
     pub lines: Vec<String>,
-    /// 「第几条 / 共几条」（照认可记录标过之后、没认可的那几条照先后写）；认可过的 ⇒ `null`。
+    /// 「第几条 / 共几条」（照认可记录摘掉认可过的之后，留下的那几条照先后写；还没照认可记录标过 ⇒ `null`）。
     pub pos: Option<String>,
+    /// 负责人那一行（负责人名字，后端写好）：问人 · 负责人停了两种有；顶层全签收 · 校验不通过 ⇒ `null`。
+    pub who: Option<String>,
 }
 
 /// 建了的一个权力范围（pb 的 `scopes[]`）。
@@ -559,9 +577,7 @@ pub enum PlanTakeover {
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct PlanEdgeWords {
     pub to: Option<String>,
-    #[serde(rename = "with")]
-    #[cfg_attr(any(test, feature = "ts"), ts(rename = "with"))]
-    pub with_: Option<String>,
+    pub with: Option<String>,
     pub after: Option<String>,
     pub replaces: Option<String>,
 }
@@ -578,14 +594,6 @@ pub struct PlanKind {
     pub values: Vec<String>,
 }
 
-/// 阶段表里的一步。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct PlanPhase {
-    pub name: Option<String>,
-}
-
 /// 校验不通过的一条（pb 的 `failures[]`）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -598,15 +606,6 @@ pub struct PlanRed {
     pub fix: Option<String>,
     /// `what` 里提到的格（UTF-16 下标）。
     pub refs: Vec<PlanRef>,
-}
-
-/// 判不了的一条。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct PlanUndecidable {
-    pub rule: Option<String>,
-    pub why: Option<String>,
 }
 
 /// 读不成的一处：哪一份 · 第几行（说不出 ⇒ `null`）· 为什么。
@@ -629,7 +628,6 @@ pub struct PlanCheck {
     /// 元数据坏了、编号还认得出的节点：判不了，不在 `cells` 里。
     pub unparsed: Vec<String>,
     pub red: Vec<PlanRed>,
-    pub undecidable: Vec<PlanUndecidable>,
 }
 
 /// 顶层进度：顶层算活的节点里签收了几个 / 一共几个。
@@ -651,21 +649,6 @@ pub struct PlanStale {
     pub raw: Option<String>,
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub since: u64,
-    /// `since` 写成的字：只拼读不成那一句（`said` 里），不上线。
-    #[serde(skip)]
-    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
-    pub since_text: Option<String>,
-}
-
-/// 归档里的节点（被替换的）。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct PlanArchived {
-    pub id: String,
-    pub title: Option<String>,
-    pub kind: Option<String>,
 }
 
 /// 一份审图给人看的几句（后端照文案表写好，两端照摆）。
@@ -710,16 +693,8 @@ pub struct PlanAudit {
         ts(type = "\"done\" | \"failed\" | \"unfinished\" | null")
     )]
     pub status: Option<PlanAuditStatus>,
-    /// 起不了的为什么（pb 那一句）：只拼结果那一句（`said.result`），不上线。
-    #[serde(skip)]
-    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
-    pub failed_reason: Option<String>,
     /// 校验里说到这几个节点的不通过有几条。
     pub check: u32,
-    /// 审图 agent 报了几条（没写完 · 起不了 ⇒ `None`）：只拼结果那一句，不上线。
-    #[serde(skip)]
-    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
-    pub findings: Option<u32>,
     pub said: PlanAuditSaid,
 }
 
@@ -741,9 +716,6 @@ pub struct PlanSlice {
     pub stale: Option<PlanStale>,
     pub bare: bool,
     pub kinds: Vec<PlanKind>,
-    pub phases: Vec<PlanPhase>,
-    /// 收的值（领域表 update 规则加 · 去的那个，软件是「已签收」）；表里没有 ⇒ `null`（不出进度）。
-    pub done_value: Option<String>,
     pub top: Vec<String>,
     /// 顶层进度；没有收的值 ⇒ `null`。
     pub progress: Option<PlanProgress>,
@@ -760,7 +732,6 @@ pub struct PlanSlice {
     /// 编号 ⇒「编号 标题」（图上每个节点，连排期的 ＋ 归档里的；后端拼，界面凡出现编号照它写）。
     pub labels: std::collections::BTreeMap<String, String>,
     pub cells: Vec<PlanCell>,
-    pub archived: Vec<PlanArchived>,
     /// 审图的报告，一份一项，照按的先后。
     pub audits: Vec<PlanAudit>,
     pub needs: Vec<PlanNeed>,
@@ -787,7 +758,6 @@ pub struct PlanSessionBlock {
     pub top: bool,
     pub phase: Option<String>,
     pub at: Option<String>,
-    pub at_title: Option<String>,
     #[cfg_attr(any(test, feature = "ts"), ts(type = "\"session\" | \"subagent\""))]
     pub via: String,
     pub said: PlanSessionSaid,
@@ -813,10 +783,7 @@ pub struct PlanRead {
     pub rev: String,
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub read_at: u64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub read_at_text: Option<String>,
-    /// 上次读数那一格（与 `readAtText` 同一把钟写）：那台离线时计划条照它说这一份是什么时候读到的。
+    /// 上次读数那一格（与读到那一句同一把钟写）：那台离线时计划条照它说这一份是什么时候读到的。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub seen: Option<crate::cells::SeenAt>,
@@ -867,7 +834,12 @@ pub struct PlanPb {
         ts(type = "\"ok\" | \"missing\" | \"unsupported\"")
     )]
     pub state: String,
+    /// 不是 `ok` 时那一句（一行）。
     pub said: Option<String>,
+    /// 下一步（为什么 · 怎么办，一行）；没有 ⇒ 缺。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub hint: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub version: Option<String>,
@@ -962,7 +934,6 @@ pub struct PlanPbCheck {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct PlanAckReply {
-    pub acked: bool,
     pub key: String,
     /// 这个工作区此刻要人过目的数。
     pub need_count: u32,
@@ -1020,7 +991,7 @@ mod said_tests {
                 "workspace": "/w", "repo": null, "auto": false, "rev": "r0", "stale": null, "needCount": 0,
                 "bySession": { "s1": {
                     "slice": "ledger", "block": "B1", "cell": "A1", "title": "导出", "top": false,
-                    "phase": "回看", "at": null, "atTitle": null, "via": "session",
+                    "phase": "回看", "at": null, "via": "session",
                     "said": { "name": "后端·块名", "mark": "后端·标" } } },
                 "slices": [{
                     "name": "ledger", "domain": null, "current": true, "progress": null, "needCount": 0,
@@ -1035,6 +1006,28 @@ mod said_tests {
         let v = list_json();
         let back: PlanList = serde_json::from_value(v.clone()).expect("照契约的形状");
         assert_eq!(serde_json::to_value(&back).expect("序列化"), v);
+    }
+
+    /// 需手动那一条带后端写好的负责人名字（问人 · 停了那两种）或 `null`（另两种），照字回环。
+    #[test]
+    fn a_need_carries_its_owner_line_word_for_word() {
+        for who in [json!("后端·负责人"), Value::Null] {
+            let v = json!({
+                "key": "ask:B1@s1", "kind": "ask", "block": "B1", "cell": "A1", "sid": "s1",
+                "title": "后端·问人", "lines": [], "pos": "1/1", "who": who,
+            });
+            let back: PlanNeed = serde_json::from_value(v.clone()).expect("照契约的形状");
+            assert_eq!(serde_json::to_value(&back).expect("序列化"), v);
+        }
+    }
+
+    /// `plan-list` 的入参只剩 `fresh`：手加的目录住那台偏好，带 `dirs` 解不开。
+    #[test]
+    fn a_list_request_takes_no_dirs() {
+        let ok: PlanListReq = serde_json::from_value(json!({ "fresh": true })).expect("只带 fresh");
+        assert_eq!(ok.fresh, Some(true));
+        serde_json::from_value::<PlanListReq>(json!({})).expect("什么都不带");
+        serde_json::from_value::<PlanListReq>(json!({ "dirs": ["/w"] })).expect_err("dirs 已删");
     }
 
     /// 必填：回包缺 `said` ⇒ 解不开，报的就是那一格（两端契约对不上，不悄悄当空）。

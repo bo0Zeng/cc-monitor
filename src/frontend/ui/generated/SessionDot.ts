@@ -3,4 +3,4 @@
 /**
  * 会话那颗点（线上名与界面状态点同一套）。
  */
-export type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
+export type SessionDot = "running" | "asks" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";

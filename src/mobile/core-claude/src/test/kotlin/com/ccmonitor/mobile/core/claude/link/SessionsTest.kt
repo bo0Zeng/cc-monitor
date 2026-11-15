@@ -87,8 +87,8 @@ class SessionsTest {
         val bySid = SessionOpen.of(opened + ("arrival" to mapOf("by" to mapOf("kind" to "sid", "sid" to "s1"), "since" to 0, "session" to null)))!!.arrival!!
         assertEquals(mapOf("by" to mapOf("kind" to "sid", "sid" to "s1"), "since" to 0L, "session" to null), SessionArrive.args(bySid))
         assertEquals(ArriveEnd.Arrived("s9"), SessionArrive.of(mapOf("kind" to "arrived", "sid" to "s9")))
-        val missed = SessionArrive.of(mapOf("kind" to "missed", "said" to "未报到\n末几行", "terminal" to null))
-        assertEquals("未报到\n末几行", (missed as ArriveEnd.Missed).said)
+        val missed = SessionArrive.of(mapOf("kind" to "missed", "title" to "未报到", "said" to "已等 4s", "words" to "末几行", "terminal" to null))
+        assertEquals(Triple("未报到", "已等 4s", "末几行"), (missed as ArriveEnd.Missed).let { Triple(it.title, it.said, it.words) })
     }
 
     @Test

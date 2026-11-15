@@ -3,10 +3,10 @@ package com.ccmonitor.mobile.ui.identity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ccmonitor.mobile.core.copy.copyText
-import com.ccmonitor.mobile.core.data.crypto.SshKeyGenerator
 import com.ccmonitor.mobile.core.data.db.Identity
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
 import com.ccmonitor.mobile.core.ssh.PublicKeyDeriver
+import com.ccmonitor.mobile.core.ssh.SshKeyGenerator
 import com.ccmonitor.mobile.core.wire.gen.SshPublicKey
 import com.ccmonitor.mobile.ui.common.newHardwareIdentity
 import kotlinx.coroutines.CoroutineDispatcher

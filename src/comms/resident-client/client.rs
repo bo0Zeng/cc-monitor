@@ -174,7 +174,7 @@ where
             nonce: connection_nonce(),
             seq: AtomicU64::new(0),
             writes: tx,
-            pending: Mutex::new(HashMap::new()),
+            pending: Mutex::new(Pending::default()),
             machine: std::sync::OnceLock::new(),
             tz: std::sync::OnceLock::new(),
             read_end: watch::channel(false).0,
@@ -190,7 +190,7 @@ pub struct InboundClient {
     nonce: String,
     seq: AtomicU64,
     writes: mpsc::Sender<WriteJob>,
-    pending: Mutex<HashMap<String, Waiter>>,
+    pending: Mutex<Pending>,
     /// 这条连接通往哪台（[`InboundClient::name_machine`]，宿主登记时记下）：给人看的话里称呼它。没登记过 ⇒ 空（称「该机」）。
     machine: std::sync::OnceLock<String>,
     /// 看的这一台的时区（IANA 名，[`InboundClient::set_viewer_tz`]）：每条请求信封都带；没给 ⇒ 不带（后端按 UTC 写）。
@@ -203,6 +203,33 @@ pub struct InboundClient {
 struct Waiter {
     tx: oneshot::Sender<Outcome>,
     withdraws: Option<String>,
+    /// 问的是哪条（问别台 ⇒ `命令@那台`）与什么时候登记的：登记表满了那一行照它数。
+    asks: String,
+    since: std::time::Instant,
+}
+
+/// 登记表：在等结局的那几格 ＋ 这一段满着说过没有（满了只说一次，又登记上一条才算这一段完了）。
+#[derive(Default)]
+struct Pending {
+    waiters: HashMap<String, Waiter>,
+    full_said: bool,
+}
+
+/// 登记表里此刻谁在等：各条各几格（`命令=条数`，多的在前，同数按名）与最老那一格等了多久。
+fn who_waits(waiters: &HashMap<String, Waiter>) -> (String, Duration) {
+    let mut by: HashMap<&str, usize> = HashMap::new();
+    for w in waiters.values() {
+        *by.entry(w.asks.as_str()).or_default() += 1;
+    }
+    let mut by: Vec<(&str, usize)> = by.into_iter().collect();
+    by.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+    let counts: Vec<String> = by.iter().map(|(c, n)| format!("{c}={n}")).collect();
+    let oldest = waiters
+        .values()
+        .map(|w| w.since.elapsed())
+        .max()
+        .unwrap_or_default();
+    (counts.join(", "), oldest)
 }
 
 impl InboundClient {
@@ -223,19 +250,11 @@ impl InboundClient {
         self.offer_now().admits(cmd)
     }
 
-    /// 一句话里怎么称呼这条连接通往的那台：本机说「本机」，远端说它的名字；没登记过（判据里直接造的客户端）⇒「该机」。
-    fn machine_said(&self) -> String {
-        self.called().unwrap_or_else(copy_core::peer_machine)
-    }
-
-    /// 这一端怎么称呼这条连接通往的那台（登记时记下的名字；本机 ⇒「本机」）：报错里那一句与请求信封的 `called` 都照它。没登记 ⇒ `None`。
-    fn called(&self) -> Option<String> {
+    /// 这一端怎么称呼这条连接通往的那台（登记时记下的名字，称呼照 `chan::said::machine`）：报错里那一句与请求信封的 `called` 都照它。
+    /// 没登记过（判据里直接造的客户端）⇒ `None`，报错里那一句说「该机」。
+    fn machine_said(&self) -> Option<String> {
         self.machine.get().map(|m| {
-            if m == cmd_wire::LOCAL {
-                copy_core::local_machine()
-            } else {
-                m.clone()
-            }
+            comms_inward::chan::said::machine(&comms_inward::origin::Origin::named(m.as_str()))
         })
     }
 
@@ -419,11 +438,15 @@ impl InboundClient {
             self.gate(cmd)?;
         }
         let id = self.fresh_id();
+        let asks = match at {
+            Some(m) => format!("{cmd}@{m}"),
+            None => cmd.to_string(),
+        };
         let rx = self
-            .register_waiter(&id, None)
+            .register_waiter(&id, &asks, None)
             .ok_or(CallError::TooManyPending)?;
         // 这一问还剩多少原样放进信封：后端按它（减它自己的余量）装这条命令的总期限。
-        let called = self.called();
+        let called = self.machine_said();
         let asked = match at {
             Some(m) => Asked::At(m),
             None => Asked::Itself {
@@ -442,11 +465,12 @@ impl InboundClient {
                 offered: self.offer_now().ops().to_vec(),
             });
         }
+        let name = || self.machine_said().unwrap_or_else(copy_core::peer_machine);
         // typed 命令两端形状对不上 ⇒ 不发（发了也解不对）；那一句带上这台的称呼（登记时记下的名字）。
         if self.offer_now().shape_differs(cmd) {
             return Err(CallError::Differs {
                 cmd: cmd.to_string(),
-                said: copy_core::backend_differs(&self.machine_said()),
+                said: copy_core::backend_differs(&name()),
             });
         }
         // 那台握手时说过做不到 ⇒ 不发，事前就拒（一个字节不出本侧）。
@@ -454,7 +478,7 @@ impl InboundClient {
         if let Some(code) = self.offer_now().unavailable(cmd).map(str::to_string) {
             return Err(CallError::Unavailable {
                 cmd: cmd.to_string(),
-                said: copy_core::unavailable(&code, &self.machine_said()),
+                said: copy_core::unavailable(&code, &name()),
                 code,
             });
         }
@@ -591,8 +615,8 @@ impl InboundClient {
     pub fn shutdown(&self) {
         let n = {
             let mut p = lock(&self.pending);
-            let n = p.len();
-            p.clear();
+            let n = p.waiters.len();
+            p.waiters.clear();
             n
         };
         if n > 0 {
@@ -601,7 +625,7 @@ impl InboundClient {
     }
 
     fn deliver(&self, id: &str, outcome: Outcome) -> bool {
-        let Some(Waiter { tx, withdraws }) = self.take_pending(id) else {
+        let Some(Waiter { tx, withdraws, .. }) = self.take_pending(id) else {
             // ★ 归不到任何命令头上的应答。**最要紧的是别把 code/said 丢了** ——
             // 它们往往是唯一能说清「为什么那条命令没反应」的东西。
             //
@@ -670,35 +694,54 @@ impl InboundClient {
     fn register_waiter(
         &self,
         id: &str,
+        asks: &str,
         withdraws: Option<String>,
     ) -> Option<oneshot::Receiver<Outcome>> {
         let (tx, rx) = oneshot::channel();
         let mut p = lock(&self.pending);
-        if p.len() >= MAX_PENDING {
-            let before = p.len();
-            p.retain(|_, waiter| !waiter.tx.is_closed());
-            let reclaimed = before - p.len();
+        if p.waiters.len() >= MAX_PENDING {
+            let before = p.waiters.len();
+            p.waiters.retain(|_, waiter| !waiter.tx.is_closed());
+            let reclaimed = before - p.waiters.len();
             if reclaimed > 0 {
                 tracing::debug!("入方向登记表满，回收了 {reclaimed} 条调用方已走的登记");
             }
-            if p.len() >= MAX_PENDING {
+            if p.waiters.len() >= MAX_PENDING {
+                if !p.full_said {
+                    p.full_said = true;
+                    let (counts, oldest) = who_waits(&p.waiters);
+                    tracing::warn!(
+                        "在等的登记表满了（{} 条都还在等）：拒了 `{asks}`；在等的 {counts}；最老的等了 {} ms",
+                        p.waiters.len(),
+                        oldest.as_millis()
+                    );
+                }
                 return None;
             }
         }
-        p.insert(id.to_string(), Waiter { tx, withdraws });
+        p.full_said = false;
+        p.waiters.insert(
+            id.to_string(),
+            Waiter {
+                tx,
+                withdraws,
+                asks: asks.to_string(),
+                since: std::time::Instant::now(),
+            },
+        );
         Some(rx)
     }
 
     /// 当前登记数（测试用；生产没有读者，别拿它做判断）。
     #[cfg(any(test, feature = "test-support"))]
     pub fn pending_len(&self) -> usize {
-        lock(&self.pending).len()
+        lock(&self.pending).waiters.len()
     }
 
     /// 判据用：登记一个等待者（表满 ⇒ `None`；拿着的那一份不放，它就一直算「调用方还在」）。
     #[cfg(any(test, feature = "test-support"))]
-    pub fn register(&self, id: &str, withdraws: Option<String>) -> Option<impl Send> {
-        self.register_waiter(id, withdraws)
+    pub fn register(&self, id: &str, asks: &str) -> Option<impl Send> {
+        self.register_waiter(id, asks, None)
     }
 
     /// 判据用：本连接下一个请求 `id`。
@@ -708,7 +751,7 @@ impl InboundClient {
     }
 
     fn take_pending(&self, id: &str) -> Option<Waiter> {
-        lock(&self.pending).remove(id)
+        lock(&self.pending).waiters.remove(id)
     }
 
     /// 超时后补一条 `cancel`，让后端别白跑。**不等它的应答。**
@@ -731,7 +774,8 @@ impl InboundClient {
             Withdraw::Unsent => return,
         }
         let id = self.fresh_id();
-        let Some(_keep_quiet) = self.register_waiter(&id, Some(cmd.to_string())) else {
+        let Some(_keep_quiet) = self.register_waiter(&id, WITHDRAW_OP, Some(cmd.to_string()))
+        else {
             tracing::debug!("登记表满，跳过超时补发的 cancel：target={target}");
             return;
         };

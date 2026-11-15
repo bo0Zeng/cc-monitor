@@ -34,8 +34,6 @@ mod frame_log;
 // 🔴**书签** —— 存 monitor 自己的状态文件
 //    （不是用户文件），两个进程的写都走同一个「上锁 → 现读 → 改 → 原子换」。逐条理由住那份头注。
 mod bookmarks;
-// **上传的块形**：SFTP 起始目录不是后端 home 时经后端链路分块写。
-mod chunk_upload;
 // 窗口的框：工具条 · 命令栏 · 左栏 · 状态栏（作用于焦点那一栏）。
 mod chrome;
 mod copy;
@@ -47,8 +45,7 @@ mod corpus;
 mod cross_copy;
 // 🔴**新建空文件**（`files-create`，经通道）。
 mod create;
-// 🔴**往外拖** —— `sftp_download` 在窗口上的落点
-//    （那条欠账逐字「往外拖（下载）没做」）。
+// **下载到本机**：一项 · 几项，都是一组寻址本机的 `transfer-copy`。
 mod download;
 // 🔴**改一份远端文本** —— 把「那个上限该多少 ·
 //    超了怎么办」两个问题指名留给了 `24e`，答复逐条住 `editor.rs` 头注。
@@ -70,8 +67,6 @@ mod grep;
 mod imgview;
 mod kind;
 mod kit;
-// **有损名下载**：远端按字节就地拷进暂存区再走传输，本机按原始字节 / 有损形落名。
-mod lossy_pull;
 // **预览**：右侧一块只读面板（已有的 `files-read-text`，自己的上限，最多一趟在飞）。
 mod preview;
 // 窗口底部那张「进度」表：一趟一行（上传 · 下载 · 复制 · 解压 · 算大小 · 删除），所有标签页共用一份。
@@ -101,6 +96,7 @@ mod size;
 mod source;
 // 窗口的样子：开窗种子里那一套主题 → egui 的配色 · 字号 · 间距（色值只住这一处换算）。
 mod theme;
+// **一组搬到另一台**（上传 · 下载 · 复制到另一台）：一条寻址本机的 `transfer-copy` 的入参。
 mod transfer;
 // **一趟**：各看板共用的那一格（在做哪一项 · 落地 · 结局）与落地时只判一次的结局（进度表与标签页收场读同一份）。
 mod trip;
@@ -110,7 +106,7 @@ mod upload;
 //    `FileWindow` 不拆（它就是一个标签页），`eframe::App` 挪到这里。逐条理由住那份头注。
 mod workspace;
 // 🔴：那四条**写**命令在窗口上的落点
-//    （新建目录 · 删除 · 改名 · 改权限）。取消那一条住 [`transfer`]。
+//    （新建目录 · 删除 · 改名 · 改权限）。
 mod writeops;
 
 // 与 app 那条边界的判据（`boundary_tests`）挂在 monitor 那一侧（壳里 `filewin/mod.rs`）：它判的是 monitor 那一侧够不够得着这里。

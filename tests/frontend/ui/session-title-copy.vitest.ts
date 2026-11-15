@@ -39,7 +39,7 @@ function tab(over: Partial<Tab> = {}): Tab {
     origin: LOCAL,
     forkedLine: "分叉自「父」",
     whereLine: null,
-    unread: 0,
+    unreadSaid: null,
     needs: null,
     autoAnswer: null,
     autoAnswerChoices: [],

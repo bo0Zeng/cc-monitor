@@ -92,14 +92,14 @@ describe("请求：问对那台、说对那条", () => {
     await extList(true);
     const many = { places: [{ at: { level: "user" }, ok: true, note: null }], place: { level: "user" }, slots: [], machines: [{ to: "laptop", name: "laptop", card: EXT.card, files: ["/g · SKILL.md"], error: null }] };
     invokeMock.mockResolvedValueOnce(chanReply(many));
-    const card = await extHubPreview("skill", "demo", ["laptop"], null);
+    const card = await extHubPreview({ kind: "skill", name: "demo" }, ["laptop"], null);
     invokeMock.mockResolvedValueOnce(chanReply({ machines: [{ to: "laptop", name: "laptop", done: EXT.done, error: null }] }));
-    const done = await extHubApply("skill", "demo", card, { env: { K: "v" } });
+    const done = await extHubApply({ kind: "skill", name: "demo" }, card, { env: { K: "v" } });
     expect(done.machines[0].done).toEqual(EXT.done);
     invokeMock.mockResolvedValueOnce(chanReply(EXT.uninstallCard));
-    const u = await extUninstallPreview("laptop", "skill", "demo", { level: "user" });
+    const u = await extUninstallPreview("laptop", { kind: "skill", name: "demo" }, { level: "user" });
     invokeMock.mockResolvedValueOnce(chanReply(EXT.uninstallDone));
-    await extUninstallApply("laptop", u, { level: "user" });
+    await extUninstallApply("laptop", { kind: "skill", name: "demo" }, u, { level: "user" });
     const calls = invokeMock.mock.calls.map((c) => c[1] as ChanCallArgs);
     expect(calls.map((a) => [a.origin, a.op, chanArgsJson(a)])).toEqual([
       ["<local>", "ext-list", { visit: true }],
@@ -109,16 +109,50 @@ describe("请求：问对那台、说对那条", () => {
       ["laptop", "ext-uninstall-apply", { kind: "skill", name: "demo", at: { level: "user" }, token: u.token }],
     ]);
   });
-  it("备注：问本机后端，种类 · 名字 · 正文原样交；回现在生效的那一份", async () => {
+  it("行上带家 ⇒ 装 · 卸那几问照行上的家带 `agent`；默认那一家那一行不带（帧与今天逐字相同）", async () => {
+    const many = { places: [], place: { level: "user" }, slots: [], machines: [{ to: "laptop", name: "laptop", card: EXT.card, files: [], error: null }] };
+    const row = { kind: "skill" as const, name: "demo", agent: "fake2" };
+    invokeMock.mockResolvedValueOnce(chanReply(many));
+    const card = await extHubPreview(row, ["laptop"], null);
+    invokeMock.mockResolvedValueOnce(chanReply({ machines: [] }));
+    await extHubApply(row, card, {});
+    invokeMock.mockResolvedValueOnce(chanReply({ ...(EXT.uninstallCard as object), agent: "fake2" }));
+    const u = await extUninstallPreview("laptop", row, { level: "user" });
+    invokeMock.mockResolvedValueOnce(chanReply(EXT.uninstallDone));
+    await extUninstallApply("laptop", row, u, { level: "user" });
+    const agents = invokeMock.mock.calls.map((c) => (chanArgsJson(c[1] as ChanCallArgs) as { agent?: string }).agent);
+    expect(agents).toEqual(["fake2", "fake2", "fake2", "fake2"]);
+  });
+  it("行上带来源（同名插件几个来源各一行）⇒ 装 · 卸那几问都带那一行的来源键；没有来源的行不带", async () => {
+    const many = { places: [], place: { level: "user" }, slots: [], machines: [{ to: "laptop", name: "laptop", card: EXT.card, files: [], error: null }] };
+    const row = { kind: "plugin" as const, name: "demo", source: { key: "demo@rack", said: "x" } };
+    invokeMock.mockResolvedValueOnce(chanReply(many));
+    const card = await extHubPreview(row, ["laptop"], null);
+    invokeMock.mockResolvedValueOnce(chanReply({ machines: [] }));
+    await extHubApply(row, card, {});
+    invokeMock.mockResolvedValueOnce(chanReply(EXT.uninstallCard));
+    const u = await extUninstallPreview("laptop", row, { level: "user" });
+    invokeMock.mockResolvedValueOnce(chanReply(EXT.uninstallDone));
+    await extUninstallApply("laptop", row, u, { level: "user" });
+    invokeMock.mockResolvedValueOnce(chanReply(EXT.uninstallCard));
+    await extUninstallPreview("laptop", { kind: "skill", name: "demo" }, { level: "user" });
+    const sources = invokeMock.mock.calls.map((c) => (chanArgsJson(c[1] as ChanCallArgs) as { source?: string }).source);
+    expect(sources).toEqual(["demo@rack", "demo@rack", "demo@rack", "demo@rack", undefined]);
+  });
+  it("备注：问本机后端，种类 · 名字 · 正文原样交，行上带家才带 agent；回现在生效的那一份", async () => {
     invokeMock.mockResolvedValueOnce(chanReply({ note: "先加钩子" }));
-    expect(await extNoteSet("skill", "cc-bus", "先加钩子")).toBe("先加钩子");
+    expect(await extNoteSet({ kind: "skill", name: "cc-bus" }, "先加钩子")).toBe("先加钩子");
     invokeMock.mockResolvedValueOnce(chanReply({ note: null }));
-    expect(await extNoteSet("skill", "cc-bus", "")).toBeNull();
+    expect(await extNoteSet({ kind: "skill", name: "cc-bus" }, "")).toBeNull();
+    invokeMock.mockResolvedValueOnce(chanReply({ note: "第二家的" }));
+    expect(await extNoteSet({ kind: "skill", name: "demo", agent: "fake2" }, "第二家的")).toBe("第二家的");
     const calls = invokeMock.mock.calls.map((c) => c[1] as ChanCallArgs);
     expect(calls.map((a) => [a.origin, a.op, chanArgsJson(a)])).toEqual([
       ["<local>", "ext-note-set", { kind: "skill", name: "cc-bus", text: "先加钩子" }],
       ["<local>", "ext-note-set", { kind: "skill", name: "cc-bus", text: "" }],
+      ["<local>", "ext-note-set", { kind: "skill", name: "demo", agent: "fake2", text: "第二家的" }],
     ]);
+    expect(Object.keys(chanArgsJson(calls[0]) as object)).not.toContain("agent");
   });
 });
 

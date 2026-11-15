@@ -18,7 +18,7 @@ import {
 } from "../theme";
 import { readClaudeDir, setClaudeDirOverride } from "../paths";
 import { loadConfig } from "../config";
-import { AccountsSection } from "./accounts-section";
+import { AccountsSection, focusAccount } from "./accounts-section";
 import { ExtSection } from "./ext-section"; // 顶层「扩展」：跨机器的 skill / MCP，一张表 ＋ 一个抽屉
 import { DiagnosticsSection } from "./diagnostics-section";
 import { makeSkeleton } from "./skeleton";
@@ -35,6 +35,7 @@ import { setCurrentMachine } from "../machine-context";
 import { LOCAL, isLocalOrigin } from "../ipc/origin";
 import { updateBackend } from "../backend-deploy";
 import { failToast } from "../kit/toast";
+import { tabBarHeadSection } from "./tab-bar-head-section";
 import { toggleSwitch } from "../kit/switch";
 
 type SwitchHandle = ReturnType<typeof toggleSwitch>;
@@ -48,6 +49,7 @@ import { DataSection } from "./data-section";
 import { DataPage } from "./data-page";
 import { ContextLimitsSection } from "./context-limits-section"; // 那台的上下文上限表
 import { pbDirRow } from "./pb-dir-row"; // 那台的 pb 路径
+import { statusLineRow } from "./status-line-row"; // 那台托管终端的状态行模板
 import { RemoteSection } from "./remote-section";
 import type { MachineCardParts } from "./machine-card";
 import { BackendSection } from "./backend-section"; // P2s（C8）：每台机一个后端开关
@@ -579,6 +581,8 @@ export class SettingsPanel {
     if (tabs && tabId) tabs.navigate(`${pageId}#${tabId}`);
     // 轮换栏的锚点带着「看哪份 · 开哪个号」：交给那一栏（还没挂上 ⇒ 挂上时用）。
     if (focusRotation(t.anchor)) return;
+    // 账号栏一个号那一行（`account:<家>:<号名>`）：号单是读回来才画的 ⇒ 交给那一栏，画完再落。
+    if (focusAccount(t.anchor)) return;
     const page = this.router.pageOf(pageId);
     if (!page) return;
     const spot =
@@ -805,19 +809,21 @@ export class SettingsPanel {
     const cc: HTMLElement[] = [];
     if (origin && this.backendSection) {
       try {
-        // 那台的偏好那几格（启动程序 · 恢复到 tmux 里 · pb 路径 · 上下文上限）：这一页第一次可见才问那台。
+        // 那台的偏好那几格（启动程序 · 恢复到 tmux 里 · pb 路径 · 状态行 · 上下文上限）：这一页第一次可见才问那台。
         const launch = machineLaunchRows(origin, title);
         const pb = pbDirRow(origin);
+        const status = statusLineRow(origin);
         const limits = new ContextLimitsSection(origin);
         limits.element.addEventListener(REVEAL_EVENT, () => limits.reveal());
         const load = (): void => {
           launch.load();
           pb.load();
+          status.load();
           void limits.load();
         };
         if (this.pagesLoaded.has(pageId)) load();
         else this.loadOnFirstVisit(pageId, load);
-        const rows = [...launch.rows, pb.row, limits.element, ...(parts ? [parts.components] : [])];
+        const rows = [...launch.rows, pb.row, status.row, limits.element, ...(parts ? [parts.components] : [])];
         cc.push(this.backendSection.cellsFor(origin, { rows, trailing: parts?.uninstall }));
       } catch (e) {
         // 那几格没建起来不许把这一页带走（那台退到后端清单的尾巴里）。
@@ -862,6 +868,10 @@ export class SettingsPanel {
     // 主窗口快捷键一览的「改快捷键…」开 `{page: "appearance", anchor: "keybindings"}`：落到这一节。
     kbBlock.dataset.anchor = "keybindings";
     appearancePage.appendChild(kbBlock);
+    // 栏顶按钮（栏顶右键 · ⋯「调整栏顶按钮…」开 `{page: "appearance", anchor: "tab-bar-head"}`：落到这一节）。
+    appearancePage.appendChild(
+      this.safeBlock(copyText("tabBarHead.edit.title"), () => tabBarHeadSection({ written: () => this.broadcastApplied() }), { untitled: true }),
+    );
     const resetRow = document.createElement("div");
     resetRow.className = "settings-row settings-row-end";
     resetRow.appendChild(

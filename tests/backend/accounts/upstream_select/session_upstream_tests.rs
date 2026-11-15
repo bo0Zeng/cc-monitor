@@ -9,6 +9,7 @@ fn desc(pid: u32, vars: &[(&str, &str)]) -> UpstreamDesc {
             .map(|(k, v)| (k.to_string(), v.to_string()))
             .collect(),
         base: None,
+        account: None,
         pid,
         at: 1,
     }
@@ -137,5 +138,91 @@ fn a_left_description_carries_its_version() {
         Some(7),
         "带版本的那一份读不回"
     );
+    std::fs::remove_dir_all(&data).ok();
+}
+
+/// 起会话那个号那一格落盘读回一致；没写 ⇒ 读回没有（旧的那份没有这一格也读得懂）。
+#[test]
+fn the_launch_account_reads_back() {
+    let data = test_home::scratch("acct");
+    let own = crate::platform::fs::Own::issue_data_at(&data);
+    let mut d = desc(7, &[]);
+    d.account = Some("b".into());
+    leave(&own, "0123abcd", &d, &|_| true).expect("写得下");
+    assert_eq!(
+        of(&data, "0123abcd").and_then(|d| d.account).as_deref(),
+        Some("b")
+    );
+    leave(&own, "4567cdef", &desc(7, &[]), &|_| true).expect("写得下");
+    assert_eq!(of(&data, "4567cdef").and_then(|d| d.account), None);
+    std::fs::remove_dir_all(&data).ok();
+}
+
+/// 起会话那条中转地址 ⇒ 它路由第 2 段的号；没说是哪个号（`_`）· 不是中转地址 ⇒ 没有。
+#[test]
+fn the_launch_account_is_read_off_the_relay_address() {
+    assert_eq!(
+        account_in("http://127.0.0.1:7000/t/claude-code/b/~0123abcd").as_deref(),
+        Some("b")
+    );
+    assert_eq!(
+        account_in("http://127.0.0.1:7000/t/claude-code/b").as_deref(),
+        Some("b")
+    );
+    assert_eq!(
+        account_in("http://127.0.0.1:7000/t/claude-code/_/~0123abcd"),
+        None
+    );
+    assert_eq!(account_in("https://api.example.com/v1"), None);
+}
+
+/// ★ 替身家声明 `Bind::Origin`、第一发带着来处 ⇒ 这条会话钉在那个来处描述里记的号；描述里没有号 · 没有描述 ⇒ 照起会话那一段的号。
+/// 先定会话号的那一家（`Bind::Preset`）一律照那一段。
+#[test]
+fn an_origin_bound_family_is_pinned_to_the_account_in_its_description() {
+    let data = test_home::scratch("bind");
+    let own = crate::platform::fs::Own::issue_data_at(&data);
+    let mut d = desc(7, &[]);
+    d.account = Some("second".into());
+    leave(&own, "0123abcd", &d, &|_| true).expect("写得下");
+    leave(&own, "4567cdef", &desc(7, &[]), &|_| true).expect("写得下");
+    let origin_bind = crate::agents::fake::upstream::UPSTREAM.bind;
+    assert_eq!(origin_bind, crate::agents::Bind::Origin);
+    assert_eq!(
+        bound_account(&data, origin_bind, "_", Some("0123abcd")),
+        "second"
+    );
+    assert_eq!(
+        bound_account(&data, origin_bind, "first", Some("4567cdef")),
+        "first"
+    );
+    assert_eq!(
+        bound_account(&data, origin_bind, "first", Some("89abcdef")),
+        "first"
+    );
+    assert_eq!(bound_account(&data, origin_bind, "first", None), "first");
+    assert_eq!(
+        bound_account(
+            &data,
+            crate::agents::Bind::Preset,
+            "first",
+            Some("0123abcd")
+        ),
+        "first"
+    );
+    std::fs::remove_dir_all(&data).ok();
+}
+
+/// 这个进程起来时注入了中转：有一份描述记着它的 pid ⇒ 是；没有 ⇒ unix 上不是（ccm 就地 exec，pid 就是 agent 的），
+/// 别处说不清（ccm 起子进程等它，描述记的是 ccm 的 pid）。
+#[test]
+fn a_description_carrying_the_pid_says_that_process_was_launched_through_the_relay() {
+    let data = test_home::scratch("relayed");
+    let own = crate::platform::fs::Own::issue_data_at(&data);
+    let absent = if cfg!(unix) { Some(false) } else { None };
+    assert_eq!(relayed(&data, 7), absent, "一份描述都没有");
+    leave(&own, "0123abcd", &desc(7, &[]), &|_| true).expect("写得下");
+    assert_eq!(relayed(&data, 7), Some(true));
+    assert_eq!(relayed(&data, 8), absent, "别的进程");
     std::fs::remove_dir_all(&data).ok();
 }

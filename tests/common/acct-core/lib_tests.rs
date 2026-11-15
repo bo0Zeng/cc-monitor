@@ -210,15 +210,9 @@ fn one_account_book_answers_routes_and_kinds() {
             Some("k1".into())
         ]
     );
-    assert_eq!(book.by_route("k1").map(|a| a.name.as_str()), Some("key"));
-    assert_eq!(
-        book.by_route(BARE_ACCOUNT).map(|a| a.name.as_str()),
-        Some("zero")
-    );
-    assert!(book.by_route("nope").is_none());
-    assert!(book.by_route("k1").is_some_and(ManifestAccount::is_api_key));
+    assert!(book.by_name("key").is_some_and(ManifestAccount::is_api_key));
     assert!(!book
-        .by_route("acct-w")
+        .by_name("work")
         .is_some_and(ManifestAccount::is_api_key));
     assert_eq!(
         book.by_name("work").and_then(|a| a.config_dir.as_deref()),
@@ -260,5 +254,34 @@ fn the_bare_account_is_always_first_on_the_rotation_side() {
             .collect::<Vec<_>>(),
         ["zero", "work"],
         "清单里那一条照用，不另补一条"
+    );
+}
+
+/// 账号库清单契约不认识任何一家 agent 的凭据文件：哪一家把登录存在哪份文件里，住那一家的适配层（后端 `agents/<家>`）。
+/// 人群：本包源码全文（连注释）× 今天各家的凭据文件名，零命中。正控：同一把尺子在 claudecode 适配层源码里数得到那一家的。
+#[test]
+fn no_agent_credentials_file_name_lives_in_the_account_contract() {
+    // (那一家的凭据文件名, 它的家)
+    const NAMES: [(&str, &str); 2] = [
+        (".credentials.json", "src/backend/agents/claudecode/mod.rs"),
+        ("auth.json", "src/backend/agents/codex/accounts.rs"),
+    ];
+    let here = env!("CARGO_MANIFEST_DIR");
+    let own = std::fs::read_to_string(format!("{here}/src/lib.rs")).expect("读本包源码");
+    let repo = std::path::Path::new(here).join("../../..");
+    for (name, home) in NAMES {
+        let at_home = std::fs::read_to_string(repo.join(home)).expect("读那一家的源码");
+        assert!(
+            at_home.contains(name),
+            "正控：{home} 里没数到 {name} —— 尺子瞎了"
+        );
+        assert!(
+            !own.contains(name),
+            "acct-core 里出现了 {name} —— 凭据文件名住 {home}"
+        );
+    }
+    assert!(
+        !own.contains("CREDENTIALS_NAME"),
+        "acct-core 里还有 `CREDENTIALS_NAME` —— 凭据文件名住各家适配层"
     );
 }

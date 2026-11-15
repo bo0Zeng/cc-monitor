@@ -1,4 +1,5 @@
-//! Claude Code 的答题口（注册表 `Adapter.asks` 那一格）：会话级 `PermissionRequest` hook 的输入怎么读、答案怎么写、起会话时怎么挂上。
+//! Claude Code 的答题口（注册表 `Adapter.asks` 那一格）：会话级 `PermissionRequest` hook 的输入怎么读、答案怎么写、起会话时怎么挂上；
+//! 同一处多挂一轮的那几种 hook（提交了一句 · 一轮结束 · 闲着的通知），翻成统一事件（[`heard`]：会话在干什么先照它，pidfile 只兜底）。
 //!
 //! 实测（2.1.296，真机上交互会话里答批准、不送键）：交互会话里这个 hook 与终端框并行、谁先答算谁的；
 //! 晚到的答案被丢、不会落到下一个框上；提问框要带 `updatedInput.answers` 才算答了；批计划要带原样 `updatedInput`，
@@ -8,8 +9,8 @@
 //! 这一家的字段名只住这里；待答登记表、选项写字、谁先答算谁的住通用层（`control::asks`）。
 
 use crate::agents::{
-    AskFace, AskIn, AskKind, AskQuestion, AskSuggestion, PlanMode, SuggestRule, SuggestScope,
-    Verdict,
+    AgentEvent, AskFace, AskIn, AskKind, AskQuestion, AskSuggestion, PlanMode, SuggestRule,
+    SuggestScope, Verdict,
 };
 use serde_json::{json, Map, Value};
 
@@ -17,36 +18,255 @@ use serde_json::{json, Map, Value};
 pub(crate) const FACE: AskFace = AskFace {
     launch_args,
     launch_flag: SETTINGS_FLAG,
-    merge,
+    merge: Some(merge),
+    gate: None,
+    // 用户自己的 `--settings` 并进去（`merge`），盖不掉我们那一组：不诊断。
+    overridden: None,
     read,
     decide,
+    // 提问也经钩子答（`updatedInput.answers`）：哪一种都答得了。
+    cannot: crate::agents::answers_every_kind,
+    // 拒绝带 `interrupt` ⇒ 那一轮停下。
+    stop_on_deny: true,
+    heard,
     plugin: Some(PLUGIN),
+    on_screen: Some(SCREEN),
 };
+
+/// 挡着终端的那一条（后台子 agent 的批准）在终端里的那个框：认法与键位照 2.1.322 在私有 tmux 里起的测试会话实测（宽 160 · 60 · 40 列 · 80×14 矮窗）。
+pub(crate) const SCREEN: crate::agents::OnScreen = crate::agents::OnScreen {
+    covers: screen_covers,
+    seen: box_on_screen,
+    queued: queued_on_screen,
+    allow: crate::agents::Keystroke::Char("1"),
+    deny: crate::agents::Keystroke::Key("esc"),
+};
+
+/// 框里那几行（实测 2.1.322）：标题以它起头 · 问句 · 底行以它起头 · 夹着命令的那两道虚线 · 框的上边框。
+const BOX_TITLE: &str = "Bash command";
+const BOX_ASK: &str = "Do you want to proceed?";
+const BOX_FOOT: &str = "Esc to cancel";
+const BOX_DASH: char = '╌';
+const BOX_EDGE: char = '─';
+const BOX_CURSOR: char = '❯';
+
+/// 标题行右边的 `k of n`（排着的不止这一条时画）唯一的读法：字间空白并成一个的那一行 ⇒（去掉它之后的标题, `Some((k, n))`）；不带 ⇒（原样, `None`）。
+fn split_count(flat: &str) -> (&str, Option<(u32, u32)>) {
+    let mut tail = flat.rsplitn(4, ' ');
+    if let (Some(n), Some("of"), Some(k), Some(rest)) =
+        (tail.next(), tail.next(), tail.next(), tail.next())
+    {
+        if let (Ok(k), Ok(n)) = (k.parse::<u32>(), n.parse::<u32>()) {
+            return (rest, Some((k, n)));
+        }
+    }
+    (flat, None)
+}
+
+/// 屏上说还排着几条（连正显示的这一条）：框的标题行右边的 `k of n` ⇒ n − k + 1（n 连答过的也算）；没认出框 · 不画 ⇒ `None`。
+fn queued_on_screen(lines: &[String]) -> Option<u32> {
+    let (_, Some((k, n))) = split_count(&frame_of(lines)?.title) else {
+        return None;
+    };
+    (k >= 1 && k <= n).then(|| n - k + 1)
+}
+
+/// 只认过 Bash 批准那一形（别的工具标题不同、排法没实测过）。
+fn screen_covers(a: &AskIn) -> bool {
+    a.kind == AskKind::Approve && a.tool == "Bash" && str_of(&a.input, "command").is_some()
+}
+
+/// 屏上那个批准框的几块（[`frame_of`] 找）：标题（字间空白并成一个、`k of n` 还在）· 两道虚线之间那几行（命令）。
+struct Frame<'a> {
+    title: String,
+    body: &'a [String],
+}
+
+/// 找屏上那个批准框（自下而上，全部满足才算；认框 · 读排着几条都经它，只一处）：
+/// 1. 一行是问句，下面紧跟编号选项（[`options_ok`]），再下面是底行；
+/// 2. 问句上面的两道虚线夹着命令；
+/// 3. 再往上到上边框之间头一行是标题（40 列时拆成两栏两行，拼起来认，[`title_of`]）。上边框看不见（矮窗，标题被顶出屏外）⇒ 找不到。
+fn frame_of(lines: &[String]) -> Option<Frame<'_>> {
+    let ask = lines.iter().rposition(|l| l.trim() == BOX_ASK)?;
+    if !options_ok(&lines[ask + 1..]) {
+        return None;
+    }
+    let rule = |l: &String, c: char| {
+        let t = l.trim();
+        !t.is_empty() && t.chars().all(|x| x == c)
+    };
+    let d2 = lines[..ask].iter().rposition(|l| rule(l, BOX_DASH))?;
+    let d1 = lines[..d2].iter().rposition(|l| rule(l, BOX_DASH))?;
+    let top = lines[..d1].iter().rposition(|l| rule(l, BOX_EDGE))?;
+    Some(Frame {
+        title: title_of(&lines[top + 1..d1])?,
+        body: &lines[d1 + 1..d2],
+    })
+}
+
+/// 屏上正显示的是这一条的框：找得到框（[`frame_of`]），两道虚线之间那几行逐行拼回这一条的命令
+/// （[`folds_into`]：窄窗按词折 · 硬折都认，别处空白差一个都不认），标题去掉右边的 `k of n` 之后
+/// 子 agent 的 ⇒ 正是 `Bash command · from the <agent_type> agent`，主会话的 ⇒ 只有 `Bash command`；子 agent 发的却没带种类 ⇒ 不认。
+fn box_on_screen(lines: &[String], a: &AskIn) -> bool {
+    let Some(cmd) = screen_covers(a)
+        .then(|| str_of(&a.input, "command"))
+        .flatten()
+    else {
+        return false;
+    };
+    let Some(frame) = frame_of(lines) else {
+        return false;
+    };
+    let pieces: Vec<&str> = frame
+        .body
+        .iter()
+        .map(|l| {
+            let t = l.trim_start();
+            t.strip_prefix('│').unwrap_or(t).trim()
+        })
+        .collect();
+    if !folds_into(&pieces, cmd) {
+        return false;
+    }
+    let want = match (a.agent_id.as_deref(), a.agent_type.as_deref()) {
+        (_, Some(t)) => format!("{BOX_TITLE} · from the {t} agent"),
+        (None, None) => BOX_TITLE.to_string(),
+        // 子 agent 发的、没带种类：标题里写的是谁对不上，认不准。
+        (Some(_), None) => return false,
+    };
+    split_count(&frame.title).0 == copy_core::collapse_ws(&want)
+}
+
+/// 问句下面那几项：编号连着从 1 起、头一项 `Yes`、末一项 `No`，之后是底行。哪一行是一项照缩进认：
+/// 编号起头的那一列（光标 `❯` 那一行里编号所在的那一列）上起头的才是一项，更靠右的是上一项折下来的续行（续行开头恰好是「N. 」也不算）。
+fn options_ok(below: &[String]) -> bool {
+    let lead = |l: &str| l.chars().take_while(|c| c.is_whitespace()).count();
+    let Some(col) = below.iter().find_map(|l| {
+        let at = l.find(BOX_CURSOR)?;
+        let after = &l[at + BOX_CURSOR.len_utf8()..];
+        Some(l[..at].chars().count() + 1 + lead(after))
+    }) else {
+        return false;
+    };
+    let mut opts: Vec<(u32, &str)> = Vec::new();
+    for l in below {
+        let t = l.trim_start();
+        if t.starts_with(BOX_FOOT) {
+            return opts.first() == Some(&(1, "Yes"))
+                && opts.last().is_some_and(|(_, x)| *x == "No")
+                && opts.iter().zip(1..).all(|((n, _), i)| *n == i);
+        }
+        let body = match t.strip_prefix(BOX_CURSOR) {
+            Some(rest) => rest.trim_start(),
+            None if lead(l) == col => t,
+            None => continue,
+        };
+        if let Some((n, text)) = body.split_once(". ") {
+            if let Ok(n) = n.parse::<u32>() {
+                opts.push((n, text.trim()));
+            }
+        }
+    }
+    false
+}
+
+/// 上边框与头一道虚线之间那几行 ⇒ 标题（字间空白并成一个，右边的 `k of n` 留着、由 [`split_count`] 读）；拆成两栏两行的拼回来。
+fn title_of(head: &[String]) -> Option<String> {
+    let first = head.first()?.trim();
+    let joined = if first.starts_with(BOX_TITLE) {
+        first.to_string()
+    } else {
+        let (w1, w2) = BOX_TITLE.split_once(' ')?;
+        let left = first.strip_prefix(w1)?;
+        let right = head.get(1)?.trim().strip_prefix(w2)?;
+        format!("{BOX_TITLE} {left} {right}")
+    };
+    Some(copy_core::collapse_ws(&joined))
+}
+
+/// 屏上两道虚线之间那几行（每行去掉开头的空白与 `│`、去掉首尾空白）依次拼回命令原文：每一行得逐字接上，
+/// 行与行之间只许原文本来有空白（按词折行丢了它）或本来就连着（硬折）；原文里别处的空白一个都不能多、不能少。
+fn folds_into(pieces: &[&str], cmd: &str) -> bool {
+    let mut rest = cmd.trim();
+    for p in pieces.iter().filter(|p| !p.is_empty()) {
+        let Some(r) = rest.strip_prefix(*p) else {
+            return false;
+        };
+        rest = r.trim_start();
+    }
+    rest.is_empty()
+}
 
 /// 换了启动器那一支（`AskFace.plugin`）：同一组 hook 做成一个小插件，经 `CLAUDE_CODE_PLUGIN_DIRS` 交下去（2.1.280 起认；
 /// 文档 env-vars：「each loaded the way a `--plugin-dir` flag loads it」，id 是 `<名>@inline`、只管这一个会话）。
 const PLUGIN: crate::agents::PluginFace = crate::agents::PluginFace {
     env: PLUGIN_ENV,
-    min_version: PLUGIN_MIN_VERSION,
+    gate: PLUGIN_GATE,
     files: plugin_files,
     policy_files,
     policy_blocks,
-    installed_version,
     child_marker: CHILD_MARKER,
+};
+
+/// 认 [`PLUGIN_ENV`] 的那道门：最低版本 ＋ `PATH` 上的 `claude`、npm 包名（读法是通用的 `agents::installed_version`）。
+pub(crate) const PLUGIN_GATE: crate::agents::HookGate = crate::agents::HookGate {
+    min_version: [2, 1, 280],
+    command: super::resume::DEFAULT_COMMAND,
+    package: "@anthropic-ai/claude-code",
 };
 
 /// 插件目录清单那个变量。
 pub const PLUGIN_ENV: &str = "CLAUDE_CODE_PLUGIN_DIRS";
-/// 认 [`PLUGIN_ENV`] 的最低版本。
-pub(crate) const PLUGIN_MIN_VERSION: [u64; 3] = [2, 1, 280];
 /// 插件名（清单里那一格；用户在 `enabledPlugins` 里写 `"<名>@inline": false` 就不加载，那一家自己照办）。
 pub(crate) const PLUGIN_NAME: &str = "cc-monitor-answer-hook";
 /// claude 导给子进程的嵌套标记（`resume::NESTED_ENV` 的头一个；ccm 起会话前清掉它）。
 const CHILD_MARKER: &str = super::resume::NESTED_ENV[0];
 
-/// 只含答题那一组 hook 的那一份：`--settings` 的 JSON 串与插件的 `hooks/hooks.json` 都是它（实现只一处）。
+/// 只含 ccm 那几组 hook 的那一份（答题那一种 ＋ 一轮的那几种 [`TURN_HOOKS`]）：`--settings` 的 JSON 串与插件的 `hooks/hooks.json` 都是它（实现只一处）。
 fn hooks_doc(entry: &str) -> Value {
-    json!({ "hooks": { EVENT: [hook_group(entry)] } })
+    let mut hooks = Map::new();
+    for (event, group) in groups(entry) {
+        hooks.insert(event.to_string(), json!([group]));
+    }
+    json!({ "hooks": hooks })
+}
+
+/// 每一种 hook 挂的那一组：答题那一种等人答（[`HOOK_TIMEOUT_SECS`]）；一轮的那几种交了就走（[`EVENT_HOOK_TIMEOUT_SECS`]）。
+fn groups(entry: &str) -> Vec<(&'static str, Value)> {
+    let mut out = vec![(EVENT, hook_group(entry, HOOK_TIMEOUT_SECS, None))];
+    out.extend(
+        TURN_HOOKS
+            .iter()
+            .map(|(e, m)| (*e, hook_group(entry, EVENT_HOOK_TIMEOUT_SECS, *m))),
+    );
+    out
+}
+
+/// 一轮的那几种 hook（＋ matcher）：用户提交了一句 · 一轮结束 · 闲着的通知（Esc 打断不发 Stop，闲了一会儿那一家发这一种）。
+const TURN_HOOKS: [(&str, Option<&str>); 3] = [
+    (PROMPT_EVENT, None),
+    (STOP_EVENT, None),
+    (NOTE_EVENT, Some(IDLE_NOTE)),
+];
+const PROMPT_EVENT: &str = "UserPromptSubmit";
+const STOP_EVENT: &str = "Stop";
+const NOTE_EVENT: &str = "Notification";
+/// 闲着的那一种通知（`notification_type`）。
+const IDLE_NOTE: &str = "idle_prompt";
+/// 一轮的那几种 hook 的期限（秒）：交给常驻就走；常驻卡住也不拖住那一家（`UserPromptSubmit` · `Stop` 等它跑完）。
+pub const EVENT_HOOK_TIMEOUT_SECS: u64 = 10;
+
+/// hook 的 stdin ⇒（会话 id, 统一事件）（注册表 `AskFace.heard`）。要人答的那一种 · 别的通知 · 缺会话 id ⇒ `None`。
+pub fn heard(v: &Value) -> Option<(String, AgentEvent)> {
+    let event = match v.get("hook_event_name").and_then(Value::as_str)? {
+        PROMPT_EVENT => AgentEvent::PromptSubmitted,
+        STOP_EVENT => AgentEvent::TurnEnded,
+        NOTE_EVENT if v.get("notification_type").and_then(Value::as_str) == Some(IDLE_NOTE) => {
+            AgentEvent::TurnEnded
+        }
+        _ => return None,
+    };
+    Some((nonempty(v.get("session_id"))?, event))
 }
 
 /// 插件目录里的两份：清单 ＋ hook。
@@ -96,61 +316,9 @@ pub(crate) fn policy_blocks(v: &Value) -> bool {
         .any(|k| v.get(k).and_then(Value::as_bool) == Some(true))
 }
 
-/// `PATH` 上的 `claude` 是哪一版：顺着链接找到真身，原生安装看文件名（`…/versions/<版本>`），npm 安装往上找那一家的 `package.json`。
-fn installed_version(path: Option<&str>) -> Option<[u64; 3]> {
-    let crate::platform::shell::SessionCommand::Found { file: found, .. } =
-        crate::platform::shell::find_session_command(
-            super::resume::DEFAULT_COMMAND,
-            path,
-            cfg!(windows),
-            &|p| crate::platform::fs::Ro::metadata(p).is_ok_and(|m| m.is_file()),
-        )
-    else {
-        return None;
-    };
-    let real = crate::platform::fs::Ro::canonicalize(&found).ok()?;
-    if let Some(v) = version_in_name(&real.to_string_lossy()) {
-        return Some(v);
-    }
-    real.ancestors().skip(1).take(4).find_map(|d| {
-        crate::platform::fs::Ro::read_string_capped(d.join("package.json"), PACKAGE_JSON_CAP)
-            .ok()
-            .and_then(|t| version_in_package(&t))
-    })
-}
-
-/// 读那一家 `package.json` 的上限（几 KB 的清单）：超了那一份跳过（读的那一口 `warn!` 带路径），这一层当没有、接着往上找。
-const PACKAGE_JSON_CAP: cap_core::Cap = cap_core::Cap {
-    bytes: 1024 * 1024,
-    over: cap_core::Over::SkipAndSay,
-};
-
-/// 文件名本身是一个版本号（`2.1.296`）⇒ 它。
-pub(crate) fn version_in_name(path: &str) -> Option<[u64; 3]> {
-    semver3(path.rsplit(['/', '\\']).next()?)
-}
-
-/// 那一家的 `package.json`（名字对得上）⇒ 它的版本。
-pub(crate) fn version_in_package(text: &str) -> Option<[u64; 3]> {
-    let v: Value = serde_json::from_str(text).ok()?;
-    if v.get("name").and_then(Value::as_str) != Some("@anthropic-ai/claude-code") {
-        return None;
-    }
-    semver3(v.get("version")?.as_str()?)
-}
-
-fn semver3(s: &str) -> Option<[u64; 3]> {
-    let mut it = s.split('.');
-    let mut out = [0u64; 3];
-    for slot in &mut out {
-        *slot = it.next()?.parse().ok()?;
-    }
-    it.next().is_none().then_some(out)
-}
-
 /// 会话级设置那个旗标（住启动形状那一处，`resume.rs`）。
 use super::resume::SETTINGS_FLAG;
-/// 唯一挂的那一种 hook。
+/// 答题那一种 hook。
 const EVENT: &str = "PermissionRequest";
 /// hook 的期限（秒）：到点它被杀、不给决定 ⇒ 框照常在终端里（挡着终端的那种到点才出框）。
 pub const HOOK_TIMEOUT_SECS: u64 = 3600;
@@ -160,34 +328,44 @@ pub(crate) fn hook_words() -> [&'static str; 3] {
     [end, flag, super::AGENT_KIND]
 }
 
-/// 答题 hook 那一组（exec 形，不经 shell；`entry` ＝ ccm 绝对路径）。
-fn hook_group(entry: &str) -> Value {
-    json!({ "hooks": [{
+/// ccm 那一组 hook（exec 形，不经 shell；`entry` ＝ ccm 绝对路径；几种都叫同一个入口，入口照 `hook_event_name` 分）。
+fn hook_group(entry: &str, timeout: u64, matcher: Option<&str>) -> Value {
+    let mut g = json!({ "hooks": [{
         "type": "command",
         "command": entry,
         "args": hook_words(),
-        "timeout": HOOK_TIMEOUT_SECS,
-    }] })
+        "timeout": timeout,
+    }] });
+    if let Some(m) = matcher {
+        g["matcher"] = json!(m);
+    }
+    g
 }
 
-/// 起会话时垫的那两个词：`--settings` ＋ 只含这一个 hook 的 JSON 串。
+/// 起会话时垫的那两个词：`--settings` ＋ 只含 ccm 那几组 hook 的 JSON 串。
 pub fn launch_args(entry: &str) -> Vec<String> {
     vec![SETTINGS_FLAG.to_string(), hooks_doc(entry).to_string()]
 }
 
-/// 用户自己的会话级设置并进答题 hook：别的一切原样，只往 `hooks.PermissionRequest` 末尾加我们那一组（hooks 本来就是各层合并、不替换）。
-/// 不是对象 · `hooks` 不是对象 · 那一种不是数组 ⇒ `None`（不挂）。
+/// 用户自己的会话级设置并进 ccm 那几组 hook：别的一切原样，只往每一种的列表末尾加我们那一组（hooks 本来就是各层合并、不替换）。
+/// 不是对象 · `hooks` 不是对象 · 答题那一种不是数组 ⇒ `None`（不挂）；一轮的哪一种不是数组 ⇒ 只那一种不挂（少的是一档，答题照挂）。
 pub(crate) fn merge(user: &Value, entry: &str) -> Option<Value> {
     let mut v = user.as_object()?.clone();
     let hooks = v
         .entry("hooks")
         .or_insert_with(|| json!({}))
         .as_object_mut()?;
-    hooks
-        .entry(EVENT)
-        .or_insert_with(|| json!([]))
-        .as_array_mut()?
-        .push(hook_group(entry));
+    for (event, group) in groups(entry) {
+        match hooks
+            .entry(event)
+            .or_insert_with(|| json!([]))
+            .as_array_mut()
+        {
+            Some(list) => list.push(group),
+            None if event == EVENT => return None,
+            None => {}
+        }
+    }
     Some(Value::Object(v))
 }
 
@@ -204,11 +382,11 @@ pub fn read(v: &Value) -> Option<AskIn> {
     let tool = nonempty(v.get("tool_name"))?;
     let input = v.get("tool_input").cloned().unwrap_or(Value::Null);
     let kind = match tool.as_str() {
-        ASK_TOOL => AskKind::Question,
+        ASK_TOOL => AskKind::Answer,
         PLAN_TOOL => AskKind::Plan,
         _ => AskKind::Approve,
     };
-    let questions = if kind == AskKind::Question {
+    let questions = if kind == AskKind::Answer {
         questions_of(&input)
     } else {
         Vec::new()
@@ -373,7 +551,7 @@ pub(crate) fn decide(ask: &AskIn, verdict: &Verdict) -> Option<Value> {
             d.insert("behavior".into(), json!("allow"));
             match ask.kind {
                 // 提问：原样题目 ＋ 每题的答案（多选已由通用层用「, 」连好）；不带 `updatedInput` 那一家当没答。
-                AskKind::Question => {
+                AskKind::Answer => {
                     let mut input = ask.input.as_object().cloned().unwrap_or_default();
                     let a: Map<String, Value> =
                         answers.iter().map(|(q, v)| (q.clone(), json!(v))).collect();

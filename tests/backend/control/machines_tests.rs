@@ -29,7 +29,7 @@ fn insert(label: &str, host: &str) -> Value {
 
 fn code(e: MachinesSetErr) -> String {
     use crate::wire::typed::Codes;
-    e.into_said().code_or_fallback().to_string()
+    cmd_wire::failed::Failed::code_or_fallback(e.into_said().code.clone())
 }
 
 /// 没有那份 ⇒ `absent`、空表；加两台 ⇒ `ok`、照序读回；改一格只动认出的那一台那一格。

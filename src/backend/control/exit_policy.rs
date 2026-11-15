@@ -53,12 +53,12 @@ impl Read {
         }
     }
 
-    /// 线上 `state` 那一格。三个词与 TS 那侧 `ExitPolicyState` 逐字对齐。
-    pub(crate) fn state(&self) -> &'static str {
+    /// 线上 `state` 那一格：同一张文件三态（选过 ⇒ `ok`）。
+    pub(crate) fn state(&self) -> cmd_wire::FileState {
         match self {
-            Read::Chosen(_) => "chosen",
-            Read::Absent => "absent",
-            Read::Unreadable(_) => "unreadable",
+            Read::Chosen(_) => cmd_wire::FileState::Ok,
+            Read::Absent => cmd_wire::FileState::Absent,
+            Read::Unreadable(_) => cmd_wire::FileState::Unreadable,
         }
     }
 }
@@ -126,7 +126,7 @@ pub fn last_client_left() -> bool {
             why.logged()
         ),
         other => tracing::info!(
-            "最后一个客户走了；退出策略 state={} killOnExit={}",
+            "最后一个客户走了；退出策略 state={:?} killOnExit={}",
             other.state(),
             other.kill_on_exit()
         ),
@@ -198,7 +198,7 @@ fn wire_as(r: &Read, path: Option<&Path>, resident: bool) -> ExitPolicy {
     };
     let (reason, detail) = crate::wire::detail::unreadable("exit-policy-read", why);
     ExitPolicy {
-        state: r.state().to_string(),
+        state: r.state(),
         kill_on_exit: r.kill_on_exit(),
         reason,
         detail,

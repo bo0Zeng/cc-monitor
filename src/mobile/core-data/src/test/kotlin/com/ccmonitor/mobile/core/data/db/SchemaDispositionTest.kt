@@ -26,7 +26,7 @@ class SchemaDispositionTest {
     fun theDeclaredSchemaVersionIsStillTheOnePinnedHere() {
         assertEquals(
             "`AppDatabase` 的 schema 版本变了（钉着 $PINNED_VERSION，实读 ${declaredVersion()}）。\n" +
-                "   写上那一跳的迁移（`MIGRATION_i_(i+1)`，要钥匙的写成 `class Migration{i}To{i+1}`）并进 `allMigrations`，`MigrationTest` 的全链条与逐步测跟到新版本，再改这里。",
+                "   写上那一跳的迁移（`MIGRATION_i_(i+1)`，要注入东西的写成 `class Migration{i}To{i+1}`）并进 `allMigrations`，`MigrationTest` 的全链条与逐步测跟到新版本，再改这里。",
             PINNED_VERSION,
             declaredVersion(),
         )
@@ -184,7 +184,7 @@ class SchemaDispositionTest {
 
     private companion object {
         /** 改 schema 版本时同时改这里。 */
-        const val PINNED_VERSION = 28
+        const val PINNED_VERSION = 29
 
         const val APP_DATABASE = "core-data/src/main/kotlin/com/ccmonitor/mobile/core/data/db/AppDatabase.kt"
         const val CACHE_DATABASE = "core-data/src/main/kotlin/com/ccmonitor/mobile/core/data/db/CacheDatabase.kt"
@@ -195,7 +195,7 @@ class SchemaDispositionTest {
 
         const val CHAIN_ANCHOR = "fun allMigrations("
 
-        /** 数组收尾那一行（数组里 `Migration{i}To{i+1}(crypto)` 自带括号，不能拿第一个 `)` 当收尾）。 */
+        /** 数组收尾那一行（数组里 `Migration{i}To{i+1}(namer)` 这种要注入的自带括号，不能拿第一个 `)` 当收尾）。 */
         const val ARRAY_END = "\n    )"
         const val MAX_WALK_UP = 12
         const val MIN_SOURCE_CHARS = 200
@@ -203,7 +203,7 @@ class SchemaDispositionTest {
         val VERSION_DECL = Regex("^\\s*version = (\\d+),", RegexOption.MULTILINE)
         val EXPORT_SCHEMA_ON = Regex("^\\s*exportSchema = true,", RegexOption.MULTILINE)
         val MIGRATION_DECL = Regex("^(?:val MIGRATION_(\\d+)_\\d+ =|class Migration(\\d+)To\\d+\\()", RegexOption.MULTILINE)
-        val MIGRATION_REF = Regex("^\\s*(?:MIGRATION_(\\d+)_\\d+|Migration(\\d+)To\\d+\\(crypto\\)),", RegexOption.MULTILINE)
+        val MIGRATION_REF = Regex("^\\s*(?:MIGRATION_(\\d+)_\\d+|Migration(\\d+)To\\d+\\(\\w+\\)),", RegexOption.MULTILINE)
         val MIGRATE_CALL = Regex("^\\s*\\.addMigrations\\(", RegexOption.MULTILINE)
         val DESTRUCTIVE_CALL = Regex("fallbackToDestructiveMigration")
         val FULL_CHAIN_TARGET = Regex("runMigrationsAndValidate\\(dbName, (\\d+), true, \\*allMigrations\\(\\w*\\)\\)")

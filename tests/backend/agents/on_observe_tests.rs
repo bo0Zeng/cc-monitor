@@ -5,6 +5,10 @@
 #[path = "claudecode/record_of_tests.rs"]
 mod claudecode_record_of;
 
+/// Codex 的会话经全文搜索 · 会话内查找走一遍。
+#[path = "codex/search_tests.rs"]
+mod codex_search;
+
 /// Claude 答题口那一侧（`claudecode/asks.rs`）读出的问题，经观测面穿成需手动那一条。
 mod claudecode_asks {
     use serde_json::json;
@@ -22,13 +26,14 @@ mod claudecode_asks {
             "tool_input": {"command": "F=/r/tool-results/b8v1.txt; sed -n '1,40p' \"$F\" | head -5\necho done"},
         });
         let a = crate::agents::claudecode::asks::read(&v).expect("PermissionRequest 读得出");
-        let ask = crate::agents::asks::product_of("ask-1", &a, None, 1);
+        let ask = crate::agents::asks::product_of("ask-1", &a, true, false, None);
         let want = "sed -n '1,40p' \"$F\" | head -5";
         assert_eq!(ask.what.as_deref(), Some(want));
+        let ask = crate::agents::asks::Asked { ask, since_ms: 1 };
         let n = crate::observe::recognize::facts::dress_ask_with(None, Some(ask), 2).unwrap();
         assert_eq!(n.what.as_deref(), Some(want));
         assert_eq!(n.head_code.as_deref(), Some(want));
-        assert_eq!(n.ask.as_ref().and_then(|x| x.what.as_deref()), Some(want));
+        assert_eq!(n.ask().and_then(|x| x.what.as_deref()), Some(want));
     }
 }
 

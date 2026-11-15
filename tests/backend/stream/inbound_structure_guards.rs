@@ -219,12 +219,18 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
     //   ⇒ 本条的人群必须**先把写那一面减掉**，否则它会把写那一面当成「读族漏声明了一条」
     //   （现打：不减的话逐字报 `files-create` 在 wired 里而不在 declared 里）。
     //   ⚠ 减法按命令表上的档位取，不是按名字手写一份 —— 手写第二份就是下一个漂移源。
+    // 写那一族里不拿写句柄、不经写面那一扇的：撤一组复制 · 删除 · 改权限（`files/batch.rs`，只立旗、不碰盘）·
+    // 归档 · 取消归档（`files_session_face.rs`，跑那一家自己的命令、不碰盘）。
+    let off_face = [
+        <crate::stream::inbound::files_write_face::FilesBatchStop as crate::wire::typed::Command>::NAME,
+        <crate::stream::inbound::files_session_face::FilesArchiveSession as crate::wire::typed::Command>::NAME,
+        <crate::stream::inbound::files_session_face::FilesUnarchiveSession as crate::wire::typed::Command>::NAME,
+    ];
     let write_face: std::collections::BTreeSet<String> = super::REGISTRY
         .iter()
         .filter(|s| s.run.face)
         .map(|s| s.name)
-        // 撤一组复制 · 删除 · 改权限（`files/batch.rs`）：写那一族的，只立旗、不碰盘，不拿写句柄。
-        .chain([<crate::stream::inbound::files_write_face::FilesBatchStop as crate::wire::typed::Command>::NAME])
+        .chain(off_face)
         .map(str::to_string)
         .collect();
     assert!(
@@ -261,16 +267,16 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
             .iter()
             .find(|s| s.name == name)
             .unwrap_or_else(|| panic!("`{name}` 不在 REGISTRY 上"));
-        // 真的调一次：喂空 `args` ⇒ 落在这条命令登记的码上（撤一组那一条不写盘、不经写面那一扇，不在这里调）。
-        if name == <crate::stream::inbound::files_write_face::FilesBatchStop as crate::wire::typed::Command>::NAME {
+        // 真的调一次：喂空 `args` ⇒ 落在这条命令登记的码上（不经写面那一扇的那几条不在这里调）。
+        if off_face.contains(&name.as_str()) {
             continue;
         }
         if let Err(e) =
             crate::stream::inbound::files_write_face::write_tests::ask(name, &serde_json::json!({}))
         {
-            let code = e.code_or_fallback();
+            let code = cmd_wire::failed::Failed::code_or_fallback(e.code.clone());
             assert!(
-                spec.codes.contains(&code),
+                spec.codes.contains(&code.as_str()),
                 "`{name}` 回了一个它没登记的 code `{code}`（{}）",
                 e.said
             );
@@ -294,7 +300,10 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
             &Default::default(),
         );
         if let Err(s) = out {
-            let (code, msg) = (s.code_or_fallback().to_string(), s.said);
+            let (code, msg) = (
+                cmd_wire::failed::Failed::code_or_fallback(s.code.clone()),
+                s.said,
+            );
             assert_ne!(
                 code, "unknown_capability",
                 "`{online}` 够不到任何能力（{msg}）"

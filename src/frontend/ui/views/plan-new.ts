@@ -61,6 +61,11 @@ function dirOptions(d: { known: readonly string[]; cwds: readonly string[] }, ex
   return out;
 }
 
+/** 拦下这一框的那一句（红线 ·［新建］灰着说的同一句）：pb 不在 / 太旧 ⇒ `pb.said`；起 pb 没成 ⇒ `failed`。都是后端写好的；没有 ⇒ `null`。 */
+export function refusal(f: PlanNewForm | null): string | null {
+  return f?.pb.said ?? f?.failed ?? null;
+}
+
 /** 开框（`at` ＝ 预填的那台与目录）。 */
 export function openNewPlan(host: NewPlanHost, at: { origin: Machine; dir: string }): void {
   let origin = at.origin;
@@ -137,9 +142,10 @@ export function openNewPlan(host: NewPlanHost, at: { origin: Machine; dir: strin
     domainCell.replaceChildren(seg);
     domainNote.textContent = ex ? "" : copyText("plan.new.domainHint");
     where.textContent = g?.note ?? "";
-    // pb 不在 · 太旧 ⇒ 带着那一句；起 pb 没成 ⇒ `failed`。两样都是后端写好的那一句。
-    const bad = g?.pb.said ?? g?.failed ?? null;
-    warn.replaceChildren(...(bad ? [banner("error", bad)] : []));
+    // 拦下的那一句 ＋ 下一步（pb 不在 · 太旧时后端分好的两格）。
+    const bad = refusal(g);
+    const hint = g?.pb.hint ?? null;
+    warn.replaceChildren(...(bad ? [banner("error", bad)] : []), ...(hint ? [note(hint)] : []));
     line.textContent = g?.line ?? "";
     handle.setAction(ex ? copyText("plan.new.switch") : copyText("mobTerms.new.detached"));
     handle.refresh();
@@ -160,7 +166,7 @@ export function openNewPlan(host: NewPlanHost, at: { origin: Machine; dir: strin
     first: () => path.input,
     blocked: () => {
       if (!f) return copyText("plan.new.needPath");
-      const bad = f.pb.said ?? f.failed;
+      const bad = refusal(f);
       if (bad !== null) return bad;
       if (!pathNow() || !f.line) return copyText("plan.new.needPath");
       if (!f.existing && domain === null) return copyText("plan.new.needDomain");

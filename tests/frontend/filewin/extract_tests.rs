@@ -73,7 +73,7 @@ async fn extract_on_the_menu_asks_once_when_the_name_is_taken_and_only_then_send
         *w.listing.rows.lock().unwrap() = vec![file_row("taken.tar.gz")];
         w.apply_intent(crate::select::Intent::SelectAll, 0.0, None);
         assert!(
-            w.perform(Action::Extract, None),
+            crate::find::testing::perform_now_async(&mut w, Action::Extract).await,
             "解压没起来：{:?}",
             w.key_notice()
         );
@@ -107,7 +107,8 @@ async fn extract_on_the_menu_asks_once_when_the_name_is_taken_and_only_then_send
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_unknown_archive_says_so_and_a_directory_is_not_offered() {
-    use crate::select::{actions_for, Action};
+    use crate::find::testing::can_do;
+    use crate::select::Action;
     let wired = wire_up(
         "fx-extract-bad",
         FakeBackend::new(&[CMD_EXTRACT], Declared::default()),
@@ -116,7 +117,7 @@ async fn an_unknown_archive_says_so_and_a_directory_is_not_offered() {
     let mut w = window_on(&wired, "/srv");
     *w.listing.rows.lock().unwrap() = vec![file_row("bad.rar")];
     w.apply_intent(crate::select::Intent::SelectAll, 0.0, None);
-    assert!(w.perform(Action::Extract, None));
+    assert!(crate::find::testing::perform_now_async(&mut w, Action::Extract).await);
     settle(&w, 1).await;
     let (name, o) = extract_board(&w).last().expect("没有结局");
     let said = outcome_text(&name, &o);
@@ -136,11 +137,11 @@ async fn an_unknown_archive_says_so_and_a_directory_is_not_offered() {
     }
     .into();
     assert!(
-        !actions_for(&[&dir]).contains(&Action::Extract),
+        !can_do(&[&dir]).contains(&Action::Extract),
         "目录上也给了解压"
     );
     assert!(
-        actions_for(&[&file_row("f.zip")]).contains(&Action::Extract),
+        can_do(&[&file_row("f.zip")]).contains(&Action::Extract),
         "文件上没给解压"
     );
 }

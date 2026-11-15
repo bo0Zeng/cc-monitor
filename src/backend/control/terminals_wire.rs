@@ -321,6 +321,7 @@ impl crate::wire::typed::Handle for SessionInterruptCmd {
 }
 
 /// 往一条会话说一句（生产：默认 socket）：同 [`input`]，窗格前台只剩 shell ⇒ 不送、回 `ended`（[`t::say_on`]）。输入队投递经它送（`faces/session_send.rs`）。
-pub fn say(req: &TerminalInputReq) -> Result<Sent, Said> {
-    t::say_on(On::default(), req)
+/// `pastes` ＝ 正文之前各单独粘一次的那几段（不上线）。
+pub fn say(req: &TerminalInputReq, pastes: &[String]) -> Result<Sent, Said> {
+    t::say_on(On::default(), req, pastes)
 }

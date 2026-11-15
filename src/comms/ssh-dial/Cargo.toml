@@ -17,6 +17,8 @@ copy-core = { path = "../../common/copy-core" }
 cmd-wire = { path = "../../common/cmd-wire" }
 # 远端写围栏的相对路径拆段（同本机写面 · 解压条目那一份）。
 plain-path-core = { path = "../../common/plain-path-core" }
+# 远端写根（暂存区，家目录相对）：值只住契约那一张表（`STAGING_DIR_REL`），后端提交那一侧读同一份。
+relay-route-core = { path = "../../common/relay-route-core" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt", "macros", "io-util", "net", "sync", "time"] }

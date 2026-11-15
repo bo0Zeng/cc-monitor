@@ -122,12 +122,7 @@ export function openAddMachine(deps: AddMachineDeps): Promise<boolean> {
       main.className = "add-machine-main";
       const info = document.createElement("div");
       info.className = "add-machine-info";
-      const parts = [r.g.host, r.g.user || copyText("remote.preview.noUser")];
-      if (r.g.jump) parts.push(copyText("addMachine.ssh.jump", { jump: r.g.jump }));
-      if (r.g.addresses.length) parts.push(copyText("addMachine.ssh.addresses", { n: r.g.addresses.length }));
-      info.textContent = r.split
-        ? copyText("addMachine.ssh.splitInto", { names: r.g.members.map((m) => m.alias).join(copyText("kit.text.sep")) })
-        : parts.join(copyText("kit.text.sep"));
+      info.textContent = r.split ? r.g.splitInto : r.g.summary;
       const head = document.createElement("div");
       head.className = "add-machine-head";
       if (r.inList) {
@@ -146,13 +141,11 @@ export function openAddMachine(deps: AddMachineDeps): Promise<boolean> {
         r.name.root.classList.add("add-machine-name");
         r.name.input.addEventListener("input", update);
         head.appendChild(r.name.root);
-        if (r.g.members.length > 1) {
+        if (r.g.splitAction !== null) {
           const link = document.createElement("button");
           link.type = "button";
           link.className = "add-machine-link";
-          link.textContent = r.split
-            ? copyText("addMachine.ssh.unsplit")
-            : copyText("addMachine.ssh.split", { n: r.g.members.length });
+          link.textContent = r.split ? copyText("addMachine.ssh.unsplit") : r.g.splitAction;
           link.addEventListener("click", () => {
             r.split = !r.split;
             renderSsh();

@@ -33,7 +33,7 @@ let exitAnswer: Record<string, unknown> | null = null;
 /** 下一次「交后端写」要回的失败（`null` = 照常写）。原先用 `spyOn(commands.set_backend_exit_policy)`，那条命令退役了。 */
 let failNextSet: Error | null = null;
 /** `backend_stop` 这一趟回的结局。 */
-let stopAnswer: { stopped: "graceful" | "killed" | "not_running"; pid: number | null } = { stopped: "graceful", pid: 42 };
+let stopAnswer: { stopped: "graceful" | "killed" | "not_running"; pid: number | null; said: string } = { stopped: "graceful", pid: 42, said: "停了（夹具）" };
 /** `backend-log` 那一问各台答什么（按 origin；缺 ⇒ 通道失败）。 */
 let logAnswers: Record<string, unknown> = {};
 
@@ -91,7 +91,7 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
           return Promise.reject({ err: "Refused", body: refusal });
         }
         // 后端写完**读回**的那一份：这里就让「盘上」变成写进去的值，后续每一次现问都读到它。
-        exitAnswer = { state: "chosen", killOnExit: kill, reason: null, path: "x", said: kill ? EXIT_KILLS : EXIT_SELF_DIES };
+        exitAnswer = { state: "ok", killOnExit: kill, reason: null, path: "x", said: kill ? EXIT_KILLS : EXIT_SELF_DIES };
         return bytes(exitAnswer);
       }
       return Promise.reject(new Error(`判据没料到的通道问法：${a.op}`));
@@ -108,10 +108,9 @@ vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: () => {} }));
 // 「重新对齐」做完经 Tauri 事件通知主窗口；这里没有 Tauri 运行时 ⇒ 换成空的 emit。
 vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(async () => {}), listen: vi.fn(async () => () => {}) }));
 
-import { BACKEND_COLUMNS, BackendSection, stopSaid } from "../../../../src/frontend/ui/settings/backend-section";
+import { BACKEND_COLUMNS, BackendSection } from "../../../../src/frontend/ui/settings/backend-section";
 import type { MachineState } from "../../../../src/frontend/ui/settings/machine-state";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
-import { interruptRows, type Interrupts } from "../../../../src/frontend/ui/settings/interrupts";
 import type { DialogRow } from "../../../../src/frontend/ui/kit/dialog";
 import { srcDirOf } from "../../../test-support/repo-root";
 import COPY_TABLE from "../../../../src/shared/copy/table.json";
@@ -167,7 +166,7 @@ const flush = () => new Promise((r) => setTimeout(r, 0));
 beforeEach(() => {
   calls.length = 0;
   failNextSet = null;
-  stopAnswer = { stopped: "graceful", pid: 42 };
+  stopAnswer = { stopped: "graceful", pid: 42, said: "停了（夹具）" };
   exitAnswer = { state: "absent", killOnExit: false, reason: null, path: "x", said: EXIT_SELF_DIES };
   // `backend_status` 今天恒带 `health` 成品（远端那一格恒是「无记录」）；缺它的那一形单列一格判。
   status = { channel: true, pid: 42, health: FACE["无记录"] };
@@ -331,7 +330,7 @@ describe("P2s backend 开关区", () => {
   });
   it("★★ 〔B2〕勾的值**问后端要**：盘上选过 true ⇒ 勾上、说「会结束它」", async () => {
     exitAnswer = {
-      state: "chosen",
+      state: "ok",
       killOnExit: true,
       reason: null,
       path: "x",
@@ -548,24 +547,12 @@ describe("〔HX1 · D-f〕停后端之前问会打断什么", () => {
   const zh = (k: string, args: Record<string, number> = {}) =>
     (COPY_TABLE.entries as Record<string, { zh: string }>)[k].zh.replace(/\{(\w+)\}/g, (_m, n: string) => String(args[n]));
 
-  const none: Interrupts = { relayedSessions: 0, relayedMaybe: 0, liveStreams: 0, forwards: 0 };
   const said = (rows: DialogRow[]) => rows.map((r) => `${r.label}：${r.items.join(" · ")}`);
-
-  it("interruptRows 逐格：问不到照样列（数不出）· 什么都不断不弹 · 经它的 / 说不清的 / 开着看的 / 转发各一项 · 停与重启说法不同", () => {
-    expect(interruptRows(null, "甲机", "stop")[0]!.items).toEqual([zh("interrupts.item.relayedUnknown")]);
-    expect(interruptRows(none, "甲机", "stop")).toEqual([]);
-    const all = interruptRows({ relayedSessions: 2, relayedMaybe: 1, liveStreams: 3, forwards: 1 }, "甲机", "stop");
-    expect(all[0]!.label).toBe(zh("interrupts.row.untilStart"));
-    expect(all[0]!.items).toEqual([
-      zh("interrupts.item.relayed", { n: 2 }),
-      zh("interrupts.item.relayedMaybe", { n: 1 }),
-      copyText("interrupts.item.liveGone", { machine: "甲机" }),
-      zh("interrupts.item.forwards", { n: 1 }),
-    ]);
-    expect(all[1]!.items).toEqual([zh("interrupts.item.sessionsRun")]);
-    expect(interruptRows({ ...none, liveStreams: 1 }, "甲机", "restart")[0]!.label).toBe(zh("interrupts.row.brief"));
-    expect(interruptRows({ ...none, forwards: null }, "甲机", "stop")[0]!.items).toEqual([zh("interrupts.item.forwardsUnknown")]);
-  });
+  /** 后端排好的两行（字由后端写；界面照摆、不另拼）。 */
+  const ROWS: DialogRow[] = [
+    { label: "中断（后端写的）", items: ["会话请求 2（后端写的）"] },
+    { label: "保留（后端写的）", items: ["会话照跑（后端写的）"] },
+  ];
 
   const stopOf = (s: BackendSection, origin: string) => {
     const r = s.element.querySelector<HTMLElement>(`.backend-row[data-origin="${origin}"]`);
@@ -579,19 +566,19 @@ describe("〔HX1 · D-f〕停后端之前问会打断什么", () => {
   };
   const stops = () => calls.filter((c) => c.name === "backend_stop").length;
 
-  it("接线：答否不停 · 答是停一次 · 没有走中转的不问 · 远端数那台", async () => {
+  it("★ 接线：框里画的就是后端排好的两行（带 act）· 答否不停 · 答是停一次 · 什么都不断不问 · 远端问那台", async () => {
     let asked: string[][] = [];
     let answer = false;
-    let got: Interrupts | null = { ...none, relayedSessions: 2 };
-    let interruptsAsked: string[] = [];
+    let got: DialogRow[] = ROWS;
+    let interruptsAsked: string[][] = [];
     const s = new BackendSection({
       headless: true,
       confirm: (m) => {
         asked.push(said(m.rows ?? []));
         return answer;
       },
-      interrupts: (o) => {
-        interruptsAsked.push(o);
+      interrupts: (o, act) => {
+        interruptsAsked.push([o, act]);
         return Promise.resolve(got);
       },
     });
@@ -603,8 +590,8 @@ describe("〔HX1 · D-f〕停后端之前问会打断什么", () => {
     localStop!.click();
     await until(() => asked.length === 1, "本机的「停」弹出确认框");
     await flush();
-    expect(asked).toEqual([said(interruptRows({ ...none, relayedSessions: 2 }, "本机", "stop"))]);
-    expect(asked[0]![0]).toContain(zh("interrupts.item.relayed", { n: 2 }));
+    expect(asked, "框里画的不是后端那两行").toEqual([said(ROWS)]);
+    expect(interruptsAsked).toEqual([[LOCAL, "stop"]]);
     expect(stops(), "答了否还是停了").toBe(0);
     await until(() => !localStop!.disabled, "答否之后本机的按钮放开");
     // 答是 ⇒ 停一次。停之后状态落到「没连上」⇒ 轮询当场落定、按钮放开（桩若一直说「已连上」，
@@ -617,7 +604,7 @@ describe("〔HX1 · D-f〕停后端之前问会打断什么", () => {
     await until(() => !localStop!.disabled, "停完、状态落定后本机的按钮放开");
     // 什么都不会断 ⇒ 不问、直接停。
     asked = [];
-    got = none;
+    got = [];
     localStop!.click();
     await until(() => stops() === 2, "什么都不会断时直接停了");
     expect(stops()).toBe(2);
@@ -627,40 +614,27 @@ describe("〔HX1 · D-f〕停后端之前问会打断什么", () => {
     interruptsAsked = [];
     asked = [];
     answer = false;
-    got = { ...none, forwards: 1 };
+    got = ROWS;
     const before = stops();
     const remoteStop = stopOf(s, "甲机");
     expect(remoteStop).toBeTruthy();
     remoteStop!.click();
     await until(() => asked.length === 1, "远端的「停」弹出确认框");
     await flush();
-    expect(interruptsAsked, "远端的「停」问的不是那台").toEqual(["甲机"]);
-    expect(asked[0]![0]).toContain(zh("interrupts.item.forwards", { n: 1 }));
+    expect(interruptsAsked, "远端的「停」问的不是那台").toEqual([["甲机", "stop"]]);
+    expect(asked).toEqual([said(ROWS)]);
     expect(stops(), "远端答了否还是停了").toBe(before);
   });
 });
 
-// T6「停」的结局说出来：`{stopped: graceful | killed | not_running}` 三个词各一句，落在那一行上（不只进 console）。
+// T6「停」的结局说出来：落在那一行上（不只进 console）。三个词各一句由后端 `--resident-stop` 写好（`resident_tests::the_one_shot_supervisor_stops_politely_then_by_force`），壳原样转来（`remote_resident_tests::the_remote_sentence_passes_through_to_the_machine_page`），这里照抄。
 // 要求：「monitor 发一次远端 exec、按结局出声」· 「强杀 / 没停掉出声」。
 describe("〔STOP〕停的结局在机器页那一行说一句", () => {
   const zh = (k: string, args: Record<string, string> = {}) =>
     (COPY_TABLE.entries as Record<string, { zh: string }>)[k].zh.replace(/\{(\w+)\}/g, (_m, n: string) => String(args[n]));
-  it("stopSaid 三个词三句、互不相同、带 pid；没在跑那句不带", () => {
-    const g = stopSaid({ stopped: "graceful", pid: 7 });
-    const k = stopSaid({ stopped: "killed", pid: 7 });
-    const n = stopSaid({ stopped: "not_running", pid: null });
-    expect([g, k, n]).toEqual([
-      zh("backend.stopSaid.graceful", { pid: "7" }),
-      zh("backend.stopSaid.killed", { pid: "7" }),
-      zh("backend.stopSaid.notRunning"),
-    ]);
-    expect(new Set([g, k, n]).size).toBe(3);
-    expect(g).toContain("7");
-    expect(k).toContain("7");
-  });
 
-  it("接线：点「停」⇒ 那一行说后端回的那个结局；再点一次换成新结局", async () => {
-    const s = new BackendSection({ headless: true, confirm: () => true, interrupts: () => Promise.resolve(null) });
+  it("接线：点「停」⇒ 那一行照抄壳回的那一句；再点一次换成新的那一句", async () => {
+    const s = new BackendSection({ headless: true, confirm: () => true, interrupts: () => Promise.resolve([]) });
     await flush();
     await flush();
     const r = s.element.querySelector<HTMLElement>(`.backend-row[data-origin="${LOCAL}"]`);
@@ -673,12 +647,12 @@ describe("〔STOP〕停的结局在机器页那一行说一句", () => {
     // 停之后状态落到「没连上」⇒ 轮询当场落定、按钮放开（否则第二下点在禁用的按钮上）。
     status = { ...status, channel: false };
     for (const a of [
-      { stopped: "killed" as const, pid: 9 },
-      { stopped: "not_running" as const, pid: null },
+      { stopped: "killed" as const, pid: 9, said: "强杀了（夹具）" },
+      { stopped: "not_running" as const, pid: null, said: "没在跑（夹具）" },
     ]) {
       stopAnswer = a;
       stop!.click();
-      await vi.waitFor(() => expect(said()).toBe(stopSaid(a)), UNTIL_CEILING);
+      await vi.waitFor(() => expect(said()).toBe(a.said), UNTIL_CEILING);
       await vi.waitFor(() => expect(stop!.disabled, "停完按钮没放开").toBe(false), UNTIL_CEILING);
     }
   });

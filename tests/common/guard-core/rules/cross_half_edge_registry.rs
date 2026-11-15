@@ -167,36 +167,11 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     //   界面不再经本机后端开链路，monitor 那一侧的写者随之删了。
     (
         "monitor→backend",
-        "tests/frontend/filewin/transfer_tests.rs",
-        "src/comms/ssh-dial/pool.rs",
-        "★〔SR1b 09-24 新增〕**窗口一趟拖入起几件，与本机后端那条连接的传输车道 / 通道闸对得上** —— \
-         窗口传输那份判据里的 `one_windows_burst_fits_the_transfer_lane_and_never_fills_the_connection`。\
-         两个数住两棵依赖树（窗口的 `WINDOW_TRANSFER_LANES` · 后端的 `TRANSFER_LANE_CAP` / `SESSION_CHANNEL_CAP`）；\
-         失效方向：窗口起的件数超过车道 ⇒ 多挂的订阅只是白排队；够着整条连接的通道闸 ⇒ 一个窗口把会话与查询饿死。",
-    ),
-    (
-        "monitor→backend",
-        "tests/frontend/filewin/lossy_pull_tests.rs",
-        "src/backend/files/mod.rs",
-        "★ **窗口一块读多少 == 后端 `files-read-chunk` 的上限** —— \
-         `lossy_pull_tests.rs::the_chunk_is_the_backend_cap`。两侧各写一个数；失效方向：窗口的块比后端的上限大 ⇒ \
-         每一块都被 `bad_args` 拒，非 UTF-8 名永远下不下来。",
-    ),
-    (
-        "monitor→backend",
         "tests/frontend/filewin/editor_tests.rs",
         "src/backend/stream/inbound/mod.rs",
         "★ **窗口存盘一行的上限 == 后端入方向一行的上限** —— \
          `editor_tests.rs::the_save_line_cap_is_the_backend_line_cap`。两侧各写一个 `Cap`；失效方向：窗口给得比后端大 ⇒ \
          判装得下的那一行被后端整行丢弃（`line_too_long`），存盘失败。",
-    ),
-    (
-        "monitor→backend",
-        "tests/frontend/filewin/chunk_upload_tests.rs",
-        "src/backend/control/transfer.rs",
-        "★**窗口据以换路的收场码 == 传输台发的那个** —— \
-         `chunk_upload_tests.rs::the_mismatch_code_is_the_backend_one`。两侧各写一份 `sftp_home_mismatch`；\
-         失效方向：两份漂开 ⇒ SFTP 起始目录不是后端 home 的那台机器上，窗口认不出那一码、不改走块形，上传永远做不成。",
     ),
     (
         "monitor→backend",

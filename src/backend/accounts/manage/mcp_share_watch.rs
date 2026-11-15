@@ -1,6 +1,6 @@
-//! **什么时候同步**：常驻后端里一个监听器盯账号库目录 · 每个号的目录 · 家目录（都只盯直接子项），只认三个名字 ——
-//! 各号的配置文件（Claude 改了它、用户在那个号里 `claude mcp add` 了、在那个号里信任了一个目录）· 家目录下账号 0 那一份
-//! （信任只读它，一个字节不写）· 各号的凭据文件（在那个号里登录了一个 MCP、claude 续了一条 MCP 登录）与账号清单
+//! **什么时候同步**：常驻后端里一个监听器盯账号库目录 · 每个号的目录 · 有信任格的每一家账号 0 那份配置所在的目录（都只盯直接子项），
+//! 只认这几个名字（取自各家）——各号的 MCP 配置与配置文件（那一家改了它、用户在那个号里加了一个 MCP、在那个号里信任了一个目录）·
+//! 每一家账号 0 那一份配置（信任只读它，一个字节不写）· 各号的 MCP 登录文件（在那个号里登录了一个 MCP、那一家续了一条 MCP 登录）与账号清单
 //! （加号 / 删号 ⇒ 盯的名单跟着换）。每一趟先同步用户级 MCP（[`super::mcp_share_exec`]），再同步 MCP 登录
 //! （[`super::mcp_logins_exec`]），再同步信任（[`super::trust_share_exec`]）。
 //!
@@ -19,24 +19,58 @@ use std::sync::Mutex;
 static LIVE: Mutex<Option<Watching>> = Mutex::new(None);
 
 /// 这个路径的最后一段是不是值得同步一趟的那几个名字之一。
+/// 文件名取自各家，认哪几家与那几趟同步挑家同一个判法：同步服务器的那几家（[`super::mcp_share_exec::families`]）各号的 MCP 配置
+/// （[`crate::agents::McpCells::file`]）· 同步登录的那几家（[`super::mcp_logins_exec::login_families`]）各号的 MCP 登录文件
+/// （[`crate::agents::McpLogins::file`]）· 声明了信任格的每一家的配置文件（[`trust_families`]，信任读它）· 账号清单。
 fn relevant(p: &std::path::Path) -> bool {
-    let creds = super::layout::face()
-        .and_then(|f| f.login)
-        .map(|l| l.creds_file);
-    p.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
-        n == super::layout::identity_config_file()
-            || n == super::scan::MANIFEST_FILE
-            || Some(n) == creds
+    p.file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| relevant_among(crate::agents::REGISTRY, n))
+}
+
+/// [`relevant`] 的可喂夹具那一半（只看最后一段）。
+pub(crate) fn relevant_among(reg: &[crate::agents::Adapter], n: &str) -> bool {
+    super::mcp_share_exec::families(reg)
+        .iter()
+        .any(|f| f.cells.file == n)
+        || super::mcp_logins_exec::login_families(reg).any(|(_, _, l)| l.file == n)
+        || trust_families(reg).any(|(_, f)| f.config_file == n)
+        || n == super::scan::MANIFEST_FILE
+}
+
+/// 注册表里声明了信任格的每一家（家名 ＋ 账号面），与信任那一趟（[`super::trust_share_exec::sync_among`]）挑家同一个判法。
+fn trust_families(
+    reg: &[crate::agents::Adapter],
+) -> impl Iterator<Item = (&'static str, crate::agents::AccountsFace)> + '_ {
+    reg.iter().filter_map(|a| {
+        a.accounts
+            .filter(|f| f.trust.is_some())
+            .map(|f| (a.kind, f))
     })
 }
 
-/// 此刻该盯的目录：账号库目录 ＋ 清单里每个号的目录（在的那几个）＋ 有账号库时家目录（账号 0 那一份是信任的来源之一）。
+/// 此刻该盯的目录：账号库目录 ＋ 清单里每个号的目录（在的那几个）＋ 有账号库时，清单里有号、声明了信任格的每一家
+/// 账号 0 那份配置的父目录（[`super::trust_share_exec::trust_zero_dirs`]，账号 0 那一份是信任的来源之一）。
 fn wanted(home: &str) -> Vec<PathBuf> {
+    let m = super::mcp_share_exec::manifest_in(home).ok().flatten();
+    wanted_among(crate::agents::REGISTRY, home, m.as_ref())
+}
+
+/// [`wanted`] 的可喂夹具那一半（注册表 · 清单由调用方给）。
+pub(crate) fn wanted_among(
+    reg: &[crate::agents::Adapter],
+    home: &str,
+    m: Option<&super::model::Manifest>,
+) -> Vec<PathBuf> {
     let accts = super::scan::accts_root(home);
     let mut out = vec![PathBuf::from(&accts)];
-    if let Ok(Some(m)) = super::mcp_share_exec::manifest_in(home) {
+    if let Some(m) = m {
         out.extend(m.managed().map(|a| PathBuf::from(&a.config_dir)));
-        out.push(PathBuf::from(home));
+        for dir in super::trust_share_exec::trust_zero_dirs(home, reg, m) {
+            if !out.iter().any(|o| *o == dir) {
+                out.push(dir);
+            }
+        }
     }
     out.retain(|p| p.is_dir());
     out
@@ -62,21 +96,46 @@ fn sync_once(d: &'static (dyn Door + Sync), own: &crate::platform::fs::Own) {
         }
     };
     rearm(&home);
-    match super::mcp_share_exec::sync(d) {
-        Ok(v) => {
-            if !v.changed.is_empty() {
-                tracing::info!("账号之间同步 MCP：改写了 {}", v.changed.join(" · "));
-            }
-            for n in v.notes {
-                tracing::warn!("账号之间同步 MCP：{n}");
-            }
-            for c in v.conflicts {
-                tracing::warn!("账号之间同步 MCP：{} 两边都改了，等你在账号页里挑", c.name);
+    share_once(d, crate::agents::REGISTRY);
+    logins_once(d, own, crate::agents::REGISTRY);
+    match super::trust_share_exec::sync(d) {
+        Ok(changed) if !changed.is_empty() => {
+            tracing::info!("账号之间同步信任：改写了 {}", changed.join(" · "))
+        }
+        Ok(_) => {}
+        Err(f) => tracing::warn!("账号之间同步信任：这一趟没做成：{}", f.logged()),
+    }
+}
+
+/// 一趟里同步用户级 MCP 的那一下与它出的声（注册表可喂夹具）：逐家说，每一行带是哪一家的（缺省那一家也写）。
+pub fn share_once(d: &dyn Door, reg: &[crate::agents::Adapter]) {
+    match super::mcp_share_exec::sync_each(d, reg) {
+        Ok(each) => {
+            for (kind, v) in each {
+                if !v.changed.is_empty() {
+                    tracing::info!(
+                        "账号之间同步 MCP（{kind}）：改写了 {}",
+                        v.changed.join(" · ")
+                    );
+                }
+                for n in v.notes {
+                    tracing::warn!("账号之间同步 MCP（{kind}）：{n}");
+                }
+                for c in v.conflicts {
+                    tracing::warn!(
+                        "账号之间同步 MCP（{kind}）：{} 两边都改了，等账号页里挑",
+                        c.name
+                    );
+                }
             }
         }
         Err(f) => tracing::warn!("账号之间同步 MCP：这一趟没做成：{}", f.logged()),
     }
-    match super::mcp_logins_exec::sync(d, own) {
+}
+
+/// 一趟里同步 MCP 登录的那一下与它出的声（注册表可喂夹具）：改写了谁记一行，没落下的那几句各一行。
+pub fn logins_once(d: &dyn Door, own: &crate::platform::fs::Own, reg: &[crate::agents::Adapter]) {
+    match super::mcp_logins_exec::sync_among(d, own, reg) {
         Ok(v) => {
             if !v.changed.is_empty() {
                 tracing::info!("账号之间同步 MCP 登录：改写了 {}", v.changed.join(" · "));
@@ -86,13 +145,6 @@ fn sync_once(d: &'static (dyn Door + Sync), own: &crate::platform::fs::Own) {
             }
         }
         Err(f) => tracing::warn!("账号之间同步 MCP 登录：这一趟没做成：{}", f.logged()),
-    }
-    match super::trust_share_exec::sync(d) {
-        Ok(changed) if !changed.is_empty() => {
-            tracing::info!("账号之间同步信任：改写了 {}", changed.join(" · "))
-        }
-        Ok(_) => {}
-        Err(f) => tracing::warn!("账号之间同步信任：这一趟没做成：{}", f.logged()),
     }
 }
 

@@ -5,7 +5,6 @@
  * 仅 createElement + textContent，不把任何字符串当 HTML 塞进去，三引号 / HTML / CJK / emoji 按字面渲染。
  */
 
-import { copyText } from "../copy-table";
 import type { LineDiffKind } from "../generated/LineDiffKind";
 import type { LineDiffRow } from "../generated/LineDiffRow";
 import type { LineDiff } from "../generated/LineDiff";
@@ -37,7 +36,7 @@ function rowEl(row: LineDiffRow): HTMLElement {
 }
 
 /**
- * 行差的展开那一格。后端说没逐行比（`notice`）⇒ 顶上先摆那一句。收着先画后端给的前 `shown` 行；行比它多 ⇒ 附「显示全部改动 +N −M」，
+ * 行差的展开那一格。后端说没逐行比（`notice`）⇒ 顶上先摆那一句。收着先画后端给的前 `shown` 行；后端写了展开那一颗（`showAllText`）⇒ 照抄它，
  * 点一次补上其余。一行也没有 ⇒ `null`，调用方回退入参原文 `<pre>`。
  */
 export function buildDiffBody(diff: LineDiff): HTMLElement | null {
@@ -51,10 +50,10 @@ export function buildDiffBody(diff: LineDiff): HTMLElement | null {
     root.appendChild(notice);
   }
   for (const row of diff.rows.slice(0, diff.shown)) root.appendChild(rowEl(row));
-  if (diff.rows.length > diff.shown) {
+  if (diff.showAllText !== undefined) {
     const btn = document.createElement("button");
     btn.className = "block-body-show-full";
-    btn.textContent = copyText("diff.buildDiffBody.showAll", { addCount: diff.added, delCount: diff.removed });
+    btn.textContent = diff.showAllText;
     btn.addEventListener(
       "click",
       () => {

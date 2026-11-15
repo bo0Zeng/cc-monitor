@@ -345,7 +345,10 @@ fn the_wire_face_requires_an_explicit_digest_and_knows_only_its_command() {
         )
         .expect_err("没给 expect 该拒")
     });
-    assert_eq!(e.code_or_fallback(), "bad_args");
+    assert_eq!(
+        cmd_wire::failed::Failed::code_or_fallback(e.code.clone()),
+        "bad_args"
+    );
     assert!(diag.contains("expect"), "{}", e.said);
     // 上传提交这一面的每一条，分派都够得到（空参数 ⇒ 拒在参数那一关、码在它自己的登记里，不是「不认这条命令」那句）。
     use crate::stream::inbound::files_write_face::{
@@ -360,11 +363,12 @@ fn the_wire_face_requires_an_explicit_digest_and_knows_only_its_command() {
         SessionAttachmentDrop::NAME,
     ] {
         let e = answer_wire(&Face::issue(), name, &serde_json::json!({})).expect_err("空参数该拒");
+        let code = cmd_wire::failed::Failed::code_or_fallback(e.code.clone());
         assert!(
-            ["bad_args", "bad_path"].contains(&e.code_or_fallback())
+            ["bad_args", "bad_path"].contains(&code.as_str())
                 && crate::stream::inbound::REGISTRY
                     .iter()
-                    .any(|s| s.name == name && s.codes.contains(&e.code_or_fallback())),
+                    .any(|s| s.name == name && s.codes.contains(&code.as_str())),
             "{name}：{e:?}"
         );
         assert!(
@@ -693,7 +697,12 @@ fn a_mismatched_set_of_chunks_is_refused_and_the_target_is_untouched() {
         let key = format!("{:032x}", i + 1);
         setup(&home, &key);
         let e = send_commit(&home, &key, *chunks, *bytes, &root, "t.txt").expect_err(what);
-        assert_eq!(&e.code_or_fallback(), code, "{what}：{}", e.said);
+        assert_eq!(
+            &cmd_wire::failed::Failed::code_or_fallback(e.code.clone()),
+            code,
+            "{what}：{}",
+            e.said
+        );
         assert_eq!(
             std::fs::read(&target).unwrap(),
             b"keep me exactly",
@@ -724,7 +733,12 @@ fn a_chunk_is_written_once_and_never_through_a_link() {
     let (home, root) = bare_rig("conce");
     send_chunk(&home, KEY, 0, b"first").expect("第一次");
     let e = send_chunk(&home, KEY, 0, b"second").expect_err("重发该拒");
-    assert_eq!(e.code_or_fallback(), "io_failed", "{}", e.said);
+    assert_eq!(
+        cmd_wire::failed::Failed::code_or_fallback(e.code.clone()),
+        "io_failed",
+        "{}",
+        e.said
+    );
     assert_eq!(
         std::fs::read(home.join(STAGING_DIR).join(chunk_name(KEY, 0))).unwrap(),
         b"first"
@@ -734,7 +748,12 @@ fn a_chunk_is_written_once_and_never_through_a_link() {
     std::fs::write(&outside, b"keep").unwrap();
     std::os::unix::fs::symlink(&outside, home.join(STAGING_DIR).join(chunk_name(KEY, 1))).unwrap();
     let e = send_chunk(&home, KEY, 1, b"evil").expect_err("落点是链接该拒");
-    assert_eq!(e.code_or_fallback(), "io_failed", "{}", e.said);
+    assert_eq!(
+        cmd_wire::failed::Failed::code_or_fallback(e.code.clone()),
+        "io_failed",
+        "{}",
+        e.said
+    );
     assert_eq!(
         std::fs::read(&outside).unwrap(),
         b"keep",
@@ -759,7 +778,11 @@ fn a_text_commit_goes_through_the_write_fence() {
         let key = format!("{:032x}", 0xa0 + i);
         send_chunk(&home, &key, 0, b"payload").unwrap();
         let e = send_commit(&home, &key, 1, 7, &root, rel).expect_err(rel);
-        assert_eq!(e.code_or_fallback(), *code, "{rel}：{e:?}");
+        assert_eq!(
+            cmd_wire::failed::Failed::code_or_fallback(e.code.clone()),
+            *code,
+            "{rel}：{e:?}"
+        );
         assert!(chunks_left(&home, &key).is_empty(), "{rel}：块没删");
     }
     let key = format!("{:032x}", 0xaf);
@@ -779,7 +802,10 @@ fn a_text_commit_goes_through_the_write_fence() {
 fn the_chunk_commands_refuse_bad_arguments_before_touching_the_disk() {
     let (home, root) = bare_rig("cargs");
     let e = send_chunk(&home, "../../../../etc/passwd/xxxxxxxxxxx", 0, b"x").expect_err("坏键");
-    assert_eq!(e.code_or_fallback(), "refused");
+    assert_eq!(
+        cmd_wire::failed::Failed::code_or_fallback(e.code.clone()),
+        "refused"
+    );
     assert!(!home.join(".cc-monitor").exists(), "坏键也把暂存区建出来了");
     let e = answer_stage_at(
         &Face::issue(),
@@ -787,19 +813,25 @@ fn the_chunk_commands_refuse_bad_arguments_before_touching_the_disk() {
         &serde_json::json!({"key": KEY, "seq": 0, "content": ""}),
     )
     .expect_err("空块");
-    assert_eq!(e.code_or_fallback(), "bad_args");
+    assert_eq!(
+        cmd_wire::failed::Failed::code_or_fallback(e.code.clone()),
+        "bad_args"
+    );
     let e = answer_stage_at(
         &Face::issue(),
         &home,
         &serde_json::json!({"key": KEY, "content": "x"}),
     )
     .expect_err("缺块号");
-    assert_eq!(e.code_or_fallback(), "bad_args");
+    assert_eq!(
+        cmd_wire::failed::Failed::code_or_fallback(e.code.clone()),
+        "bad_args"
+    );
     let cap = crate::files::READ_TEXT_MAX_BYTES.bytes;
     for (chunks, bytes) in [(1, cap + 1), (0, 5), (6, 5)] {
         let e = send_commit(&home, KEY, chunks, bytes, &root, "t.txt").expect_err("该拒");
         assert_eq!(
-            e.code_or_fallback(),
+            cmd_wire::failed::Failed::code_or_fallback(e.code.clone()),
             "bad_args",
             "chunks={chunks} bytes={bytes}：{}",
             e.said
@@ -807,7 +839,12 @@ fn the_chunk_commands_refuse_bad_arguments_before_touching_the_disk() {
     }
     // 正控：恰好到天花板的那一个数本身放得过参数这一关（后面才因为块不在而拒）。
     let e = send_commit(&home, KEY, 1, cap, &root, "t.txt").expect_err("块不在");
-    assert_eq!(e.code_or_fallback(), "io_failed", "{}", e.said);
+    assert_eq!(
+        cmd_wire::failed::Failed::code_or_fallback(e.code.clone()),
+        "io_failed",
+        "{}",
+        e.said
+    );
 }
 
 /// ★ 孤儿扫认得块的形状：老的删；新的留；调用方那个键的留；非规范块号不碰。
@@ -859,7 +896,11 @@ fn a_chunked_save_over_a_changed_file_is_stale_like_the_one_line_save() {
         }),
     )
     .expect_err("盘上已经变了，竟然提交成了");
-    assert_eq!(e.code_or_fallback(), "stale", "{e:?}");
+    assert_eq!(
+        cmd_wire::failed::Failed::code_or_fallback(e.code.clone()),
+        "stale",
+        "{e:?}"
+    );
     assert_eq!(
         std::fs::read(root.join("t.txt")).unwrap(),
         b"old + someone else"
@@ -878,7 +919,10 @@ fn a_chunked_save_over_a_changed_file_is_stale_like_the_one_line_save() {
         &serde_json::json!({"key": KEY, "chunks": 1, "bytes": 1, "root": root.to_string_lossy(), "rel": "t.txt"}),
     )
     .expect_err("没给 expect 竟然收了");
-    assert_eq!(e.code_or_fallback(), "bad_args");
+    assert_eq!(
+        cmd_wire::failed::Failed::code_or_fallback(e.code.clone()),
+        "bad_args"
+    );
 }
 
 /// 提交的整份摘要：**必给**（缺 ⇒ `bad_args`）；对不上 ⇒ `stale`、目标一个字节没动、坏暂存件删掉；
@@ -895,7 +939,10 @@ fn the_commit_checks_the_whole_staged_file_against_the_digest_it_is_given() {
         &serde_json::json!({"key": KEY, "root": root.to_string_lossy(), "rel": "a.bin"}),
     )
     .expect_err("没给 expect 竟然上位了");
-    assert_eq!(e.code_or_fallback(), "bad_args");
+    assert_eq!(
+        cmd_wire::failed::Failed::code_or_fallback(e.code.clone()),
+        "bad_args"
+    );
     assert!(staged.exists(), "参数拒了却动了暂存件");
     let mut wrong = body.clone();
     wrong[3] ^= 1;
@@ -952,11 +999,7 @@ fn hx1_the_staging_dirs_are_born_private_and_an_existing_one_is_kept_private() {
 
     let home = test_home::scratch("stg-old");
     std::fs::create_dir_all(home.join(".cc-monitor")).expect("预置");
-    std::fs::set_permissions(
-        home.join(".cc-monitor"),
-        std::fs::Permissions::from_mode(0o755),
-    )
-    .expect("chmod");
+    test_home::set_dir_mode(&home.join(".cc-monitor"), 0o755);
     stage_chunk(&Face::issue(), &home, key, 0, b"x").expect("写一块");
     assert_eq!(
         mode(&home.join(".cc-monitor")),
@@ -973,7 +1016,7 @@ fn hx1_the_staging_dirs_are_born_private_and_an_existing_one_is_kept_private() {
     let home = test_home::scratch("stg-link");
     let elsewhere = home.join("elsewhere");
     std::fs::create_dir_all(&elsewhere).expect("预置");
-    std::fs::set_permissions(&elsewhere, std::fs::Permissions::from_mode(0o700)).expect("chmod");
+    test_home::set_dir_mode(&elsewhere, 0o700);
     std::os::unix::fs::symlink(&elsewhere, home.join(".cc-monitor")).expect("链接");
     let got = stage_chunk(&Face::issue(), &home, key, 0, b"x");
     assert!(
@@ -1018,7 +1061,11 @@ fn the_commit_face_assembles_chunks_when_asked() {
         &args(&crate::files::content_sha256(b"other"), "b.txt"),
     )
     .expect_err("摘要对不上却上位了");
-    assert_eq!(e.code_or_fallback(), "stale", "{e:?}");
+    assert_eq!(
+        cmd_wire::failed::Failed::code_or_fallback(e.code.clone()),
+        "stale",
+        "{e:?}"
+    );
     assert!(std::fs::symlink_metadata(h.join("dst/b.txt")).is_err());
     std::fs::remove_dir_all(&h).ok();
 }
@@ -1087,7 +1134,10 @@ fn a_clash_is_asked_before_assembling_and_the_same_request_with_an_answer_lands(
     assert_eq!(std::fs::read(h.join("dst/a.txt")).unwrap(), b"old!");
     assert_eq!(chunks_left(&h, &key).len(), 2, "问之前就拼掉了块");
     let e = at(req(Some("skip"))).expect_err("只一件，skip 不收");
-    assert_eq!(CommitRefused::flat(e).code_or_fallback(), "bad_args");
+    assert_eq!(
+        cmd_wire::failed::Failed::code_or_fallback(CommitRefused::flat(e).code.clone()),
+        "bad_args"
+    );
     at(req(Some("overwrite"))).expect("答了盖该成");
     assert_eq!(std::fs::read(h.join("dst/a.txt")).unwrap(), b"hello world");
 
@@ -1149,7 +1199,11 @@ fn an_upload_name_goes_through_the_same_name_rules_as_create() {
     std::fs::create_dir_all(root.join("sub")).expect("建子目录");
     let e = answer_commit_at(&Face::issue(), &home, &args("sub/a.bin"))
         .expect_err("带 / 的名字落进了子目录");
-    assert_eq!(e.code_or_fallback(), crate::files::write::BAD_NAME, "{e:?}");
+    assert_eq!(
+        cmd_wire::failed::Failed::code_or_fallback(e.code.clone()),
+        crate::files::write::BAD_NAME,
+        "{e:?}"
+    );
     assert!(!root.join("sub/a.bin").exists());
     answer_commit_at(&Face::issue(), &home, &args("a.bin")).expect("一段名字该照落");
     assert_eq!(std::fs::read(root.join("a.bin")).expect("读落点"), b"x");

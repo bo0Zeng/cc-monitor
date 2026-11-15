@@ -43,7 +43,7 @@ function rig(
   const reads: ComposerReads = {
     io: () => ({}) as AttachIo,
     read: vi.fn(async () => opts.first ?? list()),
-    cancel: vi.fn(async (_o: string, _sid: string, id: string) => ({ cancelled: true, queue: list(...(opts.first?.items ?? []).filter((i) => i.id !== id)) })),
+    cancel: vi.fn(async (_o: string, _sid: string, id: string) => ({ cancelled: true, said: copyText("beQueue.cancel.done"), queue: list(...(opts.first?.items ?? []).filter((i) => i.id !== id)) })),
     watch: vi.fn((_o: string, on: (m: QueueMoved) => void) => {
       push = on;
       return () => {};
@@ -51,7 +51,7 @@ function rig(
   };
   const interrupt = vi.fn(opts.interrupt ?? (async (): Promise<TerminalSent> => ({ result: "delivered", note: "S-delivered", acts: [] })));
   const resume = vi.fn(opts.resume ?? (async () => true));
-  const outbox = new Outbox(put);
+  const outbox = new Outbox(put, reads.cancel);
   const c = new Composer({ active: () => tab, resume, focusStream: () => {} }, outbox, reads, interrupt);
   document.body.replaceChildren(c.el);
   c.render(); // 第一次画由宿主叫（构造里不画，A2-17-10-1-2）
@@ -158,7 +158,7 @@ describe("消息流底下的输入框", () => {
 
   it("★ 那台看不见 ⇒ 照常可写可发；没回执 ⇒ 连着时那一行「排队 · 无应答」、那台离线时照它成品的 heldSaid，框下不另起一行；重开还在", async () => {
     const { c } = rig({ face: goldenFace("unseen"), put: async () => Promise.reject(down()) });
-    c.machineChanged("devbox", { offline: false, offlineSaid: "devbox 离线", heldSaid: "devbox held-said" });
+    c.machineChanged("devbox", { offline: false, offlineSaid: "devbox 离线", heldSaid: "devbox held-said", withdrawHeld: "devbox withdraw-held" });
     expect(box(c).disabled).toBe(false);
     enter(c, "later");
     await flush();
@@ -166,7 +166,8 @@ describe("消息流底下的输入框", () => {
     expect(rows(c).length).toBe(1);
     expect(rows(c)[0], "连着时不说离线").toContain(copyText("beQueue.said.noAnswer"));
     expect(rows(c)[0]).not.toContain("devbox held-said");
-    c.machineChanged("devbox", { offline: true, offlineSaid: "devbox 离线", heldSaid: "devbox held-said" });
+    c.machineChanged("devbox", { offline: true, offlineSaid: "devbox 离线", heldSaid: "devbox held-said", withdrawHeld: "devbox withdraw-held" });
+    expect(rows(c)[0], "没撤过的那一句不借撤着那一句").not.toContain("devbox withdraw-held");
     expect(rows(c)[0]).toContain("devbox held-said");
     expect(rows(c)[0]).not.toContain(copyText("mobChat.delivery.sending"));
     expect(rows(c)[0]).toContain("later");
@@ -229,12 +230,11 @@ describe("消息流底下的输入框", () => {
     expect(rows(c)[0]).toContain("text of b");
   });
 
-  it("★ 那台断开又接上 ⇒ 名单只重问一次：订阅重连那一格（`all`）问，「那台接上」那一下不另问", async () => {
-    const { c, push, reads } = rig({ first: list(item("a", 1)) });
+  it("★ 那台断开又接上 ⇒ 名单只重问一次：订阅重连那一格（`all`）问", async () => {
+    const { push, reads } = rig({ first: list(item("a", 1)) });
     await flush();
     expect(reads.read).toHaveBeenCalledTimes(1);
-    // 接上那一刻两样一起来：机器状态翻成连着（宿主叫 machineUp）· 那台 `changed {session_queue}` 订阅收一格 `seen`（⇒ all）。
-    c.machineUp("devbox");
+    // 接上那一刻那台 `changed {session_queue}` 订阅收一格 `seen`（⇒ all）；输入框不另听「那台接上」。
     push({ got: new Map(), ask: [], all: true });
     await flush();
     expect(reads.read).toHaveBeenCalledTimes(2);

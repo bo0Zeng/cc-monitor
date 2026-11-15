@@ -236,10 +236,13 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     ("plan-command", "新帧命令：以人的身份代敲 pb 的 continue · pause · adopt · render · repo（退出码与 pb 那一句在后端认）；计划页开关 ·［接过仓库…］·［整张图］· 新计划框［新建］只排版"),
     ("plan-new", "新帧命令：新计划框问的那一份（pb dump --domains · 落在哪 · 撞没撞上已有的一片 · 那一行 pb repo 都在后端）；新计划框只排版"),
     ("plan-pb-check", "新帧命令：一个路径能不能当 pb 用（起 pb 看在后端，那一句后端写）；设置里 pb 路径那一行只排版"),
+    ("status-line-preview", "新帧命令：托管终端状态行模板的预览（那一行 · 认不出的那一句 · 字段表都在后端写）；设置里状态行那一格只排版"),
     // 登录抽屉（`src/frontend/ui/login-reads.ts`）：在 app 里登录，判 · 拼句 · 还能怎么办（`again`）都在那台后端。
     ("login-start", "帧命令（内建档，跟着发起它的那条连接走）：起一趟登录，回登录链接 · 粘什么 · 会不会自己登完；登录抽屉只排版"),
     ("login-finish", "帧命令：把登录页给的那一段交给那份作业；失败的 `data.again` 由后端定，登录抽屉照它画"),
     ("login-cancel", "帧命令：撤掉那一趟登录（抽屉关的那一下）"),
+    ("login-out", "帧命令：那个号退出登录（照那一家声明的退出那一形，回包带后端写好的那一句）"),
+    ("login-status", "帧命令：读那个号此刻登没登（照那一家声明的状态那一形，回包带后端写好的那一句）"),
     ("quota-read", "新帧命令：那台的额度账 ＋ 显示态（判在后端）；界面状态栏按钮 · 悬停卡 · 账号面板只排版"),
     ("prefs-read", "帧命令：那台的偏好（启动命令 · 每号模型 · 上限表住那台的 prefs.json），账号页 · 起会话框只读它"),
     ("prefs-set", "帧命令：改那台的偏好（值域在那台写口判），账号页的模型下拉经它存"),
@@ -294,6 +297,11 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "ext-uninstall-apply",
         "问被卸的那一台：记号对不上 ⇒ `stale` 零写；判 · 删 · 摘记录都在那台",
     ),
+    // 「文件与数据 → 改过的用户文件」那一行的［撤回］（`src/frontend/ui/settings/data-page.ts`）。
+    (
+        "mcp-project-revert",
+        "问那份文件所在的那一台：cc-monitor 改过之后又被改过 ⇒ `stale` 零写；原文在那台装记录里，判 · 写回 · 摘记录都在那台",
+    ),
     // 会话正文那几条里生在帧面上的（不是 `C1` 那一族的换壳）：界面经 `src/frontend/ui/record-reads.ts` 直问。
     (
         "history-page",
@@ -327,7 +335,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // 「终端」视图那张名单：本机后端问到各台、合成一份（行 · 字 · 筛选的数都写好）。
     (
         "terminals-board",
-        "「终端」视图那张名单：本机后端 `faces/terminals_board_face.rs` 问到各台的 `terminals-board-here`、合成一份（成品住 `control/terminals_board.rs`）；前端 `src/frontend/ui/terminals-board-reads.ts` 原样交给视图",
+        "「终端」视图那张名单：本机后端 `faces/terminals_board_face.rs` 问到各台的 `terminals-board-here`、合成一份（成品也住那里）；前端 `src/frontend/ui/terminals-board-reads.ts` 原样交给视图",
     ),
     // 一批会话跨几台：本机后端按台分组做、合好那一句。
     (
@@ -337,7 +345,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // 监控板版面：本机后端问到各台、合成一份（组序 · 组头 · 组内先后 · 顶上那一句都写好）。
     (
         "monitor-board",
-        "监控板版面：本机后端 `faces/monitor_board_face.rs` 问到各台的 `monitor-board-here`、合成一份（成品住 `control/monitor_board.rs`）；前端 `src/frontend/ui/monitor-board-reads.ts` 原样交给视图",
+        "监控板版面：本机后端 `faces/monitor_board_face.rs` 问到各台的 `monitor-board-here`、合成一份（成品也住那里）；前端 `src/frontend/ui/monitor-board-reads.ts` 原样交给视图",
     ),
     // 终端名单：那台后端出成品（与宿主无关的句柄）；只有 tmux 名在手的那一方先按名字认出那一行。
     (
@@ -403,6 +411,15 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "后端出成品 `{path}`（只收 sid，落点由那台后端按 sid 找）；前端 `src/frontend/ui/session-writes.ts::deleteSession` 问、按恰好的键集合收，\
          monitor 这一侧零发送点（门那一问 `Door::delete_session` 删了）",
     ),
+    // 归档 · 取消归档：照那一家的归档面跑它那一条命令，都在那台后端。
+    (
+        "files-archive-session",
+        "后端照那一家的归档面跑那一条命令、读退出码（`files_session_face.rs`，只收 sid，回包空）；前端 `session-writes.ts::archiveSession` 问，monitor 这一侧零发送点",
+    ),
+    (
+        "files-unarchive-session",
+        "同 `files-archive-session`，跑取消归档那一条；前端 `session-writes.ts::unarchiveSession` 问，monitor 这一侧零发送点",
+    ),
     // 起新会话框的两问读数（起的那一问是上面的 `session-open`；分叉随它写，界面不单独问 `session-fork`）。
     (
         "session-open-facts",
@@ -421,18 +438,26 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "set-launch",
         "typed：后端照补足逐条走 `session-open` 起、起之前写好组注解，回 `SetLaunched`（连起完那一句）；前端 `set-reads.ts::launchSet` 按类型问，monitor 这一侧零发送点",
     ),
-    // 聊天附件（终端面板输入行那一排）：判收不收 · 落点 · 上限 · 清理都在会话那台后端，字节逐块进那台暂存区（壳替界面走，见 `SENT_BY_MONITOR_ONLY`）；本机远端同一条路。
+    // 聊天附件（终端面板输入行那一排）：那一圈由本机后端编排（`control/attach_upload.rs`，它问会话那台 `session-attachment-*` · `files-stage-chunk`），界面只交名单、照推来的那一排画。
     (
-        "session-attachment-check",
-        "typed：开传前那一问，后端逐份答收不收 ＋ 类别与类别字（`files/commit/session_attachment.rs::check`）；前端 `attach-draft.ts` 按类型问，monitor 这一侧零发送点",
+        "attach-draft-put",
+        "typed：往草稿那一排加几份（壳放进本机暂存区的那条路径），本机后端照 `chunk_core::attach` 编排、回那一排；前端 `attach-draft.ts` 按类型问，monitor 这一侧零发送点",
     ),
     (
-        "session-attachment-commit",
-        "typed：暂存件落进会话工作目录下的附件目录、回编号（核摘要 · 判上限在后端）；前端 `attach-draft.ts` 按类型问，monitor 这一侧零发送点",
+        "attach-draft-drop",
+        "typed：✕ 草稿那一排的一份；前端 `attach-draft.ts` 按类型问，monitor 这一侧零发送点",
     ),
     (
-        "session-attachment-drop",
-        "typed：草稿上 ✕ 掉那一份，后端删掉那个附件目录；前端 `attach-draft.ts` 按类型问，monitor 这一侧零发送点",
+        "attach-draft-retry",
+        "typed：［重试］草稿那一排；前端 `attach-draft.ts` 按类型问，monitor 这一侧零发送点",
+    ),
+    (
+        "attach-draft-take",
+        "typed：送出那一下要编号（全落好了才给）；前端 `attach-draft.ts` 按类型问，monitor 这一侧零发送点",
+    ),
+    (
+        "attach-draft-view",
+        "typed：草稿那一排此刻的样子（推的那一帧没带体时重问）；前端 `attach-draft.ts` 按类型问，monitor 这一侧零发送点",
     ),
     (
         "session-queue-cancel",
@@ -467,8 +492,8 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // 钩子诊断：本机远端两条 Tauri 命令合成一条帧命令，界面直接问那台。
     (
         "hooks-diag",
-        "后端出成品 `{diagnosis, snippet, source}`（`assets/cc_bus_hooks.rs`，读那台自己的 `settings.json` ＋ stat，只读）；\
-         前端 `src/frontend/ui/cc-bus-hooks-reads.ts::fetchHooksReport` 问（扩展页 cc-bus 那一行每台一问）、`decodeHooksReport` 按恰好的键集合收，monitor 这一侧零发送点",
+        "后端出成品 `{supported, families}`（`assets/cc_bus_hooks.rs`，每家读那台自己的钩子文件 ＋ stat，声明了信任的再读信任那份，只读）；\
+         前端 `src/frontend/ui/cc-bus-hooks-reads.ts::fetchHooksReport` 问（扩展页 cc-bus 那一行每台一问），monitor 这一侧零发送点",
     ),
     // 〔⑬「monitor 零 SSH」〕公钥推送：本机后端读 `.pub` · 按名字找那台 · 一律问那台后端写（不在就没成），界面直接问本机。
     (
@@ -479,7 +504,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // 文件与数据：同一份足迹重排的成品（`src/backend/footprint/data.rs`）。
     (
         "data-report",
-        "后端出成品 `{home, changedFiles, todo, tmux, counts, rank, own}`；前端 `src/frontend/ui/settings/data-reads.ts::readDataReport` 问（typed，\
+        "后端出成品 `{changedFiles, todo, tmux, counts, rank, own}`；前端 `src/frontend/ui/settings/data-reads.ts::readDataReport` 问（typed，\
          形状由握手指纹核过）；monitor 这一侧零发送点，本机那一栏只答它自己那台那几行的事实（`footprint_client_facts`）",
     ),
     // 首次运行「开始用」那份数：本机后端判三步、剩几步；机器表台数由界面带上。
@@ -511,10 +536,10 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "后端出成品（`src/backend/faces/footprint_report_face.rs::chores_merge_with` → `src/backend/footprint/chores/mod.rs::merge_counts`）；\
          前端 `src/frontend/ui/settings/data-reads.ts::readChores` 问本机后端（「文件与数据」· 设置窗角标 · 主窗口状态栏），monitor 这一侧零发送点",
     ),
-    // 换 Claude 目录前那一问：后端 stat 两次回码。
+    // 换 Claude 目录前那一问：后端 stat 两次、回写好的那一句。
     (
         "agent-home-check",
-        "后端回码 `{state}`（`src/backend/footprint/agent_home_check.rs`）；前端 `src/frontend/ui/settings/claude-dir-check.ts::claudeDirProblem` 问、按码取那一句；\
+        "后端出成品 `{said}`（`src/backend/footprint/agent_home_check.rs`，能用 ⇒ `null`）；前端 `src/frontend/ui/settings/claude-dir-check.ts::claudeDirProblem` 问、照抄那一句；\
          monitor 这一侧零发送点（界面不再自己问两次 `files-stat` 去判）",
     ),
     // 生在帧面上、界面直接问的一条（不是只读宿主那一族，故不进 `BORN_ON_FRAME`）。
@@ -531,7 +556,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     (
         "machine-interrupts",
         "`BORN_ON_FRAME` 那一条：后端出成品 `{relayedSessions, relayedMaybe, liveStreams, forwards}`（`accounts/manage/library.rs::machine_product`）；\
-         前端 `src/frontend/ui/settings/interrupts.ts::askInterrupts` 只问本机后端（它经那台常驻流问到、并好再答）、按生成类型收，monitor 这一侧零发送点",
+         前端 `src/frontend/ui/settings/interrupts.ts::askInterruptRows` 只问本机后端（它经那台常驻流问到、并好再答）、按生成类型收，monitor 这一侧零发送点",
     ),
     // 生在帧面上、界面直接问的那一条。
     (
@@ -776,6 +801,11 @@ const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
          monitor 自己要不要跟着收那台后端 —— 它的答案不给界面",
     ),
     (
+        "machine-interrupts",
+        1,
+        "关主窗那一下壳自己问（`main_close.rs::ask_hub`）：不经网页 JS，网页卡住也关得掉",
+    ),
+    (
         "machine-read",
         2,
         "文件窗口（`filewin/source.rs::machine_now`）：那台通不通先问一次此刻的成品，之后照 `changed/machine` 换（窗口自己的断线条）；\
@@ -803,12 +833,6 @@ const SENT_BY_MONITOR_ONLY: &[(&str, usize, &str)] = &[
         1,
         "〔退订挂在订阅上〕界面那条 `terminal-screen/<票>` 撤掉（撤单 · 被重订 · 页面重载 · 窗口没了）时，\
          会话流句柄替界面向那台退订（`event_replay.rs::unfollow`）；重载时界面没人能发，所以只住壳这一处",
-    ),
-    (
-        "files-stage-chunk",
-        2,
-        "分块传那一圈只在 `chunk_core::stage`（`cmd_wire::files::FilesStageChunkReq`）：文件窗口存盘与非标准起始目录上传（`chunk_upload.rs`）· \
-         聊天附件（`attach_stage.rs`，壳替界面走）两处各从类型取命令名交它逐块送；界面只交字节，不说这一条",
     ),
 ];
 
@@ -854,7 +878,7 @@ const HELD_BACK: &[(&str, &str)] = &[
 
 /// monitor 生产段（`src/frontend/shell/src/**/*.rs`，剥注释与 `#[cfg(test)]`）里，一条帧命令被点名几次：
 /// 它的字面量，加上照类型问时造它入参的那几处（`cmd_wire::Call` 那张表里名字是它的入参类型 `<类型> {` 那一形），
-/// 再加上从类型取命令名交给共用零件去发的那几处（`<类型 as cmd_wire::Call>::NAME`，如附件分块传交 `chunk_core::stage`）。
+/// 再加上从类型取命令名交给共用零件去发的那几处（`<类型 as cmd_wire::Call>::NAME` 那一形）。
 fn monitor_literal_count(op: &str) -> usize {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let needle = format!("\"{op}\"");
@@ -870,8 +894,10 @@ fn monitor_literal_count(op: &str) -> usize {
                 + built
                     .iter()
                     .map(|b| {
+                        // 定义 · 函数的返回类型后面也跟着 `{`，不是造一份入参。
                         guard_core::word_count(&prod, b)
                             - prod.matches(format!("struct {b}").as_str()).count()
+                            - prod.matches(format!("-> {b}").as_str()).count()
                     })
                     .sum::<usize>()
         })

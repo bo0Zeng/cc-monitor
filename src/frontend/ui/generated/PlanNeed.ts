@@ -11,7 +11,7 @@ sid: string | null,
 /**
  * 不通过那一条在 `check.red` 里的位置。
  */
-red?: number, acked: boolean, 
+red?: number, 
 /**
  * 那一条的标题（后端照种类写好）。
  */
@@ -21,6 +21,10 @@ title: string,
  */
 lines: Array<string>, 
 /**
- * 「第几条 / 共几条」（照认可记录标过之后、没认可的那几条照先后写）；认可过的 ⇒ `null`。
+ * 「第几条 / 共几条」（照认可记录摘掉认可过的之后，留下的那几条照先后写；还没照认可记录标过 ⇒ `null`）。
  */
-pos: string | null, };
+pos: string | null, 
+/**
+ * 负责人那一行（负责人名字，后端写好）：问人 · 负责人停了两种有；顶层全签收 · 校验不通过 ⇒ `null`。
+ */
+who: string | null, };

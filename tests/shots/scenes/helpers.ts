@@ -9,22 +9,53 @@ import { WALL_CEILING_MS } from "../../test-support/wall-ceiling";
 
 export const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
-/** 等一个选择器出现（可见与否不论）；到时限 ⇒ 抛（这一张算没截成）。 */
+/**
+ * 「不会来了」：假后端手上没有没落定的事（没有在途的问、订了的会话流都报完了清单，`ShotsHandle.busy`），
+ * 而且从「这一次等开始 · 页面最后一次变 · 最后一次看见假后端有事」三者里最晚的那一刻起，已经 {@link QUIET_MS} 一下没动静
+ * ⇒ 页里再没有东西会让等的那一样长出来，当场判失败，不白等到兜底上限（点错了按钮 · 产品删了那一样 · 假数据缺格，这几类以前每张白等五分钟）。
+ * 只会比兜底上限早停、不会晚停：机器忙时问在途、页面在变，照旧等到条件或上限；一问刚答完、页面还没来得及画，从答完那一刻重新数。
+ */
+export const QUIET_MS = 20_000;
+
+let lastChange = performance.now();
+let lastBusy = 0;
+new MutationObserver(() => {
+  lastChange = performance.now();
+}).observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
+
+/** 判「不会来了」（`since` ＝ 这一次等开始的那一刻）：是 ⇒ 那一句（接在「等不到 …」后面）；还可能来 ⇒ `null`。 */
+export function neverComing(since: number): string | null {
+  const busy = window.__shots?.busy;
+  if (!busy) return null;
+  const now = performance.now();
+  if (busy() !== null) {
+    lastBusy = now;
+    return null;
+  }
+  const quiet = now - Math.max(lastChange, lastBusy, since);
+  return quiet >= QUIET_MS ? `（不会来了：假后端没有在途的事，页面 ${Math.round(quiet / 1000)} 秒没变）` : null;
+}
+
+/** 等一个选择器出现（可见与否不论）；到时限或「不会来了」⇒ 抛（这一张算没截成）。 */
 export async function waitFor<T extends Element = HTMLElement>(sel: string, ms = WALL_CEILING_MS): Promise<T> {
-  const until = performance.now() + ms;
+  const since = performance.now();
+  const until = since + ms;
   for (;;) {
     const el = document.querySelector<T>(sel);
     if (el) return el;
-    if (performance.now() > until) throw new Error(`等不到 ${sel}`);
+    const never = neverComing(since);
+    if (never !== null || performance.now() > until) throw new Error(`等不到 ${sel}${never ?? ""}`);
     await sleep(50);
   }
 }
 
 /** 等到「有 n 个」。 */
 export async function waitCount(sel: string, n: number, ms = WALL_CEILING_MS): Promise<void> {
-  const until = performance.now() + ms;
+  const since = performance.now();
+  const until = since + ms;
   while (document.querySelectorAll(sel).length < n) {
-    if (performance.now() > until) throw new Error(`等不到 ${n} 个 ${sel}（现有 ${document.querySelectorAll(sel).length}：${[...document.querySelectorAll(sel)].map((e) => (e.textContent ?? "").slice(0, 30)).join(" | ")}）`);
+    const never = neverComing(since);
+    if (never !== null || performance.now() > until) throw new Error(`等不到 ${n} 个 ${sel}（现有 ${document.querySelectorAll(sel).length}：${[...document.querySelectorAll(sel)].map((e) => (e.textContent ?? "").slice(0, 30)).join(" | ")}）${never ?? ""}`);
     await sleep(50);
   }
 }
@@ -43,13 +74,15 @@ export async function click(sel: string | Element): Promise<void> {
 
 /** 按文字找一个可点的元素（按钮、菜单项）。 */
 export async function byText(sel: string, text: string | RegExp, ms = WALL_CEILING_MS): Promise<HTMLElement> {
-  const until = performance.now() + ms;
+  const since = performance.now();
+  const until = since + ms;
   for (;;) {
     for (const el of document.querySelectorAll<HTMLElement>(sel)) {
       const t = el.textContent ?? "";
       if (typeof text === "string" ? t.includes(text) : text.test(t)) return el;
     }
-    if (performance.now() > until) throw new Error(`等不到 ${sel} 里写着 ${String(text)} 的那个`);
+    const never = neverComing(since);
+    if (never !== null || performance.now() > until) throw new Error(`等不到 ${sel} 里写着 ${String(text)} 的那个${never ?? ""}`);
     await sleep(50);
   }
 }
@@ -158,7 +191,8 @@ export async function until<T>(get: () => T | null | undefined, ms = WALL_CEILIN
   for (;;) {
     const v = get();
     if (v !== null && v !== undefined) return v;
-    if (performance.now() - t0 > ms) throw new Error(`${ms}ms 没等到`);
+    const never = neverComing(t0);
+    if (never !== null || performance.now() - t0 > ms) throw new Error(`${never === null ? `${ms}ms ` : ""}没等到${never ?? ""}`);
     await new Promise((r) => requestAnimationFrame(() => r(null)));
   }
 }

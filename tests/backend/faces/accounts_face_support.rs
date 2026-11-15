@@ -46,11 +46,16 @@ pub fn answer(
         }
         "accounts-mcp-remove" => {
             let a: AccountMcpNameArgs = take(args)?;
-            out(mcp_share_exec::remove(d, &a.name))
+            out(mcp_share_exec::remove(d, &a.name, a.agent.as_deref()))
         }
         "accounts-mcp-pick" => {
             let a: AccountMcpPickArgs = take(args)?;
-            out(mcp_share_exec::pick(d, &a.name, a.from.as_deref()))
+            out(mcp_share_exec::pick(
+                d,
+                &a.name,
+                a.from.as_deref(),
+                a.agent.as_deref(),
+            ))
         }
         "accounts-mcp-sync" => {
             let a: AccountMcpSyncArgs = take(args)?;

@@ -18,7 +18,7 @@ function hist(id: string, title: string, desc: string, act: Scene["act"]): Scene
 
 async function openHistory(): Promise<void> {
   await mainReady(ALL_TABS);
-  await click(".history-trigger");
+  await click('[data-head="history"]');
   await waitFor('.history-view [role="option"]');
   await sleep(600);
 }
@@ -219,7 +219,7 @@ export const HISTORY_SCENES: Scene[] = [
     }),
     world: withQuota,
   },
-  hist("history-06-codex", "历史 · Codex 会话", "Codex 会话：恢复按它自己那一家起；▾ 里不问账号，灰一行「Codex · 无账号维」", async () => {
+  hist("history-06-codex", "历史 · Codex 会话", "Codex 会话：恢复按它自己那一家起；▾ 账号那一节只列 Codex 的号（这一屋子的号全是 Claude 的 ⇒ 只剩「不指定账号」），不拿 Claude 的号顶", async () => {
     await openHistory();
     await click(await byText('.history-view [role="option"]', "Codex"));
     await sleep(900);

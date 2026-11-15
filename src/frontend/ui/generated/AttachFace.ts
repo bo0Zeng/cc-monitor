@@ -3,6 +3,6 @@ import type { AttachFaceCard } from "./AttachFaceCard";
 import type { AttachFaceNote } from "./AttachFaceNote";
 
 /**
- * 核心回的那一排的字：每张卡（与交进来的同序）＋ 卡下那一条。
+ * 写好的那一排的字：每张卡（与交进来的同序）＋ 卡下那一条。
  */
 export type AttachFace = { cards: Array<AttachFaceCard>, note: AttachFaceNote | null, };

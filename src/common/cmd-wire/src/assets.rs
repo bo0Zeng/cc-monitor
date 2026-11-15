@@ -137,6 +137,10 @@ where
     )
 )]
 pub struct Asset {
+    /// 哪一家的（线上的 kind）；缺席 ⇒ 缺省那一家（旧对端的目录照收）。同名的两家各是一条，不相撞。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub agent: Option<crate::AgentKind>,
     pub kind: ExtKind,
     pub name: String,
     /// 那台上的项目目录（项目级）；`None` = 用户级。
@@ -199,6 +203,10 @@ pub struct CatalogFrom {
     ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 pub struct CatalogRow {
+    /// 哪一家的（同 [`Asset::agent`]）：一行是（家, 种类, 名字）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub agent: Option<crate::AgentKind>,
     pub kind: ExtKind,
     pub name: String,
     pub state: String,

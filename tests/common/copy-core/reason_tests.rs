@@ -25,6 +25,7 @@ fn each_common_io_kind_becomes_a_word_in_the_closed_set_and_the_rest_is_unknown(
         (K::QuotaExceeded, "reason.io.full"),
         (K::ResourceBusy, "reason.io.busy"),
         (K::AlreadyExists, "beFiles.batch.mintSpent"),
+        (K::Unsupported, "machineState.word.unsupported"),
         (K::Other, "reason.io.unknown"),
         (K::Interrupted, "reason.io.unknown"),
     ];
@@ -93,4 +94,20 @@ fn a_program_that_is_not_there_is_not_installed_and_other_spawn_errors_read_as_i
     for kind in [K::PermissionDenied, K::Other] {
         assert_eq!(spawn_reason(kind), io_reason(kind), "{kind:?}");
     }
+}
+
+/// 系统说「不支持这一下」（EOPNOTSUPP / ENOTSUP，Linux 上同一个号 95）⇒「不支持」，不落「原因不明」；
+/// 一组里没做成的那一项只带原话，照原话里的错号说同一个词。
+#[cfg(any(target_os = "linux", target_os = "android"))]
+#[test]
+fn an_operation_the_system_does_not_support_reads_unsupported_not_unknown() {
+    let want = crate::copy_text("machineState.word.unsupported", &[]);
+    assert_eq!(
+        io_reason(std::io::Error::from_raw_os_error(95).kind()),
+        want
+    );
+    assert_eq!(
+        code_reason("io_failed", Some("Operation not supported (os error 95)")),
+        want
+    );
 }

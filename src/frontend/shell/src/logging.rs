@@ -57,7 +57,7 @@ use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::UNIX_EPOCH;
 use tauri::{AppHandle, Emitter, Runtime};
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_appender::rolling::{Builder as RollingBuilder, Rotation};
@@ -68,16 +68,14 @@ use tracing_subscriber::reload;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::Registry;
 
-const LOG_DIR_NAME: &str = "logs";
-/// monitor 自己的滚动日志住日志目录下这一层，与后端那份 [`BACKEND_STDERR_DIR`] 并排、两边不撞名。
+/// monitor 自己的滚动日志住日志目录（`relay_route_core::LOG_DIR_REL`）下这一层，与后端那份（`relay_route_core::BACKEND_STDERR_REL`）并排、两边不撞名。
 const MONITOR_LOG_DIR: &str = "monitor";
 const LOG_FILE_PREFIX: &str = "monitor";
 const LOG_FILE_SUFFIX: &str = "log";
 
-/// 本机后端**脱离常驻**时自己的 stderr 诊断文件：住日志目录下这一层子目录
+/// 本机后端**脱离常驻**时自己的 stderr 诊断文件：住数据目录下 `relay_route_core::BACKEND_STDERR_REL` 那一层
 /// （后端那侧 `src/backend/stderr_log/mod.rs` 满了换份，同一目录里多一份旧的）。与 [`MONITOR_LOG_DIR`] 分开放：
 /// 那边的 `.log` 是本进程按天滚动的那一族（「当前文件」按 mtime 取最新 —— 混进去会被认成 monitor 自己的）。
-const BACKEND_STDERR_DIR: &str = "backend";
 const BACKEND_STDERR_FILE: &str = "stderr.log";
 
 /// 起脱离那条载体时交给后端的那一格（后端 `platform::child_env::STDERR_LOG` 同值，`logging_tests` 从后端源码现抠着对拍）。
@@ -85,14 +83,16 @@ pub const BACKEND_STDERR_LOG_ENV: &str = "CCM_BACKEND_STDERR_LOG";
 
 /// monitor 自己的滚动日志目录 `<数据目录>/logs/monitor/`。**唯一一处算它**（写的与设置页读的是同一个）。
 pub fn monitor_log_dir(monitor_data_dir: &Path) -> PathBuf {
-    monitor_data_dir.join(LOG_DIR_NAME).join(MONITOR_LOG_DIR)
+    monitor_data_dir
+        .join(relay_route_core::LOG_DIR_REL)
+        .join(MONITOR_LOG_DIR)
 }
 
 /// 本机后端 stderr 诊断文件（当前那一份）的路径。**唯一一处算它**：起后端时交出去的与设置页读的是同一个。
 pub fn backend_stderr_log_path(monitor_data_dir: &Path) -> PathBuf {
-    monitor_data_dir
-        .join(LOG_DIR_NAME)
-        .join(BACKEND_STDERR_DIR)
+    relay_route_core::BACKEND_STDERR_REL
+        .split('/')
+        .fold(monitor_data_dir.to_path_buf(), |p, seg| p.join(seg))
         .join(BACKEND_STDERR_FILE)
 }
 
@@ -348,29 +348,13 @@ fn build_env_filter(level: &str) -> Option<EnvFilter> {
     EnvFilter::try_new(combined).ok()
 }
 
-/// 列 log_dir 下 mtime 最新的 .log 文件。无 → None。
+/// log_dir 下 mtime 最新的 .log 文件（滚动写者写的形如 `monitor.YYYY-MM-DD.log`）。无 → None。
+/// 与设置页那一份（[`LoggingState::file_info`]）同一个判法：[`list_log_entries`] 排在最前的那一份。
 fn find_latest_log_file(log_dir: &Path) -> Option<PathBuf> {
-    let entries = std::fs::read_dir(log_dir).ok()?;
-    let mut latest: Option<(PathBuf, SystemTime)> = None;
-    for e in entries.flatten() {
-        let p = e.path();
-        if !p.is_file() {
-            continue;
-        }
-        // rolling::daily 写的文件名形如 monitor.YYYY-MM-DD.log，扩展名是 "log"
-        if p.extension().is_some_and(|x| x == LOG_FILE_SUFFIX) {
-            let mtime = e
-                .metadata()
-                .ok()
-                .and_then(|m| m.modified().ok())
-                .unwrap_or(SystemTime::UNIX_EPOCH);
-            match &latest {
-                Some((_, t)) if *t >= mtime => {}
-                _ => latest = Some((p, mtime)),
-            }
-        }
-    }
-    latest.map(|(p, _)| p)
+    list_log_entries(log_dir, Some(LOG_FILE_SUFFIX), None)
+        .into_iter()
+        .next()
+        .map(|e| PathBuf::from(e.path))
 }
 
 // ===== diagnostics 字段 R/W（独立读写 config.json 的子对象） =====
@@ -450,6 +434,8 @@ pub struct LogFileEntry {
 }
 
 /// 一个目录里的普通文件（`ext` 给了就只收那个扩展名），按 mtime 新在前；显示形按 `home` 写。目录不在 ⇒ 空。
+/// 大小与改动时刻照路径问文件本身（`std::fs::metadata`），不读目录项（`DirEntry::metadata`）：Windows 上一份文件开着被追加写时
+/// （滚动写者一直握着当前那一份），目录项里的大小与改动时刻不跟着变，停在建档那一刻、大小 0。
 pub(crate) fn list_log_entries(
     dir: &Path,
     ext: Option<&str>,
@@ -465,7 +451,7 @@ pub(crate) fn list_log_entries(
             if ext.is_some_and(|x| p.extension().is_none_or(|y| y != x)) {
                 continue;
             }
-            let meta = e.metadata().ok();
+            let meta = std::fs::metadata(&p).ok();
             let size_text = meta.as_ref().map(|m| copy_core::size_text(m.len()));
             let mtime = meta
                 .and_then(|m| m.modified().ok())

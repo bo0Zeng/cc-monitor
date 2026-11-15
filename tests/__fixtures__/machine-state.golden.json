@@ -13,11 +13,13 @@
         "offlineSaid": "gpu-01 离线",
         "os": null,
         "reason": null,
+        "rewindHeld": "上一版正在撤回 · 等 gpu-01 答复",
         "said": "",
         "seenHostKey": null,
         "stage": null,
         "state": "up",
         "version": "<ver>",
+        "withdrawHeld": "撤回中 · gpu-01 离线 · 连上后接着问",
         "word": ""
       },
       "name": "连着"
@@ -35,6 +37,7 @@
         "offlineSaid": "gpu-01 离线",
         "os": null,
         "reason": null,
+        "rewindHeld": "上一版正在撤回 · 等 gpu-01 答复",
         "said": "连接 gpu-01 · 启动 cc-monitor",
         "seenHostKey": null,
         "stage": "attach",
@@ -44,6 +47,7 @@
           "tone": "busy"
         },
         "version": null,
+        "withdrawHeld": "撤回中 · gpu-01 离线 · 连上后接着问",
         "word": "连接中"
       },
       "name": "正在连"
@@ -61,6 +65,7 @@
         "offlineSaid": "gpu-01 离线",
         "os": null,
         "reason": null,
+        "rewindHeld": "上一版正在撤回 · 等 gpu-01 答复",
         "said": "安装 cc-monitor → gpu-01",
         "seenHostKey": null,
         "stage": null,
@@ -70,6 +75,7 @@
           "tone": "busy"
         },
         "version": null,
+        "withdrawHeld": "撤回中 · gpu-01 离线 · 连上后接着问",
         "word": "安装中"
       },
       "name": "正在装"
@@ -87,6 +93,7 @@
         "offlineSaid": "gpu-01 离线",
         "os": null,
         "reason": null,
+        "rewindHeld": "上一版正在撤回 · 等 gpu-01 答复",
         "said": "更新 gpu-01 · cc-monitor",
         "seenHostKey": null,
         "stage": null,
@@ -96,6 +103,7 @@
           "tone": "busy"
         },
         "version": null,
+        "withdrawHeld": "撤回中 · gpu-01 离线 · 连上后接着问",
         "word": "更新中"
       },
       "name": "正在更新"
@@ -122,6 +130,7 @@
         "offlineSaid": "gpu-01 离线",
         "os": null,
         "reason": "auth",
+        "rewindHeld": "上一版正在撤回 · 等 gpu-01 答复",
         "said": "连接失败 · 密钥被拒",
         "seenHostKey": null,
         "stage": null,
@@ -131,6 +140,7 @@
           "tone": "offline"
         },
         "version": null,
+        "withdrawHeld": "撤回中 · gpu-01 离线 · 连上后接着问",
         "word": "离线"
       },
       "name": "密钥被拒"
@@ -157,6 +167,7 @@
         "offlineSaid": "gpu-01 离线",
         "os": null,
         "reason": "timeout",
+        "rewindHeld": "上一版正在撤回 · 等 gpu-01 答复",
         "said": "连接失败 · 无应答",
         "seenHostKey": null,
         "stage": null,
@@ -166,6 +177,7 @@
           "tone": "offline"
         },
         "version": null,
+        "withdrawHeld": "撤回中 · gpu-01 离线 · 连上后接着问",
         "word": "离线"
       },
       "name": "无应答"
@@ -188,6 +200,7 @@
         "offlineSaid": "gpu-01 离线",
         "os": null,
         "reason": "host_key",
+        "rewindHeld": "上一版正在撤回 · 等 gpu-01 答复",
         "said": "主机指纹变更 · 未连接",
         "seenHostKey": "SHA256:new",
         "stage": null,
@@ -197,6 +210,7 @@
           "tone": "fail"
         },
         "version": null,
+        "withdrawHeld": "撤回中 · gpu-01 离线 · 连上后接着问",
         "word": "指纹变更"
       },
       "name": "指纹变了"
@@ -219,6 +233,7 @@
         "offlineSaid": "gpu-01 离线",
         "os": null,
         "reason": null,
+        "rewindHeld": "上一版正在撤回 · 等 gpu-01 答复",
         "said": "gpu-01 要更新",
         "seenHostKey": null,
         "stage": null,
@@ -228,6 +243,7 @@
           "tone": "warn"
         },
         "version": null,
+        "withdrawHeld": "撤回中 · gpu-01 离线 · 连上后接着问",
         "word": "要更新"
       },
       "name": "要更新"
@@ -245,11 +261,13 @@
         "offlineSaid": "gpu-01 离线",
         "os": null,
         "reason": null,
+        "rewindHeld": "上一版正在撤回 · 等 gpu-01 答复",
         "said": "gpu-01 版本较新 · 部分功能不可用",
         "seenHostKey": null,
         "stage": null,
         "state": "newer",
         "version": null,
+        "withdrawHeld": "撤回中 · gpu-01 离线 · 连上后接着问",
         "word": "版本较新"
       },
       "name": "较新"
@@ -267,11 +285,13 @@
         "offlineSaid": "gpu-01 离线",
         "os": null,
         "reason": null,
+        "rewindHeld": "上一版正在撤回 · 等 gpu-01 答复",
         "said": "",
         "seenHostKey": null,
         "stage": null,
         "state": "up",
         "version": null,
+        "withdrawHeld": "撤回中 · gpu-01 离线 · 连上后接着问",
         "word": "开发版"
       },
       "name": "版本不可比"
@@ -289,6 +309,7 @@
         "offlineSaid": "gpu-01 离线",
         "os": null,
         "reason": null,
+        "rewindHeld": "上一版正在撤回 · 等 gpu-01 答复",
         "said": "gpu-01 · 仅支持 Unix",
         "seenHostKey": null,
         "stage": null,
@@ -298,6 +319,7 @@
           "tone": "fail"
         },
         "version": null,
+        "withdrawHeld": "撤回中 · gpu-01 离线 · 连上后接着问",
         "word": "不支持"
       },
       "name": "不是 Unix"
@@ -320,6 +342,7 @@
         "offlineSaid": "gpu-01 离线",
         "os": null,
         "reason": "password",
+        "rewindHeld": "上一版正在撤回 · 等 gpu-01 答复",
         "said": "连接失败 · 不支持仅密码登录 · cc-monitor 只用密钥",
         "seenHostKey": null,
         "stage": null,
@@ -329,6 +352,7 @@
           "tone": "offline"
         },
         "version": null,
+        "withdrawHeld": "撤回中 · gpu-01 离线 · 连上后接着问",
         "word": "离线"
       },
       "name": "要密码"
@@ -351,11 +375,13 @@
         "offlineSaid": "gpu-01 离线",
         "os": null,
         "reason": null,
+        "rewindHeld": "上一版正在撤回 · 等 gpu-01 答复",
         "said": "连接已停用",
         "seenHostKey": null,
         "stage": null,
         "state": "disabled",
         "version": null,
+        "withdrawHeld": "撤回中 · gpu-01 离线 · 连上后接着问",
         "word": "已停用"
       },
       "name": "停用"

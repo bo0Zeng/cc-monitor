@@ -60,7 +60,7 @@ pub fn find(data: &[u8], q: &str, tools: bool, limit: usize) -> Vec<Value> {
         None,
         page,
         |hit| {
-            v.push(serde_json::to_value(with_hit_text(hit, &Default::default())).unwrap());
+            v.push(serde_json::to_value(with_hit_text(hit, &Default::default(), false)).unwrap());
             Ok(())
         },
     )

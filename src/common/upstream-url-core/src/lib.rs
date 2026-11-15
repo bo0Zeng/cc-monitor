@@ -1,13 +1,13 @@
 //! **上游 base URL 能不能用** —— 全仓唯一的一份。
 //!
-//! 写口 `creds-core` 的形状关 · 中转的 `Base::parse` · 上游选择装表时的「明文只许回环」都用这一份，界面也不另写 `new URL()` 那一份。
+//! 写口 `creds-core` 的形状关 · 中转宿主的 `relay::base_of`（形状那几句 `shape_said`）· 上游选择装表时的「明文只许回环」都用这一份，界面也不另写 `new URL()` 那一份。
 //! [`parse`]（形状）＋ [`upstream_is_loopback`] ＝ [`usable`]；
-//! 界面读 monitor 从这里现生成的式子（`src/frontend/ui/generated/judgment-rules.ts`），两侧由金样 `tests/__fixtures__/upstream-url.golden.json` 逐条对。
+//! 界面不判地址：新建账号表单把原样打的字交那台后端预演，只画它拒的那一句。金样 `tests/__fixtures__/upstream-url.golden.json`
+//! 住本包判据（`tests/common/upstream-url-core/lib_tests.rs` 逐条喂 [`usable`]）。
 //! 本 crate 只判、不说：句子归调用处（同后端 `control/gate_rules.rs::TmuxNameIssue` 的先例）。
 //!
-//! **两个消费者**（共享 crate 那张表）：后端生产（上游选择装表 `accounts/upstream_select/table.rs` ·
-//! 中转 `src/comms/outward/upstream.rs`）；monitor 只经生成物（`tests/frontend/shell/payload_judgment_rules.rs`
-//! 现生成 `judgment-rules.ts` 的 J9 那段），monitor 生产代码零引用（依赖在 `[dev-dependencies]`）。
+//! **消费者**（共享 crate 那张表）：后端生产（上游选择装表 `accounts/upstream_select/table.rs` ·
+//! 中转宿主 `src/backend/relay/mod.rs::base_of`）· 出网口；monitor 生产与 dev 侧都不链它。
 
 /// 认得的两种协议与「走不走 TLS」。**闭集只有这一个住址**（报错与生成物都从这里派生）。
 pub const SCHEMES: &[(&str, bool)] = &[("https", true), ("http", false)];

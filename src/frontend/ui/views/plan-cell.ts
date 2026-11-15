@@ -19,8 +19,8 @@ import { refSlots } from "../md-view";
 import type { Machine } from "../ipc/origin";
 import type { NewSessionSpec } from "../new-session";
 import { fetchCellView, PLAN_EDGE_KINDS, type PlanBlock, type PlanCell, type PlanEdgeKind, type PlanRef, type PlanSlice, type PlanWho } from "../plan-reads";
-import { ancestry, blockRoots, cellIndex, fileTone, kindSlot, labelOf, refSpans } from "./plan-model";
-import { phaseBadge, setKindColor, STATUS_ICON } from "./plan-bits";
+import { ancestry, cellIndex, fileTone, kindSlot, labelOf, refSpans, rootBlock } from "./plan-model";
+import { setKindColor, STATUS_ICON } from "./plan-bits";
 import s from "./plan-cell.module.css";
 
 export interface CellDetailHost {
@@ -128,24 +128,25 @@ export class CellDetail {
    * ［复制］＋［新会话接手…］；给不了 ⇒ pb 说的为什么。本页不替人敲 `pb reissue`。
    */
   private handoff(slice: PlanSlice, cell: PlanCell): HTMLElement | null {
-    const b = blockRoots(slice).get(cell.id) ?? null;
+    const b = rootBlock(slice, cell);
     if (!b || (b.takeover !== "open" && b.takeover !== "no_line")) return null;
     const box = handoffBox(b);
     if (b.takeover === "open") box.appendChild(takeoverCell(b, () => this.host.takeover(b)));
     return box;
   }
 
-  /** 位置行：划出的根节点 ⇒ 那个权力范围的负责人 ＋ 阶段；别的节点 ⇒ 负责它的。都带［切到会话］。 */
+  /** 位置行：根格 ⇒ 后端写好的整句（块根那句 · 负责人名字 · 阶段）；别的格 ⇒ 负责它的那一枚。都带［切到会话］。 */
   private position(slice: PlanSlice, cell: PlanCell): HTMLElement | null {
-    const b = blockRoots(slice).get(cell.id) ?? null;
+    const b = rootBlock(slice, cell);
     const who = b?.owner ?? cell.owner;
     if (!who && !b) return null;
     const row = document.createElement("div");
     row.className = s.cdPos;
     if (b) row.appendChild(span(cell.said.blockRoot ?? ""));
-    else row.appendChild(span(copyText("plan.cell.grower")));
-    if (who) row.appendChild(this.host.who(who));
-    if (b?.phase) row.appendChild(phaseBadge(b.phase));
+    else {
+      row.appendChild(span(copyText("plan.cell.grower")));
+      if (who) row.appendChild(this.host.who(who));
+    }
     const sid = who?.sid ?? null;
     if (sid) row.appendChild(link(copyText("plan.cell.toSession"), () => this.host.switchTo(sid)));
     return row;

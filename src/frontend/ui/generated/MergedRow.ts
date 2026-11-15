@@ -25,6 +25,10 @@ reveal: boolean,
  */
 deleteAsk: Words, 
 /**
+ * 「+N 处」那颗的字（还有没摆出来的命中才有，`moreHits` 为 0 ⇒ 缺）：合的那一步写好，界面照抄。
+ */
+moreText?: string | null, 
+/**
  * 行尾那一格。
  */
 atText: string, 

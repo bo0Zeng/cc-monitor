@@ -32,13 +32,11 @@ fn sandbox(tag: &str) -> PathBuf {
     let bin = root.join("bin");
     std::fs::create_dir_all(&bin).unwrap();
     let p = bin.join("claude");
-    std::fs::write(
+    // 马上被起 ⇒ 经 `write_exe` 写（本进程写的写端会漏进别的判据线程 fork 出来的子进程 ⇒ ETXTBSY）。
+    test_home::write_exe(
         &p,
         "#!/bin/sh\necho \"$$ ${CLAUDE_CONFIG_DIR-}\" > \"$LNE_OUT\"\n",
-    )
-    .unwrap();
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+    );
     root
 }
 
@@ -157,7 +155,6 @@ fn launch_note_child_entry_point() {
         act: Act::Resume(SID.into()),
         tmux: None,
         cwd: None,
-        ccm_sid: None,
         model: None,
         launcher,
         default_launcher,

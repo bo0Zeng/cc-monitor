@@ -185,8 +185,37 @@ class TerminalOpsAgentTest {
             val ops = TerminalOps(l, { "box" })
             assertEquals(listOf("opus"), ops.modelsIn("work").map { it.value })
             assertTrue("没跑会话 ⇒ 没有可换的", ops.modelsIn("bare").isEmpty())
-            assertEquals("已换成 opus", ops.switchModel("work", "opus").getOrThrow())
+            assertEquals("已换成 opus", ops.switchModel("work", "opus", null).getOrThrow())
             assertEquals(listOf(mapOf("sid" to "s1", "model" to "opus", "client" to "mobile")), l.calls("session-model"))
             assertTrue("不再往终端里送字", l.calls("terminal-input").isEmpty())
+        }
+
+    @Test
+    fun theChosenEffortRidesWithTheSwitch() =
+        runTest {
+            val l = link(terminal("work", "s1", "claude"))
+            val ops = TerminalOps(l, { "box" })
+            ops.switchModel("work", "opus", "high").getOrThrow()
+            ops.switchModel("work", "opus", null).getOrThrow()
+            assertEquals(
+                listOf(mapOf("sid" to "s1", "model" to "opus", "client" to "mobile", "effort" to "high"), mapOf("sid" to "s1", "model" to "opus", "client" to "mobile")),
+                l.calls("session-model"),
+            )
+        }
+
+    /** 已发出（那一家不写读回）不算失败：照那台那一句；结果未知才算失败。 */
+    @Test
+    fun aSentSwitchIsNotAFailure() =
+        runTest {
+            val l = link(terminal("work", "s1", "claude"))
+            val base = l.answer
+            var result = "sent"
+            l.answer = { cmd, args ->
+                if (cmd == "session-model") Reply.Ok(mapOf("result" to result, "model" to null, "said" to "那台·已发出")) else base(cmd, args)
+            }
+            val ops = TerminalOps(l, { "box" })
+            assertEquals("那台·已发出", ops.switchModel("work", "opus", null).getOrThrow())
+            result = "unsure"
+            assertTrue("结果未知算失败", ops.switchModel("work", "opus", null).isFailure)
         }
 }

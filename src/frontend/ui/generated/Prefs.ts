@@ -36,10 +36,19 @@ agentHomes: { [key in string]: string },
  */
 pbDir: string | null, 
 /**
+ * 计划页手加的目录（绝对路径）：`plan-list` 与需手动的计划那一截除了活会话的工作目录，还问这几个。用的那一刻现读。
+ */
+planDirs: Array<string>, 
+/**
  * 子会话（在会话里用 ccm 起的）进不进标签页；缺省隐藏。
  */
 childTab: Tab, 
 /**
  * 分身会话（那一家在后台起的主会话副本）进不进标签页；缺省显示。
  */
-bgTab: Tab, };
+bgTab: Tab, 
+/**
+ * 托管终端的状态行模板：没设 ⇒ 随包的缺省（盘上不写这一格）；空串 ⇒ 不留那一行。照用的那一条只经
+ * `host::managed::status::template_of` 取（缺省住字段表那一处）。瘦客户端接上时 · 偏好变了时现读。
+ */
+statusLine?: string, };

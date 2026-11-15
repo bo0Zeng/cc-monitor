@@ -108,12 +108,20 @@ pub const UPSTREAM: super::DefaultUpstream = super::DefaultUpstream {
     owns_credentials_file: true,
     // 直接敲的 claude 读 `~/.claude/settings.json` 的 `env` 块（各号的那一份都链回它）。
     settings_env: Some(paths::SETTINGS_ENV),
-    quota: Some(quota::read),
+    quota: Some(quota::reading),
     window_slot: Some(quota::slot_of),
     window_key: Some(quota::key_of),
     usage: Some(usage::FACE),
     warm: Some(WARM),
     login: Some(LOGIN),
+    // 换到别的订阅号：`Authorization: Bearer <那个号的访问令牌>`（请求体里的账号身份那一格由 `LOGIN.rewrite_identity` 换）。
+    swap_heads: &[super::SwapHead {
+        name: "Authorization",
+        prefix: "Bearer ",
+        cell: super::CredCell::Access,
+    }],
+    // 起会话前先定会话号（`--session-id`，见 `LAUNCH.preset_sid`）：起会话那个号照路由第 2 段。
+    bind: super::Bind::Preset,
     limit_reply: Some(quota::limit_reply),
     // 收到「用满」后，重置落在 24 小时内才挂「等到重置自动续」（2.1.314 读码核过）。
     resumes_within: Some(24 * 3600),
@@ -151,56 +159,49 @@ pub(crate) const WARM: super::WarmFace = super::WarmFace {
     ],
 };
 
+/// 凭据文件名（每个号的配置目录下）：订阅号登录与 MCP 登录同一份。全仓只这里写它；包外要它读 [`LOGIN`] 的 `creds_file`。
+const CREDENTIALS_NAME: &str = ".credentials.json";
+
 /// 订阅号登录：`<配置目录>/.credentials.json` 的 `claudeAiOauth` 那一节；续期照 claude 自己的做法
 /// （JSON 体发到令牌端点、快过期 5 分钟内就续、拿配置目录里外那两把 `mkdir` 锁）。
 pub const LOGIN: super::LoginFace = super::LoginFace {
-    creds_file: acct_core::CREDENTIALS_NAME,
+    creds_file: CREDENTIALS_NAME,
     section: "claudeAiOauth",
     access: "accessToken",
     refresh: "refreshToken",
-    expires_ms: "expiresAt",
-    scopes: "scopes",
+    expiry: super::Expiry::Cell("expiresAt"),
+    scopes: Some("scopes"),
+    // 续成只换访问 · 刷新令牌（与授权范围、过期时刻）。
+    renewed_cells: &[],
     client_field: "clientId",
     token_url: "https://platform.claude.com/v1/oauth/token",
     client_id: "9d1c250a-e61b-44d9-88ed-5944d1962f5e",
+    // 凭据里不记出处：续期照登记的端点与客户端 id；续成不另记时刻（时刻就在 `expiresAt` 那一格）。
+    origin: None,
+    renewed_at: None,
     margin_ms: 300_000,
-    lock_inside: ".oauth_refresh.lock",
+    lock_inside: Some(".oauth_refresh.lock"),
     lock_beside: Some(".lock"),
     // 60 秒：旁边那把是 proper-lockfile 的形状，持有方每 5 秒刷一次修改时刻、10 秒没刷算过期（按锁的形状推断，没核那一家的源码）；
     // 我方持锁时不刷修改时刻，最长一趟是令牌端点那一发（每次读写期限 15 秒）。取 60 秒，活着的持有方（它的、我们的）都不会被判过期。
     lock_stale_ms: 60_000,
     // 2.1.296 起整份写凭据文件（续期写回 · MCP 登录存盘）都在 `<配置目录>/.storage-write` 的 proper-lockfile 锁里
     // （`mkdir <配置目录>/.storage-write.lock`，过期门限 15 秒），锁里重读、只改自己那一格、临时文件 ＋ 改名。10-12 沙箱 strace 实测。
-    write_lock: Some(".storage-write.lock"),
-    write_lock_stale_ms: 15_000,
+    write_lock: Some(super::WriteLock::Mkdir(STORAGE_WRITE_LOCK)),
+    write_lock_stale_ms: STORAGE_WRITE_STALE_MS,
     write_wait_ms: 20_000,
-    entries: Some(MCP_LOGINS),
     identity_file: accounts::identity_file,
     identity_in: accounts::identity_in,
     identity_of_body: accounts::identity_of_body,
     rewrite_identity: accounts::rewrite_identity,
-    base_dir: accounts::shared_root_in,
+    // 账号 0（`~/.claude`）同号载体那几个号：照续、续成写回。
+    base_login: super::BaseLogin::Renew,
 };
 
-/// MCP 登录：`.credentials.json` 的 `mcpOAuth`，键是「服务器名|定义摘要」，一条里有令牌、过期时刻与客户端登记。
-/// claude 续某一条时拿 `<配置目录>/mcp-refresh-<键里非字母数字换成 _>.lock` 的 proper-lockfile 锁（`mkdir … .lock.lock`，
-/// 过期门限 60 秒），锁里先重读盘：盘上已经是新的就直接用，否则拿盘上的刷新令牌去续（10-12 沙箱实测 2.1.296）。
-pub(crate) const MCP_LOGINS: super::EntryLogins = super::EntryLogins {
-    section: "mcpOAuth",
-    access: "accessToken",
-    refresh: "refreshToken",
-    expires_ms: "expiresAt",
-    renew_lock: mcp_renew_lock,
-    renew_lock_stale_ms: 60_000,
-};
-
-fn mcp_renew_lock(key: &str) -> String {
-    let safe: String = key
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
-        .collect();
-    format!("mcp-refresh-{safe}.lock.lock")
-}
+/// claude 整份写 `.credentials.json` 时拿的那把 proper-lockfile 锁（`mkdir`）与它的过期门限：订阅号登录那一面（[`LOGIN`]）
+/// 与 MCP 登录那一格（`mcp::LOGINS`，同一份文件）都登这一把。
+pub(crate) const STORAGE_WRITE_LOCK: &str = ".storage-write.lock";
+pub(crate) const STORAGE_WRITE_STALE_MS: u64 = 15_000;
 
 /// 请求压缩上下文用的那一句（注册表 `Adapter.compact_request` 那一格）：在会话里敲的斜杠命令。
 pub(crate) const COMPACT_REQUEST: &str = "/compact";
@@ -210,23 +211,12 @@ pub(crate) const CLEAR_REQUEST: &str = "/clear";
 
 /// 聊天附件的引用写法（注册表 `Adapter.attach` 那一格）：图片单独括号粘贴一次绝对路径（输入框里收成 `[Image #N]`，
 /// 记录里成图片块）；别的文件正文后面一行一个 `@相对路径`（它自己把那一份读进来）。
-pub(crate) const ATTACH: super::AttachFace = super::AttachFace { refer };
-
-/// 括号粘贴一个路径就收成图片附件的那几种（收不成的照路径写成 `@` 那一形）。
-const PASTED_IMAGES: &[&str] = &["png", "jpg", "jpeg", "gif", "webp"];
-
-fn refer(a: &super::AttachRef<'_>) -> super::Refer {
-    let ext = a
-        .name
-        .rsplit_once('.')
-        .filter(|(stem, _)| !stem.is_empty())
-        .map(|(_, e)| e.to_ascii_lowercase());
-    if ext.is_some_and(|e| PASTED_IMAGES.contains(&e.as_str())) {
-        super::Refer::Paste(a.abs.to_string())
-    } else {
-        super::Refer::Line(format!("@{}", a.rel))
-    }
-}
+/// 哪几种算图片照通用表（`agents::PASTED_IMAGES`），这一家不多申报。
+pub(crate) const ATTACH: super::AttachRefer = super::AttachRefer {
+    image: |a| super::Refer::Paste(a.abs.to_string()),
+    file: |a| super::Refer::Line(format!("@{}", a.rel)),
+    images_extra: None,
+};
 
 /// 怎么判活（注册表 `Adapter.live` 那一格）：认 pidfile（[`LOCAL`] 的 pidfile 目录），不认谁开着记录。
 pub(crate) const LIVE: crate::agents::LiveBy = crate::agents::LiveBy::Pidfiles;
@@ -234,35 +224,37 @@ pub(crate) const LIVE: crate::agents::LiveBy = crate::agents::LiveBy::Pidfiles;
 /// 本家的**起会话事实**（注册表 `Adapter.launch` 那一格）：`ccm` 按它起、界面按生成物 `agent-profile-table.ts` 读，同一份。
 pub const LAUNCH: super::LaunchFace = super::LaunchFace {
     adapter_id: UPSTREAM.route_id,
-    display_name: "Claude Code",
     speaker_name: "Claude",
     default_launcher: resume::DEFAULT_COMMAND,
     launcher_alias: Some(resume::LAUNCHER_ALIAS),
     resume_token: resume::RESUME_TOKEN,
+    resume_short: Some("-r"),
     preset_sid: Some(resume::SESSION_ID_FLAG),
     // `claude [options] [prompt]`：位置参数的提示词在启动画面（信任框在里头）走完之后才交进会话。
     first_prompt_arg: true,
     permission: Some(super::PermissionFace {
-        flag: resume::PERMISSION_MODE_FLAG,
         modes: resume::PERMISSION_MODES,
         shown: resume::SHOWN_MODES,
-        switch: Some(super::ModeSwitch {
+        switch: Some(super::ModeSwitch::Cycle(super::ModeCycle {
             key: "shift-tab",
             cycle_max: resume::MODE_CYCLE_MAX,
             read: resume::mode_on_screen,
-        }),
+        })),
     }),
     self_sid_env: Some(resume::SELF_SID_ENV),
     launch_args: &[],
     nested_env: resume::NESTED_ENV,
     is_default: true,
     models: Some(resume::MODEL_ALIASES),
+    model_args: Some(resume::model_args),
+    // 不联网列得出模型的子命令 claude 没有 ⇒ 照静态的那一张。
+    model_list: None,
     model_default: Some(resume::MODEL_DEFAULT),
     model_text: Some(resume::model_text),
     model_pick: Some(resume::model_pick),
     model_switch: Some(super::ModelSwitch {
         command: resume::model_command,
-        read: resume::model_said,
+        read: Some(resume::model_said),
         saves: Some(paths::SETTINGS_FILE),
         note: Some(resume::model_note),
         confirm: Some(super::ScreenBox {
@@ -271,7 +263,29 @@ pub const LAUNCH: super::LaunchFace = super::LaunchFace {
         }),
     }),
     rewind: Some(rewind::FACE),
+    // `claude -p`：不开交互界面、跑完就退；结果是 `--output-format json` 那一份的 `result`（它不写结果文件）。
+    task: Some(super::TaskFace {
+        args: task_args,
+        text: super::TaskText::Stdout(task_text),
+    }),
 };
+
+/// 一次性跑一件活交给 `claude` 的那几个参数：`-p --output-format json -- <说明>`（说明作位置参数、放在 `--` 之后，不被认成旗标）；
+/// 结果文件不交（它不写，结果在标准输出）。
+fn task_args(say: &str, _out: &str) -> Vec<String> {
+    ["-p", "--output-format", "json", "--", say]
+        .map(str::to_string)
+        .to_vec()
+}
+
+/// `claude -p --output-format json` 印的那一份里的 `result`（最后那段话）；不是那一形 ⇒ `None`。
+fn task_text(stdout: &str) -> Option<String> {
+    serde_json::from_str::<serde_json::Value>(stdout.trim())
+        .ok()?
+        .get("result")?
+        .as_str()
+        .map(str::to_string)
+}
 
 /// 本 agent 在这台机器上的 home 目录 —— **只答"它该在哪"，不答"在不在"**。
 ///
@@ -298,7 +312,7 @@ pub(crate) const LOCAL: super::LocalFace = super::LocalFace {
 
 pub(crate) const MCP: super::McpFace = super::McpFace {
     read: mcp::read,
-    login_command: mcp::LOGIN_COMMAND,
+    login: Some(mcp::login_argv),
     sign_in: Some(sign_in::MCP_FACE),
     needs_login_file: Some(mcp::NEEDS_AUTH_CACHE),
 };
@@ -316,7 +330,7 @@ pub const RECORDS: super::RecordFace = super::RecordFace {
     activity: None,
     chain: Some(chain::chain_fact),
     find_session: branch::find_session_file,
-    branch: Some(branch::build_branch_records),
+    branch: Some(super::BranchFace::Rewrite(branch::build_branch_records)),
     drift: Some(drift::snapshot),
     text: Some(super::TextFace {
         main: session_line::main_of,
@@ -327,10 +341,11 @@ pub const RECORDS: super::RecordFace = super::RecordFace {
         line_of: session_line::line_of_value,
         shape: session_line::shape_of,
     }),
-    delete: Some(super::SessionDelete {
-        locate: paths::session_file_for_delete,
+    delete: Some(super::SessionDelete::File {
+        locate: paths::session_file_for_delete_in,
         is_record: paths::is_session_record_path,
     }),
+    archive: None,
     response_id: Some(runs::response_id),
     run_of: Some(runs::run_of),
     child_link: Some(runs::child_link),
@@ -355,9 +370,9 @@ pub const RECORDS: super::RecordFace = super::RecordFace {
 fn skim(line: &super::Line<'_>) -> Option<serde_json::Value> {
     use serde_json::Value;
     #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
     struct Ident {
         uuid: Option<Value>,
-        #[serde(rename = "parentUuid")]
         parent_uuid: Option<Value>,
         timestamp: Option<Value>,
     }
@@ -388,6 +403,30 @@ pub(crate) const ASSETS: super::AssetFace = super::AssetFace {
     project_mcp_file: assets::PROJECT_MCP_FILE,
     servers_key: assets::SERVERS_KEY,
     plugins: assets::plugins,
+    plugin_cells: Some(assets::PLUGIN_CELLS),
     session_scan: assets::session_scan,
     builtin_commands: assets::BUILTIN_COMMANDS,
+};
+
+/// 注册表里 Claude 那一行（`agents::REGISTRY` 列它）：逐格指到这一家的面，没有的照实 `None`。
+pub const ADAPTER: super::Adapter = super::Adapter {
+    kind: AGENT_KIND,
+    display_name: Some("Claude Code"),
+    home,
+    account_env: Some(paths::CONFIG_DIR_ENV),
+    assets: Some(ASSETS),
+    history: None,
+    upstream: Some(UPSTREAM),
+    mcp: Some(MCP),
+    footprint: Some(footprint::FACE),
+    accounts: Some(accounts::FACE),
+    records: Some(RECORDS),
+    processes: Some(cards::PROCESS_NAMES),
+    launch: Some(LAUNCH),
+    compact_request: Some(COMPACT_REQUEST),
+    clear_request: Some(CLEAR_REQUEST),
+    local: Some(LOCAL),
+    live: LIVE,
+    asks: Some(asks::FACE),
+    attach: Some(ATTACH),
 };

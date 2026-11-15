@@ -24,6 +24,7 @@
     "background": null,
     "children": [],
     "childrenText": null,
+    "cwdShown": "/g/proj",
     "forkedLine": "分叉自「src-0」",
     "lastSay": {
       "at": "t5",
@@ -89,7 +90,6 @@
     "permissionMode": "acceptEdits",
     "permissionModeText": "自动接受编辑",
     "projectDir": "/g/proj",
-    "cwdShown": "/g/proj",
     "projectName": "proj",
     "retries": [
       {
@@ -113,6 +113,7 @@
     "touchedFiles": [
       "/w/a.ts"
     ],
+    "touchedText": "改过的文件 1",
     "usage": {
       "contextText": "6",
       "contextTone": "plain",
@@ -132,20 +133,18 @@
       {
         "after": "beta",
         "before": "alpha",
-        "kind": "user",
         "line": 0,
         "matched": "zqx",
-        "tsText": "",
+        "meta": "用户 · 轮 1",
         "turn": 1,
         "uuid": "in-1"
       },
       {
         "after": "",
         "before": "gamma",
-        "kind": "assistant",
         "line": 1,
         "matched": "zqx",
-        "tsText": "",
+        "meta": "Claude · 轮 1",
         "turn": 1,
         "uuid": "out-1"
       }
@@ -336,6 +335,7 @@
         "start": "t1",
         "startText": "",
         "thinking": 1,
+        "tipText": "轮 1 · 工具 ×2",
         "tools": 2,
         "uuid": "t-1"
       },
@@ -379,6 +379,7 @@
         "start": "t9",
         "startText": "",
         "thinking": 0,
+        "tipText": "轮 2 · 工具 ×1",
         "tools": 1,
         "uuid": "t-9"
       }

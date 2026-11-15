@@ -24,7 +24,7 @@ pub enum Ran {
     },
     /// 那个目录不在任何工作区里（pb 回 3；话是 pb 的 stderr 第一句）。
     NotWorkspace(String),
-    /// 这个 pb 没有 `dump`，或形状版本不认得 ⇒ 要换 pb。
+    /// 这个 pb 没有 `dump`，或形状版本不认得 ⇒ 要换 pb：带的是为什么那一半（一行；「要更新」那一句由 [`super::locate::pb_unsupported`] 配）。
     Unsupported(String),
     /// 别的失败（起不来 · 超时 · 输出读不懂 · 别的退出码）：一句话 ＋ 原话。
     Failed { said: String, raw: Option<String> },

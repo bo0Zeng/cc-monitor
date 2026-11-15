@@ -1,16 +1,17 @@
-//! **每台机器的状态成品**：收事实（接常驻那一轮 · 部署走到哪一步 · 部署收了）成一态；名字旁那个词 · 问题行那一句 · 修法
-//! 照这里那几张「态 ⇒ 字」表（[`word`] · [`said`] · [`fixes`] · [`offline`] · [`label`]），点画哪一档 · 连着没有照 [`dot`] · [`linked`]，
-//! 本机远端同一份。
+//! **每台机器的状态成品**：收事实（接常驻那一轮 · 部署走到哪一步 · 部署收了）成一态；给哪几颗修法 · 算不算离线 · 连着没有
+//! 照这里（[`fixes`] · [`offline`] · [`linked`]）；点 · 语气 · 名字旁那个词 · 问题行那一句 · 按钮字照同一张字表
+//! （`copy_core::machine`，壳的本机后端那一格也照它），本机远端同一份。
 //! 桌面由本机后端跑（`control/machine_state.rs`），手机由 mobcore 跑同一份；两端照画。
 
 use cmd_wire::attach::Relation;
 use cmd_wire::cells::Tone;
 use cmd_wire::machine::{
-    Blocker, FixButton, FleetLines, MachineDot, MachineFix, MachineState, MachineStateKind as K,
+    Blocker, FixButton, FleetLines, MachineFix, MachineState, MachineStateKind as K,
     MachineStripLine, Round, RoundProblem, Stage, Why,
 };
 use copy_core::copy_text;
 use copy_core::detail::{Detail, Label, Target};
+use copy_core::machine::{dot, label, said, strip, word};
 
 use crate::Step;
 
@@ -281,8 +282,10 @@ pub fn product(e: &Entry, machine: &str, enabled: bool, installs: bool) -> Machi
             }
             _ => said(state, e.stage, why, machine),
         },
-        offline_said: comms_inward::chan::said::offline(machine),
+        offline_said: copy_core::offline(machine),
         held_said: held_said(state, machine),
+        withdraw_held: copy_text("beQueue.said.withdrawHeld", &[("machine", machine)]),
+        rewind_held: copy_text("beQueue.said.rewindHeld", &[("machine", machine)]),
         fixes: fixes(state, why, blocker, installs)
             .into_iter()
             .map(|fix| FixButton {
@@ -309,7 +312,7 @@ pub fn product(e: &Entry, machine: &str, enabled: bool, installs: bool) -> Machi
 /// 这一条连接是不是用密码登上的（宿主那一端的事实，同 `route`：手机核心照这台交的拨号请求那一跳的钥匙；桌面不交）。
 /// 那台连着无事、用的是密码 ⇒ 条上那一行：「{machine} 用密码登录 · 可换成这部手机的密钥」＋［换成密钥］（语气 plain，撤得回、不打断）。
 /// 别的态（没连上 · 正在连 · 旧了 · 比这一版新 …）不叠这一行：先修那一件。
-pub fn signed_in(m: &mut MachineState, password: bool) {
+pub fn mark_signed_in(m: &mut MachineState, password: bool) {
     if !password || m.state != K::Up || m.strip.is_some() {
         return;
     }
@@ -325,26 +328,12 @@ pub fn signed_in(m: &mut MachineState, password: bool) {
 }
 
 /// 待发交了没回执时那一行（[`MachineState::held_said`]）：还不知道那台什么样 ⇒ 状态不明；别的 ⇒ 离线 · 连上后补交。
+/// 撤着那两句（[`MachineState::withdraw_held`] · [`MachineState::rewind_held`]）不分态，在 [`product`] 里跟它挨着写。
 fn held_said(state: K, machine: &str) -> String {
     match state {
         K::Unknown => copy_text("beQueue.said.heldUnknown", &[("machine", machine)]),
         _ => copy_text("beQueue.said.held", &[("machine", machine)]),
     }
-}
-
-/// 机器条上那一行：进不进条 · 语气 · 带不带进度。连着的 · 比这一版新的（也连着）· 用户停用的 · 还不知道的不进条；
-/// 缺后端：这一端不装（手机）⇒ 故障（修法是［安装］）；这一端自己会装（桌面，下一轮装上）⇒ 同没连上。
-pub fn strip(state: K, blocker: Option<Blocker>, installs: bool) -> Option<MachineStripLine> {
-    let (tone, progress) = match state {
-        K::Up | K::Newer | K::Disabled | K::Unknown => return None,
-        K::Connecting => (Tone::Busy, false),
-        K::Installing | K::Updating => (Tone::Busy, true),
-        K::NeedsUpdate => (Tone::Warn, false),
-        K::Down if blocker == Some(Blocker::NoBackend) && !installs => (Tone::Fail, false),
-        K::Down => (Tone::Offline, false),
-        K::HostKeyChanged | K::Unsupported => (Tone::Fail, false),
-    };
-    Some(MachineStripLine { tone, progress })
 }
 
 /// 复制详情里「码」那一项（线上那个名字）：断在那台本身 ⇒ 是哪一处；别的 ⇒ 原因码。
@@ -379,62 +368,6 @@ fn detail(machine: &str, written: &str, hop: &str, code: Option<&str>) -> String
         _ => d,
     };
     d.render()
-}
-
-/// 名字旁那个词（连着时空；版本不可比的那台说「开发版」）。
-pub fn word(state: K, relation: Option<Relation>) -> String {
-    match state {
-        K::Up if relation == Some(Relation::Incomparable) => {
-            copy_text("machineState.word.incomparable", &[])
-        }
-        K::Up | K::Unknown => String::new(),
-        K::Connecting => copy_text("machineState.word.connecting", &[]),
-        K::Installing => copy_text("machineState.word.installing", &[]),
-        K::Updating => copy_text("machineState.word.updating", &[]),
-        K::Down => copy_text("machinePage.state.down", &[]),
-        K::HostKeyChanged => copy_text("machineState.word.hostKey", &[]),
-        K::NeedsUpdate => copy_text("machineState.word.needsUpdate", &[]),
-        K::Newer => copy_text("machineState.word.newer", &[]),
-        K::Disabled => copy_text("machinePage.state.disabled", &[]),
-        K::Unsupported => copy_text("machineState.word.unsupported", &[]),
-    }
-}
-
-/// 问题行那一句（空 ⇒ 不出问题行）。正在连 / 装 / 更新那一句也是部署每一步那一句。
-pub fn said(state: K, stage: Option<Stage>, why: Option<Why>, machine: &str) -> String {
-    let connecting = |stage: String| {
-        copy_text(
-            "machineState.busy.connecting",
-            &[("machine", machine), ("stage", &stage)],
-        )
-    };
-    match state {
-        K::Up | K::Unknown => String::new(),
-        K::Connecting => match stage {
-            Some(Stage::Deploy) => connecting(copy_text("mobHostEdit.backend.check", &[])),
-            Some(Stage::Attach) | None => connecting(copy_text("machineState.stage.attach", &[])),
-        },
-        K::Installing => copy_text("machineState.busy.installing", &[("machine", machine)]),
-        K::Updating => copy_text("machineState.busy.updating", &[("machine", machine)]),
-        K::Down => match why.unwrap_or(Why::Other) {
-            Why::Resolve => copy_text("machineState.down.resolve", &[]),
-            Why::Unreachable => copy_text("machineState.down.unreachable", &[]),
-            Why::Timeout => copy_text("machineState.down.timeout", &[]),
-            Why::Auth => copy_text("machineState.down.auth", &[]),
-            Why::Password => copy_text("machineState.down.password", &[]),
-            Why::KeyUnreadable => copy_text("machineState.down.keyUnreadable", &[]),
-            Why::Jump => copy_text("machineState.down.jump", &[]),
-            Why::SessionDenied => {
-                copy_text("machineState.down.sessionDenied", &[("machine", machine)])
-            }
-            Why::HostKey | Why::Other => comms_inward::chan::said::offline(machine),
-        },
-        K::HostKeyChanged => copy_text("machineState.problem.hostKey", &[]),
-        K::NeedsUpdate => copy_text("front.title.update", &[("machine", machine)]),
-        K::Newer => copy_text("machineState.problem.newer", &[("machine", machine)]),
-        K::Disabled => copy_text("machinePage.problem.disabled", &[]),
-        K::Unsupported => copy_text("machineState.problem.notUnix", &[("machine", machine)]),
-    }
 }
 
 /// 每一态给哪几颗修法（原因码穷尽，加一个码编不过）。`installs` ⇒ 这一端自己会把后端装上去（不给［安装］）。
@@ -487,35 +420,9 @@ pub fn offline(state: K, why: Option<Why>) -> bool {
     }
 }
 
-/// 那台的点画哪一档（两端都照它，不各自照态挑）：连着 · 比这一版新 ⇒ 连着；正在连 · 装 · 更新 · 还不知道 ⇒ 待定；
-/// 那台旧了 ⇒ 要留意；没连上 · 指纹不对 · 做不了 ⇒ 坏了；停用 ⇒ 关着。
-pub fn dot(state: K) -> MachineDot {
-    match state {
-        K::Up | K::Newer => MachineDot::Up,
-        K::Connecting | K::Installing | K::Updating | K::Unknown => MachineDot::Pending,
-        K::NeedsUpdate => MachineDot::Warn,
-        K::Down | K::HostKeyChanged | K::Unsupported => MachineDot::Failed,
-        K::Disabled => MachineDot::Off,
-    }
-}
-
 /// 那台连着没有：通着那几态（连着 · 那台旧了 · 那台比这一版新）⇒ 是。
 pub fn linked(state: K) -> bool {
     matches!(state, K::Up | K::NeedsUpdate | K::Newer)
-}
-
-/// 修法按钮上的字。
-pub fn label(fix: MachineFix) -> String {
-    match fix {
-        MachineFix::Retry => copy_text("front.act.retry", &[]),
-        MachineFix::ConnSettings => copy_text("machinePage.conn.toggle", &[]),
-        // 钥匙被拒 · 正用密码登着：同一条路（请那台把这一端的公钥并进 `authorized_keys`）⇒ 同一个字。
-        MachineFix::PushKey | MachineFix::UseKey => copy_text("beMachine.fix.useKey", &[]),
-        MachineFix::CompareFingerprint => copy_text("machineState.fix.compareFingerprint", &[]),
-        MachineFix::Update => copy_text("front.act.update", &[]),
-        MachineFix::Connect => copy_text("machinePage.problem.connect", &[]),
-        MachineFix::Install => copy_text("machineState.fix.install", &[]),
-    }
 }
 
 #[cfg(test)]

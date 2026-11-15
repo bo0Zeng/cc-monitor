@@ -25,13 +25,13 @@ import type { BehaviorConfig } from "./behavior";
 import { failToast, noteMessage, undoToast } from "./kit/toast";
 import { detailOf } from "./kit/detail";
 import { copyText } from "./copy-table";
-import { needsOf } from "./session-face";
+import { needsOf, waitCounts } from "./session-face";
 import type { AgentsPanel } from "./agents-panel";
 import type { GridSessionSnapshot, SessionPeek } from "./session-status";
 import type { Tab, TabsSummary } from "./tab-model";
 import type { SessionFace } from "./generated/SessionFace";
 import { activityOf, closesFromMenu, closesQuietly, frontBlocked, isEnded, isLive, viewBlocked } from "./face-can";
-import { isLocalOrigin, isRemoteOrigin, LOCAL, type Machine } from "./ipc/origin";
+import { isLocalOrigin, LOCAL, type Machine } from "./ipc/origin";
 // `Tab` 的形状与标题函数在 `tab-model.ts`；这里 re-export，调用方只 import 本文件（落点算术直接从 `tab-drop.ts` 取）。
 export type { Tab, TabsSummary } from "./tab-model";
 import { TabMenu } from "./tab-menu";
@@ -51,12 +51,13 @@ import { NO_LINEAGE, type SessionHidden } from "./session-hidden";
 import { setAutoAnswer } from "./session-hidden-cmds";
 import { TabBarDrag } from "./tab-bar-drag";
 import { TabBarView, type PlanNeeds } from "./tab-bar-view";
-import type { NeedsBook } from "./needs-book";
+import type { NeedsBook, NeedsCol } from "./needs-book";
 import type { GroupBook } from "./group-book";
 import type { ManualItem } from "./login-reads";
 import { TabRouter } from "./tab-router";
 import { applyFacts } from "./tab-session-facts";
 import { FactsSource } from "./views/facts-source";
+import { OneInFlight } from "./ipc/one-in-flight";
 import type { SessionFacts } from "./session-reads";
 import { readRecordById } from "./record-reads";
 import {
@@ -86,6 +87,8 @@ export class TabManager {
   private readonly store = new TabStore();
   /** 路由（`tab-router.ts`）；切换本身的编排（可见性 · 物化 · 面板 · 贴底）在 `switchTo`。 */
   private readonly router = new TabRouter(this.store, () => this.bar.navOrder());
+  /** 任务清单那一问：同一（台 · 会话）一次只在飞一问，在飞时再要只补一趟（{@link askTasks}）。 */
+  private readonly tasksFlight = new OneInFlight();
 
   /**
    * 实时流视图（`tab-stream-view.ts`）。在构造体里建、不写成字段初始化：它要 `streamRootEl`，
@@ -163,10 +166,8 @@ export class TabManager {
     });
     this.view = new TabStreamView(this.store, streamRootEl, {
       onLine: (payload) => this.onLine(payload),
-      refreshTabBar: () => this.refreshTabBar(),
-      scheduleTabBarRefresh: () => this.bar.scheduleRefresh(),
       userActive: (sid) => this.userActive(sid),
-      forkFrom: (tab, uuid) => void openNewSession({ origin: tab.origin, fork: { sid: tab.sessionId, uuid, title: tab.label ?? tab.title } }),
+      forkFrom: (tab, uuid) => void openNewSession({ origin: tab.origin, fork: { sid: tab.sessionId, uuid } }),
       runLabelOf: (sid, run) => {
         const r = this.live.board.of(sid).find((x) => x.run === run);
         return r ? runLabel(r) : undefined;
@@ -472,12 +473,20 @@ export class TabManager {
 
   /**
    * 那台机器的会话流**丢了几格**（`gap`：前端落后超过一整个 credit 窗口，句柄丢了、原位报）。
-   * 丢的是哪几个会话的哪几行流里说不出来 ⇒ 那台机器上的**每个** tab 都按行号补（`TabStreamView.recoverFromGap`）。
+   * 流上只有在看的那几个的行（报给各台的在看名单，`reportWatching`）⇒ 丢的只可能是它们的：只补在看的、那台的那个 tab
+   * （`TabStreamView.recoverFromGap`）。后台 tab 平时就收不到行，不在这里把积压整段拉回、建卡（切进去时 `activate` 照常补）。
    */
   onStreamGap(origin: Machine): void {
-    for (const t of this.store.tabs.values()) {
-      if (t.origin === origin) this.view.recoverFromGap(t);
-    }
+    const t = this.store.activeId === null ? undefined : this.store.tabs.get(this.store.activeId);
+    if (t && t.origin === origin) this.view.recoverFromGap(t);
+  }
+
+  /** 这个会话在这条连接上的未读变了（那台后端写好的字；`null` ⇒ 没有了）：照摆，tab 栏下一帧画。 */
+  onSessionUnread(origin: Machine, sid: string, said: string | null): void {
+    const tab = this.store.tabs.get(sid);
+    if (!tab || tab.origin !== origin || tab.unreadSaid === said) return;
+    tab.unreadSaid = said;
+    this.bar.scheduleRefresh();
   }
 
   /**
@@ -568,7 +577,7 @@ export class TabManager {
         running: runs.groups.running_text ?? null,
         agents: runs.summary ?? null,
         context: tab.usage === null ? null : { text: tab.usage.contextText, tone: tab.usage.contextTone, percent: tab.usage.percent },
-        unread: tab.unread,
+        unread: tab.unreadSaid,
         background: tab.background,
         backgroundWork: tab.backgroundWork,
         account: tab.face?.account ?? null,
@@ -605,6 +614,7 @@ export class TabManager {
     return {
       model: tab.modelText ?? tab.usage?.model ?? null,
       recentFiles: [...tab.touchedFiles],
+      filesHead: tab.touchedText,
       agents,
       summary: table.summary ?? null,
       more: table.groups.peek_more_text ?? null,
@@ -693,13 +703,8 @@ export class TabManager {
     // 渲染那一半（流 · 时间线 · 折叠层 · 窗口账本 · 骨架 · 大纲 · 按轮折叠 · 刻度）整份由流视图建，这里只接过来（`TabStreamDom`）。
     const render = this.view.mountTabDom(sessionId);
 
-    // 取一次初始任务快照；`changed/tasks` 流那一路（`refreshTasks`）并行更新同一份，当前 tab 的同步推给面板。
-    void fetchSessionTasks(sessionId, origin).then((tasks) => {
-      this.store.tasksBySid.set(sessionId, tasks);
-      if (this.store.activeId === sessionId) {
-        this.tasksPanel?.setSession(sessionId, tasks);
-      }
-    });
+    // 取一次初始任务快照；与 `changed/tasks` 那一路（`refreshTasks`）同一个口子，同一会话一次一问。
+    this.askTasks(origin, sessionId);
 
     tab = {
       sessionId,
@@ -724,7 +729,7 @@ export class TabManager {
       lineage: NO_LINEAGE,
       ...render,
       parentPath: sourcePath,
-      unread: 0,
+      unreadSaid: null,
       toolUseNames: new Map(),
       runCards: new Map(),
       // 出口省掉的正文展开那一下：按骨架里那一行的偏移取回全文（骨架还没接上 ⇒ 说清、下次再取）。
@@ -735,6 +740,7 @@ export class TabManager {
       },
       // 下面三样只经 `facts` 落下来（后端 `history-facts` 出成品，`onSessionFacts`）。
       touchedFiles: new Set(), // 会话改动集
+      touchedText: null,
       usage: null, // HUD 与监控板的上下文那一格
       modelText: null,
       modelPick: null,
@@ -802,8 +808,8 @@ export class TabManager {
 
   /**
    * 那台说的一条会话此刻的整份脸（会话三帧都带它；同一 sid 后到的覆盖先到的）。Tab 还没建 ⇒ 暂存，建 Tab 时落实。
-   * 副作用挂在「变了什么」上：进程不在了 ⇒ 活卡全撤；成了已结束 ⇒ 隐藏的不留；在干什么变了 ⇒ 不在等了就清手上那份需手动、
-   * 再要一份会话事实；又活了 ⇒ 空态提示收掉。
+   * 副作用挂在「变了什么」上：进程不在了 ⇒ 活卡全撤；成了已结束 ⇒ 隐藏的不留；在干什么变了 ⇒ 再要一份会话事实；事实里说在等的认不认变了（`waitCounts`）⇒ 流里在等的那几处重画；
+   * 又活了 ⇒ 空态提示收掉。脸只管点：需手动那一份与收场那一格（`askEnd`）只跟会话事实走、同一份到，这里不动它们。
    */
   onFace(sessionId: string, face: SessionFace): void {
     if (!isLive(face)) this.live.dropTab(sessionId);
@@ -814,14 +820,17 @@ export class TabManager {
     }
     const was = tab.face;
     if (JSON.stringify(was) === JSON.stringify(face)) return;
+    const counted = waitCounts(tab);
     tab.face = face;
     if (sessionId === this.store.activeId) this.publishActive();
-    // 在干什么变了 ⇒ 不在等了就清手上那份需手动（流里在等的那一步 · 轮次刻度直接读它），再要一份会话事实。
+    // 事实里说在等的那几样认不认变了（`waitCounts`：脸说在等 ＋ 手上那份是脸这一轮的）⇒ 等批准那一轮的刻度 · 还没结果的那几步重画：
+    // 离开在等、或直接换到另一轮在等（中间在跑那一帧合掉了）就不再说在等，事实要不到（记录不在了 · 那一跳失败 · 放弃了）也不卡着上一回那份；
+    // 需手动那一份不从脸这一路清。
+    if (waitCounts(tab) !== counted) this.view.waitingMoved(tab);
+    // 在干什么变了 ⇒ 再要一份会话事实：后台那一句 · 没结果那几步的在跑 / 状态不明是要事实那一刻照活会话表现配的，
+    // 在跑 ⇄ 空闲 ⇄ 后台、重连回来都不响 `changed {needs}` 铃、也未必有新行（进出等人 · 离开活那几下铃也响，两边并成一趟）。
     const doing = activityOf(face);
-    if (doing !== activityOf(was)) {
-      if (doing !== "needs_you") tab.needs = null;
-      if (doing !== undefined) this.view.wantFacts(tab);
-    }
+    if (doing !== activityOf(was) && doing !== undefined) this.view.wantFacts(tab);
     if (isLive(face) && !isLive(was)) this.prefs.clearPinHint(sessionId);
     this.refreshTabBar();
     if (was?.dot !== face.dot) this.emitTabStateProbe(tab);
@@ -886,7 +895,7 @@ export class TabManager {
     const tab = this.store.tabs.get(sid);
     const r = this.live.board.of(sid).find((x) => (which.run !== undefined ? x.run === which.run : x.tool === which.tool));
     if (!tab || !r) return;
-    await openAgentWindow({ origin: tab.origin, sid, run: r, session: tab.label ?? tab.title, machine: isRemoteOrigin(tab.origin) ? tab.origin : null });
+    await openAgentWindow({ origin: tab.origin, sid, run: r, session: tab.label ?? tab.title });
   }
 
   /** 回到派出它的地方：切到那个会话、滚到派出它的那张卡、闪一下。没有这张卡 ⇒ 只切过去。 */
@@ -1034,9 +1043,9 @@ export class TabManager {
     this.bar.mountHeadActions(buttons, end);
   }
 
-  /** `Ctrl+J` · 点「需手动」：跳到下一个需手动的会话（等得最久的在前；当前就是 ⇒ 下一个）。 */
-  jumpToNextNeeds(): void {
-    void this.bar.nextNeeds();
+  /** 那一列的「下一个」（`asks.next` 默认 `Ctrl+J` · `manual.next`）：照核心合好的那一列跳（当前就是 ⇒ 下一个）。 */
+  jumpToNext(col: NeedsCol): void {
+    void this.bar.nextNeeds(col);
   }
 
   /** 计划那一侧的「需手动」挂进来（站在第几条 · 去第几条）。 */
@@ -1055,12 +1064,7 @@ export class TabManager {
     this.bar.planNeedsChanged();
   }
 
-  /** 此刻需手动的数（窗口标题用；后端合好的总数）。 */
-  needsCount(): number {
-    return this.bar.needsCountNow();
-  }
-
-  /** 全部 tab，按条上看到的顺序（窗口标题数「需手动」用）。 */
+  /** 全部 tab，按条上看到的顺序（命令面板列会话 · 计划页用）。 */
   tabsInOrder(): Tab[] {
     return this.bar.visibleOrder().map((sid) => this.store.tabs.get(sid)).filter((t): t is Tab => t !== undefined);
   }
@@ -1156,7 +1160,7 @@ export class TabManager {
     if (at) this.openMenuFor(at, sid);
   }
 
-  /** `End`：当前会话回到底部。 */
+  /** `Ctrl+End`：当前会话回到底部。 */
   toBottom(): void {
     const t = this.activeTab();
     if (t) this.view.scrollToBottom(t);
@@ -1395,9 +1399,17 @@ export class TabManager {
     const want = new Set(sids);
     for (const t of this.store.tabs.values()) {
       if (t.origin !== origin || (!all && !want.has(t.sessionId))) continue;
-      const sid = t.sessionId;
-      void fetchSessionTasks(sid, origin).then((tasks) => this.updateTasks(sid, tasks));
+      this.askTasks(origin, t.sessionId);
     }
+  }
+
+  /** 问一次那个会话的 `tasks-list`、交 {@link updateTasks}：在飞时再要只补一趟，补之前 tab 已关 ⇒ 不补。 */
+  private askTasks(origin: Tab["origin"], sid: string): void {
+    this.tasksFlight.ask(
+      `${origin}\0${sid}`,
+      async () => this.updateTasks(sid, await fetchSessionTasks(sid, origin)),
+      () => this.store.tabs.get(sid)?.origin === origin,
+    );
   }
 
   updateTasks(sessionId: string, tasks: TasksList): void {
@@ -1596,7 +1608,6 @@ export class TabManager {
     // 切当前 tab 只换 `.active`（CSS visibility），不用 display，免得整棵子树重建布局。
     this.view.showOnly(sessionId);
     const next = this.store.tabs.get(sessionId);
-    if (next) next.unread = 0;
     this.store.activeId = sessionId;
     this.reportWatching();
     if (next) this.view.activate(next);

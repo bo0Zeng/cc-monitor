@@ -338,50 +338,136 @@ mod tests {
     // 别的部分不是中转的上游选择，不进本白名单的人群。
     const LOG_ROOTS: &[&str] = &["comms-outward", "relay", "accounts/upstream_select"];
 
-    /// ★★★ **本 crate 开凭据写半边只从一处声明进来。**
+    /// ★★★ **凭据收窄那几样（`harden` 底下）只开在真叫它们的成员上。**
     ///
     /// # 为什么要两条判据
     ///
     /// 远端那台机器上的 key 只能由那台的后端写（上游选择自己的状态文件）
-    /// ⇒ 本 crate 开着 `creds-core` 的 `harden` feature（写半边挂在它上面），
+    /// ⇒ 后端几层开着 `creds-core` 的 `harden` feature（按句柄量权限 · 判一份文件 · 出生即只给本人都挂在它上面），
     /// 「backend 写不了这份文件」不再由编译器兜，**两条判据接住**：
     ///
-    /// 1. **本条**：`harden` 在本 crate 那份 manifest 里只从**一处声明**进来 —— `creds-core` 那一行
-    ///    （不许从 `[features]` 段、`default-features`、第二条重复声明里悄悄多开一路）。
-    /// 2. `readonly_guard::g6_dependency_signoff::the_credentials_write_half_is_reached_only_from_the_account_file_face`：
-    ///    写半边在本 crate 生产段里的引用处 == 第四层登记的那一份（两向相等）。
+    /// 1. **本条**：后端那棵 workspace 的全部成员 ＋ 护栏人群里的兄弟包（根清单的 `population`：中转 · 拨号核心 · 出网口），
+    ///    清单里开 `harden` 的 == 生产段叫那几样的（两向相等）；
+    ///    开它只许经 `creds-core` 那一行依赖（不许从 `[features]` 段、第二条声明里悄悄多开一路）。
+    ///    叫了没开的那一层只靠别的成员把特性并进来才编得过 —— 单编它就坏；开了不叫的是一条没人用的路。
+    /// 2. `readonly_guard::g6_dependency_signoff::the_credentials_write_half_is_reached_only_from_the_own_state_layer`：
+    ///    写半边在后端生产段里的引用处 == 原子写那一处（`platform/fs/own.rs`，两向相等）。
     ///
-    /// ⚠ **非空对照照旧承重**：同一把尺子量 monitor 那份 manifest ⇒ 必须**数得到** `harden`。
+    /// ⚠ **非空对照照旧承重**：同一把尺子量 `creds-core` 自己那份 manifest ⇒ 必须**数得到**定义它的那一行；monitor 那份 ⇒ 零处。
     ///
-    /// ⚠ 它**认不出**什么：`--features harden` 从**命令行**传进来（那条路不经 manifest）。
+    /// ⚠ 它**认不出**什么：`--features harden` 从**命令行**传进来（那条路不经 manifest）· 经别名间接叫那几样 ·
+    /// 既不是成员、也不在 `population` 里的仓内 crate（它们叫了照样靠别人把特性并进来，本条看不见）。
     #[test]
-    fn this_crate_turns_on_the_write_half_of_the_credentials_crate_in_exactly_one_declaration() {
-        let mine = std::fs::read_to_string(guard_core::addr::backend_src_root().join("Cargo.toml"))
-            .expect("读不到本 crate 的 Cargo.toml —— 抽取器坏了，本条会零命中地绿");
-
-        // 抽取器自检：真读到了那份 manifest，而且里面确实声明了 `creds-core`。
-        assert_eq!(
-            mine.matches("creds-core = {").count(),
-            1,
-            "本 crate 的 manifest 里 `creds-core` 的声明不是恰好一条 —— 取法坏了或有人加了第二条"
-        );
-
-        // ⚠ **剥掉 `#` 注释行再数**：manifest 里有几行注释逐字提到这个词（解释为什么开），
-        //   判据只该看生效的声明，不该看解释它的话。
-        let mine = guard_core::strip_hash_comment_lines(&mine);
+    fn the_credentials_hardening_is_turned_on_exactly_in_the_members_that_call_it() {
         let feature = format!("har{}", "den");
-        let lines: Vec<&str> = mine.lines().filter(|l| l.contains(&feature)).collect();
-        assert_eq!(
-            lines.len(),
-            1,
-            "本 crate 的 `Cargo.toml` 里生效的 `{feature}` 出现在 {} 行，应当**恰好 1** 行（`creds-core` 那一行）：{lines:?}\n\
-             ⚠ backend 只有账号域那一份写这份文件；多一处声明 = 多一条没人看着的路。",
-            lines.len()
+        let gated = ["open_checked", "verdict_at", "create_private"];
+        let backend = guard_core::addr::backend_src_root();
+        let root_manifest = std::fs::read_to_string(backend.join("Cargo.toml"))
+            .expect("读不到后端根清单 —— 抽取器坏了，本条会零命中地绿");
+        // 后端那棵 workspace 的全部成员 ＋ 护栏人群里的兄弟包（`population`：中转 `comms/outward` 不是成员、照样链进后端），
+        // 目录相对根清单。
+        let dirs_on = |key: &str| -> Vec<String> {
+            guard_core::strip_hash_comment_lines(&root_manifest)
+                .lines()
+                .find(|l| l.trim_start().starts_with(key))
+                .map(|l| {
+                    l.split('"')
+                        .skip(1)
+                        .step_by(2)
+                        .map(str::to_string)
+                        .collect()
+                })
+                .unwrap_or_else(|| panic!("根清单里没有 `{key}`"))
+        };
+        let mut members = dirs_on("members");
+        members.extend(dirs_on("population"));
+        members.sort();
+        members.dedup();
+        assert!(
+            members.len() >= 20,
+            "只认出 {} 个成员 —— 读 `members` · `population` 坏了",
+            members.len()
+        );
+        let abs: Vec<(String, std::path::PathBuf)> = members
+            .iter()
+            .map(|m| {
+                let p = std::fs::canonicalize(backend.join(m))
+                    .unwrap_or_else(|e| panic!("成员目录 `{m}` 解析不了：{e}"));
+                (m.clone(), p)
+            })
+            .collect();
+        // 每份源码归最长前缀那个成员（主 crate `.` 只剩不在别的成员目录里的那几份）。
+        let owner_of = |file: &std::path::Path| -> Option<String> {
+            abs.iter()
+                .filter(|(_, d)| file.starts_with(d))
+                .max_by_key(|(_, d)| d.components().count())
+                .map(|(m, _)| m.clone())
+        };
+        let mut calling: std::collections::BTreeSet<String> = Default::default();
+        let mut seen: std::collections::BTreeSet<std::path::PathBuf> = Default::default();
+        let roots: Vec<std::path::PathBuf> = std::iter::once(backend.clone())
+            .chain(
+                members
+                    .iter()
+                    .filter(|m| m.starts_with(".."))
+                    .map(|m| backend.join(m)),
+            )
+            .collect();
+        for root in &roots {
+            for (path, src) in guard_core::scan_tree!(root, &["rs"]) {
+                let Ok(file) = std::fs::canonicalize(&path) else {
+                    continue;
+                };
+                if !seen.insert(file.clone()) {
+                    continue;
+                }
+                let prod = production_code(&src);
+                if gated.iter().any(|g| guard_core::contains_word(&prod, g)) {
+                    if let Some(m) = owner_of(&file) {
+                        calling.insert(m);
+                    }
+                }
+            }
+        }
+        let scanned = seen.len();
+        assert!(scanned >= 100, "只扫到 {scanned} 份后端源码 —— 遍历坏了");
+        let mut turned_on: std::collections::BTreeSet<String> = Default::default();
+        let mut stray = Vec::new();
+        for m in &members {
+            let p = backend.join(m).join("Cargo.toml");
+            let text = std::fs::read_to_string(&p)
+                .unwrap_or_else(|e| panic!("读不到成员清单 {}：{e}", p.display()));
+            let mut section = String::new();
+            for line in guard_core::strip_hash_comment_lines(&text).lines() {
+                let t = line.trim();
+                if t.starts_with('[') {
+                    section = t.to_string();
+                    continue;
+                }
+                if !guard_core::contains_word(line, &feature) {
+                    continue;
+                }
+                if section == "[dependencies]" && t.starts_with("creds-core = {") {
+                    turned_on.insert(m.clone());
+                } else {
+                    stray.push(format!("  {m} {section}：{t}"));
+                }
+            }
+        }
+        assert!(
+            stray.is_empty(),
+            "`{feature}` 不经 `[dependencies]` 里 `creds-core` 那一行开进来了 —— 多一路没人看着的开法：\n{}",
+            stray.join("\n")
         );
         assert!(
-            lines[0].trim_start().starts_with("creds-core = {"),
-            "开 `{feature}` 的那一行不是 `creds-core` 的依赖声明：{}",
-            lines[0]
+            !calling.is_empty(),
+            "后端生产段里一处都没叫 {gated:?} —— 针瞎了（或写口全退役了：那就回来重签 `creds-core`）"
+        );
+        assert_eq!(
+            turned_on, calling,
+            "开 `{feature}` 的成员（左）≠ 生产段叫 {gated:?} 的成员（右）：\n\
+             右边多出来的 = 那一层叫了、自己没开，只靠别的成员把特性并进来才编得过；\n\
+             左边多出来的 = 开了不叫，一条没人用的路。"
         );
 
         // ★ 非空对照：同一把尺子量 `creds-core` 自己那份 manifest（定义这个 feature 的那一行），**必须数得到**。
@@ -461,7 +547,7 @@ mod tests {
             want_clear.len()
         );
 
-        let base = comms_outward::Base::parse("https://api.example.com").expect("base");
+        let base = crate::relay::base_of("https://api.example.com").expect("base");
         let mut wrote = 0usize;
         for style in AuthStyle::ALL.iter().copied() {
             let table =
@@ -488,7 +574,7 @@ mod tests {
                 &mut |d| {
                     if let crate::relay::Destination::Substitute { auth, .. } = d {
                         seen = Some((
-                            auth.write.map(|(n, _)| n),
+                            auth.write.first().map(|(n, _)| *n),
                             auth.clear.iter().map(|n| n.to_ascii_lowercase()).collect(),
                         ));
                     }

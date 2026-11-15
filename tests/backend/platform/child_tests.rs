@@ -106,6 +106,34 @@ fn fed_bytes_reach_the_childs_stdin_whole_and_then_close() {
     assert_eq!(out.stderr, b"end", "stdin 写完关了 ⇒ cat 读到头、往下走");
 }
 
+/// 输出超了 [`PIPE_CAP`]（stdout · stderr 哪一路都一样）⇒ `run` 回错，不交前一截当整份；错里说的是超了上限、带上限的数。
+#[cfg(unix)]
+#[test]
+fn a_run_whose_output_goes_past_the_cap_fails_saying_so() {
+    let over = (PIPE_CAP.bytes + 1).to_string();
+    let said = copy_text(
+        "beFs.readRegularCapped.tooBig",
+        &[("cap", &PIPE_CAP.bytes.to_string())],
+    );
+    for (which, script) in [
+        ("stdout", format!("head -c {over} /dev/zero")),
+        ("stderr", format!("head -c {over} /dev/zero >&2")),
+    ] {
+        let r = Child::new("sh")
+            .args(["-c", script.as_str()])
+            .run(Deadline::secs(60));
+        match r {
+            Err(ChildFail::Io(e)) => assert_eq!(e.to_string(), said, "{which}：错里说超了上限"),
+            Err(e) => panic!("{which}：超了上限该回那一句，得到 {e:?}"),
+            Ok(o) => panic!(
+                "{which}：超了上限该回错，却交了 {} · {} 字节",
+                o.stdout.len(),
+                o.stderr.len()
+            ),
+        }
+    }
+}
+
 #[test]
 fn a_missing_program_is_not_found() {
     let r = Child::new("/nonexistent/ccm-child-test-prog").run(Deadline::secs(5));
@@ -404,19 +432,17 @@ fn heard_until_exit(rx: &mpsc::Receiver<Heard>) -> (Vec<String>, Option<Option<i
 #[cfg(unix)]
 #[test]
 fn a_terminal_conversation_runs_on_a_tty_and_hands_back_plain_lines() {
-    use std::os::unix::fs::PermissionsExt;
     let d = test_home::scratch("pty-talk");
     std::fs::create_dir_all(d.join("bin")).unwrap();
     let prog = d.join("bin").join("talker");
-    std::fs::write(
+    // 马上被起 ⇒ 经 `write_exe` 写（本进程写的写端会漏进别的判据线程 fork 出来的子进程 ⇒ ETXTBSY）。
+    test_home::write_exe(
         &prog,
         "#!/bin/sh\n[ -t 0 ] && [ -t 1 ] || { echo notty; exit 3; }\n\
          echo \"env:$KEEP_ME own:${CCM_RESIDENT:-none}\"; pwd\n\
          printf 'Visit:\\n  \\033]8;;https://x.test/a?b=1\\007\\033[94mhttps://x.test/a?b=1\\033[39m\\033]8;;\\007\\n'\n\
          printf 'prompt: '\nread -r l\necho \"got:$l\"\nexit 4\n",
-    )
-    .unwrap();
-    std::fs::set_permissions(&prog, std::fs::Permissions::from_mode(0o755)).unwrap();
+    );
     let mut conv = Child::new("talker")
         .env("PATH", format!("{}:/usr/bin:/bin", d.join("bin").display()))
         .env("KEEP_ME", "1")
@@ -1032,14 +1058,11 @@ fn default_path_helper_inner() {
 #[cfg(unix)]
 #[test]
 fn a_child_finds_its_program_on_the_session_shells_path_not_the_backends() {
-    use std::os::unix::fs::PermissionsExt as _;
     let d = test_home::scratch("ccmdbg-default-path");
     let bin = d.join("bin");
     std::fs::create_dir_all(&bin).expect("建目录");
-    let exe = |p: &std::path::Path, body: &str| {
-        std::fs::write(p, body).expect("写脚本");
-        std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o755)).expect("可执行");
-    };
+    // 两份都马上被起 ⇒ 经 `write_exe` 写（理由同上面终端里对话那条）。
+    let exe = test_home::write_exe;
     exe(
         &bin.join("ccmdbgfake-launcher"),
         "#!/bin/sh\necho launched\n",
@@ -1076,4 +1099,50 @@ fn a_child_finds_its_program_on_the_session_shells_path_not_the_backends() {
         String::from_utf8_lossy(&r.stderr)
     );
     assert_eq!(asked.lines().count(), 1, "登录 shell 被问了几次：{asked:?}");
+}
+
+/// 沙箱家（`test-home` 起测试进程时那一步）把 `TMUX_TMPDIR` 指进本进程的沙箱根、那个目录先建好：
+/// 判据起的孙进程（`sh -c 'tmux …'` 那几条不经 [`Child`]，闸管不到）里的裸 tmux 继承它，连不到 `/tmp/tmux-<uid>/default`。
+/// 目录不在的话 tmux 退回 `/tmp`，所以「在」也要判。
+#[test]
+fn the_sandbox_home_points_bare_tmux_into_the_sandbox_root() {
+    let root = test_home::sandbox_root();
+    let dir = std::env::var_os("TMUX_TMPDIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            panic!("测试进程里没有 TMUX_TMPDIR —— 孙进程里的裸 tmux 连的是缺省那台")
+        });
+    assert!(
+        dir.starts_with(&root),
+        "TMUX_TMPDIR 是 {}，不在沙箱根 {} 底下",
+        dir.display(),
+        root.display()
+    );
+    assert!(
+        dir.is_dir(),
+        "TMUX_TMPDIR {} 不在 —— tmux 会退回 /tmp",
+        dir.display()
+    );
+}
+
+/// 子进程闸建不出那个 socket 目录 ⇒ 当场停：不在的 `TMUX_TMPDIR` 让 tmux 退回 `/tmp`，落回缺省那台。
+#[cfg(unix)]
+#[test]
+fn the_tmux_fence_stops_when_it_cannot_make_its_socket_dir() {
+    let d = test_home::scratch("fence-nodir");
+    let file = d.join("plain");
+    std::fs::write(&file, b"").expect("铺一份普通文件");
+    // 根是一份普通文件 ⇒ 底下建不出目录。闸只看交给它的程序名；命令只配、不起（程序是 `true`）。
+    let r = std::panic::catch_unwind(|| {
+        let mut c = std::process::Command::new("true");
+        tmux_fence::apply_under(&file, OsStr::new("tmux"), &[], &mut c);
+        c.get_envs()
+            .find(|(k, _)| *k == "TMUX_TMPDIR")
+            .and_then(|(_, v)| v.map(|v| v.to_os_string()))
+    });
+    assert!(
+        r.is_err(),
+        "闸建不出 socket 目录却照样放行（交下去的 TMUX_TMPDIR = {:?}）",
+        r.ok().flatten()
+    );
 }

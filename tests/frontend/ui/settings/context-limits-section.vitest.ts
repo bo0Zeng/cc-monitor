@@ -14,12 +14,12 @@ const { sets, emitted, machines } = vi.hoisted(() => ({
 vi.mock("../../../../src/frontend/ui/machine-prefs", () => ({
   readPrefs: async (origin: string) => {
     const m = machines.get(origin)!;
-    return { state: m.state, reason: m.reason, detail: null, path: null, prefs: { launchers: {}, resumeWhere: "managed", models: {}, permissionModes: {}, contextLimits: { ...m.limits } } };
+    return { state: m.state, reason: m.reason, detail: null, path: null, prefs: { launchers: {}, resumeWhere: "managed", models: {}, permissionModes: {}, contextLimits: { ...m.limits } }, contextLimitsText: Object.keys(m.limits).length > 0 ? `已改那一格（夹具 ${Object.keys(m.limits).length}）` : null };
   },
   setPrefs: async (origin: string, patch: { contextLimits: Record<string, number> }) => {
     sets.push([origin, patch]);
     machines.get(origin)!.limits = patch.contextLimits;
-    return { state: "ok", reason: null, detail: null, path: null, prefs: { launchers: {}, resumeWhere: "managed", models: {}, permissionModes: {}, contextLimits: patch.contextLimits } };
+    return { state: "ok", reason: null, detail: null, path: null, prefs: { launchers: {}, resumeWhere: "managed", models: {}, permissionModes: {}, contextLimits: patch.contextLimits }, contextLimitsText: Object.keys(patch.contextLimits).length > 0 ? `已改那一格（夹具 ${Object.keys(patch.contextLimits).length}）` : null };
   },
 }));
 vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(async (n: string) => void emitted.push(n)), listen: vi.fn() }));
@@ -73,14 +73,15 @@ describe("那台的上下文上限表", () => {
     const head = s.element.querySelector<HTMLElement>("[aria-expanded]")!;
     expect(head.getAttribute("aria-expanded")).toBe("false");
     expect(head.textContent).toContain(copyText("contextLimits.editor.title"));
-    expect(head.textContent).toContain(copyText("contextLimits.editor.count", { n: 1 }));
+    // 「已改 N」照抄后端写好的那一格（不数）。
+    expect(head.textContent).toContain("已改那一格（夹具 1）");
     expect(s.element.querySelector("textarea")!.closest("[hidden]")).not.toBeNull();
     s.element.querySelector("textarea")!.value = "a = 1\nb = 2";
     await s.save();
-    expect(head.textContent).toContain(copyText("contextLimits.editor.count", { n: 2 }));
+    expect(head.textContent).toContain("已改那一格（夹具 2）");
     s.element.querySelector("textarea")!.value = "";
     await s.save();
-    expect(head.textContent).not.toContain(copyText("contextLimits.editor.count", { n: 0 }));
+    expect(head.textContent).not.toContain("已改那一格");
     s.reveal();
     expect(head.getAttribute("aria-expanded")).toBe("true");
     expect(s.element.dataset.anchor, "主窗口［设上限］落到这一折").toBe("context-limits");

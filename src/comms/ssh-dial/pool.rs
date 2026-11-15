@@ -863,8 +863,7 @@ pub fn ssh() -> &'static Pool<Linked> {
 
 /// 一份拨号请求的**连接身份**（规范化 JSON 串，键序固定）。
 pub fn identity(req: &DialRequest) -> String {
-    let endpoints: Vec<serde_json::Value> = req
-        .race_order()
+    let endpoints: Vec<serde_json::Value> = crate::race_order(req)
         .iter()
         .map(|e| serde_json::json!([e.host, e.port]))
         .collect();

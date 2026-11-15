@@ -4,7 +4,7 @@
 
 use crate::observe::search_query::{self, SearchOpts};
 use crate::wire::typed::{codes, Command};
-use cmd_wire::search::{HistorySearchReply, Merged, SearchDown, SearchRow};
+use cmd_wire::search::{HistorySearchReply, Merged, SearchRow};
 /// `history-search` 的入参住 `cmd-wire::search`（名字与回包挂在 `cmd_wire::Call` 上）。
 pub(crate) use cmd_wire::search::{HistorySearchReq, SearchScope};
 
@@ -69,7 +69,7 @@ async fn search_here(
             ),
         };
         search_at(
-            &crate::history::listing::agent_home(),
+            &crate::agents::local_homes(),
             req,
             super::read_face::LINES_CAP_BYTES.as_len(),
             crate::common::time::now_ms() as i64,
@@ -91,19 +91,26 @@ pub(crate) struct Marks {
 /// [`HistorySearch`] 的本体，家目录 · 回包上限 · 此刻 · 看的那一台的时区 · 每行那台的说法是参数（判据拿夹具喂它、拿小上限验「超了就拒、不截断」）。
 /// 生产只有一个上限：`read_face::LINES_CAP_BYTES`。每行添上行尾 `atText` 与内容头 `spanText`（都按 `updatedAt`，按 `tz` 写）与 [`Marks`]。
 pub(crate) fn search_at(
-    home: &std::path::Path,
+    home: impl crate::agents::IntoHomes,
     req: HistorySearchReq,
     cap: usize,
     now_ms: i64,
     tz: &crate::common::time::Tz,
     mark: &dyn Fn(&cmd_wire::search::SessionHits) -> Marks,
 ) -> Result<HistorySearchReply, HistorySearchErr> {
+    let home_v = crate::agents::IntoHomes::into_homes(home);
+    let home: &[crate::agents::AgentHome] = &home_v;
     let opts = SearchOpts {
         include_tools: req.include_tools == Some(true),
         scope: req.scope.map(SearchScope::word),
-        after_ms: req
-            .after_ms
-            .map_or(0, |n| i64::try_from(n).unwrap_or(i64::MAX)),
+        // 最近几天 ⇒ 照这台的钟换成起点（不交 · 0 ⇒ 不限）。
+        after_ms: req.within_days.filter(|d| *d > 0).map_or(0, |d| {
+            now_ms.saturating_sub(
+                i64::try_from(d)
+                    .unwrap_or(i64::MAX)
+                    .saturating_mul(86_400_000),
+            )
+        }),
         limit: SearchOpts::limit_of(req.limit),
         titles: req.titles == Some(true),
     };
@@ -135,10 +142,7 @@ pub(crate) fn search_at(
     Ok(HistorySearchReply {
         sessions,
         unreadable,
-        skipped: crate::agents::content_search_skips()
-            .into_iter()
-            .map(str::to_string)
-            .collect(),
+        skipped: crate::agents::content_search_skips(),
     })
 }
 
@@ -233,10 +237,11 @@ pub(crate) async fn merge_with(
     for (origin, r) in got {
         match r {
             Ok(reply) => answered.push((origin, reply)),
-            Err(s) => down.push(SearchDown {
-                origin,
-                said: s.said,
-            }),
+            Err(s) => {
+                use crate::faces::history_face::said_end;
+                let name = copy_core::machine_word(&origin);
+                down.extend(face_core::search::search_reply(origin, &name, said_end(s)).err());
+            }
         }
     }
     let mut merged = face_core::search::merge(&req.search.query, answered, down);

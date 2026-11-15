@@ -525,3 +525,60 @@ fn cover_starts_at_the_turn_holding_it_and_to_stops_before_it() {
     });
     assert_eq!(r.turns[0].at, main[k].at);
 }
+
+/// `history-find` 只搜用户那一句（`scope: user`）在帧面上的样子：命中头一行不写谁（整张都是用户的），只写第几轮 · 时刻；
+/// 零命中 ⇒ 结果头说「仅用户」那一句、旁边给［搜全部］。正控：不限范围时同一条命中的头一行写谁。
+#[test]
+fn finding_only_what_the_user_said_shows_on_the_frame() {
+    use copy_core::copy_text;
+    let home = scratch("find-user-only");
+    let path = fixture(&home, "s-find", 3, 4);
+    let tz = crate::common::time::Tz::default();
+    let ask = |query: &str, user: bool| -> Value {
+        let req: HistoryFindReq = serde_json::from_value(json!({
+            "path": path,
+            "query": query,
+            "scope": if user { Some("user") } else { None },
+        }))
+        .unwrap();
+        serde_json::to_value(find_at(&home, req, &tz).unwrap()).unwrap()
+    };
+    let user = ask("p0", true);
+    assert_eq!(user["hits"].as_array().map(Vec::len), Some(1), "{user}");
+    let hit = &user["hits"][0];
+    // 夹具的第一句（`p0`）落在第 1 秒（[`fixture`] 的钟从 1 起）。
+    let time = &crate::common::time::hit_text(
+        crate::common::time::parse_iso8601_ms("2026-10-12T00:00:01.000Z").unwrap(),
+        &tz,
+    );
+    let n = "1";
+    assert!(hit.get("tsText").is_none(), "时刻只写进头一行：{hit}");
+    assert_eq!(
+        hit["meta"],
+        copy_text("sessionFind.hit.metaNoWho", &[("n", n), ("time", time)])
+    );
+    assert_eq!(user["widen"], false);
+    let all = ask("p0", false);
+    let who = crate::observe::search_query::who_of(crate::agents::claudecode::AGENT_KIND, "user");
+    assert_eq!(
+        all["hits"][0]["meta"],
+        copy_text(
+            "sessionFind.hit.meta",
+            &[("who", &who), ("n", n), ("time", time)]
+        ),
+        "不限范围 ⇒ 头一行写谁"
+    );
+    let none = ask("没有这一句", true);
+    assert_eq!(
+        (&none["head"], &none["widen"], &none["hits"]),
+        (
+            &Value::from(copy_text(
+                "sessionFind.status.noneScoped",
+                &[("q", "没有这一句")]
+            )),
+            &Value::from(true),
+            &json!([])
+        )
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}

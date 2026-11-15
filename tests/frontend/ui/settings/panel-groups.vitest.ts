@@ -110,6 +110,8 @@ vi.mock("../../../../src/frontend/ui/settings/accounts-section", () => ({
       return d;
     })();
   },
+  // 号行锚点（`account:`）才归它；这里的目的地都不是 ⇒ 照常由设置窗自己落。
+  focusAccount: (anchor: string | undefined) => anchor?.startsWith("account:") ?? false,
 }));
 vi.mock("../../../../src/frontend/ui/keybindings/editor", () => ({
   KeybindingsEditor: class {

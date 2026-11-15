@@ -19,7 +19,12 @@ fn record_at(
     a: &Value,
 ) -> Result<Value, crate::common::said::Said> {
     let req = crate::wire::typed::take(a)?;
-    super::record_at(own, root, &req).map(|r| serde_json::to_value(r).unwrap())
+    super::record_at(
+        own,
+        crate::assets::skill_install::Roots::here_with(root),
+        &req,
+    )
+    .map(|r| serde_json::to_value(r).unwrap())
 }
 
 /// 写句柄：家目录 ＝ 那份装记录上两级（`<家>/.cc-monitor/skill-installs.json`）。
@@ -225,7 +230,7 @@ fn an_unreadable_or_other_version_ledger_is_never_overwritten() {
     for body in [
         b"{not json".to_vec(),
         // 形状本身读得懂、只是版本比这一版新 ⇒ 仍然不认（别让 `deny_unknown_fields` 替版本闸挡了这一形）
-        br#"{"version":3,"installs":{}}"#.to_vec(),
+        br#"{"version":4,"installs":{}}"#.to_vec(),
     ] {
         std::fs::write(&file, &body).unwrap();
         let e = record_at(
@@ -408,7 +413,7 @@ fn hx2_a_record_written_under_someone_elses_lock_is_not_overwritten() {
         .collect(),
     );
     let mut alpha = serde_json::to_value(&alpha).unwrap();
-    alpha["version"] = json!(2);
+    alpha["version"] = json!(3);
     std::fs::write(&file, alpha.to_string()).unwrap();
     drop(held);
     assert!(
@@ -423,44 +428,188 @@ fn hx2_a_record_written_under_someone_elses_lock_is_not_overwritten() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
-/// 第 1 版（版本写在 `"v"` 里、顶层没有 `version`）比下限老：不升级、当没有；记一笔 ⇒ 盘上是第 2 版、只有这一笔，
-/// 第 1 版的原文逐字节留在 `.v1`。
+/// 第 1 版（版本写在 `"v"` 里）· 第 2 版（没有 `touched`）经升级步读成这一版、原来那几条都在；读本身不动盘。
+/// 常驻起来那一下（[`bring_forward`]）写回成第 3 版、原文逐字节留在 `.v<N>`；已是第 3 版 ⇒ 不再写。
 #[test]
-fn a_format_one_ledger_is_absent_and_its_original_kept_beside() {
-    let d = test_home::scratch("v1");
+fn older_ledgers_read_upgraded_and_are_brought_forward_once() {
+    let d = test_home::scratch("v1-v2");
     let file = d.join(relay_route_core::SKILL_LEDGER_REL);
     std::fs::create_dir_all(file.parent().unwrap()).unwrap();
-    let root = d.join("skills");
-    let old_dir = root.join("old").display().to_string();
-    let v1 = serde_json::to_vec(&json!({
-        "v": 1,
-        "installs": {old_dir.as_str(): {"name": "old", "files": {"a": rec(D1, true)}}}
-    }))
-    .unwrap();
-    std::fs::write(&file, &v1).unwrap();
-    assert_eq!(
-        load_at(&file).unwrap(),
-        Ledger::default(),
-        "第 1 版被读进来了"
-    );
-    record_at(
-        &own_at(&file),
-        Some(&root),
-        &json!({"op": "add", "name": "demo", "files": {"b": rec(D2, true)}}),
+    let old_dir = d.join("skills").join("old").display().to_string();
+    let installs = json!({old_dir.as_str(): {"name": "old", "files": {"a": rec(D1, true)}}});
+    for (n, body) in [
+        (1, json!({"v": 1, "installs": installs.clone()})),
+        (2, json!({"version": 2, "installs": installs.clone()})),
+    ] {
+        let raw = serde_json::to_vec(&body).unwrap();
+        let kept = file.with_file_name(format!("skill-installs.json.v{n}"));
+        let _ = std::fs::remove_file(&kept);
+        std::fs::write(&file, &raw).unwrap();
+        assert!(
+            load_at(&file).unwrap().installs.contains_key(&old_dir),
+            "第 {n} 版那一条没读进来"
+        );
+        assert_eq!(std::fs::read(&file).unwrap(), raw, "读把盘写了");
+        assert!(bring_forward(&own_at(&file)).unwrap(), "第 {n} 版 ⇒ 写回");
+        let on_disk: Value = serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
+        assert_eq!(on_disk["version"], json!(3), "{on_disk}");
+        assert!(on_disk.get("v").is_none(), "{on_disk}");
+        assert!(on_disk["installs"].get(&old_dir).is_some(), "{on_disk}");
+        assert_eq!(std::fs::read(&kept).unwrap(), raw, "第 {n} 版的原文没留下");
+        let now = std::fs::read(&file).unwrap();
+        assert!(
+            !bring_forward(&own_at(&file)).unwrap(),
+            "已是第 3 版 ⇒ 不写"
+        );
+        assert_eq!(std::fs::read(&file).unwrap(), now);
+    }
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// 改过的项目级 MCP 配置：头一回记下改之前的原文、接得上的再改只换 `after` 并进名字（装 · 卸都记）；
+/// 接不上（这一回改之前那一份不是上回写进去的：两回之间手改过）⇒ 留底换成这一回的、名字只留这一回的；
+/// 撤回整格摘掉（连装过那一格）；`after` 不是摘要 ⇒ `bad_args`、一个字节不动。
+#[test]
+fn a_touched_project_mcp_keeps_the_first_original_until_reverted() {
+    let d = test_home::scratch("touched");
+    let file = d.join(relay_route_core::SKILL_LEDGER_REL);
+    let cfg = d.join("proj/.mcp.json").display().to_string();
+    let own = own_at(&file);
+    let mid = crate::common::digest::fnv_digest("mid");
+    let first = record_at(
+        &own,
+        None,
+        &json!({"op": "mcp-add", "file": cfg, "name": "a", "digest": D1, "before": "orig", "after": mid}),
     )
     .expect("记");
-    let on_disk: Value = serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
+    assert!(first["changed"].as_bool().unwrap());
+    record_at(
+        &own,
+        None,
+        &json!({"op": "mcp-drop", "file": cfg, "name": "b", "before": "mid", "after": D3}),
+    )
+    .expect("记");
+    let l = read_ok(&file);
+    let t = &l.touched[&cfg];
+    assert_eq!(t.before.as_deref(), Some("orig"), "留底换成了后一次的");
+    assert_eq!(t.after, D3);
     assert_eq!(
-        on_disk["version"],
-        json!(2),
-        "写出去的不是第 2 版：{on_disk}"
+        t.names.iter().map(String::as_str).collect::<Vec<_>>(),
+        ["a", "b"]
     );
-    assert!(on_disk.get("v").is_none(), "第 2 版还带着 `v`：{on_disk}");
+    // 两回之间手改过：这一回改之前那一份不是上回写进去的 ⇒ 另起。
+    record_at(
+        &own,
+        None,
+        &json!({"op": "mcp-drop", "file": cfg, "name": "c", "before": "hand", "after": D2}),
+    )
+    .expect("记");
+    let t = &read_ok(&file).touched[&cfg];
+    assert_eq!(t.before.as_deref(), Some("hand"), "留底没换成手改的那一份");
+    assert_eq!(t.after, D2);
+    assert_eq!(
+        t.names.iter().map(String::as_str).collect::<Vec<_>>(),
+        ["c"]
+    );
+    let before = std::fs::read(&file).unwrap();
+    let e = record_at(
+        &own,
+        None,
+        &json!({"op": "mcp-add", "file": cfg, "name": "a", "digest": D1, "before": null, "after": "x"}),
+    )
+    .expect_err("坏摘要也收了");
+    assert_eq!(e.code.as_deref(), Some("bad_args"));
+    assert_eq!(std::fs::read(&file).unwrap(), before);
+    record_at(
+        &own,
+        None,
+        &json!({"op": "mcp-revert", "file": cfg, "after": D2}),
+    )
+    .expect("摘");
+    // 撤回回到手改的那一份：那时已装着的 a（头一条链装的）照旧记着，改过那一格摘掉。
+    let l = read_ok(&file);
+    assert!(l.touched.is_empty(), "撤回后改过那一格还在：{l:?}");
+    assert_eq!(
+        l.mcp
+            .get(&cfg)
+            .map(|m| m.keys().map(String::as_str).collect::<Vec<_>>()),
+        Some(vec!["a"]),
+        "{l:?}"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// 撤回摘记录在锁里核「最后写进去的摘要」：对不上（之间又有一回写）⇒ `stale`、一个字节不动；对得上才摘。
+#[test]
+fn a_revert_drops_the_record_only_when_the_last_written_digest_still_matches() {
+    let d = test_home::scratch("revert-cas");
+    let file = d.join(relay_route_core::SKILL_LEDGER_REL);
+    let cfg = d.join("proj/.mcp.json").display().to_string();
+    let own = own_at(&file);
+    record_at(
+        &own,
+        None,
+        &json!({"op": "mcp-add", "file": cfg, "name": "a", "digest": D1, "before": "orig", "after": D2}),
+    )
+    .expect("记");
+    let kept = std::fs::read(&file).unwrap();
+    let e = record_at(
+        &own,
+        None,
+        &json!({"op": "mcp-revert", "file": cfg, "after": D3}),
+    )
+    .expect_err("摘要对不上也摘了");
+    assert_eq!(e.code.as_deref(), Some("stale"));
+    assert_eq!(std::fs::read(&file).unwrap(), kept, "对不上还动了记录");
+    record_at(
+        &own,
+        None,
+        &json!({"op": "mcp-revert", "file": cfg, "after": D2}),
+    )
+    .expect("摘");
+    let l = read_ok(&file);
     assert!(
-        on_disk["installs"].get(&old_dir).is_none(),
-        "第 1 版的那条被升级读进来了"
+        !l.touched.contains_key(&cfg) && !l.mcp.contains_key(&cfg),
+        "{l:?}"
     );
-    let kept = file.with_file_name("skill-installs.json.v1");
-    assert_eq!(std::fs::read(&kept).unwrap(), v1, "第 1 版的原文没留下");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// 撤回只摘这一回改动带进来的：头一回改之前就装着的那几条（装记录里记过）留着，以后卸它们不当外来的。
+#[test]
+fn a_revert_keeps_what_was_installed_before_the_first_change() {
+    let d = test_home::scratch("revert-keep");
+    let file = d.join(relay_route_core::SKILL_LEDGER_REL);
+    let cfg = d.join("proj/.mcp.json").display().to_string();
+    let own = own_at(&file);
+    let first = crate::common::digest::fnv_digest("v1");
+    record_at(
+        &own,
+        None,
+        &json!({"op": "mcp-add", "file": cfg, "name": "old", "digest": D1, "before": null, "after": first}),
+    )
+    .expect("记");
+    // 那一份被手改（另起一条链）之后，cc-monitor 再装一条 new。
+    record_at(
+        &own,
+        None,
+        &json!({"op": "mcp-add", "file": cfg, "name": "new", "digest": D3, "before": "hand", "after": D2}),
+    )
+    .expect("记");
+    record_at(
+        &own,
+        None,
+        &json!({"op": "mcp-revert", "file": cfg, "after": D2}),
+    )
+    .expect("摘");
+    let l = read_ok(&file);
+    assert_eq!(
+        l.mcp
+            .get(&cfg)
+            .map(|m| m.keys().map(String::as_str).collect::<Vec<_>>()),
+        Some(vec!["old"]),
+        "头一回改之前就装着的那条被摘了：{l:?}"
+    );
+    assert!(!l.touched.contains_key(&cfg));
     let _ = std::fs::remove_dir_all(&d);
 }

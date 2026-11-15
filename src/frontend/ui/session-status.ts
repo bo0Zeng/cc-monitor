@@ -1,6 +1,6 @@
 /**
  * 会话那颗点上叠的灯（标签栏 · 监控板）＋ 跨会话监控快照 DTO。点本身是那台后端判好的（`SessionFace.dot`），这里只管画法。
- * 零运行期 import（只有会被擦除的 `import type`），node 可测。
+ * 「在等人」照生成物 `WAITING_DOTS`（契约常量住 `cmd_wire::SessionDot::WAITING`），不另判。
  */
 
 import type { Machine } from "./generated/Machine";
@@ -8,13 +8,14 @@ import type { SessionFace } from "./generated/SessionFace";
 import type { RunState } from "./generated/RunState";
 import type { DotState } from "./kit/status-dot";
 import type { BackgroundWork } from "./session-reads";
+import { WAITING_DOTS } from "./generated/judgment-rules";
 
 /** tab/cell 根上活动灯那一档的钩子（`data-light`；没有样式、给判据与读屏读）。空串 = 不挂。 */
 export type ActivityLightClass = "" | "idle" | "waiting";
 
-/** 点 ⇒ 灯那一档：需手动呼吸、空闲暗着，别的不叠。 */
+/** 点 ⇒ 灯那一档：在等人的（照 `WAITING_DOTS`）呼吸、空闲暗着，别的不叠。 */
 export function lightOf(dot: DotState | null): ActivityLightClass {
-  return dot === "needs-you" ? "waiting" : dot === "idle" ? "idle" : "";
+  return WAITING_DOTS.some((d) => d === dot) ? "waiting" : dot === "idle" ? "idle" : "";
 }
 
 /**
@@ -39,8 +40,8 @@ export interface GridSessionSnapshot {
   agents: string | null;
   /** 上下文那一格（核心写好的字 · 语气 · 百分比；百分比为 null ＝ 上限判不出）；还没有用量 ⇒ null。 */
   context: { text: string; tone: string; percent: number | null } | null;
-  /** 未读消息数（非活跃 tab 累积）。 */
-  unread: number;
+  /** 这条连接上它的未读（后端写好的字，含「99+」，`Tab.unreadSaid`）；没有 ⇒ null，不画。 */
+  unread: string | null;
   /** 后台会话（⚙）。 */
   background: boolean;
   /** 后台任务运行中那一句（`Tab.backgroundWork` 原样，核心写的）；不是这一态 ⇒ null。 */
@@ -58,6 +59,8 @@ export interface SessionPeek {
   model: string | null;
   /** 本会话写类工具（Edit/Write/…）碰过的文件路径（首触序）——「谁跑偏」关键信号。 */
   recentFiles: string[];
+  /** 「改过的文件 N」那一格（会话事实里后端写好的 `touchedText`，照抄）；还没有 ⇒ `null`。 */
+  filesHead: string | null;
   /** 本会话的子运行：那台挑好的那几个（`RunGroups.peek`，三组序取前几个），供 peek 显示「在跑什么」。 */
   agents: { label: string; status: RunState }[];
   /** 子运行那一句（那台写好的「agent n · m 在跑」，`SessionRuns.summary`）；运行表是空的 ⇒ null。 */

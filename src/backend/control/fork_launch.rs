@@ -67,7 +67,7 @@ pub fn infer(s: &Source) -> Launch {
     let terminal = if s.live {
         Slot::Known {
             value: match &s.terminal {
-                Some(t) if !t.trim().is_empty() => TerminalFact::Hosted {
+                Some(t) if !t.trim().is_empty() => TerminalFact::Tmux {
                     terminal: t.clone(),
                 },
                 _ => TerminalFact::None,
@@ -88,7 +88,10 @@ pub fn infer(s: &Source) -> Launch {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProcessRow {
     pub sid: String,
+    /// 身份核上了（启动时刻对拍过）：号只认这一格。
     pub alive: bool,
+    /// 脸上活着（活会话表那一判，不是后台任务）：活没活照这一格（启动时刻核不上的照样算活）。
+    pub live: bool,
     pub config_dir: Option<String>,
     pub account: Option<String>,
     /// 活着、环境读得到、没设配置目录 ＝ 账号 0。
@@ -105,13 +108,16 @@ fn account_of(r: &ProcessRow) -> Option<AccountFact> {
 }
 
 /// 两份名单 ⇒ 源会话的事实。`terminals` ＝ 这台的终端名单（`None` ＝ 没有 / 看不见：都当不在任何终端里）。
-/// 活着 ＝ 进程名单说它活着，或终端名单里有挂着它、前台是 agent 的（命中多个取第一个）；只剩 shell 的不算。
+/// 活着 ＝ 进程名单说它脸上活着（`live`，身份没核上也算），或终端名单里有挂着它、前台是 agent 的（命中多个取第一个）；只剩 shell 的不算。
+/// 号只认身份核上了的那一行（`alive`）。
 pub fn source_of(
     processes: &[ProcessRow],
     terminals: Option<&[TermEntry]>,
     sid: &str,
     cwd: Option<String>,
 ) -> Source {
+    // 活没活照脸上那一判；号只认身份核上了的那一行。
+    let live_row = processes.iter().any(|r| r.sid == sid && r.live);
     let row = processes.iter().find(|r| r.sid == sid && r.alive);
     let running = match terminals.map(|t| carriers(t, sid)) {
         Some(Standing::Running(e)) => Some(e.terminal.clone()),
@@ -119,7 +125,7 @@ pub fn source_of(
         _ => None,
     };
     Source {
-        live: row.is_some() || running.is_some(),
+        live: live_row || running.is_some(),
         cwd,
         account: row.and_then(account_of),
         terminal: running,

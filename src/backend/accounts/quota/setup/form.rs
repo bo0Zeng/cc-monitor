@@ -37,7 +37,7 @@ pub(crate) fn check_form(form: &[Cell]) -> Result<(), String> {
             ));
         }
         seen.push(&c.key);
-        if c.kind == Kind::OneOf && c.choices.is_empty() {
+        if c.kind == Kind::Choice && c.choices.is_empty() {
             return Err(format!("form: `{}` is a choice without choices", c.key));
         }
         if c.inherit && c.scope != Scope::Each {
@@ -52,7 +52,7 @@ pub(crate) fn check_form(form: &[Cell]) -> Result<(), String> {
                     && (x.scope == Scope::All || c.scope == Scope::Each)
                     && match x.kind {
                         Kind::Toggle => w.v.is_boolean(),
-                        Kind::OneOf => x.choices.iter().any(|o| w.v == o.v.as_str()),
+                        Kind::Choice => x.choices.iter().any(|o| w.v == o.v.as_str()),
                         _ => false,
                     }
             });
@@ -104,7 +104,7 @@ fn value(c: &Cell, v: &Value, at: &str, out: &mut Vec<Bad>) {
         Kind::Percent => num_in(v, c.min.unwrap_or(0.0), c.max.unwrap_or(100.0), false),
         Kind::Minutes => num_in(v, c.min.unwrap_or(0.0), c.max.unwrap_or(f64::MAX), true),
         Kind::Toggle => v.as_bool().map(|_| ()).ok_or("type"),
-        Kind::OneOf => match v.as_str() {
+        Kind::Choice => match v.as_str() {
             Some(s) if c.choices.iter().any(|x| x.v == s) => Ok(()),
             Some(_) => Err("of"),
             None => Err("type"),

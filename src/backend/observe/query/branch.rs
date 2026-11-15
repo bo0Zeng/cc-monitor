@@ -2,7 +2,6 @@
 
 use super::locate;
 use super::{jlen, Pager};
-use std::path::Path;
 
 /// `history-branch` 的入参。
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -40,7 +39,13 @@ pub struct Branch {
 }
 
 /// `history-branch` 的一页，上限是参数。清单出自扫描图（同一张），按条切页。
-pub fn branch_page(home: &Path, req: BranchReq, cap: usize) -> Result<Branch, String> {
+pub fn branch_page(
+    home: impl crate::agents::IntoHomes,
+    req: BranchReq,
+    cap: usize,
+) -> Result<Branch, String> {
+    let home_v = crate::agents::IntoHomes::into_homes(home);
+    let home: &[crate::agents::AgentHome] = &home_v;
     let map = locate::cold_scan(home, &req.path)?;
     let from = usize::try_from(req.from.unwrap_or(0)).unwrap_or(usize::MAX);
     let fixed = jlen(&Branch {

@@ -255,3 +255,71 @@ fn an_account_left_out_for_this_session_is_not_used() {
     .off
     .is_empty());
 }
+
+/// ★ 号按（家, 号名）认：号表里只有别家有的号名 ⇒「现在用」· 拖它 都回 `not_listed`（别家那个号不当本家的号）；
+/// 别家另有一个同名的号不碍本家那一个（本家的 `api` 照常换得过去）。别家照注册表里另一家声明了账号面的取，不写哪一家。
+#[test]
+fn use_now_and_temp_know_the_account_by_family() {
+    let home = Home::new("usenow-family");
+    let mut ctx = home.ctx();
+    home.saw(&ctx, S1);
+    let agent = ctx.hop.store.now().sessions[S1].agent.clone();
+    let other = crate::agents::REGISTRY
+        .iter()
+        .filter(|a| a.accounts.is_some())
+        .find(|a| a.launch.is_some_and(|l| l.adapter_id != agent))
+        .map(|a| a.kind)
+        .expect("注册表里另有一家声明了账号面");
+    let dir = home.root.join("accts-other");
+    let inner = std::sync::Arc::clone(&ctx.hop.book);
+    ctx.hop.book = std::sync::Arc::new(move |h: &std::path::Path| {
+        let mut lib = inner(h)?;
+        for id in ["z", "api"] {
+            lib.accounts.insert(
+                0,
+                acct_core::ManifestAccount {
+                    agent: Some(other.to_string()),
+                    ..crate::accounts::upstream_select::rotate::test_support::book_row(
+                        id,
+                        Some(dir.join(id)),
+                        false,
+                    )
+                },
+            );
+        }
+        Some(lib)
+    });
+    let go = |account: &str| {
+        use_now_with(
+            &ctx,
+            &home.own(),
+            &RotationUseNowReq {
+                sid: S1.into(),
+                account: account.into(),
+            },
+            now(),
+            &crate::common::time::Tz::default(),
+        )
+    };
+    assert!(
+        matches!(go("z"), Err(RotationUseNowErr::NotListed(_))),
+        "只别家有的号名"
+    );
+    assert!(
+        matches!(
+            temp(
+                &ctx,
+                &home,
+                RotTempOp::Off {
+                    account: "z".into(),
+                    off: true,
+                }
+            ),
+            Err(RotationTempErr::NotListed(_))
+        ),
+        "拖 · 去掉也认本家"
+    );
+    assert_eq!(ctx.hop.store.now().sessions[S1].current, "a");
+    go("api").expect("本家的 api 照常换得过去");
+    assert_eq!(ctx.hop.store.now().sessions[S1].current, "api");
+}

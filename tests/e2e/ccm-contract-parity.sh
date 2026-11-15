@@ -58,8 +58,9 @@ CCM="$CCMDIR/ccm"
 . "$HERE/assert.sh"
 
 W="$(mktemp -d)"; trap 'rm -rf "$W" "$CCMDIR"; tmux_shim_cleanup' EXIT
-mkdir -p "$W/bin" "$W/proj" "$W/acct-z" "$W/acct-b" "$W/home"
+mkdir -p "$W/bin" "$W/proj" "$W/acct-z" "$W/acct-b" "$W/acct-x" "$W/home"
 printf '{"fake":"z"}' > "$W/acct-z/.credentials.json"; printf '{"fake":"b"}' > "$W/acct-b/.credentials.json"  # 选号照界面那一条判（要登录）⇒ 造的凭据，只 stat 在不在
+printf '{"fake":"x"}' > "$W/acct-x/auth.json"  # 另一家（codex）的号：凭据照那一家声明的文件名
 CWD="$W/proj"
 
 # ===== tmux shim：**绝不碰用户真 tmux server** =====
@@ -80,7 +81,8 @@ mkdir -p "$W/home/.cc-monitor/accounts"
 cat > "$W/home/.cc-monitor/accounts/accounts.json" <<JSON
 { "version": 1, "accounts": [
   { "name": "z", "configDir": "$W/acct-z", "isDefault": true },
-  { "name": "b", "configDir": "$W/acct-b", "isDefault": false } ] }
+  { "name": "b", "configDir": "$W/acct-b", "isDefault": false },
+  { "name": "x", "configDir": "$W/acct-x", "isDefault": false, "agent": "codex" } ] }
 JSON
 
 # ===== 受控环境 =====
@@ -95,7 +97,7 @@ base_env() {
   # 于是回落到 `$HOME/.claude/sessions/<pid>.json`。今天只是一次只读 `openat`（ENOENT），
   # 但「测试进程摸到用户真实数据目录」这件事本身不该靠「它恰好只读」来保证。
   # `ANTHROPIC_BASE_URL` 也摘掉：在经中转起的会话里跑时它是开发者环境漏进来的真值，「不设中转地址」那一格会被它顶掉。
-  env -u CLAUDE_CONFIG_DIR -u ANTHROPIC_MODEL -u ANTHROPIC_BASE_URL -u CC_BUS_ID -u CCM_ENV -u CCM_ENV_PROBE \
+  env -u CLAUDE_CONFIG_DIR -u CODEX_HOME -u ANTHROPIC_MODEL -u ANTHROPIC_BASE_URL -u CC_BUS_ID -u CCM_ENV -u CCM_ENV_PROBE \
       CLAUDECODE=1 CLAUDE_CODE_ENTRYPOINT=cli \
       CLAUDE_CODE_SESSION_ID=fake-sid CLAUDE_CODE_CHILD_SESSION=1 \
       TMUX=/faux/socket,1,0 PATH="$W/bin:$PATH" HOME="$W/home" \
@@ -110,7 +112,7 @@ chmod +x "$W/login-shell"
 printf '#!/bin/sh\n' > "$W/bin/claude"; chmod +x "$W/bin/claude"
 
 # ccm 受控的键（其余如 PATH/HOME 是宿主噪声，比了只会假红）。
-CCM_KEYS='^(CLAUDE_CONFIG_DIR|ANTHROPIC_MODEL|CC_BUS_ID|CLAUDECODE|CLAUDE_CODE_ENTRYPOINT|CLAUDE_CODE_SESSION_ID|CLAUDE_CODE_CHILD_SESSION|CCM_ENV_PROBE)='
+CCM_KEYS='^(CLAUDE_CONFIG_DIR|CODEX_HOME|ANTHROPIC_MODEL|CC_BUS_ID|CLAUDECODE|CLAUDE_CODE_ENTRYPOINT|CLAUDE_CODE_SESSION_ID|CLAUDE_CODE_CHILD_SESSION|CCM_ENV_PROBE)='
 ccm_keys() { grep -E "$CCM_KEYS" | LC_ALL=C sort | tr '\n' '|'; }
 
 # 真跑：`--launcher envdump`（`exec env`、不看参数）⇒ stdout 就是**真实**环境。
@@ -148,11 +150,23 @@ echo "===== A 组：--ccm-print 说的 == 真跑做的 ====="
 pair "codex（不清 claude 的嵌套标记）"     -- --ccm-agent codex
 pair "claude（嵌套 env 清理）"             -- --ccm-agent claude
 pair "claude + --account b"               -- --ccm-agent claude --account b
-# Codex 没有账号这一维 ⇒ `--account` 真跑与 print 都明说不收（不静默导出一个它不读的变量）。
-NOACCT="ccm: codex 不可选账号 · 不收 --account / --account-dir · --base 照收"
-ck "codex + --account b：真跑明说不收" "$NOACCT" \
+# Codex 有自己的号（载体 `CODEX_HOME`）：`--account` 点它自家的号 ⇒ 真跑与 print 都注入那个号目录。
+pair "codex + --account x（自家的号）"     -- --ccm-agent codex --account x
+# 点 Claude 的号 ⇒ 选号只认起的那一家（`launch_account::pick`），真跑与 print 同样拒，说出那是哪一家的号。
+# 拒的那一句照文案表取（`bePlan.resolveAccount.otherAgent`），两家的叫法照各家注册表那一行的 `display_name`，都不手抄；
+# 打头的 `ccm: ` 是 ccm 报错的前缀（`control/ccm/mod.rs` 的 `eprintln!("ccm: …")`），不在表里。
+said_of_family() { sed -n 's/^[[:space:]]*display_name: Some("\([^"]*\)"),$/\1/p' "$REPO/src/backend/agents/$1/mod.rs"; }
+OWNER_SAID="$(said_of_family claudecode)"; AGENT_SAID="$(said_of_family codex)"
+OTHERACCT="$(python3 -I -c '
+import json, sys
+zh = json.load(open(sys.argv[1]))["entries"]["bePlan.resolveAccount.otherAgent"]["zh"]
+print("ccm: " + zh.replace("{account}", "b").replace("{owner}", sys.argv[2]).replace("{agent}", sys.argv[3]))
+' "$REPO/src/shared/copy/table.json" "$OWNER_SAID" "$AGENT_SAID" 2>/dev/null)"
+ck "抽取器自检：两家的叫法与表里那一句都取得到（空 ⇒ 下面两格比的是一句残句）" "yes" \
+   "$([ -n "$OWNER_SAID" ] && [ -n "$AGENT_SAID" ] && [ -n "$OTHERACCT" ] && case "$OTHERACCT" in *'{'*) echo no ;; *) echo yes ;; esac)"
+ck "codex + --account b（Claude 的号）：真跑拒" "$OTHERACCT" \
    "$(base_env "$CCM" -- --ccm-agent codex --account b --cwd "$CWD" --launcher "$W/bin/envdump" 2>&1)"
-ck "codex + --account b：--ccm-print 同样不收" "$NOACCT" \
+ck "codex + --account b（Claude 的号）：--ccm-print 同样拒" "$OTHERACCT" \
    "$(base_env "$CCM" -- --ccm-agent codex --account b --cwd "$CWD" --launcher "$W/bin/envdump" --ccm-print 2>&1)"
 pair "claude + --account b + 透传（交给 agent 的词不改环境）" AL3_PASSTHRU=1 -- --ccm-agent claude --account b
 
@@ -161,7 +175,7 @@ pair "claude + --account b + 透传（交给 agent 的词不改环境）" AL3_PA
 # （config_dir 被 unset、四个嵌套标记被 unset）⇒
 # 差分退化成 `"" == ""`。上面那条自检就是逮到这个的（第一次跑当场红）。
 BASE_EXTRA=(CLAUDE_CONFIG_DIR="$W/acct-z")
-pair "codex + --base（没有账号这一维：什么都不做）" -- --ccm-agent codex --base
+pair "codex + --base（只摘 codex 自己的号目录变量 CODEX_HOME，Claude 那一格不动）" -- --ccm-agent codex --base
 BASE_EXTRA=()
 
 # ⚠ **`A″` 组 7 条整组删了**（判词 `N`）。它问的是「`--account b` 拿到的 `configDir` **来自哪一条路**」，
@@ -238,6 +252,8 @@ for _ag in codex claude; do
 done
 ck "--account b 真跑注入其 configDir" "CLAUDE_CONFIG_DIR=$W/acct-b" \
    "$(actual_env -- --ccm-agent claude --account b | tr '|' '\n' | grep '^CLAUDE_CONFIG_DIR=')"
+ck "codex + --account x 真跑注入其号目录（CODEX_HOME）" "CODEX_HOME=$W/acct-x" \
+   "$(actual_env -- --ccm-agent codex --account x | tr '|' '\n' | grep '^CODEX_HOME=')"
 # `--model` 与 `--base` 原先**只有差分**，两边一起坏掉时全绿（审计变异 M6/M7 实证）。
 # §33a 铁律 3 要求每条保住项都配一条绝对断言 —— 这两条就是补上的那两条。
 # `--model` 不再 export `ANTHROPIC_MODEL`，原样交给 agent。

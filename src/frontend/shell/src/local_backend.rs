@@ -17,14 +17,13 @@
 //! # ★ 为什么没有「退避睡眠」
 //!
 //! 崩溃循环的常规解法是 `sleep(backoff)` —— 而那正是定框 C12 要消灭的「**自己醒过来**」的构件。
-//! monitor 的 Rust 侧今天**没有**对应护栏（`polling_registry` 只管 TS 与 `shared/ccm`，
+//! monitor 的 Rust 侧今天**没有**对应护栏（`polling_registry` 只管 TS 与 `src/shared/` 下的 shell，
 //! 它的头注逐字写着 monitor 的 Rust 侧「如实登记为未做，不假装覆盖了」）——
 //! 也就是说这里写一个 `sleep` 不会红。**恰恰因此更该自己守住。**
 //!
 //! 换成**窗口内计数上限**：崩溃时刻记进一个账，`window_ms` 内崩了 `max_crashes` 次
 //! ⇒ [`Decision::GiveUp`]，否则**立刻**重起。天花板是「`max_crashes` 次立即重试」，
 //! 不会无限自旋，而且**一个定时器都不需要**。
-//! ⇒ 🔴 **这一格有人量过**（**沙箱读数、真机未验**）：读数与量具住址住下面 [`SPAWN_ETXTBSY_TRIES`] 头注的出处那一节 —— 它只说明「这条取舍在**这一格**上还有一个好处」，**不是**「`C12` 处处成立」。
 //!
 //! # ★ 等它死：读 stdout 到 EOF，不是 `wait()`、更不是 `try_wait()` 轮询
 //!
@@ -88,7 +87,7 @@ use std::sync::{Arc, Mutex};
 /// ⚠ ③ 的代价如实记：**用户手敲 `cc` 时没有这个 env** ⇒ 那条路**保持今天的本地行为**
 /// （诚实降级，不是报错）。
 ///
-/// ⚠ **这个名字只有一个家** —— `shared/ccm` 读的必须是同一个字面量，
+/// ⚠ **这个名字只有一个家** —— 读它的那一侧（`ccm`）必须是同一个字面量，
 /// 由 `the_backend_bin_env_name_has_exactly_one_home` 钉住（定框 §4）。
 ///
 /// 「找本机后端」的一致性由 `tests/e2e/ccm-contract-parity.sh` 的 **A′/A′d 组**钉住（print↔exec 的 argv 差分）。
@@ -316,224 +315,6 @@ pub type StdioSink = Arc<
     dyn Fn(std::process::ChildStdin, std::process::ChildStdout) -> ConsumerReport + Send + Sync,
 >;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ★★ 起后端那一跳，**「这台机器上它就是起不来」与「这一刻恰好撞上了」分成两个值** ——
-//    装在同一个值里就是同一句话、同一个结局（放弃）。
-//
-// # 为什么这两件事必须分开
-//
-// | 装进去的 | 该怎么办 |
-// |---|---|
-// | 这台机器上它就是起不来（路径错 / 没执行位 / 架构不对 / 被杀毒软件挡了） | 放弃，并说清是哪一种 |
-// | 这一刻恰好撞上了一个**会自己过去**的竞态（`ETXTBSY`） | 等一下再试；试够了再说话 |
-//
-// `ETXTBSY` 的定义是「execve 的目标文件此刻正被某个进程打开着写」。我们自己那把写句柄
-// 在 `extract_embedded_to` 里写完就关了，剩下的唯一来路是**别的线程**：起进程要么 fork
-// 要么 posix-spawn，两者都把父进程此刻打开的 fd 复制一份给子进程，而 close-on-exec 要到
-// 子进程 **execve 那一刻**才生效 ⇒ 「fork 之后、exec 之前」那段窗口里，那个子进程就是
-// 一个握着我们刚写这个文件的写 fd 的进程。此刻 execve 它 = `ETXTBSY`。
-//
-// ★ 同一个成因在别的工具链上是有名的：go 与 cargo 都是靠**对 `ETXTBSY` 有上限地重试**收的。
-//   本仓的**测试台**（`launch.rs` 那一族）与生产段各分一次：
-//   生产段这一份由两个落点（`supervise_with_stdio` 与
-//   `local_backend_host::spawn_detached`）共用这一份，不各写一份。
-//
-// ⚠ **诚实边界（`§4`）**：这一段买的是「撞上了认得出、说得对、会重试」，
-//   **不是**「它不会再发生」。真机上这个竞态多久撞一次，本层量不到。
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// 一条 spawn 错误是不是 `ETXTBSY`。
-///
-/// 🔴 **认的是 `os error 26` 那一半，不是 `Text file busy` 那一半**：后半句由 C 库按
-/// `LC_MESSAGES` 打（glibc 有中文翻译），拿它当判据等于再挂一条**隐式的 locale 前提**。
-/// 前半句是 errno 的十进制，与 locale 无关。口径逐字取自 `launch.rs` 测试台那一处
-/// （`fn spawn_error_is_etxtbsy`），这里是把它**抬出来共用**，不是发明第二份。
-///
-/// ⚠ **本层不许有平台 `cfg`**（`platform_home_guard::platform_forms_live_only_at_home` 的禁针）
-/// ⇒ 这里不写 `#[cfg(not(windows))]`。代价是**已知的**、写在这儿别装作没有：
-/// Windows 上 `io::Error` 的 `os error 26` 是 Win32 的 `ERROR_NOT_DOS_DISK`，
-/// 不是 `ETXTBSY`。撞上它的后果只是**多试几次（上限 [`SPAWN_ETXTBSY_TRIES`]）再换一句话**，
-/// 不改结局；而 Windows 上根本不存在 `ETXTBSY`，所以这条在那边是**多余而无害**，不是错答案。
-pub fn spawn_error_is_etxtbsy(err: &str) -> bool {
-    err.contains("os error 26")
-}
-
-/// 起进程失败之后**分得开的那两件事**。
-///
-/// ⚠ 刻意不是 `Result<Child, String>` 加一个 `bool`：那样同一个事实就有了两份表示，
-/// 而两份表示会漂 —— 那正是这里在治的病。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SpawnFailure {
-    /// **这一刻恰好撞上了**：`ETXTBSY`，而且**试到了上限**。会自己过去，再开一次多半就好。
-    TransientBusy {
-        /// 试了几次（= [`SPAWN_ETXTBSY_TRIES`]，除非调用方另给）。
-        tries: u32,
-        /// 最后一次撞上时的**逐字错误**。
-        ///
-        /// ⚠ 它**只装那一句原话**，不许再把「撞了几次」揉进来 —— 那个数住 `tries`。
-        /// 〔自查逮到的：初版把 `last` 写成 `format!("撞了 {n} 次，最后一次逐字：{e}")`，
-        /// 于是同一个事实有了两份表示，实打出来的那句话是
-        /// 「…最后一次逐字：撞了 8 次，最后一次逐字：Text file busy…」——
-        /// **这里在治的病，长在治它的代码里。**〕
-        last: String,
-    },
-    /// **这台机器上它就是起不来**：路径错 / 没执行位 / 架构不对 / 被挡了。放弃。
-    Broken(String),
-}
-
-/// 允许撞几次 `ETXTBSY` 才算「这一次是真等不到了」。
-///
-/// 🔴 **刻意不照抄 `launch.rs` 的 50** —— 那是**测试台**的口径（50 × 20ms ≈ 1s，
-/// 一条判据慢慢等没人有意见）。**生产段是用户在等一个窗口**，多等一秒是看得见的卡顿。
-///
-/// # 这个数怎么定的（`8`）
-///
-/// 要等的那个窗口是**别人的 fork 到 execve 之间**，`launch.rs` 那一段头注实测记着它是
-/// **亚毫秒级**。而每一次重试**自己就要花时间**：一次失败的 spawn 是一整趟
-/// fork + execve + 回错，在 Linux 上是几百微秒量级 ⇒ 这个上限本身已经跨过那个窗口**好几倍**，
-/// 而**总代价仍是几毫秒**，落在「用户感觉是瞬间」那一档（100ms 界）里，
-/// 而且**远远小于**测试台那条路的 1 秒。
-/// ⇒ 撞上一次几乎必然被头一两次重试吸收；连撞到上限都没让开，那已经不是「等一下就好」，
-/// 该换一句话说给用户听。
-/// ⚠ 它盖过那个窗口多少倍看下一节的读数：**4.9 倍**（空闲）/ **3.6 倍**（满载），不是一个数量级。
-/// **这一段是理由，下一节才是读数**，两者别读成一件事。
-///
-/// 🔴 **上界的另一半理由是「不许把它变成一个定时器」**：见 [`spawn_with_etxtbsy_retry`]
-/// 头注那条 `C12` —— 本模块生产段一个 `sleep` 都不许有，所以这个数不能靠「睡久一点」兜底，
-/// 只能靠「次数够，但每次都是一次真的尝试」。
-///
-/// # 这个数的**出处**（沙箱实测）
-///
-/// 〔出处〕上面几节是**理由**，不是读数。读数是这样打出来的：
-/// 量具 `tests/evidence/etxtbsy-window.py`（读数落在同名 `.out`）。
-/// 台架 = 真造那个竞态：一个进程攥着目标文件的写 fd（`fork` 继承来的 —— `CLOEXEC` 要到它
-/// `execve` 那一刻才生效），我们自己那把立刻关掉，然后**立即重试**到 `execve` 成功，
-/// 量「从关掉写 fd 到 exec 成功」。容器内 · Linux 7.0.0-30 · glibc 2.39 · nproc 16 ·
-/// 每格 200–300 个样本 · 时长一律单调钟。
-///
-/// | 量的是什么 | 空闲 | 满载（16 个自旋进程） |
-/// |---|---|---|
-/// | 一个孩子 `fork`→`execve` 那个窗口的**上界**（= 一次 `posix_spawn` 的墙钟：glibc 用 `CLONE_VFORK`，调用线程被挂起到那个孩子 `execve` 为止） | p50 148 µs · p99 212 µs | p50 2978 µs · p99 4307 µs |
-/// | **8 次立即重试打完**要多久 | p50 1046 µs · p99 2536 µs | p50 15319 µs · p99 24414 µs |
-/// | ⇒ 这个上限盖住那个窗口上界几倍（重试 p50 ÷ 窗口 p99） | **4.9 倍** | **3.6 倍** |
-///
-/// ★ **最值钱的是第三行**：满载时那个窗口涨了约 20 倍，而重试的代价**同步**涨了约 15 倍
-/// ⇒ 「按次数封顶」这把尺子的**单位与被等的那件事是同一种物理操作**（两边都是一趟
-/// fork+execve），于是它**跟着机器一起变慢**，倍数只从 4.9 掉到 3.6。
-/// 一个固定时长的退避没有这条性质：按空闲调好就在满载时不够，按满载调好就在空闲时白等。
-/// ⇒ `C12` 那条「按次数、不按时间」在这一格上买到的**不只是「没有定时器」**，
-/// 还有「这把尺子自己会随负载伸缩」。
-///
-/// ⚠ **它买不到的三样，别读大**：
-/// ① 这是**沙箱**读数 —— 真机的负载 / 文件系统 / 内核版本未必同值；
-/// ② 上表第一行是那个窗口的**上界**，不是窗口本身；
-/// ③ 泄漏方那个孩子若在 `fork` 与 `execve` 之间**还要干活**（量具的臂 B：一个 CPython 子进程，
-///    窗口 ≈ 1.2 ms），这个上限**盖不住** —— 空闲实测只有 4.7% 落在预算内（n=300）。
-///    那一档今天靠的是**本仓一处 `pre_exec` 都没有** ⇒ 孩子在 fork 与 exec 之间不干活，
-///    **不是**靠这个数。口径写死（`grep -rn "pre_exec" --include=*.rs`，
-///    分母 = 整棵仓、含测试段）：在 `39ae7fd` 上 **0 命中**；改之后是 **1 处，
-///    而那一处就是这句话自己** —— 剥掉注释行仍是 0。
-///    ⚠ **这个前提今天没有判据守着**：有人加一处 `pre_exec` 不会红，而这个数就得重量。
-///
-/// 🔴 **改这个数就要同改这一节** —— 判据
-/// `the_retry_budget_number_has_a_measured_origin_pinned_to_it` 钉着这件事。
-pub const SPAWN_ETXTBSY_TRIES: u32 = 8;
-
-/// 有上限地重试，**只对 `ETXTBSY`**；别的错**一次都不重试**。
-///
-/// 重试一个真缺陷 = 把它变成偶尔绿的偶发红，那比今天更糟。
-///
-/// `attempt` 与 `backoff` 都是注入的：**这一层唯一的决策是「哪种错该再试一次」**，
-/// 而 spawn 本身与「两次之间做什么」没什么可判的 ⇒ 抽出来才能不起真进程就单测。
-/// 生产段的那一份接线是 [`spawn_with_etxtbsy_retry`]。
-///
-/// ⚠ **最后一次失败之后不叫 `backoff`** —— 那一次的等待没有任何人会用到，
-/// 而它是用户真的在等的时间。⇒ `backoff` 恰好被调用 `tries - 1` 次。
-pub fn spawn_retrying_etxtbsy<T>(
-    tries: u32,
-    mut attempt: impl FnMut() -> Result<T, String>,
-    mut backoff: impl FnMut(u32),
-) -> Result<T, SpawnFailure> {
-    let budget = tries.max(1);
-    let mut last = String::new();
-    for i in 0..budget {
-        match attempt() {
-            Ok(v) => return Ok(v),
-            Err(e) if spawn_error_is_etxtbsy(&e) => {
-                // ⚠ 只存那一句原话；「撞了几次」是 `TransientBusy::tries`，不在这里再存一份。
-                last = e;
-                if i + 1 < budget {
-                    backoff(i);
-                }
-            }
-            Err(e) => return Err(SpawnFailure::Broken(e)),
-        }
-    }
-    Err(SpawnFailure::TransientBusy {
-        tries: budget,
-        last,
-    })
-}
-
-/// 生产段两个落点共用的那一跳：起一个进程，并把两件事**分开交回**。
-///
-/// ⚠ 刻意**不**把配置那一半（`Command` 怎么建、env / stdio 怎么设）搬进来：
-/// 那两处的配置是各自的领地（一处要管子、一处要 `process_group`）；
-/// 起进程的三条策略只在 `spawn_managed` 定，由注入的 `spawn` 带进来。
-///
-/// # 🔴 两次尝试之间**今天什么都不做**，而这不是疏忽 —— 写清楚，别让下一个人以为是
-///
-/// go / cargo 那条公认的解法是「**有上限地重试 + 每次之间睡一小会儿**」，而这里只有前半。
-/// 后半今天做不了，理由是**两道现成的闸**，两道这里都不改：
-/// - `nothing_in_the_production_path_wakes_itself_up`（本文件，`C12` 的源码钉）：
-///   **本模块生产段一个 `thread::sleep` 都不许有**；
-/// - `src/frontend/clippy.toml` 的定时器那一组：monitor 里**每一处** `sleep` 都要就地放行、
-///   在那一处的放行理由里写清等什么、多久一步、上限多少。
-///
-/// ⇒ 加一句退避 = 同时动那两处。**如实记为没做到，交回 PM 裁。**
-/// ⚠ **别读大**：没有退避买到的仍然是真的（重试本身要花几百微秒一趟、次数上限是真的、
-/// 两件事真的分开了），但它**比 go/cargo 那条路弱** —— 机器很忙、那个孩子迟迟排不上
-/// execve 时，8 趟连着打完可能仍在同一个窗口里。这一格**量不到**（要真机 + 真负载），
-/// 原样进诚实边界。
-///
-/// `backoff` 这个注入点是**特意留着的**：PM 裁定之后，接上去只改这一行。
-/// ⚠ **`spawn` 是注入进来的**：起进程那一下要回答三个问题
-/// （要不要窗口 · 要不要随我死 · 错误往哪去），而那三个答案要落成**平台原语**
-/// （`creation_flags` / `process_group` / Job Object）—— 它们进不了本层
-/// （`platform_home_guard::platform_forms_live_only_at_home` 的禁针，没有例外表）。
-/// ⇒ 本层只知道「起进程这一下由宿主给的这个东西来做」（`Command` 由调用方经 `spawn_managed::command` 造好交进来）。
-pub fn spawn_with_etxtbsy_retry(
-    cmd: &mut std::process::Command,
-    spawn: &crate::spawn_managed::ManagedSpawn,
-) -> Result<crate::spawn_managed::ManagedChild, SpawnFailure> {
-    spawn_retrying_etxtbsy(
-        SPAWN_ETXTBSY_TRIES,
-        || spawn(cmd).map_err(|e| e.to_string()),
-        // 今天是空的 —— 理由见上方那一段，**不是忘了写**。
-        |_| {},
-    )
-}
-
-/// 撞上那个会自己过去的竞态、而且试到上限之后**该说的那句话**（最后一次的原话进复制详情）。
-///
-/// 🔴 **只此一份**：两个落点共用它。各写一份，两句话就会漂，
-/// 而「用户看到的那句话」正是这里唯一交付给用户的东西。
-///
-/// 它与「起不来」那句的分工：这一句必须让用户读得出**再开一次多半就好**，
-/// 那一句必须让用户读得出**这台机器上今天就是起不来**。
-pub fn etxtbsy_gave_up(bin: &Path, tries: u32, last: &str) -> Said {
-    Said::with_raw(
-        copy_text(
-            "rsLocalBackend.etxtbsy.gaveUp",
-            &[
-                ("bin", &(bin.display()).to_string()),
-                ("tries", &tries.to_string()),
-            ],
-        ),
-        last,
-    )
-}
-
 /// 一次子进程生命周期里，**最多往滚动日志搬这么多字节**的 stderr。
 ///
 /// 🔴 它**不是**「读到这里就不读了」—— 那是把病换个方向犯（见 [`drain_child_stderr_into_log`]
@@ -717,29 +498,16 @@ pub fn supervise_with_stdio(
             for (k, v) in &envs {
                 cmd.env(k, v);
             }
-            // ★★ 这一跳**分得开两件事**（见 `spawn_error_is_etxtbsy` 上方那一段）：
-            //    「这台机器上它就是起不来」与「这一刻恰好撞上了一个会自己过去的竞态」
-            //    不是同一句话、同一个结局。**分类那一份是共用的，不在这里再写一遍。**
-            let mut spawned = match spawn_with_etxtbsy_retry(&mut cmd, &*spawn) {
+            // 起一次：放下来的那份由 `own_fs::OwnBin::stage` 经子进程写，本进程从没有它的写端，起它不撞 ETXTBSY。
+            let mut spawned = match spawn(&mut cmd) {
                 Ok(c) => c,
-                // 这一刻恰好撞上了 —— 而且试到了上限。换一句话，别说成「起不来」。
-                Err(SpawnFailure::TransientBusy { tries, last }) => {
-                    let said = etxtbsy_gave_up(&bin, tries, &last);
-                    let raw = Some(said.raw());
-                    on_event(SuperviseEvent::GaveUp {
-                        reason: said.said,
-                        raw,
-                    });
-                    return;
-                }
-                // 这台机器上它就是起不来 —— **今天那句照旧，一个字不改**。
-                Err(SpawnFailure::Broken(e)) => {
+                Err(e) => {
                     on_event(SuperviseEvent::GaveUp {
                         reason: copy_text(
                             "rsLocalBackend.supervise.spawnFailed",
                             &[("bin", &(bin.display()).to_string())],
                         ),
-                        raw: Some(e),
+                        raw: Some(e.to_string()),
                     });
                     return;
                 }
@@ -1544,10 +1312,6 @@ pub(crate) fn local_stdio_consumer(
         );
     }
 
-    // 流没了 ⇒ 经它开的传输一律带原因收场（后端的票表随那条流一起撤了；不让看的人干等到超时）。
-    if let Some(mine) = registered.as_ref() {
-        crate::transfer_relay::fail_owned_by(mine, &copy_text("reason.local.linkLost", &[]));
-    }
     // 告诉本机内容消费者这条流结束了（冲掉残批、下一条流换新的收口）。
     route.out.stream_ended();
     // ★ **「它跟我们说过话没有」的唯一变真处就是上面那一行 `registered = Some(client)`**

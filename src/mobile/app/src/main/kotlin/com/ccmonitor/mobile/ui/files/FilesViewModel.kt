@@ -4,15 +4,19 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ccmonitor.mobile.core.claude.link.FilesLs
 import com.ccmonitor.mobile.core.claude.link.FilesReadText
+import com.ccmonitor.mobile.core.claude.link.RawJson
 import com.ccmonitor.mobile.core.claude.link.RemotePath
 import com.ccmonitor.mobile.core.claude.link.over
 import com.ccmonitor.mobile.core.claude.link.retry
 import com.ccmonitor.mobile.core.claude.link.seen
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.HostRepository
+import com.ccmonitor.mobile.core.rs.Core
 import com.ccmonitor.mobile.core.ui.feedback.Notice
+import com.ccmonitor.mobile.core.wire.Wire
 import com.ccmonitor.mobile.core.wire.gen.BatchAnswer
 import com.ccmonitor.mobile.core.wire.gen.BatchLine
+import com.ccmonitor.mobile.core.wire.gen.ChmodAsk
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.PhoneMenu
 import com.ccmonitor.mobile.core.wire.gen.PreviewGate
@@ -20,6 +24,7 @@ import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.link.Problem
 import com.ccmonitor.mobile.ssh.HostConnector
 import com.ccmonitor.mobile.ssh.JumpBroken
+import com.ccmonitor.mobile.ssh.machineName
 import com.ccmonitor.mobile.ui.chat.newsession.DirBrowser
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -132,8 +137,21 @@ class FilesViewModel(
     /** 选中的那几行（照列表的先后）。 */
     fun picked(): List<FilesLs.Entry> = _selection.value.of(_listing.value.entries)
 
-    /** 不在选择模式时点一下这一行做什么（核心照表给：`open` · `preview` · `download`；什么都不做 ⇒ `null`）。 */
-    fun tapOf(e: FilesLs.Entry): String? = feed.picks(listOf(e.row))?.tap
+    /**
+     * 不在选择模式时点一下这一行做什么（核心照表给：`open` · `preview` · `download`；什么都不做 ⇒ `null`），
+     * 连同菜单里那一项灰着时的那一句（[Tap.why]，点了照说、不做）。
+     */
+    fun tapOf(e: FilesLs.Entry): Tap? {
+        val menu = feed.picks(listOf(e.row)) ?: return null
+        val id = menu.tap ?: return null
+        return Tap(id, (menu.bar + menu.more).firstOrNull { it.id == id }?.takeUnless { it.enabled }?.why)
+    }
+
+    /** 点一行：那个动作 · 菜单里那一项灰着时为什么（能点 ⇒ `null`）。 */
+    data class Tap(
+        val id: String,
+        val why: String?,
+    )
 
     private val _busy = MutableStateFlow(false)
     val busy: StateFlow<Boolean> = _busy.asStateFlow()
@@ -196,10 +214,10 @@ class FilesViewModel(
             when (val at = ops.open(text).onFailure(::say).getOrNull() ?: return@launch) {
                 is FileOps.Opening.Dir -> enter(at.dir)
                 is FileOps.Opening.File -> {
-                    // 名字与预览那道门都在它那一行上；不在这一屏（截了）⇒ 门不明，读那一步说那一句。
-                    val e = enter(at.dir)?.entries?.firstOrNull { it.path == at.file }
-                    if (e != null && e.preview == null) return@launch
-                    preview(at.file, e?.preview).onSuccess { _opened.tryEmit((e?.name ?: at.file.shown) to it) }
+                    // 名字与预览那道门都在它那一行上；不在这一屏（截了）· 不预览 ⇒ 停在它所在的目录。
+                    val e = enter(at.dir)?.entries?.firstOrNull { it.path == at.file } ?: return@launch
+                    val gate = e.preview ?: return@launch
+                    preview(at.file, gate).onSuccess { _opened.tryEmit(e.name to it) }
                 }
             }
         }
@@ -238,7 +256,7 @@ class FilesViewModel(
     }
 
     /** 这台在屏上的名字。 */
-    suspend fun machine(): String = hostRepo.get(hostId)?.label ?: hostId
+    suspend fun machine(): String = hostRepo.machineName(hostId)
 
     private fun say(e: Throwable) {
         if (e is CancellationException) throw e
@@ -372,8 +390,15 @@ class FilesViewModel(
         _batch.value = null
     }
 
-    /** 改权限那一框的起点：此刻的权限位（八进制）；那台没有这一说 · 读不到 ⇒ `null`。 */
-    suspend fun modeText(entry: FilesLs.Entry): String? = ops.mode(entry.path).getOrNull()?.toString(OCTAL)
+    /**
+     * 改权限那一框：逐项读此刻的权限位（那台没有这一说 · 读不到 ⇒ `null`），交核心写好标题 · 那一行 · 预填（[Core.chmodAsk]）。
+     * 核心那一行认不出 ⇒ `null`（不摆框）。
+     */
+    suspend fun chmodAsk(entries: List<FilesLs.Entry>): ChmodAsk? {
+        val modes = entries.map { ops.mode(it.path).getOrNull() }
+        val line = Core.chmodAsk(RawJson.write(mapOf("names" to entries.map { it.name }, "modes" to modes)))
+        return Wire.read<ChmodAsk>(line)
+    }
 
     /** 上传 [name] 进当前目录（[fd] 现开所选那一份、交出描述符）：一组，全过程在核心（同删 · 复制）；开不了本机那一份 ⇒ 那一句、不起组。 */
     fun upload(
@@ -381,10 +406,10 @@ class FilesViewModel(
         fd: () -> Int,
     ) = group { dir -> withContext(io) { ops.upload(dir, name, fd) }.onFailure(::say).getOrNull() }
 
-    /** 照那一行的预览门预览（[FilePreview.show]：文本 · 图 · 不许 · 门不明都在那一处分）。没成 ⇒ 已说那一句。 */
+    /** 照那一行的预览门预览（[FilePreview.show]：文本 · 图 · 不许都在那一处分）。没成 ⇒ 已说那一句。 */
     suspend fun preview(
         path: RemotePath,
-        gate: PreviewGate?,
+        gate: PreviewGate,
     ): Result<FilePreview.Shown> {
         _busy.value = true
         return previews.show(path, gate).also {
@@ -396,11 +421,11 @@ class FilesViewModel(
     /** 照那道门读那一份文本来编辑：门不许 ⇒ 说那台写好的那一句、不读；没成 ⇒ 已说那一句。 */
     suspend fun readText(
         path: RemotePath,
-        gate: FilesLs.Open?,
+        gate: FilesLs.Open,
     ): Result<FilesReadText.Text> {
-        val cap = gate?.cap
+        val cap = gate.cap
         if (cap == null) {
-            val said = gate?.said ?: copyText("rsFilewinSource.gates.unlisted")
+            val said = gate.said.orEmpty()
             _events.tryEmit(Notice(said))
             return Result.failure(IllegalStateException(said))
         }
@@ -455,8 +480,6 @@ class FilesViewModel(
     }
 
     private companion object {
-        const val OCTAL = 8
-
         /** 编号还没回来时先收着几组的那一格。 */
         const val EARLY_KEPT = 16
 

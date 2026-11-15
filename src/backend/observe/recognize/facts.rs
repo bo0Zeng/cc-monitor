@@ -44,6 +44,7 @@
 use crate::agents::beat::{contains, one_line, Act, Beat, Side, StopWhy, Watch};
 use crate::common::cells::Words;
 use crate::wire::needs::NeedAt;
+use cmd_wire::needs::NeedsBase;
 pub use cmd_wire::needs::{Needs, NeedsKind};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -81,15 +82,19 @@ pub struct SessionFacts {
     pub forked_from: Option<String>,
     /// 写类工具碰过的文件（原样，可能相对 / Windows 路径），近因序：最近碰的在末尾。
     pub touched_files: Vec<String>,
+    /// 监控板 peek 那一格「改过的文件 N」（跟着 `touched_files` 写好，界面照抄）；一个都没碰过 ⇒ `null`。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub touched_text: Option<String>,
     /// 最后一条带有效 usage 的 assistant 记录；一条都没有 ⇒ `null`。
     pub usage: Option<UsageFact>,
-    /// `usage.model` 写给人看的名字（那一家的模型那一处给：`agents::model_text`）；没有 usage · 认不出是哪一家 · 这一家认不出这个值 ⇒ `null`
+    /// `usage.model` 写给人看的名字（那一家的模型那一处给：起会话面 `LaunchFace::model_text`）；没有 usage · 认不出是哪一家 · 这一家认不出这个值 ⇒ `null`
     /// （界面照抄，不自己拼）。每次现给，不累加。
     pub model_text: Option<Words>,
     /// 此刻是换模型清单里哪一项（原值，抽屉勾它）：终端没了时记下的那一项；否则那一家把 `usage.model` 认成清单里唯一对得上的那一项
-    /// （`agents::model_pick`）；认不出 · 对上不止一项 ⇒ `null`。每次现给，不进续算表。
+    /// （起会话面 `LaunchFace::model_pick`）；认不出 · 对上不止一项 ⇒ `null`。每次现给，不进续算表。
     pub model_pick: Option<String>,
-    /// 会话的项目目录（会话起在哪个目录）：适配层读记录开头给（`agents::project_dir_of`），读到即锁定；
+    /// 会话的项目目录（会话起在哪个目录）：适配层读记录开头给（`agents::project_dir_among`），读到即锁定；
     /// 开头里还没有 ⇒ `null`，下一次再读。与会话宣告那一帧的 `project_dir` 同一个函数。
     pub project_dir: Option<String>,
     /// `project_dir` 的显示形：那台按自己的家目录写好的 `~/…`（`platform::paths::home_short`，写法同 `AccountRow.configDirShown`），
@@ -145,7 +150,7 @@ pub struct SessionFacts {
     pub notice_log: NoticeLog,
     /// 此刻的许可档（最后一条许可档记录写的那一档，原样）；没有 ⇒ `null`。
     pub permission_mode: Option<String>,
-    /// 同一档写给人看的那一句（那一家的权限档那一处给：`agents::permission_mode_text`，切档回包的 `modeText` 同一处）；
+    /// 同一档写给人看的那一句（那一家的权限档那一处给：起会话面 `PermissionFace::text_of`，切档回包的 `modeText` 同一处）；
     /// 没有档 · 认不出是哪一家 · 这一家认不出这一档 ⇒ `null`（界面照抄，不自己拼）。每次现给，不累加。
     pub permission_mode_text: Option<Words>,
     /// 全会话用量（按请求去重）；一条带用量的回复都没有 ⇒ `null`。
@@ -192,12 +197,13 @@ pub struct SessionFacts {
 }
 
 /// **状态一句的唯一一处**（填进脸上 `line` · `clock` · `peek`，[`crate::wire::SessionFaceExt::saying`]）：`activity` ＝ 造脸那一处判好的那一态
-/// （不活 ⇒ `None` ⇒ 没有这一句）。字是定格的、不带时长（推出去的帧不因钟走而变）；时长只在会走的那一截里，由出口按此刻填。
+/// （不活 ⇒ `None` ⇒ 没有这一句）；`needs` ＝ 此刻在等的那一份（[`Needs`]：等的种类与何时起等）。字是定格的、不带时长（推出去的帧不因钟走而变）；时长只在会走的那一截里，由出口按此刻填。
 /// 在等 ⇒ 等的种类（会走的：已等多久；悬停句：等的那一步）；在跑 ⇒ 调用的那一步（会走的：跑了多久；悬停句：那一步）；
 /// 闲着 ⇒ 空闲（会走的：完成多久前；悬停句：最后一句）；后台 ⇒ 后台那一句（悬停句：最后一句）。拿不到时刻 ⇒ 不带会走的。
 pub fn line_of(
     activity: Option<crate::agents::SessionActivity>,
     f: &SessionFacts,
+    needs: Option<&Needs>,
 ) -> Option<crate::wire::StateLine> {
     use crate::agents::SessionActivity as A;
     let a = activity?;
@@ -211,8 +217,7 @@ pub fn line_of(
     let last = || f.last_say.as_ref().map(|l| Words(l.text.clone()));
     let (text, clock, peek) = match a {
         A::NeedsYou => {
-            let n = f.needs.as_ref();
-            let kind = n.map_or_else(
+            let kind = needs.map_or_else(
                 || copy_core::copy_text("beSession.needs.unknown", &[]),
                 |n| n.text.0.clone(),
             );
@@ -222,11 +227,11 @@ pub fn line_of(
                     &[("kind", &kind), ("waited", w)],
                 )
             };
-            let c = ticking(n.and_then(|n| n.since_ms), &line);
+            let c = ticking(needs.and_then(|n| n.since_ms), &line);
             (
                 Words(kind.clone()),
                 c,
-                n.and_then(|n| n.what.clone()).map(Words),
+                needs.and_then(|n| n.what.clone()).map(Words),
             )
         }
         A::Working => match f.pending.first() {
@@ -269,7 +274,14 @@ pub fn line_of(
             }
         }
     };
-    Some(crate::wire::StateLine { text, clock, peek })
+    // 待答请求那一样：在等人、配好的那一份交了 `ask`（界面答不答得了只在 `Asked::manual` 判过一次，这里只读结果）。
+    let asks = a == A::NeedsYou && needs.is_some_and(|n| n.ask().is_some());
+    Some(crate::wire::StateLine {
+        text,
+        clock,
+        peek,
+        asks,
+    })
 }
 
 /// 会话血缘里的另一条会话（会话头「由 … 启动」· 「子会话 N」那一列）：编号 · 叫它什么 · 此刻的整份脸 · 隐不隐藏（判定住 `history/session_hidden.rs`）。
@@ -675,13 +687,19 @@ pub use crate::history::live_table::PidWait;
 /// - 要填 / 要答 ⇒ 回答；联网 ⇒ 放行（那一步多半就是要联网的那条命令）；
 /// - 协作请求 · 会话目标 · 别的对话框 ⇒ 各一种，不挂记录里的哪一步（那一步不在这份记录里 / 不是一步工具调用）。
 ///   这几种是顶上那个框：底下就算有提问 / 计划，也是先答它。
-pub fn needs_of(agent: &str, pending: &[PendingCall], wait: Option<&PidWait>) -> Option<Needs> {
+pub fn needs_of(
+    agent: Option<&str>,
+    pending: &[PendingCall],
+    wait: Option<&PidWait>,
+) -> Option<Needs> {
     use crate::agents::beat::CallAsk;
     use crate::agents::WaitOn as W;
     let wait = wait?;
     let first = pending.first();
-    let ask_is =
-        |want: CallAsk| move |p: &&PendingCall| crate::agents::call_ask(agent, &p.name) == want;
+    // 认不出是哪一家的（`None`）⇒ 不问哪个工具是提问 / 计划。
+    let ask_is = |want: CallAsk| {
+        move |p: &&PendingCall| agent.is_some_and(|a| crate::agents::call_ask(a, &p.name) == want)
+    };
     let asks = pending.iter().find(ask_is(CallAsk::Answer));
     let plan = pending.iter().find(ask_is(CallAsk::Plan));
     let (kind, call) = match wait.waiting_for {
@@ -696,76 +714,139 @@ pub fn needs_of(agent: &str, pending: &[PendingCall], wait: Option<&PidWait>) ->
         Some(W::Dialog) => (NeedsKind::Choose, None),
     };
     let waited_ms = wait.since_ms.map(|t| wait.read_at_ms.saturating_sub(t));
-    Some(Needs {
-        kind,
-        tool: call.map(|c| c.name.clone()),
-        call: call.map(|c| c.id.clone()),
-        what: call.and_then(|c| c.what.clone()),
-        since_ms: wait.since_ms,
-        text: needs_words(kind),
-        head: needs_head(kind, call.map(|c| c.name.as_str())),
-        head_code: match kind {
-            NeedsKind::Approve | NeedsKind::Answer | NeedsKind::Network => {
-                call.and_then(|c| c.what.clone())
-            }
-            _ => None,
+    // 配不配挂着的请求在顶层壳（`faces::read_face` 查常驻进程那一份登记表，经 [`dress_ask_with`] 配）；
+    // 还没配之前就是「只能在终端里答」那一句（此刻没有挂着的请求可答）。
+    let needs = Needs::new(
+        NeedsBase {
+            kind,
+            tool: call.map(|c| c.name.clone()),
+            call: call.map(|c| c.id.clone()),
+            what: call.and_then(|c| c.what.clone()),
+            text: needs_words(kind),
+            head: needs_head(kind, call.map(|c| c.name.as_str())),
+            head_code: match kind {
+                NeedsKind::Approve | NeedsKind::Answer | NeedsKind::Network => {
+                    call.and_then(|c| c.what.clone())
+                }
+                _ => None,
+            },
+            rank: needs_rank(kind, waited_ms),
+            waited_ms,
+            since_ms: wait.since_ms,
         },
-        tone: crate::common::cells::Tone::Need,
-        rank: needs_rank(kind, waited_ms),
-        waited_ms,
-        // 配不配挂着的请求在顶层壳（`faces::read_face` 查常驻进程那一份登记表，经 [`dress_ask_with`] 配）。
-        ask: None,
-        manual_text: None,
-    })
+        manual_terminal(),
+    );
+    Some(needs)
 }
 
 /// 会话的 `needs` 配上挂着的待答请求 `ask`（最早挂上的那一条；登记表住常驻进程，`control::asks`，由顶层壳查好交进来）：
-/// 有 ⇒ `needs.ask` 是它（pidfile 没说在等 —— 挡着终端的那种 —— 就照它补出一份）；pidfile 说在等却没有 ⇒ `ask: null`、`manualText` 写好「只能在终端里答」。
+/// 有、界面答得了 ⇒ `needs.ask` 是它；有、界面答不了（[`crate::agents::asks::Asked::manual`]，挡着终端、那一家又认不得终端里那个框的那一种）⇒ `ask: null`、`manualText` 是那一句（「在终端里答」）；
+/// pidfile 没说在等就照它补出一份（从挂上那一刻起等）。pidfile 说在等却没有 ⇒ `ask: null`、`manualText` 写好「只能在终端里答」。
+/// 挂着请求 ⇒ 种类与抬头照那条请求（[`asked_needs`]），pidfile 也在等时不例外：那时只有起点与已等多久照 pidfile（脸上那一句同一个起点），
+/// 记录里那一步同一个工具才挂。
 pub fn dress_ask_with(
     needs: Option<Needs>,
-    ask: Option<crate::agents::asks::Ask>,
+    ask: Option<crate::agents::asks::Asked>,
     now_ms: u64,
 ) -> Option<Needs> {
-    use crate::agents::AskKind;
     match (needs, ask) {
-        (Some(mut n), Some(a)) => {
-            n.manual_text = None;
-            n.ask = Some(a);
-            Some(n)
+        (Some(n), Some(a)) => {
+            let call = n
+                .call
+                .clone()
+                .filter(|_| n.tool.as_deref() == Some(a.ask.tool.as_str()));
+            Some(asked_needs(a, call, n.waited_ms, n.since_ms))
         }
         (Some(mut n), None) => {
-            n.ask = None;
-            n.manual_text = Some(Words(copy_core::copy_text("beAsk.manual.terminal", &[])));
+            n.manual(manual_terminal());
             Some(n)
         }
-        (None, Some(a)) => {
-            let kind = match a.kind {
-                AskKind::Approve => NeedsKind::Approve,
-                AskKind::Question => NeedsKind::Answer,
-                AskKind::Plan => NeedsKind::Plan,
-            };
-            let waited = now_ms.saturating_sub(a.since_ms);
-            Some(Needs {
-                kind,
-                tool: Some(a.tool.clone()),
-                call: None,
-                what: a.what.clone(),
-                since_ms: Some(a.since_ms),
-                text: needs_words(kind),
-                head: needs_head(kind, Some(&a.tool)),
-                head_code: match kind {
-                    NeedsKind::Approve | NeedsKind::Answer => a.what.clone(),
-                    _ => None,
-                },
-                tone: crate::common::cells::Tone::Need,
-                rank: needs_rank(kind, Some(waited)),
-                waited_ms: Some(waited),
-                ask: Some(a),
-                manual_text: None,
-            })
+        (None, Some(asked)) => {
+            let since_ms = asked.since_ms;
+            let waited = now_ms.saturating_sub(since_ms);
+            Some(asked_needs(asked, None, Some(waited), Some(since_ms)))
         }
         (None, None) => None,
     }
+}
+
+/// **挂着请求时那一份需手动**（唯一一处）：种类 · 工具 · 主参数 · 字 · 抬头照那条请求，再经写口配上它（[`put_ask`]）。
+/// `call` ＝ 记录里那一步；起点与已等多久由调用方给。
+fn asked_needs(
+    asked: crate::agents::asks::Asked,
+    call: Option<String>,
+    waited_ms: Option<u64>,
+    since_ms: Option<u64>,
+) -> Needs {
+    use crate::agents::AskKind;
+    let a = &asked.ask;
+    let kind = match a.kind {
+        AskKind::Approve => NeedsKind::Approve,
+        AskKind::Answer => NeedsKind::Answer,
+        AskKind::Plan => NeedsKind::Plan,
+    };
+    // 先造成答不了那一态，下面 `put_ask` 经写口照挂着的那一条配。
+    let mut needs = Needs::new(
+        NeedsBase {
+            kind,
+            tool: Some(a.tool.clone()),
+            call,
+            what: a.what.clone(),
+            text: needs_words(kind),
+            head: needs_head(kind, Some(&a.tool)),
+            head_code: match kind {
+                NeedsKind::Approve | NeedsKind::Answer => a.what.clone(),
+                _ => None,
+            },
+            rank: needs_rank(kind, waited_ms),
+            waited_ms,
+            since_ms,
+        },
+        manual_terminal(),
+    );
+    put_ask(&mut needs, asked);
+    needs
+}
+
+/// 「只能在终端里答」那一句：还没配上挂着的请求、或没有挂着的可答。
+fn manual_terminal() -> Words {
+    Words(copy_core::copy_text("beAsk.manual.terminal", &[]))
+}
+
+/// 挂着的那一条配进 `needs`：界面答得了 ⇒ `ask` 与两格抬头；答不了 ⇒ 只交那一句（`manualText`），`ask` 不交。
+fn put_ask(n: &mut Needs, a: crate::agents::asks::Asked) {
+    if let Some(why) = a.manual() {
+        n.manual(why);
+        return;
+    }
+    let head = ask_head(&n.head, &a.ask);
+    let page = ask_page(&n.head, &a.ask);
+    n.answer_with(a.ask, head, page);
+}
+
+/// 一屏一题那一端的抬头（[`Needs::ask_page`] 的唯一一处）：提问那一种 ⇒ 共几题写好、第几题留空；别的 ⇒ 缺。
+fn ask_page(head: &Words, a: &crate::agents::asks::Ask) -> Option<Words> {
+    (!a.questions.is_empty()).then(|| {
+        Words(copy_core::copy_text(
+            "mobAsk.head.page",
+            &[
+                ("head", &head.0),
+                ("i", "{i}"),
+                ("n", &a.questions.len().to_string()),
+            ],
+        ))
+    })
+}
+
+/// 答题块抬头那一句（[`Needs::ask_head`] 的唯一一处）：钉条第一行，提问那一种再带题数。
+fn ask_head(head: &Words, a: &crate::agents::asks::Ask) -> Words {
+    if a.questions.is_empty() {
+        return head.clone();
+    }
+    Words(copy_core::copy_text(
+        "askBlock.head.questions",
+        &[("head", &head.0), ("n", &a.questions.len().to_string())],
+    ))
 }
 
 /// 一种「需手动」写好的字（唯一一处：会话事实的 `needs.text` · 轮换在用名单都由它写）。
@@ -1049,8 +1130,11 @@ pub(crate) fn context_limit(
 }
 
 /// 一个完整行（不含结尾 `\n`，起点在 `start`）累加到 `facts` 上：先过快路（[`could_matter`]），过了才解析。没解析过这一行的读者（事实尾巴接着读）走它。
-/// `kind` ＝ 这份记录是哪一家的。通知组要看这一行画成什么，只在它可能动通知组时才翻成通用记录（[`notice_may`]）。
-pub(crate) fn note_line(facts: &mut SessionFacts, kind: &str, line: &[u8], start: u64) {
+/// `kind` ＝ 这份记录是哪一家的；认不出（`None`）⇒ 不问哪一家，这一行什么都不记。通知组要看这一行画成什么，只在它可能动通知组时才翻成通用记录（[`notice_may`]）。
+pub(crate) fn note_line(facts: &mut SessionFacts, kind: Option<&str>, line: &[u8], start: u64) {
+    let Some(kind) = kind else {
+        return;
+    };
     let notice = notice_may(kind, line, facts);
     if !notice && !could_matter(kind, line, facts) {
         return;
@@ -1088,10 +1172,11 @@ pub(crate) fn record_of(
     start: u64,
 ) -> Option<crate::agents::record::Record> {
     let parse = crate::agents::record_face(kind)?.parse;
-    parse(&crate::agents::Line::of(kind, text, start))
+    parse(&crate::agents::Line::of(Some(kind), text, start))
         .ok()
         .flatten()
         .and_then(|t| t.record)
+        .map(|b| b.rec)
 }
 
 /// 一条通用记录记进通知组（口径的唯一住址）：收场通知 ⇒ 组接得上就并进最后一组、否则起一组（超 [`NOTICE_KEEP`] 丢最早的）；
@@ -1578,6 +1663,10 @@ fn touch(f: &mut SessionFacts, p: &str) {
     if f.touched_files.len() > TOUCHED_FILES_KEEP {
         f.touched_files.remove(0);
     }
+    f.touched_text = Some(copy_core::copy_text(
+        "gridMonitor.renderPeek.filesHead",
+        &[("recentFilesCount", &f.touched_files.len().to_string())],
+    ));
 }
 
 fn note_usage(f: &mut SessionFacts, beat: &Beat) {

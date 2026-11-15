@@ -50,7 +50,7 @@ fn call() -> String {
 }
 
 fn config_arg(p: Option<&std::path::Path>) -> String {
-    super::config_arg(p, true)
+    super::config_arg(p, true).unwrap()
 }
 
 fn machine(host: &str, user: &str, port: u16, key: Option<&str>) -> Value {
@@ -392,7 +392,8 @@ fn the_terminal_line_hands_ssh_our_config_without_disabling_the_check() {
         super::config_arg(
             Some(std::path::Path::new("/home/u/.cc-monitor/ssh_config")),
             false
-        ),
+        )
+        .unwrap(),
         " -F '/home/u/.cc-monitor/ssh_config'"
     );
     assert_eq!(config_arg(None), "");
@@ -405,21 +406,19 @@ fn the_terminal_line_hands_ssh_our_config_without_disabling_the_check() {
 #[cfg(unix)]
 #[test]
 fn the_posix_line_hands_ssh_the_same_arguments_a_real_shell_would() {
-    use std::os::unix::fs::PermissionsExt;
     let dir = std::env::temp_dir().join(format!("ccm-posix-line-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let out = dir.join("argv");
     let fake = dir.join("ssh");
-    std::fs::write(
+    // 马上被起 ⇒ 经 `write_exe` 写（本进程写的写端会漏进别的判据线程 fork 出来的子进程 ⇒ ETXTBSY）。
+    test_home::write_exe(
         &fake,
-        format!(
+        &format!(
             "#!/bin/sh\nfor a in \"$@\"; do printf '%s\\0' \"$a\"; done > '{}'\n",
             out.display()
         ),
-    )
-    .unwrap();
-    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+    );
 
     let cmd = r#"unset X; cd '/home/u/it'\''s 文档' && echo "$HOME" && claude --resume s1"#;
     let mut m = machine("192.0.2.3", "u", 2222, Some("/home/u/my key's/id"));
@@ -575,7 +574,7 @@ fn a_login_shell_on_this_machine_is_the_local_login_shell() {
         ps,
         format!(
             "Set-Location -LiteralPath {}",
-            ps_literal(&home.to_string_lossy())
+            ps_literal(home.to_str().expect("测试档的家是 UTF-8"))
         )
     );
 }
@@ -606,6 +605,7 @@ fn a_login_shell_on_an_ssh_config_host_hands_ssh_the_alias() {
                 crate::dial::known_hosts::terminal_config().as_deref(),
                 false
             )
+            .unwrap()
         )
     );
     assert!(login(&json!({ "machine": "backup" }), &[], true, &found()).is_err());
@@ -777,23 +777,21 @@ fn a_sid_without_a_command_is_refused() {
 #[cfg(target_os = "linux")]
 #[test]
 fn the_posix_record_step_writes_the_label_of_the_shell_that_runs_the_line() {
-    use std::os::unix::fs::PermissionsExt;
     let dir = std::env::temp_dir().join(format!("ccm-opened-line-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(dir.join("opened-windows")).unwrap();
     let pids = dir.join("pids");
     let fake = dir.join("ssh");
-    std::fs::write(
+    // 马上被起 ⇒ 经 `write_exe` 写（理由同上）。
+    test_home::write_exe(
         &fake,
-        format!(
+        &format!(
             "#!/bin/sh\necho \"$$ $PPID $(sed 's/.*) //' /proc/$$/stat | cut -d' ' -f20) $(sed 's/.*) //' /proc/$PPID/stat | cut -d' ' -f20)\" > '{}'\ncp '{}' '{}'\n",
             pids.display(),
             dir.join("opened-windows/s1").display(),
             dir.join("seen").display()
         ),
-    )
-    .unwrap();
-    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+    );
     let line = with_sid(
         machine("192.0.2.3", "u", 22, None),
         "claude --resume s1",
@@ -909,5 +907,43 @@ fn a_cwd_on_this_machine_is_the_local_shell_entering_it() {
     assert_eq!(
         local(json!({ "cwd": " " }), false, None).unwrap().line,
         "exec ${SHELL:-bash} -l"
+    );
+}
+
+/// 🔴 本机家目录名不是 UTF-8：PowerShell 那一形照实拒、说得出（不拼一个不存在的路径）；POSIX 那一形不拼家，照旧。
+#[cfg(unix)]
+#[test]
+fn a_home_that_is_not_utf8_is_refused_for_powershell_not_spelled_lossily() {
+    use std::os::unix::ffi::OsStrExt as _;
+    let home = std::path::Path::new(std::ffi::OsStr::from_bytes(b"/home/u\xff"));
+    let e = local_login_shell_at(true, Some(home)).expect_err("不拼一个不存在的路径");
+    assert_eq!(e.code.as_deref(), Some("refused"), "{e:?}");
+    assert!(
+        copy_core::copy_matches_with("beAssets.door.homeNotUtf8", &[], &e.said),
+        "{e:?}"
+    );
+    assert_eq!(
+        local_login_shell_at(false, Some(home)).unwrap(),
+        "exec ${SHELL:-bash} -l"
+    );
+}
+
+/// 🔴 `-F` 那份配置的路径不是 UTF-8（家名乱码）：POSIX 那一形照字节交（`$'…'`），PowerShell 那一形照实拒、说得出（不拼一个不存在的文件）。
+#[cfg(unix)]
+#[test]
+fn a_config_path_that_is_not_utf8_is_quoted_by_bytes_or_refused_not_spelled_lossily() {
+    use std::os::unix::ffi::OsStrExt as _;
+    let p = std::path::Path::new(std::ffi::OsStr::from_bytes(
+        b"/home/u\xff/.cc-monitor/ssh_config",
+    ));
+    assert_eq!(
+        super::config_arg(Some(p), false).unwrap(),
+        r" -F $'/home/u\xff/.cc-monitor/ssh_config'"
+    );
+    let e = super::config_arg(Some(p), true).expect_err("不拼一个不存在的文件");
+    assert_eq!(e.code.as_deref(), Some("refused"), "{e:?}");
+    assert!(
+        copy_core::copy_matches_with("beAssets.door.homeNotUtf8", &[], &e.said),
+        "{e:?}"
     );
 }

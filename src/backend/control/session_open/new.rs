@@ -40,8 +40,9 @@ pub struct PreRotation<'a> {
 pub type ForkWrite<'a> = &'a dyn Fn(&str, &str) -> Result<String, crate::common::said::Said>;
 
 /// `~` / `~/…` ⇒ 这台的家目录下（界面显示的目录常写成 `~/…`）。家说不出 ⇒ 原样。
-pub fn expand_home(cwd: &str, home: Option<&std::path::Path>) -> String {
-    crate::platform::paths::expand_tilde_from(cwd, home)
+/// 工作目录要写成字（线上 · 终端那一行）：家名不是 UTF-8 ⇒ 照实拒，那一句只在 `platform::paths::expand_tilde_text` 说。
+pub fn expand_home(cwd: &str, home: Option<&std::path::Path>) -> Result<String, String> {
+    crate::platform::paths::expand_tilde_text(cwd, home)
 }
 
 /// 那一家起的时候收不收第一句（[`crate::agents::LaunchFace::first_prompt_arg`]）：不收 ⇒ 那句不行的话。
@@ -53,12 +54,12 @@ pub fn first_prompt_refused(face: &crate::agents::LaunchFace) -> Option<&'static
 #[derive(Debug, Clone, serde::Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-#[serde(deny_unknown_fields)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct OpenDirReq {
     /// 工作目录（开头的 `~` 按这台的家目录读）。
     pub(crate) cwd: String,
     /// 分叉出来的那一条：源会话 sid（铸名按它此刻所在的终端名派生 `<…>-fork-cc`）。
-    #[serde(default, rename = "forkOf")]
+    #[serde(default)]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub(crate) fork_of: Option<String>,
 }
@@ -69,8 +70,8 @@ pub struct OpenDirReq {
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
 pub struct DirChecked {
-    /// 这个目录在不在。
-    pub(crate) exists: bool,
+    /// 这个目录不在 ⇒ 写好的那一句（带用户敲的原样），两端照抄；在 ⇒ `null`。
+    pub(crate) said: Option<crate::common::cells::Words>,
     /// 这台按自己的家目录写好的显示形（`~/…`），两端照抄。
     pub(crate) shown: String,
     /// 这台此刻会给它铸的终端名（没 tmux ⇒ `null`）。
@@ -97,8 +98,18 @@ pub fn dir_answer(
             )))
         }
     };
-    let cwd = expand_home(req.cwd.trim(), home);
-    let exists = !cwd.is_empty() && (deps.host.is_dir)(&cwd);
+    let (cwd, said) = match expand_home(req.cwd.trim(), home) {
+        Ok(cwd) => {
+            let said = (cwd.is_empty() || !(deps.host.is_dir)(&cwd)).then(|| {
+                crate::common::cells::Words(copy_core::copy_text(
+                    "bePath.dir.missing",
+                    &[("path", req.cwd.trim())],
+                ))
+            });
+            (cwd, said)
+        }
+        Err(why) => (String::new(), Some(crate::common::cells::Words(why))),
+    };
     let tmux_name = match (deps.list)() {
         Ok(super::Listed {
             tmux: true, rows, ..
@@ -117,7 +128,7 @@ pub fn dir_answer(
     };
     let shown = crate::platform::paths::home_short(&cwd, home);
     Ok(DirChecked {
-        exists,
+        said,
         shown,
         tmux_name,
     })

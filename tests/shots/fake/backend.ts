@@ -6,6 +6,7 @@
  */
 import { Refuse, type World } from "./types";
 import { copyText } from "../../../src/frontend/ui/copy-table";
+import type { Failed } from "../../../src/frontend/ui/generated/Failed";
 import { diskOf } from "./world";
 import { Convo, type ConvoTail } from "./records";
 import { WALL_CEILING_MS } from "../../test-support/wall-ceiling";
@@ -30,6 +31,10 @@ export const REAL_OPS = new Set([
   "rotation-strategies",
   // 「开始用」那一份（每步的字与去处）：真后端照台架盘上的启动文件答，机器表台数随问带上。
   "first-run",
+  // 状态栏那一行的预览（设置 · 机器页那一节）：真后端照台架盘上的配置答。
+  "status-line-preview",
+  // 停 · 更新一台之前会打断什么（「中断 · 保留」两行的字由答的那台写）：真本机后端照台架里那几台的会话流答。
+  "machine-interrupts",
   // 轮换那几条写（改设置的意图 · 载入一份 · 都载入新版 · 会话侧的临时动作）：真后端写台架盘上那几份文件，场景照它回的重画。
   "rotation-settings",
   "rotation-use",
@@ -149,6 +154,27 @@ type Emit = (event: string, payload: unknown) => unknown;
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
+/** 本机后端那一排附件草稿里的一张卡（台架那一份；类别 · 类别字照那台答的）。 */
+interface FakeCard {
+  key: string;
+  name: string;
+  path: string;
+  bytes: number;
+  phase: { kind: string; said?: string };
+  done: number;
+  id: string | null;
+  cls: [string, string];
+}
+
+/** 本机后端那一排（会话在哪台 · 断着没有 · 那一圈在不在跑）。 */
+interface FakeDraft {
+  machine: string;
+  sid: string;
+  cards: FakeCard[];
+  offline: boolean;
+  running: boolean;
+}
+
 interface Sub {
   id: number;
   origin: string;
@@ -190,7 +216,7 @@ export class FakeBackend {
     // 盘照配方由伺服造（`World.diskFrom`）⇒ 只交配方名；否则页里出盘交上去。
     const disk = world.diskFrom === undefined ? { machines: diskOf(world) } : { diskFrom: world.diskFrom };
     const reach = reachOf(world);
-    this.ready = fetch("/__ccm/world", { method: "POST", body: JSON.stringify({ key: this.key, ...disk, reach, now: Date.now(), scene: new URLSearchParams(location.search).get("scene") ?? "" }) }).then(async (r) => {
+    this.ready = this.post("/__ccm/world", { method: "POST", body: JSON.stringify({ key: this.key, ...disk, reach, now: Date.now(), scene: new URLSearchParams(location.search).get("scene") ?? "" }) }).then(async (r) => {
       if (!r.ok) throw new Error(`真后端起不来：${await r.text()}`);
       // 伺服造的盘：每个会话接着往下写的那一截（场景开页之后再写几行时接得上盘上那一份）。
       const { tails } = (await r.json()) as { tails?: Record<string, ConvoTail> };
@@ -253,7 +279,7 @@ export class FakeBackend {
 
   /** [`real`] 那一跳本身（不等起好：起世界那一段自己也用）。 */
   private async call(origin: string, op: string, req: Record<string, unknown>, view: unknown, leftMs?: number): Promise<ArrayBuffer> {
-    const r = await fetch("/__ccm/call", { method: "POST", body: JSON.stringify({ key: this.key, origin, op, args: req, view: view ?? null, leftMs }) });
+    const r = await this.post("/__ccm/call", { method: "POST", body: JSON.stringify({ key: this.key, origin, op, args: req, view: view ?? null, leftMs }) });
     const f = (await r.json()) as { ok: boolean; body?: string; fail?: unknown };
     if (f.ok) return enc.encode(f.body ?? "null").buffer;
     throw f.fail;
@@ -320,14 +346,14 @@ export class FakeBackend {
   /** 场景演那一家改了自己 pidfile 里的状态（原词：busy · waiting · idle · shell）。 */
   async setStatus(origin: string, sid: string, status: string, waitingFor: string | null = null): Promise<void> {
     await this.ready;
-    const r = await fetch("/__ccm/status", { method: "POST", body: JSON.stringify({ key: this.key, origin, sid, status, waitingFor }) });
+    const r = await this.post("/__ccm/status", { method: "POST", body: JSON.stringify({ key: this.key, origin, sid, status, waitingFor }) });
     if (!r.ok) throw new Error(`改不了 ${origin} 上 ${sid} 的状态：${await r.text()}`);
   }
 
   /** 场景在开页之后改那台盘上的一份文件（相对家目录；例：存之前配置文件被别处改过）。 */
   async writeFile(origin: string, rel: string, text: string, append = false): Promise<void> {
     await this.ready;
-    const r = await fetch("/__ccm/write", { method: "POST", body: JSON.stringify({ key: this.key, origin, rel, text, append }) });
+    const r = await this.post("/__ccm/write", { method: "POST", body: JSON.stringify({ key: this.key, origin, rel, text, append }) });
     if (!r.ok) throw new Error(`改不了 ${origin} 上的 ${rel}：${await r.text()}`);
   }
 
@@ -349,7 +375,7 @@ export class FakeBackend {
   /** 订阅那几样交给无头壳。 */
   private tell(what: "sub" | "want" | "stop" | "ready" | "kill" | "end" | "watch" | "kept" | "paint", body: Record<string, unknown>): Promise<void> {
     return this.ready.then(async () => {
-      const r = await fetch(`/__ccm/${what}`, { method: "POST", body: JSON.stringify({ key: this.key, ...body }) });
+      const r = await this.post(`/__ccm/${what}`, { method: "POST", body: JSON.stringify({ key: this.key, ...body }) });
       if (!r.ok) throw new Error(`/__ccm/${what}：${await r.text()}`);
     });
   }
@@ -370,7 +396,7 @@ export class FakeBackend {
     this.listedOrigins.add(sub.origin);
     this.onListed();
     this.pending.push(this.tell("end", { origin: sub.origin }));
-    if (this.world.droppedMachines?.includes(sub.origin)) this.pending.push(new Promise((r) => setTimeout(r, 1500)).then(() => this.tell("kill", { origin: sub.origin })));
+    if (this.world.droppedMachines?.includes(sub.origin)) this.pending.push(this.track(new Promise((r) => setTimeout(r, 1500)).then(() => this.tell("kill", { origin: sub.origin }))));
   }
 
   /** 开页之后台架在演的那几样都落定了（截图在这之后量、截）。 */
@@ -378,9 +404,12 @@ export class FakeBackend {
     await this.ready;
     // 主界面订了会话流的那几台都报完清单（收场 · 断了那几样是收到清单才排上的）：按「又一台报完了」醒，不按钟点问；
     // 到兜底上限还有没报完的 ⇒ 抛、说是哪几台（不到点就往下走的话，机器忙时清单晚到，截到的是收场之前那一刻）。
-    const unlisted = (): string[] => [...this.shellSubs.values()].filter((s) => s.kind === "session-lines" && !this.listedOrigins.has(s.origin)).map((s) => s.origin);
+    // 界面订了、世界里却没起那台后端的 ⇒ 清单不会来，当场抛（不白等到上限）。
+    const unlisted = (): string[] => this.unlisted();
     const t0 = Date.now();
     while (unlisted().length > 0) {
+      const never = unlisted().filter((o) => !this.world.machines.includes(o));
+      if (never.length > 0) throw new Error(`界面订了这几台的会话流，世界里没起那台后端（清单不会来）：${never.join("、")}`);
       const left = WALL_CEILING_MS - (Date.now() - t0);
       if (left <= 0) throw new Error(`等到上限，这几台的会话流还没报完清单：${unlisted().join("、")}`);
       await new Promise<void>((r) => {
@@ -418,7 +447,63 @@ export class FakeBackend {
     console.warn(`[shots] 假后端答不上：${what}`);
   }
 
+  /** 页里问出去、还没答的那几条（[`busy`] 读）。 */
+  private inFlight = 0;
+
+  /** 页里的一问：答是个还没兑现的 Promise ⇒ 记在途，兑现（成败都算）才销。 */
   invoke(cmd: string, args: Record<string, unknown>): unknown {
+    const r = this.answer(cmd, args);
+    if (!(r instanceof Promise)) return r;
+    return this.track(r);
+  }
+
+  /** 一件还没落定的事：兑现（成败都算）之前记在途（[`busy`] 读）。 */
+  private track<T>(p: Promise<T>): Promise<T> {
+    this.inFlight += 1;
+    return p.finally(() => {
+      this.inFlight -= 1;
+    });
+  }
+
+  /** 台架往伺服那一侧的每一问（起世界 · 转给真后端 · 交给无头壳 · 写盘 · 改状态）都经这里，记在途。 */
+  private post(url: string, init: RequestInit): Promise<Response> {
+    return this.track(fetch(url, init));
+  }
+
+  /**
+   * 还有没落定的事 ⇒ 说是哪样：页里的问 · 台架往伺服那一侧的问 · 排着的收场 · 附件那一圈 · 订了、还没报完清单的会话流
+   * （世界里起了那台的；没起的那几台不会来，[`settled`] 当场判）；都落定了 ⇒ `null`（这之后页里不会再因为台架来的东西变样）。
+   */
+  busy(): string | null {
+    if (this.inFlight > 0) return `${this.inFlight} 问在途`;
+    const coming = this.unlisted().filter((o) => this.world.machines.includes(o));
+    return coming.length > 0 ? `${coming.join("、")} 的会话流还没报完清单` : null;
+  }
+
+  /**
+   * 世界里这几个会话的记录都读完了（本机后端为每个都发过「读完了」那一帧，台架抄下来的，`real/pool.mjs` 的 `/__ccm/primed`）。
+   * 等的是确定会来的事（宣告之后后台预读必读完）；到兜底上限还没齐 ⇒ 抛、点名还差哪几个。性能台架动手之前等它：不等的话量到的是开机冷扫。
+   */
+  async primed(sids: readonly string[], ms = WALL_CEILING_MS): Promise<void> {
+    await this.ready;
+    const t0 = Date.now();
+    for (;;) {
+      const r = await this.post("/__ccm/primed", { method: "POST", body: JSON.stringify({ key: this.key }) });
+      if (!r.ok) throw new Error(`/__ccm/primed：${await r.text()}`);
+      const got =new Set(((await r.json()) as { sids?: string[] }).sids ?? []);
+      const left = sids.filter((s) => !got.has(s));
+      if (left.length === 0) return;
+      if (Date.now() - t0 > ms) throw new Error(`等到上限，这几个会话的记录还没读完：${left.join("、")}`);
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }
+
+  /** 订了会话流、还没报完清单的那几台。 */
+  private unlisted(): string[] {
+    return [...this.shellSubs.values()].filter((s) => s.kind === "session-lines" && !this.listedOrigins.has(s.origin)).map((s) => s.origin);
+  }
+
+  private answer(cmd: string, args: Record<string, unknown>): unknown {
     switch (cmd) {
       case "chan_call":
         return this.chanCall(args);
@@ -440,9 +525,8 @@ export class FakeBackend {
       case "chan_stop":
         if (this.shellSubs.delete(Number(args.id))) return this.tell("stop", { id: Number(args.id) }).then(() => null);
         return null;
-      case "attach_stage_stop":
-        this.stoppedTickets.add(Number(args.ticket));
-        return null;
+      case "attach_stage":
+        return this.attachStage(args as unknown as Uint8Array);
       case "diagnostics_report":
         // 「复制诊断信息」：同壳那一条，只交壳自己的三样事实（版本号 · 日志文件 · config 顶层键），整段由本机真后端 `diagnostics-report` 出。
         return this.diagnostics();
@@ -454,37 +538,126 @@ export class FakeBackend {
     return Promise.reject(`shots: 没有这条命令 ${cmd}`);
   }
 
-  /** ✕ 过的那几单（`attach_stage_stop`）。 */
-  private readonly stoppedTickets = new Set<number>();
+  /** 壳放进本机暂存区的那几份（路径 ⇒ 字节）。 */
+  private readonly staged = new Map<string, Uint8Array>();
+
+  /** 本机后端那几排附件草稿（草稿号 ⇒ 那一排）。 */
+  private readonly drafts = new Map<string, FakeDraft>();
+
+  /** 壳的 `attach_stage`：字节放进本机暂存区、回那条路径（台架里记在内存）。 */
+  attachStage(bytes: Uint8Array): string {
+    const key = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
+    const path = `/home/user/.cc-monitor/staging/${key}.part`;
+    this.staged.set(path, bytes);
+    return path;
+  }
 
   /**
-   * 壳的 `attach_stage`（附件逐块送进那台暂存区，产品里是壳里的 `chunk_core`）：照块问场景里的 `files-stage-chunk`（走 [`chanCall`]，
-   * 那台断开 · 那台说不行照场景演），进度经头里那条通道报。实参在头里（`install.ts` 把 `mockIPC` 丢掉的 options 补交过来）。
+   * 本机后端的 `attach-draft-*`（产品里是 `control/attach_upload.rs` 照 `chunk_core::attach` 编排）：台架里照同一个次序问场景里那台的
+   * `session-attachment-check` → `files-stage-chunk`（逐块）→ `session-attachment-commit`，经 [`chanCall`]（那台断开 · 说不行照场景演），
+   * 每变一次推 `changed/attach`。
    */
-  attachStage(bytes: Uint8Array, headers: Record<string, string>): Promise<unknown> {
-    const hex = headers["ccm-origin"] ?? "";
-    const origin = dec.decode(Uint8Array.from(hex.match(/../g) ?? [], (h) => parseInt(h, 16)));
-    const ticket = Number(headers["ccm-ticket"]);
-    const channel = Number((headers["ccm-moved"] ?? "").replace("__CHANNEL__:", ""));
-    const internals = (window as unknown as { __TAURI_INTERNALS__: { runCallback(id: number, data: unknown): void } }).__TAURI_INTERNALS__;
-    let index = 0;
-    const moved = (done: number): void => internals.runCallback(channel, { index: index++, message: done });
-    const key = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
-    /** 一块多少字节（台架里的替身，同产品 `chunk_core::CHUNK`）。 */
-    const chunk = 256 * 1024;
-    const run = async (): Promise<unknown> => {
-      moved(0);
-      let seq = 0;
-      for (let at = 0; at < bytes.length; at += chunk) {
-        if (this.stoppedTickets.has(ticket)) return Promise.reject({ err: { Ours: "Cancelled" }, body: [] });
-        const part = bytes.subarray(at, Math.min(bytes.length, at + chunk));
-        const req = { key, seq: seq++, content: { b16: Array.from(part, (b) => b.toString(16).padStart(2, "0")).join("") } };
-        await this.chanCall({ origin, op: "files-stage-chunk", payload: Array.from(enc.encode(JSON.stringify(req))), view: null });
-        moved(at + part.length);
+  private attachDraft(op: string, req: Record<string, unknown>): unknown {
+    const draft = String(req.draft);
+    const d = this.drafts.get(draft);
+    if (op === "attach-draft-put") {
+      const row = d ?? { machine: String(req.machine), sid: String(req.sid), cards: [], offline: false, running: false };
+      this.drafts.set(draft, row);
+      for (const c of req.cards as { key: string; name: string; path: string; bytes: number }[]) {
+        row.cards.push({ key: c.key, name: c.name, path: c.path, bytes: c.bytes, phase: { kind: "queued" }, done: 0, id: null, cls: ["other", ""] });
       }
-      return { key, chunks: seq, bytes: bytes.length, sha256: "0".repeat(64) };
+      void this.track(this.pumpDraft(draft, row));
+      return this.shownOf(draft, row);
+    }
+    if (!d) return op === "attach-draft-take" ? { ids: [] } : this.shownOf(draft, null);
+    if (op === "attach-draft-drop") d.cards = d.cards.filter((c) => c.key !== String(req.key));
+    if (op === "attach-draft-retry") {
+      for (const c of d.cards) if (c.phase.kind === "failed" || c.phase.kind === "lost") c.phase = { kind: "queued" };
+      d.offline = false;
+      void this.track(this.pumpDraft(draft, d));
+    }
+    if (op === "attach-draft-take") {
+      if (!d.cards.every((c) => c.phase.kind === "landed")) return { ids: null };
+      const ids = d.cards.map((c) => c.id ?? "");
+      d.cards = [];
+      return { ids };
+    }
+    return this.shownOf(draft, d);
+  }
+
+  private shownOf(draft: string, d: FakeDraft | null): unknown {
+    const cards = d?.cards ?? [];
+    return {
+      draft,
+      cards: cards.map((c) => ({ key: c.key, name: c.name, phase: c.phase, done: c.done, bytes: c.bytes, id: c.id, line: null, remove: copyText("attach.chip.remove"), class: c.cls[0], class_text: c.cls[1] })),
+      note: null,
+      offline: d?.offline === true && cards.some((c) => c.phase.kind === "queued"),
+      ready: cards.every((c) => c.phase.kind === "landed"),
     };
-    return run();
+  }
+
+  private pushDraft(draft: string, d: FakeDraft): void {
+    const body = JSON.stringify({ key: draft, body: this.shownOf(draft, d) });
+    for (const sub of this.subs.values()) if (sub.origin === LOCAL && sub.kind === "changed/attach") this.send(sub, [{ t: "frame", seq: 0, body }]);
+  }
+
+  /** 那一圈：整排问一次收不收 → 排在最前的那一份逐块送 → 提交；断了停下（那一排标断着）。 */
+  private async pumpDraft(draft: string, d: FakeDraft): Promise<void> {
+    if (d.running) return;
+    d.running = true;
+    const ask = (op: string, body: unknown): Promise<unknown> =>
+      Promise.resolve(this.chanCall({ origin: d.machine, op, payload: Array.from(enc.encode(JSON.stringify(body))), view: null })).then((b) => JSON.parse(dec.decode(b as ArrayBuffer)) as unknown);
+    const cut = (e: unknown): boolean => typeof e === "object" && e !== null && typeof (e as { err?: unknown }).err === "object";
+    const said = (e: unknown): string => {
+      const body = (e as { body?: number[] }).body;
+      try {
+        return String((JSON.parse(dec.decode(Uint8Array.from(body ?? []))) as { said?: string }).said ?? "");
+      } catch {
+        return "";
+      }
+    };
+    try {
+      for (;;) {
+        const c = d.cards.find((x) => x.phase.kind === "queued");
+        if (!c || d.offline) return;
+        try {
+          const v = (await ask("session-attachment-check", { sid: d.sid, items: [{ name: c.name, bytes: c.bytes }] })) as { items: { ok: boolean; class: string; class_text: string; said?: string }[] };
+          const it = v.items[0];
+          c.cls = [it.class, it.class_text];
+          if (!it.ok) {
+            c.phase = { kind: "refused", said: it.said ?? "" };
+            this.pushDraft(draft, d);
+            continue;
+          }
+          c.phase = { kind: "moving" };
+          this.pushDraft(draft, d);
+          const bytes = this.staged.get(c.path) ?? new Uint8Array(c.bytes);
+          const key = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
+          /** 一块多少字节（台架里的替身，同产品 `chunk_core::CHUNK`）。 */
+          const chunk = 256 * 1024;
+          let seq = 0;
+          for (let at = 0; at < Math.max(bytes.length, 1); at += chunk) {
+            const part = bytes.subarray(at, Math.min(bytes.length, at + chunk));
+            await ask("files-stage-chunk", { key, seq: seq++, content: { b16: Array.from(part, (b) => b.toString(16).padStart(2, "0")).join("") } });
+            c.done = at + part.length;
+            this.pushDraft(draft, d);
+          }
+          const got = (await ask("session-attachment-commit", { sid: d.sid, key, name: c.name, bytes: bytes.length, chunks: seq, expect: { sha256: "0".repeat(64) } })) as { id: string };
+          c.phase = { kind: "landed" };
+          c.id = got.id;
+          c.done = 0;
+        } catch (e) {
+          if (cut(e)) {
+            c.phase = { kind: "queued" };
+            d.offline = true;
+          } else c.phase = { kind: "failed", said: said(e) };
+          c.done = 0;
+        }
+        this.pushDraft(draft, d);
+      }
+    } finally {
+      d.running = false;
+    }
   }
 
   private chanCall(args: Record<string, unknown>): unknown {
@@ -513,6 +686,13 @@ export class FakeBackend {
           return enc.encode(JSON.stringify({ ...v, meta: { ...v.meta, ...face.meta } })).buffer;
         });
     }
+    if (origin === LOCAL && op.startsWith("attach-draft-")) {
+      try {
+        return Promise.resolve(enc.encode(JSON.stringify(this.attachDraft(op, req))).buffer);
+      } catch (e) {
+        return Promise.reject(refusal(e, op));
+      }
+    }
     const handler = this.world.ops[op];
     if (!handler) {
       if (!this.world.quiet?.includes(op)) this.miss(`帧命令 ${op}`);
@@ -537,6 +717,8 @@ export class FakeBackend {
     const sub: Sub = { id: Number(args.id), origin: String(args.origin), kind: String(args.kind) };
     if (shellKind(sub.kind) && !this.world.unseenMachines.includes(sub.origin) && !this.world.closedMachines.includes(sub.origin)) {
       this.shellSubs.set(sub.id, sub);
+      // 叫醒 `settled` 那一圈：新订的这一台若世界里没起，它当场判「不会来」。
+      this.onListed();
       return this.tell("sub", { id: sub.id, origin: sub.origin, kind: sub.kind, want: Number(args.want ?? 0) }).then(() => null);
     }
     this.subs.set(sub.id, sub);
@@ -551,7 +733,7 @@ export class FakeBackend {
       return;
     }
     if (this.world.closedMachines.includes(sub.origin) && sub.kind.startsWith("session-lines")) {
-      this.send(sub, [{ t: "closed_by_peer", body: JSON.stringify({ code: "busy", message: "这台机器上的会话太多，先关掉几个再连" }) }]);
+      this.send(sub, [{ t: "closed_by_peer", body: JSON.stringify({ code: "busy", said: "这台机器上的会话太多，先关掉几个再连", detail: "" } satisfies Failed) }]);
       return;
     }
     if (sub.kind === "session-live-card" || sub.kind.startsWith("changed/")) {
@@ -628,14 +810,15 @@ function detailOf(op: string, e: Refuse): string {
   ].join("\n");
 }
 
-function refusal(e: unknown, op = ""): { err: unknown; body: number[]; detail?: string } {
+/**
+ * 对端拒了 ⇒ 照真壳交给页里的那一形：`{err: "Refused", body, said, detail}` —— 体是线上类型 `Failed`（`{code, said, detail, data?}`），
+ * 外层的 `said` · `detail` 是 monitor 写好交回的那一句与复制详情（`chan/said.rs::refused` 原样取体里的 `said`）。
+ */
+function refusal(e: unknown, op = ""): { err: unknown; body: number[]; said?: string; detail?: string } {
   // 场景要演通道那一跳的失败（够不着 · 期限到）：直接抛线上形状 `{err, body}`，原样交回。
   if (e !== null && typeof e === "object" && "err" in e && "body" in e) return e as { err: unknown; body: number[] };
-  if (e instanceof Refuse) {
-    const body = e.data === undefined ? { code: e.code, message: e.message } : { code: e.code, message: e.message, data: e.data };
-    return { err: "Refused", body: Array.from(enc.encode(JSON.stringify(body))), detail: detailOf(op, e) };
-  }
-  return { err: "Refused", body: Array.from(enc.encode(JSON.stringify({ code: "shots", message: String(e) }))) };
+  const failed: Failed = e instanceof Refuse ? { code: e.code, said: e.said, detail: detailOf(op, e), ...(e.data === undefined ? {} : { data: e.data }) } : { code: "shots", said: String(e), detail: "" };
+  return { err: "Refused", body: Array.from(enc.encode(JSON.stringify(failed))), said: failed.said, detail: failed.detail };
 }
 
 /** 窗口 / 路径 / 对话框这几个插件：截图里不真开窗、不真选文件，给一个不出错的答。 */

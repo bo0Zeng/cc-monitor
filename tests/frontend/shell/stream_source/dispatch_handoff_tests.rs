@@ -1,5 +1,5 @@
 //! 分派第一层（`route`）把就地交的那三种直接交进程里那一份会话流句柄（`event_replay::host()`），中间没有转交的出口要装：
-//! 活卡（`live_card`）进那台的 `session-live-card`；测试连接的一格（`probe`，只在本机那条流上）进 `<local>` 的 `probe-progress/<票>`；
+//! 本机的活卡（`live_card`）进 `<local>` 的 `session-live-card`（别台原样的不交）；测试连接的一格（`probe`，只在本机那条流上）进 `<local>` 的 `probe-progress/<票>`；
 //! 终端画面（`terminal_screen` · `terminal_follow_end`）进那台的 `terminal-screen/<票>`。期望手写。
 //!
 //! 买不到什么：界面那一侧怎么画（`live-card` · `remote-probe` · `terminal-follow` 的 vitest 判）；credit 与 `Gap`（`event_replay_tests` 判）。
@@ -33,22 +33,40 @@ async fn next_frame(s: &mut BoxStream<'static, Item>) -> Option<serde_json::Valu
     }
 }
 
+/// 本机那条流上的 `live_now`（本机后端折好的那一处）原样进 `<local>` 的活卡流；原样的 `live_card` 本机 · 别台都不交（壳不折）；
+/// 别台流上来的 `live_now` 不交（别台的是 `relayed` 的 `live`）。
 #[tokio::test]
-async fn a_live_card_frame_goes_straight_into_that_machines_live_card_stream() {
+async fn a_local_live_card_frame_goes_straight_into_the_local_live_card_stream() {
     let r = replay();
+    let local = crate::origin::Origin::local();
     let box_a = crate::origin::Origin::named("handoff-live-a");
-    let mut s = r.subscribe_stream(&box_a, "session-live-card", None);
-    let line = r#"{"kind":"live_card","sid":"s1","card":7,"n":0,"op":"open","rid":"m","phase":"awaiting","clipped":false,"blocks":[]}"#;
+    let mut s = r.subscribe_stream(&local, "session-live-card", None);
+    let mut theirs = r.subscribe_stream(&box_a, "session-live-card", None);
+    let op = r#"{"kind":"live_card","sid":"handoff-s1","card":7,"n":0,"op":"open","rid":"m","phase":"awaiting","clipped":false,"blocks":[]}"#;
+    let whole = serde_json::json!({"sid": "handoff-s1", "cards": [{"card": 7, "rid": "m", "phase": "awaiting", "clipped": false,
+        "head": "后端写的头", "body": []}]});
+    let now = serde_json::json!({"kind": "live_now", "change": {"t": "whole", "whole": whole}, "whole": whole}).to_string();
+    for at in [&box_a, &local] {
+        assert!(route(at, None, frame(op)).is_none());
+    }
+    assert!(route(&box_a, None, frame(&now)).is_none());
     assert!(
-        route(&box_a, None, frame(line)).is_none(),
+        next_frame(&mut theirs).await.is_none(),
+        "别台流上的活卡交出去了"
+    );
+    assert!(
+        route(&local, None, frame(&now)).is_none(),
         "活卡不是有序的那几种"
     );
-    let got = next_frame(&mut s).await.expect("活卡没进那台的活卡流");
-    assert_eq!(got["origin"], "handoff-live-a");
+    let got = next_frame(&mut s).await.expect("活卡成品没进本机的活卡流");
+    assert_eq!(got["origin"], "<local>");
     assert_eq!(
         got["live"],
-        serde_json::json!({"t": "whole", "whole": {"sid": "s1", "cards": [{"card": 7, "rid": "m", "phase": "awaiting", "clipped": false,
-            "head": copy_core::copy_text("liveCard.state.awaitingRecord", &[]), "body": []}]}})
+        serde_json::json!({"t": "whole", "whole": whole})
+    );
+    assert!(
+        next_frame(&mut s).await.is_none(),
+        "本机原样的 `live_card` 也交了（壳又在折）"
     );
 }
 

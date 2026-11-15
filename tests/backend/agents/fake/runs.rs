@@ -21,6 +21,10 @@ use crate::platform::fs::Ro;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
+// 替身家的合成历史面与它的子运行住址（子运行与父平铺同一目录，只有 `owner` 认得出）：历史清单的判据读。
+#[path = "history.rs"]
+pub mod history;
+
 const LANES_SUFFIX: &str = "lanes";
 const LANE_EXT: &str = "ndjson";
 const WHENCE_EXT: &str = "whence";

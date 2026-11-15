@@ -11,8 +11,14 @@ pub struct Stat {
     pub ppid: u32,
     /// 程序名（第 2 栏，去掉括号）。
     pub name: String,
+    /// 进程组（第 5 栏）。
+    pub pgrp: i64,
+    /// 会话（第 6 栏：会话首领的进程号）。
+    pub session: i64,
     /// 控制终端（第 7 栏；0 ＝ 没有）。
     pub tty_nr: i64,
+    /// 控制终端此刻的前台进程组（第 8 栏；没有控制终端 ⇒ -1）。
+    pub tpgid: i64,
     /// 起始时刻，开机后的时钟滴答（第 22 栏）。
     pub start: u64,
 }
@@ -34,7 +40,10 @@ pub fn parse_stat(line: &str) -> Option<Stat> {
     Some(Stat {
         ppid: rest.get(after_comm(4))?.parse().ok()?,
         name,
+        pgrp: rest.get(after_comm(5))?.parse().ok()?,
+        session: rest.get(after_comm(6))?.parse().ok()?,
         tty_nr: rest.get(after_comm(7))?.parse().ok()?,
+        tpgid: rest.get(after_comm(8))?.parse().ok()?,
         start: rest.get(after_comm(22))?.parse().ok()?,
     })
 }

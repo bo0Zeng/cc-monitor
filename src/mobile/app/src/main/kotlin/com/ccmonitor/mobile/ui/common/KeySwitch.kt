@@ -4,11 +4,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import com.ccmonitor.mobile.core.copy.copyText
-import com.ccmonitor.mobile.core.data.crypto.SshKeyGenerator
 import com.ccmonitor.mobile.core.data.db.Host
 import com.ccmonitor.mobile.core.data.db.Identity
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
+import com.ccmonitor.mobile.core.ssh.SshKeyGenerator
 import com.ccmonitor.mobile.core.ui.feedback.LocalAppSnackbar
 import com.ccmonitor.mobile.core.ui.feedback.Notice
 import com.ccmonitor.mobile.link.HostBackends
@@ -18,7 +18,7 @@ import org.koin.compose.koinInject
 import java.util.UUID
 
 /**
- * 机器条上［换成密钥］那一下（那台连着、这一条连接用的是密码，判在核心 `deploy::machine::signed_in`）：
+ * 机器条上［换成密钥］那一下（那台连着、这一条连接用的是密码，判在核心 `deploy::machine::mark_signed_in`）：
  * 这部手机没有钥匙就生成一把硬件钥匙（有就用最早那一把）→ 请那台把公钥并进 `authorized_keys`（[push]，那台写）→
  * 这台记上那把钥匙（存的密码留着：撤销 ＝ 摘掉钥匙、回到密码；清掉存的密码是另一件、撤不回的事）。
  * 认证分派里记着钥匙先用钥匙（`resolveHostAuth`），下一次连上起照它登。

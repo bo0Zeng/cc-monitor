@@ -16,6 +16,8 @@ pub const STAT_BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
 pub struct Stat {
     pub path: String,
     pub size: u64,
+    /// `size` 写好的字（那台后端写好；照抄）。
+    pub size_text: String,
     /// 修改时间的完整写法（那台后端按它的本地钟写好；照抄）。
     pub mtime_full: Option<String>,
     /// unix 权限位（非 unix 远端缺席）。
@@ -30,6 +32,7 @@ pub fn stat_from_reply(d: cmd_wire::files::StatReply) -> Stat {
     Stat {
         path: String::from_utf8_lossy(&d.path.0).into_owned(),
         size: d.size,
+        size_text: d.size_text,
         mtime_full: d.mtime_full,
         mode: d.mode.filter(|m| *m <= 0o7777),
         owner: d.owner,
@@ -96,10 +99,7 @@ impl Props {
                         copy_text("rsFilewinSource.sort.size", &[]),
                         copy_text(
                             "rsFilewinProps.value.size",
-                            &[
-                                ("human", &copy_core::size_text(s.size)),
-                                ("bytes", &s.size.to_string()),
-                            ],
+                            &[("human", &s.size_text), ("bytes", &s.size.to_string())],
                         ),
                     ));
                 }

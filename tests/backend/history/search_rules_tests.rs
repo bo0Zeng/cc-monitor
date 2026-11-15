@@ -444,7 +444,7 @@ fn a_windows_project_dir_names_the_project_by_the_one_cut() {
     assert_eq!(cut, Some(serde_json::json!("proj")));
     let row = crate::history::listing_scan::SessionRow {
         session_id: "0b1c2d3e-aaaa-4bbb-8ccc-1234567890ab".into(),
-        record_path: "/h/projects/C--w-proj/0b1c2d3e-aaaa-4bbb-8ccc-1234567890ab.jsonl".into(),
+        jsonl_path: "/h/projects/C--w-proj/0b1c2d3e-aaaa-4bbb-8ccc-1234567890ab.jsonl".into(),
         cwd: Some(cwd.into()),
         ..Default::default()
     };

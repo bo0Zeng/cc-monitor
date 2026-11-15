@@ -53,10 +53,6 @@ import com.ccmonitor.mobile.core.data.db.KeyGroup
 import com.ccmonitor.mobile.core.data.db.KeyMod
 import com.ccmonitor.mobile.core.data.db.KeyPress
 import com.ccmonitor.mobile.core.data.db.TermKey
-import com.ccmonitor.mobile.core.data.db.appActionName
-import com.ccmonitor.mobile.core.data.db.cap
-import com.ccmonitor.mobile.core.data.db.modName
-import com.ccmonitor.mobile.core.data.db.specialName
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.icon.IconTextButton
 import com.ccmonitor.mobile.core.ui.icon.Ph

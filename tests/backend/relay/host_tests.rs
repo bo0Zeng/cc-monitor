@@ -18,32 +18,9 @@ use std::sync::mpsc;
 /// 上游那一段 SSE（**原样字节**；下游必须逐字节收到它）。
 const SSE_BODY: &str = "event: message_start\ndata: {\"type\":\"message_start\",\"n\":1}\n\ndata: {\"type\":\"ping\"}\n\n";
 
-/// 一个一次性的假上游：收一条请求（读到头结束），回一段 SSE、关连接。回地址。
+/// 一个一次性的假上游：每条连接收一条请求，回 [`SSE_BODY`]（同 [`fake_upstream_with`]）。回地址。
 fn fake_upstream() -> SocketAddr {
-    let l = TcpListener::bind("127.0.0.1:0").expect("假上游 bind");
-    let addr = l.local_addr().expect("假上游地址");
-    std::thread::spawn(move || {
-        for s in l.incoming() {
-            let Ok(mut s) = s else { continue };
-            let _ = s.set_read_timeout(Some(guard_core::wall::CEILING));
-            // 读到请求头结束（本文件的请求带一个短体，读头就够判「来了一条」）。
-            let mut head = Vec::new();
-            let mut one = [0u8; 1];
-            while !head.ends_with(b"\r\n\r\n") {
-                match s.read(&mut one) {
-                    Ok(1) => head.push(one[0]),
-                    _ => break,
-                }
-            }
-            let resp = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\n\r\n{SSE_BODY}",
-                SSE_BODY.len()
-            );
-            let _ = s.write_all(resp.as_bytes());
-            let _ = s.flush();
-        }
-    });
-    addr
+    fake_upstream_with(SSE_BODY.to_string())
 }
 
 /// tee 交出的原样事件（判据量中转那一侧交了什么）：一个只收不折的 tap 口，每条接收端各收一份、满了丢。
@@ -292,12 +269,13 @@ fn an_unreadable_port_is_refused_rather_than_defaulted() {
 }
 
 /// H2：上游选择认不出启动配置（默认上游那个变量是坏的）⇒ `Failed`，而且**没有去绑那个口**（顺序：先认配置、再绑）。
+///
+/// 交的口全程由本条自己占着（不放掉、不事后重绑 —— 并行时放掉的口会被别的判据抢走）：要是先去绑了，
+/// 失败的理由会是绑口那一句；得到的是「上游认不出」那一句 ⇒ 还没走到绑。
 #[test]
 fn a_bad_upstream_config_fails_before_any_port_is_bound() {
-    // 先拿一个此刻空着的口，再交给它 —— 失败之后我们还绑得上它 ⇒ 它没被占。
-    let probe = TcpListener::bind("127.0.0.1:0").expect("探口");
-    let port = probe.local_addr().expect("地址").port();
-    drop(probe);
+    let squatter = TcpListener::bind("127.0.0.1:0").expect("占口");
+    let port = squatter.local_addr().expect("地址").port();
     let creds = creds_fixture("badup");
     let got = host(
         &env_of(
@@ -310,11 +288,15 @@ fn a_bad_upstream_config_fails_before_any_port_is_bound() {
         &own_of(&creds),
         no_egress(),
     );
-    assert!(
-        matches!(got, Hosted::Failed(_)),
-        "坏上游 ⇒ 应是 Failed，得 {got:?}"
-    );
-    TcpListener::bind(("127.0.0.1", port)).expect("配置认不出时不该已经把口绑走了");
+    let bad_upstream = copy_core::copy_text("beRelayListen.prepare.badUpstream", &[]);
+    match got {
+        Hosted::Failed(why) => assert_eq!(
+            why, bad_upstream,
+            "配置认不出时应在绑口之前就停（理由该是「上游认不出」，不是绑口那一句）"
+        ),
+        other => panic!("坏上游 ⇒ 应是 Failed，得 {other:?}"),
+    }
+    drop(squatter);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -494,7 +476,10 @@ fn tap_body() -> String {
 }
 
 /// 假上游：读完整条请求（头 ＋ 定长体 —— 不读体就关 ⇒ 内核发 RST，中转那一侧会把收尾读成「断了」），
-/// 回给定的那一整段（定长），关连接。
+/// 回给定的那一整段（定长，带 `Connection: close`），**等中转那一头先关**再关。
+///
+/// 每条连接只答这一发。等对端先关：中转要是把这条连接还进池里、下一发又从池里取它，这里读到的就是第二发 ⇒ 不答、
+/// 直接关 ⇒ 中转回 502、判据当场红（不等调度碰巧在「写完」与「关掉」之间把这条线程抢走才红）。
 fn fake_upstream_with(body: String) -> SocketAddr {
     let l = TcpListener::bind("127.0.0.1:0").expect("假上游 bind");
     let addr = l.local_addr().expect("假上游地址");
@@ -518,12 +503,15 @@ fn fake_upstream_with(body: String) -> SocketAddr {
                 .unwrap_or(0);
             let mut req_body = vec![0u8; len];
             let _ = s.read_exact(&mut req_body);
+            // 只答这一发 ⇒ 照实说 `Connection: close`（中转就不把这条还进池里）。
             let resp = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\n\r\n{body}",
+                "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
                 body.len()
             );
             let _ = s.write_all(resp.as_bytes());
             let _ = s.flush();
+            // 读到 EOF（中转关了）· 读到任何字节（它复用了这条）· 读期限到 —— 都在这里关。
+            let _ = s.read(&mut one);
         }
     });
     addr
@@ -613,9 +601,12 @@ fn the_stream_label_is_the_session_id_the_agent_sends_in_its_own_request_header(
     let addr = hosted_with_tap("tapv141", up, hub.clone());
     let sid = "3f2a9c1e-7d44-4c3b-9a55-0e6b2f1d8c77";
     let label_of = |extra: &str, rx: &mut tokio::sync::mpsc::Receiver<comms_outward::TapEvent>| {
-        through_with(addr, extra);
+        let resp = through_with(addr, extra);
         let got = drain(rx);
-        assert!(!got.is_empty(), "正控：这一发该有 tap 件");
+        assert!(
+            !got.is_empty(),
+            "正控：这一发该有 tap 件（中转答的：{resp:?}）"
+        );
         let labels: std::collections::BTreeSet<String> =
             got.into_iter().map(|e| e.stream).collect();
         labels.into_iter().collect::<Vec<_>>()
@@ -650,9 +641,12 @@ fn the_run_a_request_names_rides_along_with_its_tee_events() {
     let sid = "3f2a9c1e-7d44-4c3b-9a55-0e6b2f1d8c77";
     let run = crate::agents::claudecode::runs::RUN_HEADER;
     let owners_of = |extra: &str, rx: &mut tokio::sync::mpsc::Receiver<comms_outward::TapEvent>| {
-        through_with(addr, &format!("X-Claude-Code-Session-Id: {sid}\r\n{extra}"));
+        let resp = through_with(addr, &format!("X-Claude-Code-Session-Id: {sid}\r\n{extra}"));
         let got = drain(rx);
-        assert!(!got.is_empty(), "正控：这一发该有 tap 件");
+        assert!(
+            !got.is_empty(),
+            "正控：这一发该有 tap 件（中转答的：{resp:?}）"
+        );
         assert!(
             got.iter().filter(|e| e.n != 0).all(|e| e.heads.is_empty()),
             "只随 0 号那一件交：{got:?}"

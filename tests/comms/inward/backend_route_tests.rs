@@ -5,26 +5,23 @@ fn plain(code: &str, message: &str) -> String {
     format!("{code}/{message}")
 }
 
-/// ★★ **本模块的核心性质**：只有「能证明没发出去」的三档才允许回落。
+/// ★★ **本模块的核心性质**：只有「能证明没发出去」的那几档判成没发出去（[`provably_not_sent`]，界面那一份照同一条线）。
 ///
-/// 反过来错法（把 `Remote{wrong_owner}` 也当成 `NoChannel`）会让一次**被门拒绝**
-/// 转头走 SSH 再做一次 —— 那是把门拒绝洗成另一条路的成功。
+/// 反过来错法（把 `Remote{wrong_owner}` 也当成没发出去）会让一次**被门拒绝**被说成「没发出去、可以再来一次」。
 #[test]
-fn only_the_errors_that_prove_nothing_was_sent_allow_a_fallback() {
-    let fallback_ok = [
+fn only_the_errors_that_prove_nothing_was_sent_count_as_not_sent() {
+    let not_sent = |e: &CallError| provably_not_sent(&layer_call_error(e, 0).error);
+    let proven = [
         CallError::Unsupported {
             cmd: "kill".into(),
             offered: vec!["ping".into()],
         },
         CallError::TooManyPending,
     ];
-    for e in &fallback_ok {
-        assert!(
-            matches!(route_call_error(e, "devbox", plain), Routed::NoChannel(_)),
-            "{e:?} 是在写出去之前返回的，应当允许回落"
-        );
+    for e in &proven {
+        assert!(not_sent(e), "{e:?} 是在写出去之前返回的，应当判成没发出去");
     }
-    let no_fallback = [
+    let unsure = [
         CallError::Disconnected,
         CallError::Timeout {
             after: Duration::from_secs(1),
@@ -62,37 +59,25 @@ fn only_the_errors_that_prove_nothing_was_sent_allow_a_fallback() {
             data: None,
         }),
     ];
-    for e in &no_fallback {
+    for e in &unsure {
         assert!(
-            matches!(route_call_error(e, "devbox", plain), Routed::Refused(_)),
+            !not_sent(e),
             "{e:?} **不能证明**这条命令没发出去（或后端已经说了话）——\n\
-                 允许回落就等于在未知状态上再做一次动作，\
-                 而 `wrong_owner`/`too_many_windows` 更是把门拒绝洗成另一条路的成功"
+                 判成没发出去就等于说在未知状态上可以再做一次动作，\
+                 而 `wrong_owner`/`too_many_windows` 更是把门拒绝说成没发"
         );
     }
-    // 「没有通道」那一档也必须是可回落的，那一句是连接层的离线那一句。
-    assert_eq!(
-        no_channel("h1"),
-        Routed::NoChannel(crate::chan::said::offline("h1"))
-    );
+    // 「没有通道」那一档也是没发出去，那一句是那台离线那一句。
+    assert!(provably_not_sent(&layer_no_channel(0)));
+    assert_eq!(no_channel("h1"), copy_core::offline("h1"));
 }
 
-/// ★★ **收拢表逐档穷举**—— `route_call_error` 对
-/// `inbound_client::CallError` 的**每一个变体**，产出的三态**连同那句话**逐字节钉死。
+/// ★★ **那一句逐档穷举**—— `route_call_error` 对 `inbound_client::CallError` 的**每一个变体**说的那一句逐字节钉死。
 ///
-/// # 两侧为什么异源
-///
-/// 右侧（期望值）是**字面量**，抄自改动之前那份 `route_call_error` 在同一输入上的产出
-/// —— 先在旧实现上跑绿、再动实现（「分层判定只许一份，三态从它收拢」那次）。
-/// 它**不**调新的分层函数自证：拿新函数去算期望值，改错了两边一起错，恒真。
-///
-/// # 买到 / 买不到
-///
-/// **买到**：收拢前后同一输入 ⇒ 同一三态、同一句话（kill/launch/send_keys/cc_bus/tmux/find
-/// 六个调用方看到的一个字节都没变）。
-/// **买不到**：每个变体只喂了**一个**样本（字段值取一种）；字段值不同的输入由各调用方自己的判据管。
+/// 右侧（期望值）按文案键取、不调分层函数自证：拿新函数去算期望值，改错了两边一起错，恒真。
+/// 每个变体只喂了**一个**样本（字段值取一种）；字段值不同的输入由各调用方自己的判据管。
 #[test]
-fn the_collapse_to_three_states_is_byte_identical_to_the_table_before_layering() {
+fn the_sentence_of_every_variant_is_pinned() {
     // 穷尽见证：`inbound_client::CallError` 多一个变体，这里编译不过 —— 逼人回来补下表。
     fn witness(e: &CallError) {
         match e {
@@ -106,40 +91,32 @@ fn the_collapse_to_three_states_is_byte_identical_to_the_table_before_layering()
             | CallError::Remote(_) => {}
         }
     }
-    // 〔CP1 裁「改·§2.4」〕说法换了（去掉 ** 与「另一条路」，不点命令名与声明的能力），三态一格没动。
-    // 那句话按文案键断言、不抄原文：三态（NoChannel / Refused）与取的是哪一条仍逐格钉死。
     let t = |k: &str| copy_text(k, &[]);
     let unsure = |s: String| copy_text("rsBackendRoute.route.unsure", &[("s", &s)]);
-    let table: Vec<(CallError, Routed)> = vec![
+    let table: Vec<(CallError, String)> = vec![
         (
             CallError::Unsupported {
                 cmd: "kill".into(),
                 offered: vec!["ping".into(), "cancel".into()],
             },
-            Routed::NoChannel(copy_core::backend_old("devbox")),
+            copy_core::backend_old("devbox"),
         ),
-        (
-            CallError::TooManyPending,
-            Routed::NoChannel(t("rsBackendRoute.layer.tooMany")),
-        ),
+        (CallError::TooManyPending, t("rsBackendRoute.layer.tooMany")),
         (
             CallError::Disconnected,
-            Routed::Refused(unsure(t("rsInboundClient.error.closed"))),
+            unsure(t("rsInboundClient.error.closed")),
         ),
         (
             CallError::Timeout {
                 after: Duration::from_millis(1500),
                 withdraw: crate::chan::wire::Withdraw::Asked,
             },
-            Routed::Refused(unsure(copy_text(
+            unsure(copy_text(
                 "rsInboundClient.error.timeout",
                 &[("dur", "1.5 秒")],
-            ))),
+            )),
         ),
-        (
-            CallError::Cancelled,
-            Routed::Refused(unsure(t("reason.op.cancelled"))),
-        ),
+        (CallError::Cancelled, unsure(t("reason.op.cancelled"))),
         (
             CallError::Remote(cmd_wire::failed::Failed {
                 code: "wrong_owner".into(),
@@ -147,7 +124,7 @@ fn the_collapse_to_three_states_is_byte_identical_to_the_table_before_layering()
                 detail: String::new(),
                 data: None,
             }),
-            Routed::Refused("wrong_owner/sid=x".into()),
+            "wrong_owner/sid=x".into(),
         ),
         (
             CallError::Unavailable {
@@ -155,16 +132,16 @@ fn the_collapse_to_three_states_is_byte_identical_to_the_table_before_layering()
                 code: "no_tmux".into(),
                 said: "devbox 无 tmux".into(),
             },
-            Routed::Refused("no_tmux/devbox 无 tmux".into()),
+            "no_tmux/devbox 无 tmux".into(),
         ),
     ];
-    assert_eq!(table.len(), 7, "收拢表的行数与穷尽见证的变体数对不上");
+    assert_eq!(table.len(), 7, "表的行数与穷尽见证的变体数对不上");
     for (e, want) in table {
         witness(&e);
         assert_eq!(
             route_call_error(&e, "devbox", plain),
             want,
-            "`{e:?}` 收拢出来的三态（或那句话）变了 —— 旧三态一个字节都不许变"
+            "`{e:?}` 说的那一句变了"
         );
     }
 }
@@ -173,7 +150,7 @@ fn the_collapse_to_three_states_is_byte_identical_to_the_table_before_layering()
 /// 形状（层 · `reach` · `why` · 跳号标签 · 不透明 body）逐格钉死。
 ///
 /// 期望值是**字面量**（与 `layer_call_error` 头注那张分层表逐行对应），不调任何映射函数去算。
-/// 收拢那一侧由 `the_collapse_to_three_states_is_byte_identical_to_the_table_before_layering` 管；
+/// 那一句由 `the_sentence_of_every_variant_is_pinned` 管；
 /// 两张字面表各钉一层，改错哪一层红哪一张。
 #[test]
 fn the_layering_table_is_pinned_cell_by_cell() {
@@ -207,7 +184,7 @@ fn the_layering_table_is_pinned_cell_by_cell() {
         ),
         (
             CallError::TooManyPending,
-            hop("write", w::Reach::NotSent, w::HopFault::Overrun),
+            hop("write", w::Reach::NotSent, w::HopFault::Full),
         ),
         (
             CallError::Disconnected,
@@ -300,4 +277,82 @@ fn a_refusal_with_data_carries_it_in_the_body() {
             "data": {"requested": "z", "pinned": true, "listKnown": true, "alternative": null},
         })
     );
+}
+
+/// 每种 `CallError` 的码只取 `cmd_wire` 那几个常量（桌面 · 手机 · 常驻转发同读这一份，不各写一张翻码表）；
+/// 那台交来码的两种（握手时说做不到 · 事后答失败）原样交那台的码。
+#[test]
+fn every_call_error_code_is_a_cmd_wire_constant() {
+    let ours = [
+        cmd_wire::UNKNOWN_COMMAND,
+        cmd_wire::SHAPE_DIFFERS,
+        cmd_wire::TOO_MANY_PENDING,
+        cmd_wire::DISCONNECTED,
+        cmd_wire::TIMEOUT,
+        cmd_wire::CANCELLED,
+    ];
+    let table: Vec<(CallError, &str)> = vec![
+        (
+            CallError::Unsupported {
+                cmd: "kill".into(),
+                offered: vec![],
+            },
+            cmd_wire::UNKNOWN_COMMAND,
+        ),
+        (
+            CallError::Differs {
+                cmd: "kill".into(),
+                said: "s".into(),
+            },
+            cmd_wire::SHAPE_DIFFERS,
+        ),
+        (CallError::TooManyPending, cmd_wire::TOO_MANY_PENDING),
+        (CallError::Disconnected, cmd_wire::DISCONNECTED),
+        (
+            CallError::Timeout {
+                after: Duration::from_secs(1),
+                withdraw: crate::chan::wire::Withdraw::Asked,
+            },
+            cmd_wire::TIMEOUT,
+        ),
+        (CallError::Cancelled, cmd_wire::CANCELLED),
+    ];
+    for (e, want) in &table {
+        assert_eq!(e.code(), *want, "`{e:?}` 的码不是那个常量");
+        assert!(ours.contains(&e.code()), "`{e:?}` 的码不在 cmd_wire 常量里");
+    }
+    let mut distinct = ours.to_vec();
+    distinct.sort_unstable();
+    distinct.dedup();
+    assert_eq!(distinct.len(), ours.len(), "两种失败共用了一个码");
+    let unavailable = CallError::Unavailable {
+        cmd: "kill".into(),
+        code: "no_tmux".into(),
+        said: "s".into(),
+    };
+    assert_eq!(unavailable.code(), "no_tmux");
+    let remote = CallError::Remote(cmd_wire::failed::Failed {
+        code: "wrong_owner".into(),
+        ..Default::default()
+    });
+    assert_eq!(remote.code(), "wrong_owner");
+}
+
+/// 本侧在等的满了（`TooManyPending`）经通道说出来的是它自己那一句（「待处理命令已达上限」），
+/// 不借「已超时」那一格：那一问没出本侧、期限也没到。
+#[test]
+fn a_full_pending_table_is_not_said_as_a_timeout() {
+    let e = layer_call_error(&CallError::TooManyPending, 1).error;
+    for origin in [
+        crate::origin::Origin::local(),
+        crate::origin::Origin::named("devbox"),
+    ] {
+        let said = crate::chan::said::said(&e, &origin);
+        assert_eq!(
+            said,
+            copy_text("rsBackendRoute.layer.tooMany", &[]),
+            "@ {origin}"
+        );
+        assert_ne!(said, copy_text("rsChanSaid.hop.expired", &[]), "@ {origin}");
+    }
 }

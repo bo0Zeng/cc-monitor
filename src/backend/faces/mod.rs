@@ -91,5 +91,6 @@ pub(crate) mod session_send; // 往一条会话送进一句的本体（在等人
 pub mod session_set_face; // 帧面 `set-plan` · `set-launch`：补足一组会话要的这台事实与手（配置文件 · 活会话表 · 启动台账的别名 · 起会话 · 组注解）；判定住 control/session_set.rs
 pub mod session_window_face; // 帧面 `session-window`（typed）：↗ 那一问，会话在这台电脑上的哪儿（本机 · 远端同一个形）
 pub mod sessions_batch_face; // 帧面 `sessions-batch`（typed）：一批会话跨几台，本机同进程做、别的台经常驻问它自己那一组，合好那一句
+pub mod status_line_face; // 托管终端状态行那几格的值（瘦客户端的耳朵）与偏好页的预览 `status-line-preview`；模板 · 字段表住 host/managed/status.rs
 pub mod terminals_board_face; // 「终端」视图那两条（typed）：terminals-board-here（这台那几行）· terminals-board（问到各台、合成一份）
 pub mod terminals_end_face; // 帧面 `terminals-end`（typed）：终端名单「结束所选」那一批跨几台，本机同进程结束、别的台经常驻问它自己那一组，合好那一句

@@ -48,15 +48,17 @@ class HostConnector(
         pendingIdentityId: String? = null,
         onEvent: ((SshConnectEvent) -> Unit)? = null,
         expectedGen: Int? = null,
-    ): SshTransport =
-        manager.connect(
+    ): SshTransport {
+        val table = hostRepo.observeAll().first()
+        return manager.connect(
             host.id,
             host.id,
-            host.label,
-            planDial(host, hostRepo.observeAll().first(), pendingIdentityId, identityRepo, hostRepo, planner),
+            machineName(table, host.id),
+            planDial(host, table, pendingIdentityId, identityRepo, hostRepo, planner),
             onEvent = onEvent,
             expectedGen = expectedGen,
         )
+    }
 
     /**
      * 登记一个持有者，返回当前重连纪元（语义同 [SshConnectionManager.retain]，按 holder 幂等）。

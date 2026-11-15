@@ -25,7 +25,7 @@ fn run_on_frame(
     };
     run(req)
         .map(|_| ())
-        .map_err(|f| f.code_or_fallback().to_string())
+        .map_err(|f| cmd_wire::failed::Failed::code_or_fallback(f.code.clone()))
 }
 
 /// 五条小命令：入参多一个键 ⇒ `bad_args`、一个字节不写。

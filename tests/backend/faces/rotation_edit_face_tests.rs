@@ -15,7 +15,10 @@ fn code_of(src: &str) -> String {
 /// 投到线上的那个码与 `data`（错误枚举 ⇒ 失败信封）。
 fn wire_of<E: crate::wire::typed::Codes>(e: E) -> (String, Option<Value>) {
     let f = e.into_said();
-    (f.code_or_fallback().to_string(), f.data)
+    (
+        cmd_wire::failed::Failed::code_or_fallback(f.code.clone()),
+        f.data,
+    )
 }
 
 fn file(home: &Home, id: &str) -> String {

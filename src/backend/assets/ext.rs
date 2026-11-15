@@ -17,7 +17,8 @@
 //! # 卸
 //!
 //! 装记录里有 ⇒ 只撤装时写进去的（skill：`skill_install` 那一份逐文件判；MCP：那一条的摘要对得上才不问）；
-//! 没有 ⇒ 不是 cc-monitor 装的：先挪 / 抄进 `~/.cc-monitor/backups/`，再删，预览里明说。
+//! 没有 ⇒ 不是 cc-monitor 装的：skill 先挪进 `~/.cc-monitor/backups/` 再删；项目级 MCP 那一条删之前的原文记进装记录
+//! （`skill_ledger` 的 `touched`，「改过的用户文件」那一行撤回），不另抄；预览里明说。
 
 use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
@@ -28,7 +29,6 @@ use std::path::{Path, PathBuf};
 use super::asset_catalog::{self, Asset, Catalog, ExtKind};
 use super::skill_ledger::{Record, RecordReq};
 use crate::common::door::{self, Door, Refused};
-use crate::common::said::IntoNote as _;
 use crate::common::said::Said;
 use crate::common::time::now_ms;
 
@@ -125,13 +125,11 @@ pub struct ExtMachine {
     /// 就是本机后端这一台。
     pub here: bool,
     pub reachable: bool,
-    /// 给人看的名字（可达表里的名字；没有就是那台自报的称呼）。
+    /// 给人看的名字（本机 ⇒ `copy_core::machine_word`；别的台 ⇒ 可达表里的名字，没有就是那台自报的称呼）。
     pub name: String,
-    /// 那台上开过会话的项目目录（装到项目时给人选）。
-    pub projects: Vec<String>,
     /// 那台的 MCP 列表（那台 `mcp-read` 的成品原样：本机后端问到再交，`faces/ext_list_face.rs::with_mcp`）；
-    /// 表里没有 MCP 行 · 那台没连上 · 问不到 ⇒ 缺（界面那台的 MCP 格不画小标）。这一层只转交、不读它：
-    /// 形状是 `mcp-read` 的回包（金样 `tests/__fixtures__/mcp-read.golden.json` 钉），界面按那个生成类型收（`ext-reads.ts::mcpOf`）。
+    /// 表里没有 MCP 行 · 那台没连上 · 问不到 ⇒ 缺（界面那台的 MCP 格不画小标）。这一层只转交，只读每条的家 · 名字 · 不一致 · 那一句
+    /// 来拆同名不一致的行（[`split_mismatch`]）；形状是 `mcp-read` 的回包（金样 `tests/__fixtures__/mcp-read.golden.json` 钉），界面按那个生成类型收（`ext-reads.ts::mcpOf`）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "unknown"))]
     pub mcp: Option<serde_json::Value>,
@@ -179,10 +177,18 @@ pub struct ExtKnown {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(rename_all = "camelCase")]
 pub struct ExtRow {
+    /// 哪一家的（线上的 kind）；默认那一家 ⇒ 缺（同只有一家时那一形）。卸 · 装那一跳照它问回那一家。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub agent: Option<cmd_wire::AgentKind>,
+    /// 那一家对人的叫法（后端写好）：表里不止一家时每行都给，只一家 ⇒ 缺（线上形同只有一家时）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub agent_said: Option<String>,
     pub kind: ExtKind,
     /// 种类那一格的字（后端写好）。
-    #[serde(rename = "kindSaid")]
     pub kind_said: String,
     pub name: String,
     pub about: Option<String>,
@@ -193,12 +199,40 @@ pub struct ExtRow {
     /// 用户写的备注（随目录在后端之间同步）。
     pub note: Option<String>,
     pub cells: Vec<ExtCell>,
+    /// MCP 同名、各号配置不一致、拆成几行的：这是拆出的第几行（从 0 数）；没拆 ⇒ 缺。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub variant: Option<u32>,
+    /// 拆出的那一行在各台挑哪一条（与 [`ExtList::machines`] 同序：那台 `mcp` 里 `entries` 的下标；那台没有这一份 ⇒ 空）；没拆 ⇒ 缺。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub picks: Option<Vec<Option<u32>>>,
+    /// 拆成的那一行名字后面那一句（说不一致的那一条写好的 `held.said`）；没拆 ⇒ 缺。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub held_said: Option<String>,
+    /// 插件那一行从哪来（同一光名字几个来源各是一行；条目上有那一家的写法就有，经不经插件命令管另由各格判）；
+    /// 别的种类 · 自己发版的 · 没写法的（旧对端）⇒ 缺。
+    /// 卸 · 装那一跳把 `key` 原样交回，后端照它找那一条。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub source: Option<ExtSource>,
+}
+
+/// 插件那一行的来源：那一家自己的写法（目录条目的 `summary.key`，装 · 删交它）＋ 给人看的那一句（照条目的市场写好）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct ExtSource {
+    pub key: String,
+    pub said: String,
 }
 
 /// `ext-list` 的成品。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(rename_all = "camelCase")]
 pub struct ExtList {
     pub machines: Vec<ExtMachine>,
     pub rows: Vec<ExtRow>,
@@ -206,7 +240,7 @@ pub struct ExtList {
     /// 表下图例：列哪几态 ＋ 各一句（「关着」只在有一台装着插件时列）。
     pub legend: Vec<ExtLegend>,
     /// 表顶「认得」那一组的组头（带 `known` 的那几行排在最前，界面在它们前面放这一句）。
-    #[serde(rename = "knownTitle", default)]
+    #[serde(default)]
     pub known_title: String,
 }
 
@@ -326,10 +360,14 @@ pub struct ExtCard {
 pub struct ExtUninstallCard {
     pub kind: ExtKind,
     pub name: String,
+    /// 卸的是哪一家的（照请求；默认那一家 ⇒ 缺）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub agent: Option<cmd_wire::AgentKind>,
     pub path: String,
     /// cc-monitor 装的（装记录里有）。
     pub recorded: bool,
-    /// 要删的那几个（skill：相对路径；MCP：那份配置文件里的那一条）。
+    /// 要删的那几个（skill：相对路径；MCP：那份配置文件里的那一条；插件：那个插件的名字）。
     pub files: Vec<String>,
     /// 删之前先放到哪（不是 cc-monitor 装的才有）。
     pub backup: Option<String>,
@@ -434,6 +472,8 @@ pub(crate) fn kind_from_arg(args: &Value) -> Result<ExtKind, Said> {
 struct Column<'a> {
     id: &'a str,
     m: ExtMachine,
+    /// 那台上开过会话的项目目录（「装到…」的项目落点；不上线，界面只看落点）。
+    projects: &'a [String],
     /// 那台有账号库（用户级 MCP 是各账号共用的那一份）。
     shared: bool,
 }
@@ -456,12 +496,16 @@ fn columns<'a>(cat: &'a Catalog, reach: &[(String, Option<String>)]) -> Vec<Colu
                 id: id.as_str(),
                 m: ExtMachine {
                     reachable: here || key.is_some(),
-                    name: key.clone().unwrap_or_else(|| snap.label.clone()),
+                    name: if here {
+                        copy_core::machine_word(&cmd_wire::Machine::local())
+                    } else {
+                        key.clone().unwrap_or_else(|| snap.label.clone())
+                    },
                     key,
                     here,
-                    projects: snap.project_dirs.clone(),
                     mcp: None,
                 },
+                projects: &snap.project_dirs,
                 shared: snap.shared_mcp,
             }
         })
@@ -490,10 +534,10 @@ fn canonical<'a>(held: &[Option<&'a Asset>], cols: &[Column]) -> Option<&'a str>
 }
 
 /// 装到项目时替那台先挑一个：和来源同一个目录（那台也有这个项目）⇒ 它；否则那台的第一个；那台没有项目 ⇒ `None`。
-fn pick_project(m: &ExtMachine, like: Option<&str>) -> Option<String> {
-    like.filter(|d| m.projects.iter().any(|p| p == d))
+fn pick_project(projects: &[String], like: Option<&str>) -> Option<String> {
+    like.filter(|d| projects.iter().any(|p| p == d))
         .map(str::to_string)
-        .or_else(|| m.projects.first().cloned())
+        .or_else(|| projects.first().cloned())
 }
 
 fn about_of(a: &Asset) -> Option<String> {
@@ -644,10 +688,30 @@ fn detail_of(a: &Asset) -> Vec<ExtDetail> {
 
 // ───────────────────────── 哪一处能写（全仓只此一处判） ─────────────────────────
 
-/// 这一级能不能往里写 / 从里删。用户级 MCP：那台有账号库（`shared` = 各账号共用一份）⇒ 写进共用的那一份、同步到所有号；
-/// 没有 ⇒ 它住 agent 自己的热状态文件（agent 自己一直在重写）⇒ 只读。
-pub(crate) fn writable(kind: ExtKind, at: &ExtLoc, shared: bool) -> Result<(), String> {
-    if let Some(why) = read_only(kind) {
+/// 这一级能不能往里写 / 从里删（`agent` 是规整后的家，默认那一家 ⇒ 缺）。用户级 MCP：别的家 ⇒ 不经这里写
+/// （各账号共用的那一份是默认那一家的，别的家那一格读的是它自己那一份）；默认那一家、那台有账号库（`shared` = 各账号共用一份）⇒
+/// 写进共用的那一份、同步到所有号；没有 ⇒ 它住 agent 自己的热状态文件（agent 自己一直在重写）⇒ 只读。
+pub(crate) fn writable(
+    kind: ExtKind,
+    at: &ExtLoc,
+    shared: bool,
+    agent: Option<&cmd_wire::AgentKind>,
+) -> Result<(), String> {
+    writable_among(crate::agents::REGISTRY, kind, at, shared, agent)
+}
+
+/// [`writable`] 的注册表由调用方交那一半（枢纽 · 卸载照它们手上那一张判）。
+pub(crate) fn writable_among(
+    registry: &[crate::agents::Adapter],
+    kind: ExtKind,
+    at: &ExtLoc,
+    shared: bool,
+    agent: Option<&cmd_wire::AgentKind>,
+) -> Result<(), String> {
+    if let Some(why) = read_only_among(registry, kind, agent)
+        .or_else(|| family_refused(kind, agent, at))
+        .or_else(|| plugin_user_only(kind, at))
+    {
         return Err(why);
     }
     match (kind, at) {
@@ -658,44 +722,72 @@ pub(crate) fn writable(kind: ExtKind, at: &ExtLoc, shared: bool) -> Result<(), S
     }
 }
 
-/// 整种只读（哪一级都不经 cc-monitor 写）⇒ 为什么。插件这一版只读。
-pub(crate) fn read_only(kind: ExtKind) -> Option<String> {
-    (kind == ExtKind::Plugin).then(|| copy_text("beExt.note.pluginReadOnly", &[]))
+/// 整种只读（哪一级都不经 cc-monitor 写）⇒ 为什么：插件只在那一家没声明插件那一格（`AssetFace::plugin_cells`）时只读。
+/// 注册表由调用方交。
+pub(crate) fn read_only_among(
+    registry: &[crate::agents::Adapter],
+    kind: ExtKind,
+    agent: Option<&cmd_wire::AgentKind>,
+) -> Option<String> {
+    (kind == ExtKind::Plugin && !super::plugin_exec::declared(registry, agent))
+        .then(|| plugin_read_only_said(registry, agent))
 }
 
-/// 整种只读的那一种进了写的那几条命令（卸载 · 装）⇒ 拒。
-pub(crate) fn read_only_refused(kind: ExtKind) -> Said {
-    crate::wire::spec::fail("refused", read_only(kind).unwrap_or_default())
+/// 那一家插件只读那一句（带那一家对人的叫法）。
+pub(crate) fn plugin_read_only_said(
+    registry: &[crate::agents::Adapter],
+    agent: Option<&cmd_wire::AgentKind>,
+) -> String {
+    let kind = super::skill_install::family_among(registry, agent.map(|a| a.as_str()))
+        .ok()
+        .flatten()
+        .or(agent.map(|a| a.as_str()))
+        .unwrap_or_default();
+    copy_text(
+        "beExt.note.pluginReadOnly",
+        &[("family", &crate::agents::family_said_among(registry, kind))],
+    )
 }
 
-/// 这一处的 MCP 配置文件在这台上的（根, 相对段）：项目 = `<项目>/.mcp.json`；用户级 = 各账号共用的那一份（没有账号库 ⇒ 拒）。
-pub(crate) fn mcp_file(d: &dyn Door, at: &ExtLoc) -> Result<(String, String), Said> {
-    match at {
-        ExtLoc::Project { dir } => Ok((dir.clone(), super::mcp_edit::mcp_json().to_string())),
-        ExtLoc::User => {
-            let store = shared_mcp_file(d)?;
-            let p = Path::new(&store);
-            let (Some(dir), Some(file)) = (p.parent(), p.file_name()) else {
-                return Err(crate::wire::spec::fail(
-                    "io_failed",
-                    copy_text("beExt.uninstall.noHome", &[]),
-                ));
-            };
-            Ok((
-                dir.display().to_string(),
-                file.to_string_lossy().into_owned(),
-            ))
-        }
-    }
+/// 用户级 MCP 配置文件在这台上的（根, 相对段）：各账号共用的那一份（家照 `agent`，规整后不是默认那一家 · 没有账号库 ⇒ 拒）。
+/// 项目级的那一份照那一家取（[`super::mcp_edit::project_mcp_of`]）。
+pub(crate) fn user_mcp_spot(
+    d: &dyn Door,
+    reg: &[crate::agents::Adapter],
+    agent: Option<&str>,
+) -> Result<(String, String), Said> {
+    let family =
+        super::skill_install::family_of(reg, agent.map(cmd_wire::AgentKind::from).as_ref())?;
+    let store = shared_mcp_file(d, family.as_ref())?;
+    let (Some(dir), Some(file)) = (store.parent(), store.file_name()) else {
+        return Err(crate::wire::spec::fail(
+            "io_failed",
+            copy_text("beExt.uninstall.noHome", &[]),
+        ));
+    };
+    Ok((path_text(dir)?, path_text(Path::new(file))?))
 }
 
-/// 这台的用户级 MCP 落在哪（被写的那一台自己判）：各账号共用的那一份（有账号库）；没有 ⇒ 按 [`writable`] 拒。
-pub(crate) fn shared_mcp_file(d: &dyn Door) -> Result<String, Said> {
+/// 这台的用户级 MCP 落在哪（被写的那一台自己判）：各账号共用的那一份（默认那一家 · 有账号库）；别的家 · 没有 ⇒ 按 [`writable`] 拒。
+pub(crate) fn shared_mcp_file(
+    d: &dyn Door,
+    agent: Option<&cmd_wire::AgentKind>,
+) -> Result<PathBuf, Said> {
     let home = door::home(d).map_err(|e| Said::new("io_failed", e))?;
-    let store = crate::accounts::manage::mcp_share_exec::store_file_in(&home);
-    writable(ExtKind::Mcp, &ExtLoc::User, store.is_some())
+    let store = crate::accounts::manage::mcp_share_exec::store_path_in(Path::new(&home));
+    writable(ExtKind::Mcp, &ExtLoc::User, store.is_some(), agent)
         .map_err(|why| Said::new("refused", why))?;
     Ok(store.unwrap_or_default())
+}
+
+/// 路径写成字（门只收字，线上也是字）：不是合法 UTF-8 ⇒ 照实拒，不换成替换字符拼出一个指到别处的路径。
+fn path_text(p: &Path) -> Result<String, Said> {
+    p.to_str().map(str::to_string).ok_or_else(|| {
+        Said::new(
+            "refused",
+            copy_text("beExt.path.notUtf8", &[("path", &p.display().to_string())]),
+        )
+    })
 }
 
 /// 认得的那一样从哪来（闭集）。
@@ -747,19 +839,37 @@ fn cc_bus_note() -> String {
     copy_text("beExt.builtin.ccBus", &[])
 }
 
-fn known_of(kind: ExtKind, name: &str) -> Option<&'static Known> {
-    KNOWN.iter().find(|k| k.kind == kind && k.name == name)
+/// 认得的那一样（照带家的行认：只属默认那一家，`agent` 是规整后的家，别的家同名那一样不算）。
+fn known_of(
+    kind: ExtKind,
+    name: &str,
+    agent: Option<&cmd_wire::AgentKind>,
+) -> Option<&'static Known> {
+    KNOWN
+        .iter()
+        .find(|k| agent.is_none() && k.kind == kind && k.name == name)
 }
 
 /// 是不是嵌在 cc-monitor 里的那一个（装它用被写那台二进制里那一份，不从别的机器拿）。
-pub(crate) fn is_builtin(kind: ExtKind, name: &str) -> bool {
-    known_of(kind, name).is_some_and(|k| k.origin == Origin::Embedded)
+pub(crate) fn is_builtin(kind: ExtKind, name: &str, agent: Option<&cmd_wire::AgentKind>) -> bool {
+    known_of(kind, name, agent).is_some_and(|k| k.origin == Origin::Embedded)
 }
 
 /// 自己发版的那几样（[`Origin::Release`]）：装它照 skill 那条路，从持有最新那一版的那台拷进被写那台的用户级 skills 目录
 /// （插件也一样：它发版就是整个目录拷进 skills 目录）。
-pub(crate) fn is_release(kind: ExtKind, name: &str) -> bool {
-    known_of(kind, name).is_some_and(|k| k.origin == Origin::Release)
+pub(crate) fn is_release(kind: ExtKind, name: &str, agent: Option<&cmd_wire::AgentKind>) -> bool {
+    known_of(kind, name, agent).is_some_and(|k| k.origin == Origin::Release)
+}
+
+/// 这一家的这一种在这一级经这里装不了（来源或落点各问一次）：别的家的 MCP 在全局那一级（全局那一份只读默认那一家，
+/// 不拿它冒充别家那一份）；项目级照那一家的项目级配置走，放行。
+pub(crate) fn family_refused(
+    kind: ExtKind,
+    agent: Option<&cmd_wire::AgentKind>,
+    at: &ExtLoc,
+) -> Option<String> {
+    (kind == ExtKind::Mcp && agent.is_some() && *at == ExtLoc::User)
+        .then(|| copy_text("beExt.note.userMcpFamily", &[]))
 }
 
 /// 版本号逐段比：数字段按数比，别的按字比（「0.5.10」比「0.5.9」新）。
@@ -785,32 +895,43 @@ fn newest<'a>(held: &[Option<&'a Asset>]) -> Option<&'a str> {
         .map(|(_, d)| d)
 }
 
-/// 自带的 · 自己发版的插件只装全局（枢纽收到的落点先过这一道；用户级 MCP 能不能写由被写那台自己判，见 [`shared_mcp_file`]）。
-pub(crate) fn builtin_refused(kind: ExtKind, name: &str, at: &ExtLoc) -> Option<String> {
+/// cc-monitor 自带的那一样只装全局（枢纽收到的落点先过这一道；插件只到用户级由 [`plugin_user_only`] 判；用户级 MCP 能不能写由被写那台自己判，见 [`shared_mcp_file`]）。
+/// `agent` 是规整后的家（自带的 · 自己发版的只属默认那一家）。
+pub(crate) fn builtin_refused(
+    kind: ExtKind,
+    name: &str,
+    agent: Option<&cmd_wire::AgentKind>,
+    at: &ExtLoc,
+) -> Option<String> {
     if *at == ExtLoc::User {
         return None;
     }
-    if is_builtin(kind, name) {
-        return Some(copy_text("beExt.target.builtinUserOnly", &[]));
-    }
-    (kind == ExtKind::Plugin && is_release(kind, name))
+    is_builtin(kind, name, agent).then(|| copy_text("beExt.target.builtinUserOnly", &[]))
+}
+
+/// 插件只到用户级（自己发版的拷进用户级 skills 目录 · 别的经那一家的插件命令装删）：落点是项目 ⇒ 为什么。全仓只此一处判。
+fn plugin_user_only(kind: ExtKind, at: &ExtLoc) -> Option<String> {
+    (kind == ExtKind::Plugin && *at != ExtLoc::User)
         .then(|| copy_text("beExt.target.pluginUserOnly", &[]))
 }
 
-/// 装到这一处行不行（表上「装到哪」的选项）：不能写的那一级 · 自带的只装全局。行 ⇒ `None`。
-pub(crate) fn target_refused(
+/// 装到这一处行不行（表上「装到哪」的选项 · 枢纽收到的落点）：不能写的那一级（[`writable_among`]）· 自带的只装全局。
+/// 行 ⇒ `None`。照带家的行认（`agent` 是那一行的家）；注册表由调用方交。
+pub(crate) fn target_refused_among(
+    registry: &[crate::agents::Adapter],
     kind: ExtKind,
     name: &str,
+    agent: Option<&cmd_wire::AgentKind>,
     at: &ExtLoc,
     shared: bool,
 ) -> Option<String> {
-    // 自己发版的插件装进那台的用户级 skills 目录（各号共用那一份），不经插件那条只读的路。
-    if kind == ExtKind::Plugin && is_release(kind, name) {
-        return builtin_refused(kind, name, at);
+    // 自己发版的插件装进那台的用户级 skills 目录（各号共用那一份），不经那一家的插件命令（那一家声明没声明都照装）。
+    if kind == ExtKind::Plugin && is_release(kind, name, agent) {
+        return plugin_user_only(kind, at);
     }
-    writable(kind, at, shared)
+    writable_among(registry, kind, at, shared, agent)
         .err()
-        .or_else(|| builtin_refused(kind, name, at))
+        .or_else(|| builtin_refused(kind, name, agent, at))
 }
 
 /// 来源与目标是同一台的同一处（枢纽拒、表上那一项不可选）。
@@ -823,36 +944,67 @@ pub(crate) fn same_place(
     from == to && at_from == at_to
 }
 
+/// 表里一行的键：（种类, 名字, 家, 来源键）—— 同名的两家各是一行（默认那一家 = `None`，排在同名那几行最前）；
+/// 同一家同名的插件几个来源各是一行（来源键见 [`source_key`]）。
+type RowKey = (ExtKind, String, Option<cmd_wire::AgentKind>, Option<String>);
+
+/// 一条的来源键：插件 ⇒ 那一家的写法（`summary.key`）；别的种类 · 自己发版的 · 没写法的（旧对端）⇒ 缺。
+fn source_key(a: &Asset) -> Option<String> {
+    (a.kind == ExtKind::Plugin && known_of(a.kind, &a.name, a.agent.as_ref()).is_none())
+        .then(|| super::plugin_exec::key_of(&a.summary).map(str::to_string))
+        .flatten()
+}
+
 /// 各台目录 ＋ 可达表（`origin` → 那台目录的 id）⇒ 条目 × 机器一张表。**判定只在这里。**
 pub(crate) fn table(cat: &Catalog, reach: &[(String, Option<String>)]) -> ExtList {
+    table_among(crate::agents::REGISTRY, cat, reach)
+}
+
+/// [`table`] 的注册表由调用方交那一半（判据交替身家）。
+pub(crate) fn table_among(
+    reg: &[crate::agents::Adapter],
+    cat: &Catalog,
+    reach: &[(String, Option<String>)],
+) -> ExtList {
     let cols = columns(cat, reach);
-    let mut by_key: BTreeMap<(ExtKind, String), Vec<Vec<&Asset>>> = BTreeMap::new();
+    let mut by_key: BTreeMap<RowKey, Vec<Vec<&Asset>>> = BTreeMap::new();
     for k in KNOWN {
         by_key
-            .entry((k.kind, k.name.to_string()))
+            .entry((k.kind, k.name.to_string(), None, None))
             .or_insert_with(|| vec![Vec::new(); cols.len()]);
     }
     for (i, c) in cols.iter().enumerate() {
         for a in &cat.machines[c.id].assets {
             by_key
-                .entry((a.kind, a.name.clone()))
+                .entry((a.kind, a.name.clone(), a.agent.clone(), source_key(a)))
                 .or_insert_with(|| vec![Vec::new(); cols.len()])[i]
                 .push(a);
         }
     }
-    // 认得的那几样按 [`KNOWN`] 的次序排在最前，其余按（种类, 名字）。
-    let rank = |kind: ExtKind, name: &str| {
-        KNOWN
+    // 认得的那几样（默认那一家的）按 [`KNOWN`] 的次序排在最前，其余按（种类, 名字, 家）。
+    let rank = |(kind, name, agent, _): &RowKey| match agent {
+        Some(_) => KNOWN.len(),
+        None => KNOWN
             .iter()
-            .position(|k| k.kind == kind && k.name == name)
-            .unwrap_or(KNOWN.len())
+            .position(|k| k.kind == *kind && k.name == name)
+            .unwrap_or(KNOWN.len()),
     };
     let mut keyed: Vec<_> = by_key.into_iter().collect();
-    keyed.sort_by_key(|((kind, name), _)| rank(*kind, name));
-    let rows: Vec<ExtRow> = keyed
+    keyed.sort_by_key(|(key, _)| rank(key));
+    let mut rows: Vec<ExtRow> = keyed
         .into_iter()
-        .map(|((kind, name), per)| row(cat, &cols, kind, &name, &per))
+        .map(|((kind, name, agent, source), per)| ExtRow {
+            source: source.map(|key| source_of(key, &per)),
+            ..row(reg, cat, &cols, kind, &name, agent, &per)
+        })
         .collect();
+    // 不止一家 ⇒ 每行写上那一家的叫法（行上没写家的是资产默认那一家，打标签时省掉的就是它；判在 `said_when_several`）。
+    let agents: Vec<Option<&str>> = rows.iter().map(|r| r.agent.as_deref()).collect();
+    let said =
+        crate::agents::said_when_several(reg, crate::agents::asset_default_among(reg), &agents);
+    for (r, s) in rows.iter_mut().zip(said) {
+        r.agent_said = s;
+    }
     let legend = legend_of(&rows);
     ExtList {
         machines: cols.into_iter().map(|c| c.m).collect(),
@@ -863,14 +1015,38 @@ pub(crate) fn table(cat: &Catalog, reach: &[(String, Option<String>)]) -> ExtLis
     }
 }
 
+/// 一行的来源：来源键 ＋ 那一句（照这一行各条记的市场写；同一写法的几条市场同一个，取第一条记了的；都没记 ⇒ 照写法写）。
+fn source_of(key: String, per: &[Vec<&Asset>]) -> ExtSource {
+    let market = per
+        .iter()
+        .flatten()
+        .find_map(|a| a.summary.get("market").and_then(Value::as_str))
+        .map(str::to_string);
+    let said = copy_text(
+        "beExt.row.source",
+        &[("market", market.as_deref().unwrap_or(&key))],
+    );
+    ExtSource { key, said }
+}
+
 /// 「装到…」从哪来：自带的 ⇒ 被写那台二进制里那一份；否则某一台上的那一份。
 enum Source<'c, 'a> {
     Builtin,
     Machine(&'c Column<'a>, &'a Asset),
 }
 
-fn row(cat: &Catalog, cols: &[Column], kind: ExtKind, name: &str, per: &[Vec<&Asset>]) -> ExtRow {
-    let known = known_of(kind, name);
+fn row(
+    reg: &[crate::agents::Adapter],
+    cat: &Catalog,
+    cols: &[Column],
+    kind: ExtKind,
+    name: &str,
+    agent: Option<cmd_wire::AgentKind>,
+    per: &[Vec<&Asset>],
+) -> ExtRow {
+    // 认得的那几样是默认那一家的（别的家同名那一行不算）；条目键带家（与目录里记的同一个）。
+    let key = asset_catalog::entry_key(agent.as_deref(), kind, name);
+    let known = known_of(kind, name, agent.as_ref());
     let user: Vec<Option<&Asset>> = per
         .iter()
         .map(|v| v.iter().copied().find(|a| a.project.is_none()))
@@ -905,15 +1081,18 @@ fn row(cat: &Catalog, cols: &[Column], kind: ExtKind, name: &str, per: &[Vec<&As
         _ => None,
     }
     .or_else(|| per.iter().flatten().next().copied());
-    let first_seen = cat.known.get(&asset_catalog::entry_key(kind, name));
+    let first_seen = cat.known.get(&key);
     let new = cat.visits.prev > 0 && first_seen.is_some_and(|t| *t > cat.visits.prev);
     let cells = cols
         .iter()
         .enumerate()
         .map(|(i, c)| {
             cell(
+                reg,
                 kind,
                 name,
+                agent.as_ref(),
+                known,
                 c,
                 &per[i],
                 user[i],
@@ -924,6 +1103,8 @@ fn row(cat: &Catalog, cols: &[Column], kind: ExtKind, name: &str, per: &[Vec<&As
         })
         .collect();
     ExtRow {
+        agent,
+        agent_said: None,
         kind,
         kind_said: kind_said(kind),
         name: name.to_string(),
@@ -938,18 +1119,125 @@ fn row(cat: &Catalog, cols: &[Column], kind: ExtKind, name: &str, per: &[Vec<&As
             note: k.note.map(|f| f()),
             hooks: k.hooks,
         }),
-        note: asset_catalog::note_of(cat, &asset_catalog::entry_key(kind, name)),
+        note: asset_catalog::note_of(cat, &key),
         cells,
+        variant: None,
+        picks: None,
+        held_said: None,
+        source: None,
     }
+}
+
+/// 同名 MCP 各号配置不一致的那几行拆开（各台 `mcp-read` 回来之后，`faces/ext_list_face.rs::with_mcp` 调）：
+/// 有一台说那个名字（同一家 · 用户级或本地级）各号不一致 ⇒ 那一行照说不一致的那几份（哪一级, 配置原文）拆：每种一行（先后照台序、台里的先后），
+/// 各带各台挑哪一条（`picks`：那台同一级同一份配置的那一条，没有 ⇒ 空）与说不一致的那一条写好的那一句；格子照抄（目录只认名字）。
+/// 别台同一级同一份配置、它那台一致的那一条也挑进那一行；对不上哪一份的（项目级 · 一致的那一级）不进拆出的行。没有一台说不一致 ⇒ 不拆。
+pub fn split_mismatch(list: &mut ExtList) {
+    /// `mcp-read` 一条里拆行要的那几格（形状同 `faces::feature_face::McpReadEntry`；读不出的那一条略过）。
+    #[derive(Deserialize)]
+    struct Seen {
+        name: String,
+        #[serde(default)]
+        agent: Option<String>,
+        #[serde(default)]
+        scope: String,
+        #[serde(default)]
+        server: serde_json::Value,
+        #[serde(default)]
+        mismatch: bool,
+        #[serde(default)]
+        held: Option<SeenHeld>,
+    }
+    #[derive(Deserialize)]
+    struct SeenHeld {
+        said: String,
+    }
+    // 各台那一格 `mcp` 的每一条（下标照原样留着：界面照下标挑）。
+    let seen: Vec<Vec<Option<Seen>>> = list
+        .machines
+        .iter()
+        .map(|m| {
+            m.mcp
+                .as_ref()
+                .and_then(|v| v.get("entries"))
+                .and_then(|v| v.as_array())
+                .map(|es| {
+                    es.iter()
+                        .map(|e| serde_json::from_value(e.clone()).ok())
+                        .collect()
+                })
+                .unwrap_or_default()
+        })
+        .collect();
+    let mut rows = Vec::with_capacity(list.rows.len());
+    for r in std::mem::take(&mut list.rows) {
+        // 各台这一行的那几条：(下标, 那一条)。
+        let per: Vec<Vec<(usize, &Seen)>> = seen
+            .iter()
+            .map(|es| {
+                es.iter()
+                    .enumerate()
+                    .filter_map(|(i, e)| e.as_ref().map(|e| (i, e)))
+                    .filter(|(_, e)| {
+                        r.kind == ExtKind::Mcp
+                            && e.name == r.name
+                            && e.agent.as_deref() == r.agent.as_deref()
+                            && e.scope != "project"
+                    })
+                    .collect()
+            })
+            .collect();
+        if !per.iter().flatten().any(|(_, e)| e.mismatch) {
+            rows.push(r);
+            continue;
+        }
+        // 说不一致的每种（哪一级, 配置原文）一行：不一致本来就在一级之内判，这里只照各台说的起行、不另判。
+        let mut configs: Vec<(&str, &serde_json::Value)> = Vec::new();
+        for (_, e) in per.iter().flatten().filter(|(_, e)| e.mismatch) {
+            let key = (e.scope.as_str(), &e.server);
+            if !configs.contains(&key) {
+                configs.push(key);
+            }
+        }
+        for (i, (scope, cfg)) in configs.into_iter().enumerate() {
+            let hit: Vec<Option<&(usize, &Seen)>> = per
+                .iter()
+                .map(|es| {
+                    es.iter()
+                        .find(|(_, e)| e.scope == scope && e.server == *cfg)
+                })
+                .collect();
+            // 那一句取说不一致的那一条写好的（每行至少有一条）。
+            let said = hit
+                .iter()
+                .flatten()
+                .filter(|(_, e)| e.mismatch)
+                .find_map(|(_, e)| e.held.as_ref().map(|h| h.said.clone()));
+            rows.push(ExtRow {
+                variant: Some(u32::try_from(i).unwrap_or(u32::MAX)),
+                picks: Some(
+                    hit.iter()
+                        .map(|h| h.map(|(at, _)| u32::try_from(*at).unwrap_or(u32::MAX)))
+                        .collect(),
+                ),
+                held_said: said,
+                ..r.clone()
+            });
+        }
+    }
+    list.rows = rows;
 }
 
 #[expect(
     clippy::too_many_arguments,
-    reason = "一格要的几样（种类 · 名字 · 那一列 · 本机的 · 用户的 · 规范名 · 参照 · 来源）由调用方逐列逐行现拿"
+    reason = "一格要的几样（种类 · 名字 · 家 · 认得的那一样 · 那一列 · 本机的 · 用户的 · 规范名 · 参照 · 来源）由调用方逐列逐行现拿"
 )]
 fn cell(
+    reg: &[crate::agents::Adapter],
     kind: ExtKind,
     name: &str,
+    agent: Option<&cmd_wire::AgentKind>,
+    known: Option<&Known>,
     c: &Column,
     mine: &[&Asset],
     user: Option<&Asset>,
@@ -975,7 +1263,9 @@ fn cell(
     };
     let live = c.m.reachable;
     let mut places = vec![place(
+        reg,
         kind,
+        agent,
         ExtLoc::User,
         user,
         user.map_or(ExtState::Missing, |a| is_this(a, canon)),
@@ -990,7 +1280,9 @@ fn cell(
     in_projects.sort_by(|a, b| a.project.cmp(&b.project));
     for a in in_projects {
         places.push(place(
+            reg,
             kind,
+            agent,
             ExtLoc::of(a),
             Some(a),
             is_this(a, reference),
@@ -1000,17 +1292,19 @@ fn cell(
     }
     let (bring, note) = if !live {
         (None, Some(copy_text("kit.offline.later", &[])))
-    } else if let Some(why) = read_only(kind).filter(|_| !is_release(kind, name)) {
+    } else if let Some(why) = read_only_among(reg, kind, agent)
+        .filter(|_| !known.is_some_and(|k| k.origin == Origin::Release))
+    {
         // 整种只读（插件）：没有「装到…」，说为什么。自己发版的那几样例外：从持有最新那一版的那台装进用户级。
         (None, Some(why))
     } else {
         match source {
             None => (None, Some(copy_text("beExt.note.noSource", &[]))),
-            Some(src) => bring_for(kind, name, c, src),
+            Some(src) => bring_for(reg, kind, name, agent, c, src),
         }
     };
     // 认得的那几样：没装 ⇒ 「推荐 · 未装」；装着最新那一版、带版本 ⇒ 「已装 · 版本」。
-    let said = match (known_of(kind, name), state, user.and_then(version_of)) {
+    let said = match (known, state, user.and_then(version_of)) {
         (Some(_), ExtState::Missing, _) => copy_text("beExt.state.recommended", &[]),
         (Some(_), ExtState::Same, Some(v)) => {
             copy_text("beExt.state.sameVersion", &[("version", v)])
@@ -1026,9 +1320,11 @@ fn cell(
     }
 }
 
-/// 一处：有它 ⇒ 能写的那一级给「卸载」（那台连着才给），不能写的说为什么；没有 ⇒ 只给态。
+/// 一处：有它 ⇒ 能写的那一级给「卸载」（那台连着才给），不能写的说为什么；没有 ⇒ 只给态。照带家的行判（`agent` 是那一行的家）。
 fn place(
+    reg: &[crate::agents::Adapter],
     kind: ExtKind,
+    agent: Option<&cmd_wire::AgentKind>,
     at: ExtLoc,
     held: Option<&Asset>,
     state: ExtState,
@@ -1039,11 +1335,18 @@ fn place(
         ExtKind::Mcp => None,
         ExtKind::Skill | ExtKind::Plugin => held.and_then(|a| a.dir.clone()),
     };
-    let (uninstall, note) = match (held, writable(kind, &at, shared)) {
+    let (uninstall, note) = match (held, writable_among(reg, kind, &at, shared, agent)) {
         (None, _) => (false, None),
-        (Some(_), Ok(())) => (live, None),
+        (Some(a), _) if release_by_copy(kind, &a.name, agent).is_some() => (false, None),
+        (Some(a), Ok(())) => match not_by_command(kind, a, agent) {
+            Some(why) => (false, Some(why)),
+            None => (live, None),
+        },
         // 整种只读的那一句已在那一格上说过（[`cell`]），每处不再重复。
-        (Some(_), Err(why)) => (false, read_only(kind).is_none().then_some(why)),
+        (Some(_), Err(why)) => (
+            false,
+            read_only_among(reg, kind, agent).is_none().then_some(why),
+        ),
     };
     ExtPlace {
         at,
@@ -1058,8 +1361,10 @@ fn place(
 
 /// 机器那一行的「装到…」：可选的各处（全局 ＋ 那台每个开过会话的项目，不行的照列、说为什么）＋ 建议的那一处（与来源同级）。
 fn bring_for(
+    reg: &[crate::agents::Adapter],
     kind: ExtKind,
     name: &str,
+    agent: Option<&cmd_wire::AgentKind>,
     c: &Column,
     src: &Source,
 ) -> (Option<ExtBring>, Option<String>) {
@@ -1067,17 +1372,25 @@ fn bring_for(
         Source::Builtin => (None, ExtLoc::User),
         Source::Machine(col, a) => (col.m.key.clone(), ExtLoc::of(a)),
     };
+    // 来源那一级装不了（别家全局那一级的 MCP · 来源那台那一家不经插件命令管的插件）：没有「装到…」，说为什么（不逐处列同一句）。
+    let not_managed = match src {
+        Source::Machine(_, a) => not_by_command(kind, a, agent),
+        Source::Builtin => None,
+    };
+    if let Some(why) = family_refused(kind, agent, &from_loc).or(not_managed) {
+        return (None, Some(why));
+    }
     let from_machine = matches!(src, Source::Machine(..));
-    // 插件只有用户级那一处（装进 skills 目录、各号共用），不列项目。
+    // 插件只有用户级那一处（自己发版的拷进 skills 目录，别的经那一家自己的插件命令装），不列项目。
     let projects: &[String] = if kind == ExtKind::Plugin {
         &[]
     } else {
-        &c.m.projects
+        c.projects
     };
     let targets: Vec<ExtTarget> = std::iter::once(ExtLoc::User)
         .chain(projects.iter().map(|d| ExtLoc::Project { dir: d.clone() }))
         .map(|at| {
-            let why = target_refused(kind, name, &at, c.shared).or_else(|| {
+            let why = target_refused_among(reg, kind, name, agent, &at, c.shared).or_else(|| {
                 (from_machine && same_place(from.as_deref(), &from_loc, c.m.key.as_deref(), &at))
                     .then(|| copy_text("beExt.card.sameMachine", &[]))
             });
@@ -1090,7 +1403,7 @@ fn bring_for(
         .collect();
     let like = match &from_loc {
         ExtLoc::User => ExtLoc::User,
-        ExtLoc::Project { dir } => pick_project(&c.m, Some(dir))
+        ExtLoc::Project { dir } => pick_project(c.projects, Some(dir))
             .map(|dir| ExtLoc::Project { dir })
             .unwrap_or(ExtLoc::User),
     };
@@ -1100,7 +1413,7 @@ fn bring_for(
         .or_else(|| targets.iter().find(|t| t.ok))
         .map(|t| t.at.clone());
     let Some(to) = to else {
-        let why = if kind == ExtKind::Mcp && c.m.projects.is_empty() {
+        let why = if kind == ExtKind::Mcp && c.projects.is_empty() {
             copy_text("beExt.note.noProject", &[])
         } else {
             copy_text("beExt.card.sameMachine", &[])
@@ -1169,6 +1482,11 @@ pub(crate) type NoteWrite<'a> = &'a dyn Fn(&str, &str) -> Result<Catalog, Said>;
 pub struct ExtNoteReq {
     pub kind: ExtKind,
     pub name: String,
+    /// 哪一家那一行的（线上的 kind）；缺 ⇒ 默认那一家。先规整（指名默认那一家 ⇒ 同缺；认不出 ⇒ `bad_args`），
+    /// 条目键照规整后的家带（与表里那一行读的同一个）。
+    #[serde(default)]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub agent: Option<cmd_wire::AgentKind>,
     /// 备注正文（首尾空白去掉；空串 = 清掉；最长 [`NOTE_MAX_CHARS`] 字，超了拒、不截断）。
     pub text: String,
 }
@@ -1183,6 +1501,16 @@ pub struct ExtNote {
 
 /// `ext-note-set`：用户写 / 改 / 清（空串）一个条目的备注。记在本机目录自己那一格，随目录同步到别的后端。
 pub fn answer_note(req: &ExtNoteReq, write: NoteWrite) -> Result<ExtNote, Said> {
+    answer_note_among(crate::agents::REGISTRY, req, write)
+}
+
+/// [`answer_note`] 的本体：认家的注册表可喂（判据拿替身家喂）。
+pub(crate) fn answer_note_among(
+    reg: &[crate::agents::Adapter],
+    req: &ExtNoteReq,
+    write: NoteWrite,
+) -> Result<ExtNote, Said> {
+    let agent = super::skill_install::family_of(reg, req.agent.as_ref())?;
     if req.name.trim().is_empty() {
         return Err(crate::wire::spec::fail(
             "bad_args",
@@ -1198,7 +1526,7 @@ pub fn answer_note(req: &ExtNoteReq, write: NoteWrite) -> Result<ExtNote, Said> 
             ),
         ));
     }
-    let key = asset_catalog::entry_key(req.kind, &req.name);
+    let key = asset_catalog::entry_key(agent.as_deref(), req.kind, &req.name);
     let cat = write(&key, &req.text)?;
     Ok(ExtNote {
         note: asset_catalog::note_of(&cat, &key),
@@ -1219,35 +1547,38 @@ pub fn reach_of(table: &crate::dial::remote_ask::Table) -> Vec<(String, Option<S
 
 // ───────────────────────── 这台上的那几处（可喂夹具） ─────────────────────────
 
-/// 一台机器上扩展住哪（生产 = 这台的环境现解；判据交临时目录）。
-pub struct Env {
-    /// 用户级 skill 的根。
-    pub skills: Option<PathBuf>,
-    /// 用户级 MCP 那份文件（有账号库 ⇒ 各号共用的那一份；没有 ⇒ agent 自己那一份）。
-    pub user_mcp: Option<PathBuf>,
+/// 一台机器上一家的扩展住哪（生产 = 这台的环境照请求里的家现解；判据交临时目录与替身家）。
+pub struct Env<'a> {
+    /// 认家的注册表 ＋ 用户级根的覆盖（生产 = [`Roots::HERE`](super::skill_install::Roots::HERE)）：skill 根都经它现算。
+    pub(crate) roots: super::skill_install::Roots<'a>,
+    /// 这一趟是哪一家（规整后的：默认那一家 ⇒ 缺）。
+    pub agent: Option<cmd_wire::AgentKind>,
     /// 装记录那份文件。
     pub ledger: Option<PathBuf>,
     /// 家目录（备份落在它下面的 `.cc-monitor/backups`）。
     pub home: Option<PathBuf>,
+    /// 插件那几行怎么跑（生产 = [`run_here`](super::plugin_exec::run_here)；判据交记账的替身）。
+    pub(crate) run: super::plugin_exec::Run<'a>,
 }
 
-impl Env {
-    pub fn here() -> Env {
-        Env {
-            skills: crate::agents::asset_kind().and_then(crate::agents::skills_root),
-            user_mcp: crate::accounts::manage::mcp_share_exec::user_mcp_file(),
+impl Env<'static> {
+    /// 这台上请求里那一家的那几处。家先规整（指名默认那一家 ⇒ 缺）；认不出 / 没有资产面 ⇒ `bad_args`（不退回默认那一家）。
+    pub fn here(agent: Option<&cmd_wire::AgentKind>) -> Result<Env<'static>, Said> {
+        let roots = super::skill_install::Roots::HERE;
+        Ok(Env {
+            agent: super::skill_install::family_of(roots.registry, agent)?,
+            roots,
             ledger: super::skill_ledger::ledger_path(),
             home: crate::platform::paths::home_dir(),
-        }
+            run: &super::plugin_exec::run_here,
+        })
     }
+}
 
-    /// 那一级 skill 的根。
-    pub(crate) fn skill_root(&self, at: &ExtLoc) -> Option<PathBuf> {
-        match at {
-            ExtLoc::User => self.skills.clone(),
-            ExtLoc::Project { dir } => crate::agents::asset_kind()
-                .and_then(|k| crate::agents::skill_root_at(k, Some(Path::new(dir)))),
-        }
+impl Env<'_> {
+    /// 那一级 skill 的根（这一家的）。
+    pub(crate) fn skill_root(&self, at: &ExtLoc) -> Result<Option<PathBuf>, Said> {
+        super::skill_install::skill_root_of(self.roots, self.agent.as_deref(), at.project())
     }
 }
 
@@ -1262,7 +1593,7 @@ pub(crate) fn token_of(v: &Value) -> String {
 }
 
 /// 备份落点：`<家>/.cc-monitor/backups/<毫秒>-<种类>-<名字>`（名字里别的字符换成 `_`）。回（家下相对段, 绝对路径）。
-fn backup_slot(home: &Path, kind: ExtKind, name: &str, now_ms: u64) -> (String, String) {
+fn backup_slot(home: &str, kind: ExtKind, name: &str, now_ms: u64) -> (String, String) {
     let safe: String = name
         .chars()
         .map(|c| {
@@ -1278,11 +1609,93 @@ fn backup_slot(home: &Path, kind: ExtKind, name: &str, now_ms: u64) -> (String, 
         relay_route_core::EXT_BACKUPS_DIR_REL,
         kind.as_str()
     );
-    let abs = door::join_under(&home.display().to_string(), &rel);
+    let abs = door::join_under(home, &rel);
     (rel, abs)
 }
 
 // ───────────────────────── 卸（在被卸的那一台上） ─────────────────────────
+
+// ───────────────────────── 撤回（卸 · 装改过的项目级 MCP 配置，在那份所在的那一台上） ─────────────────────────
+
+/// `mcp-project-revert` 的入参：那一份项目级 MCP 配置的绝对路径（`data-report` 里带 `revert` 的那一行的 `path`）。
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(deny_unknown_fields)]
+pub struct McpRevertReq {
+    pub file: String,
+}
+
+/// `mcp-project-revert` 的回包。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(rename_all = "camelCase")]
+pub struct McpReverted {
+    /// 那份配置文件。
+    pub path: String,
+    /// 改之前没有那份文件 ⇒ 撤回是删掉它。
+    pub removed: bool,
+}
+
+crate::wire::typed::codes! {
+    /// `mcp-project-revert` 的码。
+    pub enum McpRevertErr {
+        /// 装记录里没记过这一份（没改过 · 已撤过）。
+        NotFound = "not_found",
+        /// cc-monitor 改过之后这份又被改过 · 已不在：一个字节不动。
+        Stale = "stale",
+        /// 读 · 写那份没成。
+        Refused = "refused",
+        /// 装记录读不懂（不覆盖）。
+        LedgerUnreadable = "ledger_unreadable",
+        /// 这台的家目录解不出来（装记录无从找）。
+        IoFailed = "io_failed",
+    }
+}
+
+/// `mcp-project-revert`：「文件与数据 → 改过的用户文件」那一行的「撤回」，在那份文件所在的那台上判、写（本体 `mcp_sync_flow::revert_project`）。
+pub struct McpRevertCmd;
+
+impl crate::wire::typed::Command for McpRevertCmd {
+    const NAME: &'static str = "mcp-project-revert";
+    type Req = McpRevertReq;
+    type Reply = McpReverted;
+    type Err = McpRevertErr;
+}
+
+impl crate::wire::typed::Handle for McpRevertCmd {
+    type Needs = crate::wire::typed::needs::FilesOwn;
+    fn run(
+        req: McpRevertReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<McpReverted, McpRevertErr>> + Send + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let (files, own) = (needs.0, &needs.1);
+            let ledger = super::skill_ledger::ledger_path().ok_or_else(|| {
+                McpRevertErr::IoFailed(copy_text("beSkillLedger.path.noHome", &[]))
+            })?;
+            answer_revert(
+                files,
+                &ledger,
+                &|a| super::skill_ledger::answer_record(a, own),
+                &req,
+            )
+        }
+    }
+}
+
+/// [`McpRevertCmd`] 的本体（装记录的路径与写口是参数，判据拿沙箱喂）。
+pub(crate) fn answer_revert(
+    d: &dyn Door,
+    ledger: &Path,
+    record: Record,
+    req: &McpRevertReq,
+) -> Result<McpReverted, McpRevertErr> {
+    super::mcp_sync_flow::revert_project(d, ledger, record, &req.file)
+        .map_err(|f| crate::wire::typed::of_fail(f, McpRevertErr::Refused))
+}
 
 /// 一个 skill 的卸法：装记录里有 ⇒ 那一份逐文件判（`seen` 当 CAS 期望）；没有 ⇒ 整个目录的摘要当记号。
 enum SkillPlan {
@@ -1290,9 +1703,9 @@ enum SkillPlan {
     Foreign { digest: String, files: Vec<String> },
 }
 
-fn skill_plan(env: &Env, name: &str, dir: &Path) -> Result<SkillPlan, Said> {
+fn skill_plan(env: &Env<'_>, name: &str, dir: &Path) -> Result<SkillPlan, Said> {
     let ledger = need(env.ledger.clone())?;
-    let key = dir.display().to_string();
+    let key = path_text(dir)?;
     let recorded = super::skill_ledger::load_at(&ledger)?
         .installs
         .contains_key(&key);
@@ -1308,27 +1721,23 @@ fn skill_plan(env: &Env, name: &str, dir: &Path) -> Result<SkillPlan, Said> {
         .flatten()
         .filter(|e| !e.file_type().is_dir())
         .map(|e| {
-            e.path()
-                .strip_prefix(dir)
-                .unwrap_or(e.path())
-                .to_string_lossy()
-                .replace('\\', "/")
+            path_text(e.path().strip_prefix(dir).unwrap_or(e.path())).map(|t| t.replace('\\', "/"))
         })
-        .collect();
+        .collect::<Result<_, _>>()?;
     Ok(SkillPlan::Foreign {
         digest: asset_catalog::skill_asset(None, name, dir, None).digest,
         files,
     })
 }
 
-fn skill_dir_of(env: &Env, name: &str, at: &ExtLoc) -> Result<PathBuf, Said> {
+fn skill_dir_of(env: &Env<'_>, name: &str, at: &ExtLoc) -> Result<PathBuf, Said> {
     if !super::skill_install::valid_name(name) {
         return Err(crate::wire::spec::fail(
             "bad_args",
             copy_text("beSkillInstall.read.badName", &[("name", name)]),
         ));
     }
-    let dir = need(env.skill_root(at))?.join(name);
+    let dir = need(env.skill_root(at)?)?.join(name);
     if !dir.is_dir() {
         return Err(crate::wire::spec::fail(
             "not_found",
@@ -1341,17 +1750,31 @@ fn skill_dir_of(env: &Env, name: &str, at: &ExtLoc) -> Result<PathBuf, Said> {
     Ok(dir)
 }
 
-/// MCP 那一条在这台上：（配置文件, 原文, 那一条, 装记录里记的摘要）。
+/// MCP 那一条在这台上：（配置文件, 原文, 那一条, 装记录里记的摘要）；项目级的照那一家的配置格式读。
 struct McpHere {
     root: String,
+    rel: String,
     path: String,
     text: String,
     def: Value,
     recorded: Option<String>,
+    /// 项目级那一份的配置格式（那一家的）；用户级 ⇒ `None`（各号共用那一份另有写口）。
+    cells: Option<crate::agents::McpCells>,
 }
 
-fn mcp_here(d: &dyn Door, env: &Env, name: &str, at: &ExtLoc) -> Result<McpHere, Said> {
-    let (root, rel) = mcp_file(d, at)?;
+fn mcp_here(d: &dyn Door, env: &Env<'_>, name: &str, at: &ExtLoc) -> Result<McpHere, Said> {
+    let agent = env.agent.as_deref();
+    let reg = env.roots.registry;
+    let (root, rel, cells) = match at {
+        ExtLoc::Project { dir } => {
+            let (file, cells) = super::mcp_edit::project_mcp_of(reg, agent)?;
+            (dir.clone(), file.to_string(), Some(cells))
+        }
+        ExtLoc::User => {
+            let (root, rel) = user_mcp_spot(d, reg, agent)?;
+            (root, rel, None)
+        }
+    };
     let got = door::peek(d, &root, &rel).map_err(|m| Said::new("refused", m))?;
     let text = got.text.ok_or_else(|| {
         crate::wire::spec::fail(
@@ -1359,10 +1782,13 @@ fn mcp_here(d: &dyn Door, env: &Env, name: &str, at: &ExtLoc) -> Result<McpHere,
             copy_text("beExt.uninstall.notThere", &[("path", &got.path)]),
         )
     })?;
-    let servers = super::mcp_sync::servers_of(
-        Some(&text),
-        &copy_text("beMcpSync.answerWith.targetSide", &[]),
-    )?;
+    let servers = match cells {
+        Some(c) => super::mcp_edit::project_servers(&c, &got.path, Some(&text))?,
+        None => super::mcp_sync::servers_of(
+            Some(&text),
+            &copy_text("beMcpSync.answerWith.targetSide", &[]),
+        )?,
+    };
     let def = servers.get(name).cloned().ok_or_else(|| {
         crate::wire::spec::fail(
             "not_found",
@@ -1386,10 +1812,12 @@ fn mcp_here(d: &dyn Door, env: &Env, name: &str, at: &ExtLoc) -> Result<McpHere,
     };
     Ok(McpHere {
         root,
+        rel,
         path: got.path,
         text,
         def,
         recorded,
+        cells,
     })
 }
 
@@ -1402,6 +1830,14 @@ fn mcp_here(d: &dyn Door, env: &Env, name: &str, at: &ExtLoc) -> Result<McpHere,
 pub struct ExtUninstallReq {
     pub kind: ExtKind,
     pub name: String,
+    /// 卸哪一家的（线上的 kind）；缺 ⇒ 默认那一家（指名默认那一家同缺）。
+    #[serde(default)]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub agent: Option<cmd_wire::AgentKind>,
+    /// 插件：那一行的来源键（[`ExtSource::key`]），照它找那一条；插件不带 ⇒ `bad_args`。别的种类不看它。
+    #[serde(default)]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub source: Option<String>,
     /// 在这台哪一级（项目目录须是这台上的绝对路径）。
     pub at: ExtLoc,
 }
@@ -1414,21 +1850,100 @@ pub struct ExtUninstallReq {
 pub struct ExtUninstallApplyReq {
     pub kind: ExtKind,
     pub name: String,
+    /// 卸哪一家的（线上的 kind）；缺 ⇒ 默认那一家（指名默认那一家同缺）。
+    #[serde(default)]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub agent: Option<cmd_wire::AgentKind>,
+    /// 同 [`ExtUninstallReq::source`]。
+    #[serde(default)]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub source: Option<String>,
     pub at: ExtLoc,
     pub token: String,
 }
 
+/// 自己发版的插件是拷进 skills 目录的那一份，不经那一家的插件命令卸 ⇒ 为什么（表上不给「卸载」、卸载那一对拒，同这一处判）。
+fn release_by_copy(
+    kind: ExtKind,
+    name: &str,
+    agent: Option<&cmd_wire::AgentKind>,
+) -> Option<String> {
+    (kind == ExtKind::Plugin && is_release(kind, name, agent))
+        .then(|| copy_text("beExt.uninstall.releasePlugin", &[]))
+}
+
+/// 目录里那一条插件不经那一家的插件命令管（扫完照那一家列出来的结果标的 `byCommand` 不为真：不在它的列表里 · 列不出 ·
+/// 旧对端没这一格 · 条目上没有那一家的写法）⇒ 为什么（表上不给「卸载」「装到…」）。自己发版的那几样另走 [`release_by_copy`]，不在这里判。
+fn not_by_command(kind: ExtKind, a: &Asset, agent: Option<&cmd_wire::AgentKind>) -> Option<String> {
+    if kind != ExtKind::Plugin || release_by_copy(kind, &a.name, agent).is_some() {
+        return None;
+    }
+    let keyed = super::plugin_exec::key_of(&a.summary).is_some();
+    match a
+        .summary
+        .get(super::plugin_exec::BY_COMMAND)
+        .and_then(Value::as_bool)
+    {
+        Some(true) if keyed => None,
+        Some(false) => Some(copy_text("beExt.plugin.notByCommand", &[])),
+        // 列不出（原因在目录的 problems）· 旧对端没这一格 · 没有写法（装 · 删交不出）：照实说列不出，不说「不经插件命令管」。
+        _ => Some(copy_text("beExt.plugin.unlisted", &[])),
+    }
+}
+
+/// 卸一个插件之前看一眼：这一级写不了（[`writable_among`]：那一家没声明插件那一格 · 不在用户级）⇒ 拒；
+/// 自己发版的那几样（拷进 skills 目录的那一份，不经那一家的插件命令卸）⇒ 拒；列出来没有它 ⇒ `not_found`。
+/// 界面交那一行的来源键（[`ExtSource::key`]，那一家的写法）：照它在那一家列出来的里找那一条，删交它（通用层不拼）；
+/// 不带 ⇒ `bad_args`（不照光名字猜）。回（删那一行给人看的样子, 记号：列出来的那一条, 那一家的写法）。
+fn plugin_here(
+    env: &Env<'_>,
+    name: &str,
+    source: Option<&str>,
+    at: &ExtLoc,
+) -> Result<(String, String, String), Said> {
+    let registry = env.roots.registry;
+    let agent = env.agent.as_ref();
+    if let Some(why) = writable_among(registry, ExtKind::Plugin, at, true, agent)
+        .err()
+        .or_else(|| release_by_copy(ExtKind::Plugin, name, agent))
+    {
+        return Err(crate::wire::spec::fail("refused", why));
+    }
+    let Some(source) = source else {
+        return Err(crate::wire::spec::fail(
+            "bad_args",
+            crate::common::contract::malformed("plugin uninstall without `source`"),
+        ));
+    };
+    let listed = super::plugin_exec::listed(registry, agent, env.run)?;
+    let Some(held) = listed.iter().find(|p| p.key == source && p.name == name) else {
+        return Err(crate::wire::spec::fail(
+            "not_found",
+            copy_text("beExt.uninstall.notThere", &[("path", name)]),
+        ));
+    };
+    let line = super::plugin_exec::remove_line(registry, agent, &held.key)?;
+    Ok((
+        line,
+        token_of(
+            &json!({ "key": held.key, "name": held.name, "version": held.version, "on": held.on }),
+        ),
+        held.key.clone(),
+    ))
+}
+
 pub fn answer_uninstall_preview(
     d: &dyn Door,
-    env: &Env,
+    env: &Env<'_>,
     req: &ExtUninstallReq,
 ) -> Result<ExtUninstallCard, Said> {
     let (kind, name) = (req.kind, req.name.as_str());
     let at = req.at.here()?;
-    let home = need(env.home.clone())?;
+    let home = path_text(&need(env.home.clone())?)?;
     let card = match kind {
         ExtKind::Skill => {
             let dir = skill_dir_of(env, name, &at)?;
+            let dir_s = path_text(&dir)?;
             match skill_plan(env, name, &dir)? {
                 SkillPlan::Recorded { plan } => {
                     let rows = plan["rows"].as_array().cloned().unwrap_or_default();
@@ -1439,9 +1954,10 @@ pub fn answer_uninstall_preview(
                         .collect();
                     let ask = rows.iter().any(|r| r["ask"] == true);
                     ExtUninstallCard {
+                        agent: env.agent.clone(),
                         kind,
                         name: name.to_string(),
-                        path: dir.display().to_string(),
+                        path: dir_s.clone(),
                         recorded: true,
                         said: if ask {
                             copy_text(
@@ -1463,9 +1979,10 @@ pub fn answer_uninstall_preview(
                         .map(|p| p.display().to_string())
                         .unwrap_or(abs);
                     ExtUninstallCard {
+                        agent: env.agent.clone(),
                         kind,
                         name: name.to_string(),
-                        path: dir.display().to_string(),
+                        path: dir_s.clone(),
                         recorded: false,
                         said: copy_text("beExt.uninstall.foreign", &[("backup", &at_dir)]),
                         files,
@@ -1478,6 +1995,7 @@ pub fn answer_uninstall_preview(
         ExtKind::Mcp if at == ExtLoc::User => {
             let m = mcp_here(d, env, name, &at)?;
             ExtUninstallCard {
+                agent: env.agent.clone(),
                 kind,
                 name: name.to_string(),
                 path: m.path.clone(),
@@ -1488,32 +2006,37 @@ pub fn answer_uninstall_preview(
                 token: crate::common::digest::fnv_digest(&m.text),
             }
         }
-        ExtKind::Plugin => return Err(read_only_refused(kind)),
+        ExtKind::Plugin => {
+            let (line, token, _) = plugin_here(env, name, req.source.as_deref(), &at)?;
+            ExtUninstallCard {
+                agent: env.agent.clone(),
+                kind,
+                name: name.to_string(),
+                path: line.clone(),
+                recorded: false,
+                files: vec![name.to_string()],
+                backup: None,
+                said: copy_text("beExt.uninstall.pluginByCommand", &[("cmd", &line)]),
+                token,
+            }
+        }
         ExtKind::Mcp => {
             let m = mcp_here(d, env, name, &at)?;
             let intact = m.recorded.as_deref() == Some(&super::skill_ledger::mcp_digest(&m.def));
-            let (said, backup) = match (&m.recorded, intact) {
-                (Some(_), true) => (copy_text("beExt.uninstall.mcpOwned", &[]), None),
-                (Some(_), false) => (copy_text("beExt.uninstall.mcpModified", &[]), None),
-                (None, _) => {
-                    let (_, abs) = backup_slot(&home, ExtKind::Mcp, name, 0);
-                    let at_dir = Path::new(&abs)
-                        .parent()
-                        .map(|p| p.display().to_string())
-                        .unwrap_or(abs);
-                    (
-                        copy_text("beExt.uninstall.foreign", &[("backup", &at_dir)]),
-                        Some(at_dir),
-                    )
-                }
+            // 不是 cc-monitor 装的那一条：删之前的原文记进装记录（撤回在「改过的用户文件」那一行），不另抄一份。
+            let said = match (&m.recorded, intact) {
+                (Some(_), true) => copy_text("beExt.uninstall.mcpOwned", &[]),
+                (Some(_), false) => copy_text("beExt.uninstall.mcpModified", &[]),
+                (None, _) => copy_text("beExt.uninstall.mcpForeign", &[]),
             };
             ExtUninstallCard {
+                agent: env.agent.clone(),
                 kind,
                 name: name.to_string(),
                 path: m.path.clone(),
                 recorded: m.recorded.is_some(),
                 files: vec![name.to_string()],
-                backup,
+                backup: None,
                 said,
                 token: crate::common::digest::fnv_digest(&m.text),
             }
@@ -1530,16 +2053,17 @@ fn stale() -> Said {
 /// 用户在卡上点了确认 = 同意（装完改过的 · 装时盖掉原有的 · 不是装的，卡上都说过）。
 pub fn answer_uninstall_apply(
     d: &dyn Door,
-    env: &Env,
+    env: &Env<'_>,
     record: Record,
     req: &ExtUninstallApplyReq,
 ) -> Result<ExtDone, Said> {
     let (kind, name, token) = (req.kind, req.name.as_str(), req.token.as_str());
     let at = req.at.here()?;
-    let home = need(env.home.clone())?;
+    let home = path_text(&need(env.home.clone())?)?;
     let done = match kind {
         ExtKind::Skill => {
             let dir = skill_dir_of(env, name, &at)?;
+            let dir_s = path_text(&dir)?;
             match skill_plan(env, name, &dir)? {
                 SkillPlan::Recorded { plan } => {
                     if token_of(&json!({ "rows": plan["rows"], "seen": plan["seen"] })) != token {
@@ -1557,7 +2081,7 @@ pub fn answer_uninstall_apply(
                         d,
                         &ledger,
                         record,
-                        &json!({ "dir": dir.display().to_string(), "seen": plan["seen"], "take": pick("take"), "confirm": pick("confirm") }),
+                        &json!({ "dir": dir_s, "seen": plan["seen"], "take": pick("take"), "confirm": pick("confirm") }),
                     )?;
                     let changed: Vec<String> = out["deleted"]
                         .as_array()
@@ -1572,7 +2096,7 @@ pub fn answer_uninstall_apply(
                         .filter_map(|v| v.as_str().map(str::to_string))
                         .collect::<Vec<_>>();
                     ExtDone {
-                        path: dir.display().to_string(),
+                        path: dir_s.clone(),
                         changed,
                         note: (!note.is_empty()).then(|| note.join(" ")),
                     }
@@ -1581,27 +2105,22 @@ pub fn answer_uninstall_apply(
                     if digest != token {
                         return Err(stale());
                     }
-                    let home_s = home.display().to_string();
-                    let from =
-                        door::rel_under(&home_s, &dir.display().to_string()).map_err(|_| {
-                            Said::new(
-                                "refused",
-                                copy_text(
-                                    "beExt.uninstall.backupOutsideHome",
-                                    &[("path", &dir.display().to_string())],
-                                ),
-                            )
-                        })?;
+                    let from = door::rel_under(&home, &dir_s).map_err(|_| {
+                        Said::new(
+                            "refused",
+                            copy_text("beExt.uninstall.backupOutsideHome", &[("path", &dir_s)]),
+                        )
+                    })?;
                     let (rel, abs) = backup_slot(&home, ExtKind::Skill, name, now_ms());
-                    ensure_backups_dir(d, &home_s)?;
-                    door::rename(d, &home_s, &from, &rel).map_err(|e| {
+                    ensure_backups_dir(d, &home)?;
+                    door::rename(d, &home, &from, &rel).map_err(|e| {
                         Said::new(
                             "refused",
                             copy_text("beExt.uninstall.backupFailed", &[("why", &e)]),
                         )
                     })?;
                     ExtDone {
-                        path: dir.display().to_string(),
+                        path: dir_s.clone(),
                         changed: files,
                         note: Some(copy_text("beExt.uninstall.movedTo", &[("path", &abs)])),
                     }
@@ -1613,74 +2132,57 @@ pub fn answer_uninstall_apply(
             if crate::common::digest::fnv_digest(&m.text) != token {
                 return Err(stale());
             }
-            let view = crate::accounts::manage::mcp_share_exec::remove(d, name)?;
+            // 卸的是行上那一家那一格（规整过的家；别家那一格前面 [`writable`] 已拒）。
+            let view =
+                crate::accounts::manage::mcp_share_exec::remove(d, name, env.agent.as_deref())?;
             ExtDone {
                 path: m.path,
                 changed: vec![name.to_string()],
                 note: (!view.notes.is_empty()).then(|| view.notes.join(" ")),
             }
         }
-        ExtKind::Plugin => return Err(read_only_refused(kind)),
+        ExtKind::Plugin => {
+            let (_, now, key) = plugin_here(env, name, req.source.as_deref(), &at)?;
+            if now != token {
+                return Err(stale());
+            }
+            super::plugin_exec::remove(env.roots.registry, env.agent.as_ref(), &key, env.run)?
+        }
         ExtKind::Mcp => {
             let m = mcp_here(d, env, name, &at)?;
             if crate::common::digest::fnv_digest(&m.text) != token {
                 return Err(stale());
             }
-            let mut note = None;
-            if m.recorded.is_none() {
-                let (rel, abs) = backup_slot(&home, ExtKind::Mcp, name, now_ms());
-                let home_s = home.display().to_string();
-                door::put(
-                    d,
-                    &home_s,
-                    &format!("{rel}/{}", super::mcp_edit::mcp_json()),
-                    &m.text,
-                    None,
-                    false,
-                    true,
-                )
-                .map_err(|e| {
-                    Said::new(
-                        "refused",
-                        copy_text("beExt.uninstall.backupFailed", &[("why", &e.said())]),
-                    )
-                })?;
-                note = Some(copy_text("beExt.uninstall.copiedTo", &[("path", &abs)]));
-            }
-            let next = super::mcp_edit::plan_project_mcp(&m.path, Some(&m.text), &mut |v| {
-                super::mcp_edit::remove_mcp_server_value(v, name)
-            })
-            .map_err(|e| Said::new("refused", e))?;
-            if let Some(next) = next {
-                match door::put(
-                    d,
-                    &m.root,
-                    super::mcp_edit::mcp_json(),
-                    &next,
-                    Some(&m.text),
-                    false,
-                    false,
-                ) {
-                    Ok(_) => {}
-                    Err(Refused::Stale(_)) => return Err(stale()),
-                    Err(e) => return Err(crate::wire::spec::fail("refused", e.said())),
-                }
-            }
-            if m.recorded.is_some() {
-                if let Err(f) = record(&RecordReq::McpDrop {
-                    file: m.path.clone(),
-                    name: name.to_string(),
-                }) {
-                    note = Some(copy_text(
-                        "beExt.uninstall.dropFailed",
-                        &[("why", &f.into_note())],
-                    ));
-                }
+            // 项目级那一份照那一家的配置格式改：只删那一个服务器那一节，别的键与写法原样。
+            // 项目级那一份恒带格式（[`mcp_here`] 照那一家取过一次，这里不再取）。
+            let Some(cells) = m.cells else {
+                return Err(crate::wire::spec::fail(
+                    "bad_args",
+                    crate::common::contract::malformed("project MCP without a config format"),
+                ));
+            };
+            let next = super::mcp_edit::remove_mcp_server(&cells, &m.path, &m.text, name)
+                .map_err(|e| Said::new("refused", e))?;
+            // 先记账、再写文件：不是 cc-monitor 装的那一条也记（改过这份文件 ⇒ 进「改过的用户文件」、撤得回改之前的原文），
+            // 装记录是原文唯一的留底 ⇒ 记不上（读不懂 · 写不进）就一个字节不删。
+            let after = crate::common::digest::fnv_digest(&next);
+            let noted = record(&RecordReq::McpDrop {
+                file: m.path.clone(),
+                name: name.to_string(),
+                before: Some(m.text.clone()),
+                after: after.clone(),
+            })?;
+            if let Err(e) = door::put(d, &m.root, &m.rel, &next, Some(&m.text), false, false) {
+                super::mcp_sync_flow::undo_noted(record, &m.path, Some(&after), noted.prior);
+                return Err(match e {
+                    Refused::Stale(_) => stale(),
+                    e => crate::wire::spec::fail("refused", e.said()),
+                });
             }
             ExtDone {
                 path: m.path,
                 changed: vec![name.to_string()],
-                note,
+                note: None,
             }
         }
     };

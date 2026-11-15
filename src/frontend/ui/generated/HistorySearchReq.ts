@@ -18,9 +18,9 @@ include_tools?: boolean,
  */
 scope?: SearchScope, 
 /**
- * 只要这一刻（毫秒）之后的。
+ * 只要最近几天的（同清单的 `within_days`）：那台照自己的钟换成时刻。
  */
-after_ms?: number, 
+within_days?: number, 
 /**
  * 全局片段上限（没给的照样记进 `moreHits`）。
  */

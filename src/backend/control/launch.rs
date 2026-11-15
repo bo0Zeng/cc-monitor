@@ -39,7 +39,7 @@
 //!
 //! # ★ `send-into` 是一等模式（#76 防线的形态迁移）
 //!
-//! `shared/ccm` 的 `--tmux` 只有幂等 create-or-attach 一种形态，**没有**「就地复用已存在的
+//! `ccm` 的 `--tmux` 只有幂等 create-or-attach 一种形态，**没有**「就地复用已存在的
 //! idle tmux、不新建」。所以 monitor 的 CLI 渲染器（今天是 `ccm_invocation.rs`；TS 那份 LR1 已删）对 `send-into`
 //! **诚实放弃、强制走兜底**（那条注释逐字写着「这条是防 #76 复发的关键」）。
 //!
@@ -84,7 +84,7 @@ pub struct LaunchReq {
     /// 可选，仅 create-or-attach。
     #[cfg_attr(test, serde(default))]
     pub cwd: Option<String>,
-    /// 可选：create-or-attach 写成意图键 `@ccm_sid_expect`；send-into 键入挂着它的那个窗格。
+    /// 可选，仅 send-into：键入挂着它的那个窗格（create-or-attach 不看它：建会话不写身份）。
     #[cfg_attr(test, serde(default))]
     pub ccm_sid: Option<cmd_wire::Sid>,
     /// 可选，仅 create-or-attach：注册表里的一家（空 ⇒ 默认那一家）。
@@ -108,13 +108,12 @@ pub struct LaunchRequest {
     pub(crate) name: String,
     pub(crate) payload: String,
     pub(crate) cwd: Option<String>,
-    /// `create-or-attach`：这个会话将要挂的 sid（写成意图键 `@ccm_sid_expect`）；
-    /// `send-into`：键入挂着它的那个窗格（不是会话的当前窗格），身份按那个窗格判。
+    /// `send-into`：键入挂着它的那个窗格（不是会话的当前窗格），身份按那个窗格判。`create-or-attach` 不看它。
     pub(crate) ccm_sid: Option<cmd_wire::Sid>,
     /// 哪个 AI（`claude` / `codex`）。落成 tmux 的 `@ccm_agent` 标记。
     ///
     /// ★★ **ccm 的 `--tmux` 走这条路，靠它**：
-    /// `shared/ccm` 那条本地编排里 `new-session` 之后紧跟着
+    /// `ccm` 那条本地编排（`control/ccm/plan.rs`）里 `new-session` 之后紧跟着
     /// `set-option -t <名> @ccm_agent <agent>`；这一侧没有能表达它的字段
     /// ⇒ 起会话走后端时会**静默丢掉 `@ccm_agent`**（`REQUIRED_NEEDLES` 里
     /// 那条 needle 守的正是它），而那是本文件反复消灭的病：**看起来生效了，只是少了一件**。
@@ -134,6 +133,23 @@ pub struct LaunchRequest {
     /// 这次请求自报是哪个前端（`gate::requester`）。`send-into` 拿它过「哪个前端的会话」那一维；
     /// `create-or-attach` 新建成了就把它写成那个会话的 `@ccm_client`（ccm 自己起的写 `ccm`）。
     pub(crate) client: Option<String>,
+}
+
+impl LaunchRequest {
+    /// 过了门的这一份照原样写回入参那一形（[`create_steps`] 吃它；打印那一路不过门也能拼同一串）。
+    fn as_req(&self) -> LaunchReq {
+        LaunchReq {
+            mode: self.mode,
+            name: self.name.clone(),
+            payload: self.payload.clone(),
+            cwd: self.cwd.clone(),
+            ccm_sid: self.ccm_sid.clone(),
+            agent: self.agent.clone(),
+            width: self.width.clone(),
+            height: self.height.clone(),
+            client: self.client.clone(),
+        }
+    }
 }
 
 /// 一次 `launch` 的结局。三个字段就是「没起成 / 起了但没确认 / 起成了」的载体。
@@ -178,7 +194,7 @@ pub fn parse_request(req: LaunchReq) -> Result<LaunchRequest, Said> {
     //
     // # 为什么必须现在解
     //
-    // 那条拒收本来有一个**退路**兜着：`shared/ccm` 判出控制字符就退回本机 tmux 直起，
+    // 那条拒收本来有一个**退路**兜着：`ccm` 判出控制字符就退回本机 tmux 直起，
     // 而本机那条**一直是接受换行的**（`tmux send-keys -t X '第一行<换行>第二行' Enter`）。
     // 用@09-04「统一走后端」把退路删了 ⇒ 那条拒收从「挡住新路」变成**挡住这次调用**，
     // 于是「多行任务」这个**真实能力**整个没了。
@@ -209,10 +225,6 @@ pub fn parse_request(req: LaunchReq) -> Result<LaunchRequest, Said> {
     if let Some(c) = &cwd {
         check_field("cwd", c)?;
     }
-
-    // `ccm_sid` 会被写进 tmux 窗格 option：它的类型就是会话 id（`cmd_wire::Sid`），值域外的造不出来。⚠ 本命令自己写的是
-    // **意图**键 `@ccm_sid_expect`（见 `run` 里那段头注）；这个值要经 `identity_tag` 过检提升之后才进 `@ccm_sid`，
-    // 而那一侧照样只收 `Sid` —— **两道各自成立，不许因为「上游已经查过」而拆掉任一道**。
 
     // `@ccm_agent` 标记的值：给了就得是注册表里由我们起的一家（写空 ⇒ 默认那一家；认不出 ⇒ 拒、列出认得的几家），
     // 标上的是解析好的 kind。没给 ⇒ 不标（这一发起的是什么由载荷说了算，不替它猜）。
@@ -396,15 +408,9 @@ pub(crate) fn ran(cmd: Child, args: &[&str]) -> Result<Ran, Said> {
 
 /// 建会话之后那几步**次要动作**（失败不阻断键入载荷）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[expect(
-    clippy::enum_variant_names,
-    reason = "三样都是往 tmux 上打的标，名字照它们各自那一格"
-)]
 pub(crate) enum Secondary {
     /// agent 标（`@ccm_agent`）。
     AgentTag,
-    /// 身份**意图**键（建会话的人声明「打算跑这个 sid」）。
-    IntentTag,
     /// 谁起的（`@ccm_client`）。
     ClientTag,
 }
@@ -414,16 +420,12 @@ impl Secondary {
     fn consequence(self) -> &'static str {
         match self {
             Secondary::AgentTag => "agent 标没打上，这个会话在列表里认不出是哪个 agent",
-            Secondary::IntentTag => {
-                "身份意图没写上：之后对这个会话的 kill / 送键可能被身份门拒（wrong_owner）"
-            }
             Secondary::ClientTag => "谁起的没写上：这个会话按名字规则判身份",
         }
     }
     fn what(self) -> &'static str {
         match self {
             Secondary::AgentTag => "打 agent 标",
-            Secondary::IntentTag => "写身份意图",
             Secondary::ClientTag => "写谁起的",
         }
     }
@@ -492,7 +494,7 @@ pub(crate) fn new_tmux_name_said(n: &str) -> Option<String> {
     reason = "起会话那一族的错带着要回给界面的整份诊断，一趟一次，不值得装箱"
 )]
 pub fn run(req: &LaunchRequest) -> Result<LaunchOutcome, LaunchErr> {
-    run_with(req, &tmux)
+    run_with(req, &tmux, &settle)
 }
 
 /// 送键那一发没确认的两种：tmux 明说没送进（`send-keys` 退非零）· tmux 没应答（送没送到不知道）。
@@ -528,7 +530,7 @@ impl From<Said> for LaunchErr {
 }
 
 /// 本趟刚建成的会话（精确目标 `=名:`）：字段私有、不能复制，只有建会话那一臂（`new-session` 成功之后）造得出。
-/// 往里送启动命令（[`TypeAt::JustMade`]）与没送进时收掉它（[`super::kill::end`]）都只收它。
+/// 送启动命令没送进时，它随失败交回去（[`type_payload`]），收掉它（[`super::kill::end`]）只收它。
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct JustMade(String);
 
@@ -545,11 +547,10 @@ pub(crate) fn reap(made: JustMade) -> bool {
 }
 
 /// 新建那一下（`create-or-attach` 与开空 shell 同一份）：名字过 J6 新建那一条；会话已在 ⇒ 幂等、什么都不做（回 `false`）；
-/// 建不出 ⇒ `create_failed` 带 tmux 原话。`size` ＝ `--tmux-size` 的两半（只对新建生效）。
+/// 建不出 ⇒ `create_failed` 带 tmux 原话。`new_args` 是新建那一发（[`new_session_argv`]）。
 fn create(
     name: &str,
-    cwd: Option<&str>,
-    size: Option<(&str, &str)>,
+    new_args: &[String],
     tmux: &dyn Fn(&[&str]) -> Result<Ran, Said>,
 ) -> Result<bool, Said> {
     let t = exact_target(name);
@@ -560,17 +561,8 @@ fn create(
         }
         return Err(Said::new("bad_args", said));
     }
-    let mut new_args: Vec<&str> = vec!["new-session", "-d", "-s", name];
-    if let Some(cwd) = cwd {
-        new_args.push("-c");
-        new_args.push(cwd);
-    }
-    // detached 会话默认 80x24，太窄会把 agent 输出折行；已有会话的尺寸归它自己（可能有人正接着）。
-    if let Some((w, h)) = size {
-        new_args.extend(["-x", w, "-y", h]);
-    }
     // 幂等闸：会话已存在 ⇒ new-session 失败 ⇒ 分辨「已存在」与「真的建不出来」（看退出码，不吞 stderr）。
-    let made = tmux(&new_args)?;
+    let made = tmux(&new_args.iter().map(String::as_str).collect::<Vec<_>>())?;
     if made.ok {
         return Ok(true);
     }
@@ -596,7 +588,7 @@ pub(crate) fn open_shell_with(
     client: Option<&str>,
     tmux: &dyn Fn(&[&str]) -> Result<Ran, Said>,
 ) -> Result<bool, Said> {
-    let made = create(name, cwd, None, tmux)?;
+    let made = create(name, &new_session_argv(name, cwd, None), tmux)?;
     if let Some(client) = client.filter(|_| made) {
         let t = exact_target(name);
         secondary(
@@ -618,6 +610,7 @@ pub(crate) fn open_shell_with(
 fn run_with(
     req: &LaunchRequest,
     tmux: &dyn Fn(&[&str]) -> Result<Ran, Said>,
+    settle: &dyn Fn(),
 ) -> Result<LaunchOutcome, LaunchErr> {
     let t = exact_target(&req.name);
     match req.mode {
@@ -629,19 +622,21 @@ fn run_with(
             //   3. 通过则回 `#{session_id}` 句柄 —— **后面一律对句柄下手，不对名字**，
             //      名字在窗口期内被重新绑定也打不到别人身上（见 `gate` 模块头注）。
             //
-            //   键入只收门发的令牌（`TypeAt::Admitted`）⇒ 不过门编不过。
+            //   送字那一串的目标只取门交的句柄（`Admitted::handle`，句柄只有过了门才拿得到）。
             //   带了 `ccm_sid` ⇒ 句柄是挂着它的那个窗格（一个 tmux 会话里可以有几个 claude），身份也按它判。
             let at =
                 super::gate::admit(&req.name, &t, req.ccm_sid.as_deref(), req.client.as_deref())?;
-            type_payload(TypeAt::Admitted(&at), &req.name, &req.payload, tmux)?;
+            let steps = input_steps(at.handle(), &[], &req.payload, true, &mut next_buffer);
+            type_payload(None, &req.name, &steps, tmux, settle)?;
             Ok(LaunchOutcome {
                 created: false,
                 typed: true,
             })
         }
         Mode::CreateOrAttach => {
-            let size = req.width.as_deref().zip(req.height.as_deref());
-            if !create(&req.name, req.cwd.as_deref(), size, tmux)? {
+            // 那一串只出一份（[`create_steps`]）：真跑逐条执行，`ccm --ccm-print` 逐条拼成 shell（`ccm/plan.rs::render_container`）。
+            let CreateSteps { primary, then } = create_steps(&req.as_req(), &mut next_buffer);
+            if !create(&req.name, &primary, tmux)? {
                 return Ok(LaunchOutcome {
                     created: false,
                     typed: false,
@@ -649,64 +644,18 @@ fn run_with(
             }
             // 走到这里的只可能是本趟刚建成的会话 ⇒ 发「刚建的」令牌（唯一一处）。
             let fresh = JustMade(t.clone());
-            // 身份标记与标题是**次要**动作：失败绝不阻断主要动作（键入载荷）。
-            // 与 `ccm` 容器路字符串形（`control/ccm/plan.rs::render_container`）里 `(… 2>/dev/null || true) &&` 同一条纪律。
-            //
-            // ★★ **建会话这一刻写的是「意图」，不是「事实」**。
-            //
-            // # 它修的是什么（**不是**冒名，别把两件事压成一句）
-            //
-            // 这一处落在**幂等闸之后** —— 会话已存在 ⇒ 上面 `new-session` 失败 ⇒ 短路
-            // 返回 `created:false` ⇒ 走到这里的**只可能是刚刚新建成功的那个会话**。
-            // 所以它够不着别人的会话，「冒名」那一层在这里不成立。
-            //
-            // 它真正的问题是**过早取得权威**：`@ccm_sid` 是破坏性动作（`kill`，
-            // `super::gate::admit_destructive` → `crate::control::gate_rules::gate2`）**唯一认的事实**。
-            // 建会话即写它 ⇒ 一个「声明了 sid、但那个 claude 进程还没起（甚至永远起不来）」
-            // 的空会话**当场获得事实身份**：
-            // 意图（通道 A）与事实（通道 B）之间的那道确认就被绕过去了。
-            //
-            // # 事实由谁写：仍然只有一个人
-            //
-            // [`super::identity_tag`]：pidfile 出现 **＋** 过 `procStart` 冒名检查之后才写
-            //（那份文件逐字「打错就是杀错」）。本处一个字都不写 `@ccm_sid`
-            // —— 今天由 `readonly_guard`（写 tmux 变量那一族只许 `control/identity_tag.rs`）与
-            // `ccm/plan_tests.rs::the_container_path_carries_every_intent_inward`（渲出的命令只写意图键）钉住。
-            //
-            // ⚠ **为什么可以现在就改**：这条臂今天**零生产调用方**（界面与手机都不发
-            //   `create-or-attach`；这个零没有判据钉着）。⇒ 本改动今天不改变任何一条在跑的路径的行为，
-            //   它是把「接线时会踩的那颗雷」在接线之前拆掉。
-            //
-            // `@ccm_agent`：与 `shared/ccm` 那条本地编排**同一个顺序**
-            // （`new-session` → `@ccm_agent` → `@ccm_sid_expect` → `send-keys`）。
-            // 同样是**次要动作**：失败不阻断键入载荷（`shared/ccm` 那边写的是 `|| true`）。
-            // 两步都是次要动作：没做成 ⇒ [`secondary`] 留一行日志（哪一步 · tmux 说的 · 后果），不阻断。
-            if let Some(agent) = &req.agent {
-                secondary(
-                    tmux,
-                    &req.name,
-                    Secondary::AgentTag,
-                    &["set-option", "-t", &t, "@ccm_agent", agent],
-                );
+            // 打标是**次要**动作：没做成 ⇒ [`secondary`] 留一行日志（哪一步 · tmux 说的 · 后果），不阻断送启动命令。
+            let mut payload = Vec::new();
+            for s in then {
+                match s {
+                    Step::Tmux(Role::Secondary(step), argv) => {
+                        let argv: Vec<&str> = argv.iter().map(String::as_str).collect();
+                        secondary(tmux, &req.name, step, &argv);
+                    }
+                    other => payload.push(other),
+                }
             }
-            if let Some(sid) = &req.ccm_sid {
-                secondary(
-                    tmux,
-                    &req.name,
-                    Secondary::IntentTag,
-                    &["set-option", "-t", &t, "@ccm_sid_expect", sid],
-                );
-            }
-            // 谁起的（「哪个前端的会话」那一维）：建会话的人自己声明，写在 `send-keys` 之前。
-            if let Some(client) = &req.client {
-                secondary(
-                    tmux,
-                    &req.name,
-                    Secondary::ClientTag,
-                    &["set-option", "-t", &t, "@ccm_client", client],
-                );
-            }
-            type_payload(TypeAt::JustMade(fresh), &req.name, &req.payload, tmux)?;
+            type_payload(Some(fresh), &req.name, &payload, tmux, settle)?;
             Ok(LaunchOutcome {
                 created: true,
                 typed: true,
@@ -715,10 +664,57 @@ fn run_with(
     }
 }
 
-/// 往哪键入：门发的令牌（`send-into`），或本趟刚建成的那个会话的令牌（`create-or-attach`；没送进时随失败交回去收）。
-enum TypeAt<'a> {
-    Admitted(&'a super::gate::Admitted),
-    JustMade(JustMade),
+/// 建会话那一串：主要那一发（`new-session`，不成 ⇒ 后面都不做）＋ 之后那几步（次要打标 · 送启动命令）。
+pub(crate) struct CreateSteps {
+    pub(crate) primary: Vec<String>,
+    pub(crate) then: Vec<Step>,
+}
+
+/// `create-or-attach` 那一串（纯的，不起进程）。真跑（[`run_with`]，过了 [`parse_request`] 那道门之后）与打印
+/// （`ccm/plan.rs::render_container`，只拼不跑、不过门）都只读这一份。
+///
+/// ★★ **建会话不写身份**。`@ccm_sid` 是破坏性动作（`kill`，`super::gate::admit_destructive` →
+/// `crate::control::gate_rules::gate2`）唯一认的事实，只由 [`super::identity_tag`] 在 pidfile 出现、过了冒名检查之后写；
+/// 建会话即写它，一个「那个 agent 还没起（甚至永远起不来）」的空会话就当场有了身份。
+/// 写 tmux 变量那一族只许 `control/identity_tag.rs`，由 `readonly_guard` 钉着。
+///
+/// 这条臂的生产调用方是 ccm 的容器路（`ccm::launch_args` 交进来）。打标排在送启动命令之前：谁起的（「哪个前端的会话」那一维）由建会话的人自己声明。
+pub(crate) fn create_steps(req: &LaunchReq, buffer: &mut dyn FnMut() -> String) -> CreateSteps {
+    let t = exact_target(&req.name);
+    let size = req.width.as_deref().zip(req.height.as_deref());
+    let tag = |step, key: &str, v: &str| {
+        Step::Tmux(
+            Role::Secondary(step),
+            ["set-option", "-t", &t, key, v]
+                .map(str::to_string)
+                .to_vec(),
+        )
+    };
+    let mut then = Vec::new();
+    if let Some(agent) = &req.agent {
+        then.push(tag(Secondary::AgentTag, "@ccm_agent", agent));
+    }
+    if let Some(client) = &req.client {
+        then.push(tag(Secondary::ClientTag, "@ccm_client", client));
+    }
+    then.extend(input_steps(&t, &[], &req.payload, true, buffer));
+    CreateSteps {
+        primary: new_session_argv(&req.name, req.cwd.as_deref(), size),
+        then,
+    }
+}
+
+/// 新建会话那一发的 argv（`create-or-attach` 与开空 shell 同一份）。`size` ＝ `--tmux-size` 的两半（只对新建生效）。
+fn new_session_argv(name: &str, cwd: Option<&str>, size: Option<(&str, &str)>) -> Vec<String> {
+    let mut a: Vec<&str> = vec!["new-session", "-d", "-s", name];
+    if let Some(cwd) = cwd {
+        a.extend(["-c", cwd]);
+    }
+    // detached 会话默认 80x24，太窄会把 agent 输出折行；已有会话的尺寸归它自己（可能有人正接着）。
+    if let Some((w, h)) = size {
+        a.extend(["-x", w, "-y", h]);
+    }
+    a.into_iter().map(str::to_string).collect()
 }
 
 /// 键入载荷。失败 ⇒ `typed_unconfirmed`：**会话在，载荷未必落**。
@@ -726,35 +722,22 @@ enum TypeAt<'a> {
 /// 这一档是 DoD 6 那条「起了但没确认」的落点：调用方**不许**据此重试 create
 /// （会话确实在），该做的是告诉用户「会话建好了但没能把命令打进去」。
 ///
-/// **先退出窗格模式，再送**，两条在同一串 tmux 命令里（`copy-mode -q ; send-keys …`，tmux 一口气跑完，别的插不进中间）：
-/// 窗格在 copy-mode / view-mode 里时送的键归那个模式的键表，命令进不了 shell（10-13：一条出声的钩子把新会话切进 view-mode，
-/// `ccm` 送的启动命令就这么被吃掉）。`copy-mode -q` 不在模式里时也退 0。`send-into` 那一臂同样：用户点了「就地 resume」，
-/// 那个窗格正翻着屏的话翻屏被退出。不改成「把命令交给 `new-session`」：那会让窗格进程就是 agent、一退窗格就没了，
-/// 空 shell 那一形（`send-into` 往里敲的就是它）跟着没了。
+/// `steps` 是往那个窗格送载荷那一串（目标是门交的句柄，或本趟刚建成的会话），送法与终端管理送字同一份（[`input_steps`]：先退窗格模式 · 字面字 · 多行粘贴 · 补回车）。不改成「把命令交给 `new-session`」：
+/// 那会让窗格进程就是 agent、一退窗格就没了，空 shell 那一形（`send-into` 往里敲的就是它）跟着没了。
 /// 送键那一发过了期限 ⇒ 也归 `typed_unconfirmed`（会话在，送没送到不知道），期限那句进复制详情。
-/// `name`：说给人听的那个 tmux 会话名。本趟新建的那一形失败时把令牌带回去，命令行那一处据此决定收不收。
+/// `name`：说给人听的那个 tmux 会话名。`made`：本趟新建的那个会话的令牌，失败时带回去，命令行那一处据此决定收不收。
 #[expect(
     clippy::result_large_err,
     reason = "起会话那一族的错带着要回给界面的整份诊断，一趟一次，不值得装箱"
 )]
 fn type_payload(
-    at: TypeAt<'_>,
+    made: Option<JustMade>,
     name: &str,
-    payload: &str,
+    steps: &[Step],
     tmux: &dyn Fn(&[&str]) -> Result<Ran, Said>,
+    settle: &dyn Fn(),
 ) -> Result<(), LaunchErr> {
-    let target = match &at {
-        TypeAt::Admitted(a) => a.handle(),
-        TypeAt::JustMade(m) => m.target(),
-    };
-    // 一串里先退出窗格模式、再送（见上）。
-    #[rustfmt::skip]
-    let sent = tmux(&["copy-mode", "-q", "-t", target, ";", "send-keys", "-t", target, payload, "Enter"]);
-    let made = match at {
-        TypeAt::JustMade(m) => Some(m),
-        TypeAt::Admitted(_) => None,
-    };
-    match sent {
+    match run_steps(steps, tmux, settle) {
         Ok(r) if r.ok => Ok(()),
         Ok(r) => Err(unconfirmed(Delivery::NotDelivered, name, &r.stderr, made)),
         Err(e) if e.code.as_deref() == Some(crate::platform::child::TIMED_OUT) => {
@@ -812,7 +795,7 @@ pub(crate) fn type_literal(
     type_into(at.handle(), pastes, text, enter, tmux, settle)
 }
 
-/// [`type_literal`] 的本体（目标是门交的句柄）。
+/// [`type_literal`] 的本体（目标是门交的句柄 · 本趟刚建成的会话）。
 fn type_into(
     target: &str,
     pastes: &[String],
@@ -821,61 +804,220 @@ fn type_into(
     tmux: &dyn Fn(&[&str]) -> Result<Ran, Said>,
     settle: &dyn Fn(),
 ) -> Result<Ran, Said> {
-    let mut last_pasted = false;
-    for p in pastes {
-        let r = paste_into(target, p, tmux)?;
-        if !r.ok {
-            return Ok(r);
-        }
-        settle();
-        last_pasted = false;
-    }
-    let sent = if text.is_empty() {
-        Ran {
-            ok: true,
-            stderr: String::new(),
-        }
-    } else if text.contains('\n') || !pastes.is_empty() {
-        last_pasted = true;
-        paste_into(target, text, tmux)?
-    } else {
-        tmux(&["send-keys", "-t", target, "-l", "--", text])?
-    };
-    if !sent.ok || !enter {
-        return Ok(sent);
-    }
-    if last_pasted {
-        settle();
-    }
-    tmux(&["send-keys", "-t", target, "Enter"])
+    run_steps(
+        &input_steps(target, pastes, text, enter, &mut next_buffer),
+        tmux,
+        settle,
+    )
 }
 
-/// 一次括号粘贴：进一个用完即删的缓冲，再 `paste-buffer -p`。
-fn paste_into(
+/// 一串里的一步：一发 tmux（它的角色 · argv，不带程序名），或粘贴之后隔一下（[`PASTE_SETTLE`]）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Step {
+    Tmux(Role, Vec<String>),
+    Settle,
+}
+
+/// 一发 tmux 在建会话那一串里的角色（主要那一发 `new-session` 单独放在 [`CreateSteps::primary`]）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Role {
+    /// 打标：没做成只留一行日志、不阻断。
+    Secondary(Secondary),
+    /// 往窗格送载荷：没做成 ⇒ `typed_unconfirmed`。
+    Payload,
+}
+
+/// 落到窗格上的一发：同一串 tmux 命令里先退窗格模式、再做 `cmd`（tmux 一口气跑完，别的插不进中间）。
+/// 窗格在 copy-mode / view-mode 里时送的字与键归那个模式的键表、tmux 照样退 0（10-13：一条出声的钩子把新会话切进 view-mode，
+/// `ccm` 送的启动命令就这么被吃掉；远端与手机看屏走 capture-pane 底屏，送键的人看不到窗格在翻屏）。`copy-mode -q` 不在模式里时也退 0。
+fn to_pane(target: &str, cmd: &[&str]) -> Step {
+    Step::Tmux(
+        Role::Payload,
+        ["copy-mode", "-q", "-t", target, ";"]
+            .iter()
+            .chain(cmd)
+            .map(|w| w.to_string())
+            .collect(),
+    )
+}
+
+/// 送一段字面字那一串（纯的，不起进程）：`pastes` 每一样单独括号粘贴一次、各隔一下；正文多行或带图 ⇒ 也粘贴，单行 ⇒ `send-keys -l`
+/// （不解释成键名）；`enter` ⇒ 补一个回车，前面是粘贴就先隔一下。粘贴进一个用完即删的缓冲，名字由 `buffer` 给。
+fn input_steps(
     target: &str,
+    pastes: &[String],
     text: &str,
+    enter: bool,
+    buffer: &mut dyn FnMut() -> String,
+) -> Vec<Step> {
+    let mut out = Vec::new();
+    let mut paste = |out: &mut Vec<Step>, what: &str| {
+        let b = buffer();
+        out.push(Step::Tmux(
+            Role::Payload,
+            ["set-buffer", "-b", &b, "--", what]
+                .map(str::to_string)
+                .to_vec(),
+        ));
+        out.push(to_pane(
+            target,
+            &["paste-buffer", "-p", "-d", "-b", &b, "-t", target],
+        ));
+    };
+    for p in pastes {
+        paste(&mut out, p);
+        out.push(Step::Settle);
+    }
+    let mut last_pasted = false;
+    if text.contains('\n') || (!pastes.is_empty() && !text.is_empty()) {
+        paste(&mut out, text);
+        last_pasted = true;
+    } else if !text.is_empty() {
+        out.push(to_pane(
+            target,
+            &["send-keys", "-t", target, "-l", "--", text],
+        ));
+    }
+    if enter {
+        if last_pasted {
+            out.push(Step::Settle);
+        }
+        out.push(to_pane(target, &["send-keys", "-t", target, "Enter"]));
+    }
+    out
+}
+
+/// 逐步跑；哪一发没做成就停在那一发、回它的结局。一发都没有 ⇒ 做成了。
+fn run_steps(
+    steps: &[Step],
     tmux: &dyn Fn(&[&str]) -> Result<Ran, Said>,
+    settle: &dyn Fn(),
 ) -> Result<Ran, Said> {
+    let mut last = Ran {
+        ok: true,
+        stderr: String::new(),
+    };
+    for s in steps {
+        match s {
+            Step::Settle => settle(),
+            Step::Tmux(_, argv) => {
+                let argv: Vec<&str> = argv.iter().map(String::as_str).collect();
+                last = tmux(&argv)?;
+                if !last.ok {
+                    break;
+                }
+            }
+        }
+    }
+    Ok(last)
+}
+
+/// 真跑那一份粘贴缓冲名（这个进程里不重）。
+fn next_buffer() -> String {
     static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let buf = format!(
+    format!(
         "ccm-input-{}-{}",
         std::process::id(),
         SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-    );
-    let set = tmux(&["set-buffer", "-b", &buf, "--", text])?;
-    if !set.ok {
-        return Ok(set);
-    }
-    tmux(&["paste-buffer", "-p", "-d", "-b", &buf, "-t", target])
+    )
 }
 
-/// 送一个键（`key` 是 tmux 的键名，来自终端管理那张有限键表；不收任意串）。只收门发的令牌。
+/// 送一个键（`key` 是 tmux 的键名，来自终端管理那张有限键表；不收任意串）。只收门发的令牌。先退窗格模式（[`to_pane`]）。
 pub(crate) fn press_key(
     at: &super::gate::Admitted,
     key: &str,
     tmux: &dyn Fn(&[&str]) -> Result<Ran, Said>,
 ) -> Result<Ran, Said> {
-    tmux(&["send-keys", "-t", at.handle(), key])
+    press_into(at.handle(), key, tmux)
+}
+
+/// [`press_key`] 的本体。
+fn press_into(
+    target: &str,
+    key: &str,
+    tmux: &dyn Fn(&[&str]) -> Result<Ran, Said>,
+) -> Result<Ran, Said> {
+    run_steps(
+        &[to_pane(target, &["send-keys", "-t", target, key])],
+        tmux,
+        &|| {},
+    )
+}
+
+/// 一件活的结果文本读进来的上限（结果文件 · 标准输出两路同一个）：超了 ⇒ 当没读到（文本照实说没有）。
+const TASK_TEXT_CAP: cap_core::Cap = cap_core::Cap {
+    bytes: 4 * 1024 * 1024,
+    over: cap_core::Over::Reject,
+};
+
+/// 跑一件活：照计划（`ccm::plan::Task`，`--ccm-print` 渲的同一份）起那个进程 —— 不进 tmux、不 attach，argv 与环境同直路那一跳
+/// （`ccm::direct_launch`；非得经 shell 的那一趟拒）—— 等它退（期限 `within`，到点杀整组），
+/// 收成 [`crate::agents::TaskDone`]：结果文本照那一家说的地方读 · 退出码 · 起止算的用时。起不来 · 到点没退 ⇒ `Err`，不交空结果。
+pub fn run_task(
+    t: &crate::control::ccm::plan::Task,
+    within: crate::platform::child::Deadline,
+) -> Result<crate::agents::TaskDone, Said> {
+    use crate::control::ccm;
+    let d = &t.direct;
+    let started = |prog: &str| {
+        let prog = prog.to_string();
+        // 系统给的原话不上句，只进细节（同 `beLaunch.create.failed`）。
+        move |e: crate::platform::child::ChildFail| {
+            let raw = e.to_string();
+            e.into_cmd_err("create_failed", |_| {
+                copy_text("beLaunch.task.notStarted", &[("program", &prog)])
+            })
+            .and_raw(Some(&raw))
+        }
+    };
+    // 非得经 shell 的那一趟（机器级 env 要 eval）不起：交 shell 那一处只许 `ccm` 换掉自己那一种用途 ⇒ 照实拒。
+    if let Some(why) = ccm::needs_shell(d) {
+        return Err(Said::new(
+            ccm::NO_SHELL,
+            copy_text("beCcm.execShell.needsSh", &[("why", why)]),
+        ));
+    }
+    let (cmd, prog) = {
+        let get = |k: &str| std::env::var(k).ok();
+        let (argv, ops) =
+            ccm::direct_launch(d, &get).map_err(|say| Said::new("create_failed", say))?;
+        let Some((prog, rest)) = argv.split_first() else {
+            return Err(Said::new(
+                "create_failed",
+                copy_text("beCcm.execDirect.noLauncher", &[]),
+            ));
+        };
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "派活起那一家的一次性进程（程序名来自计划，argv 不过 shell）：它是派活那一口要的那件事，不写用户既有数据"
+        )]
+        let mut c = Child::new(prog).args(rest);
+        for (k, v) in ops {
+            c = match v {
+                Some(v) => c.env(k, v),
+                None => c.env_remove(k),
+            };
+        }
+        if !d.cwd.is_empty() {
+            c = c.current_dir(&d.cwd);
+        }
+        (c, prog.clone())
+    };
+    let from = crate::common::time::now_ms();
+    let out = cmd
+        .run_stdout_capped(within, TASK_TEXT_CAP)
+        .map_err(started(&prog))?;
+    let took_ms = crate::common::time::now_ms().saturating_sub(from);
+    let file = crate::platform::fs::Ro::read_string_capped(&t.out, TASK_TEXT_CAP).ok();
+    let stdout = match &out.stdout {
+        cap_core::CappedAll::All(b) => Some(String::from_utf8_lossy(b)),
+        cap_core::CappedAll::OverCap => None,
+    };
+    Ok(crate::agents::TaskDone {
+        text: t.text.read(stdout.as_deref(), file),
+        exit: out.status.code(),
+        took_ms,
+    })
 }
 
 #[cfg(test)]

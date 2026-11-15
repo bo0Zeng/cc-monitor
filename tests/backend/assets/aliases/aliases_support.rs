@@ -9,14 +9,22 @@ use std::path::PathBuf;
 
 /// 读的那几问：文件管理读族的本体，失败只交码与那一句（同生产那扇门）。
 fn read<A: backend_files::Ask>(req: A) -> Result<A::Reply, Said> {
-    backend_files::answer(req, &Default::default())
-        .map_err(|f| said_of(f.code_or_fallback(), &f.said))
+    backend_files::answer(req, &Default::default()).map_err(|f| {
+        said_of(
+            &cmd_wire::failed::Failed::code_or_fallback(f.code.clone()),
+            &f.said,
+        )
+    })
 }
 
 /// 写的那几问：写面的本体，写句柄只活这一问（同生产那扇门）。
 fn write<A: backend_files::write::Act>(req: A) -> Result<A::Reply, Said> {
-    crate::wire::spec::with_face(|face| backend_files::write::answer(req, face))
-        .map_err(|f| said_of(f.code_or_fallback(), &f.said))
+    crate::wire::spec::with_face(|face| backend_files::write::answer(req, face)).map_err(|f| {
+        said_of(
+            &cmd_wire::failed::Failed::code_or_fallback(f.code.clone()),
+            &f.said,
+        )
+    })
 }
 
 /// 这台文件管理的本体那扇门（`home` 也照本体答：测试档的家是沙箱）。根由调用方给 ⇒ 判据交临时目录。

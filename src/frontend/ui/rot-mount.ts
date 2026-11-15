@@ -8,7 +8,7 @@ import { copyText } from "./copy-table";
 import { callTyped } from "./ipc/chan-caller";
 import type { Machine } from "./ipc/origin";
 import { banner } from "./kit/banner";
-import { openOnMachine } from "./file-window";
+import { openFileWindow } from "./file-window";
 import { button } from "./kit/button";
 import { askText, confirmDialog, type ConfirmFn } from "./kit/dialog";
 import { failToast } from "./kit/toast";
@@ -90,8 +90,7 @@ export function topActs(o: {
   const { origin, sid } = o;
   return {
     pick: o.pick,
-    showFile: (path) =>
-      void openOnMachine(origin, { revealFile: path }).catch((e: unknown) => failToast(copyText("rot.fail.open"), e)),
+    showFile: (path) => void openFileWindow(origin, { revealFile: path }),
     setTz: (zone) => {
       const id = o.view()?.strategy?.id;
       const ifRev = o.view()?.strategy?.rev;

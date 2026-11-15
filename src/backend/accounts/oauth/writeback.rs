@@ -10,7 +10,7 @@
 //! ⚠ 买不到的：后端进程在等的期间退出 ⇒ 内存里那份跟着没了（盘上还是旧的；服务端若已作废旧的刷新令牌，那个号要重新登录）。
 
 use super::{Renewed, Unusable, WriteBack};
-use crate::agents::LoginFace;
+use crate::agents::{LoginFace, WriteLock};
 use copy_core::{Discard, Why};
 use creds_core::SecretKey;
 use std::collections::BTreeMap;
@@ -116,7 +116,12 @@ fn wait_and_write(own: crate::platform::fs::Own, dir: PathBuf, face: LoginFace, 
         let (own, dir, account) = (own.clone(), dir.clone(), account.clone());
         Arc::new(move || attempt(&own, &dir, &face, &account))
     };
-    let watched: Vec<PathBuf> = [face.write_lock, Some(face.creds_file)]
+    // 文件锁那一形放开时不出文件事件：只盯凭据文件（那一家写完总会改它），到期那一下兜底再试。
+    let dir_lock = face
+        .write_lock
+        .filter(|w| matches!(w, WriteLock::Mkdir(_)))
+        .map(WriteLock::name);
+    let watched: Vec<PathBuf> = [dir_lock, Some(face.creds_file)]
         .into_iter()
         .flatten()
         .map(|n| dir.join(n))

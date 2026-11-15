@@ -327,7 +327,7 @@ export class TabMenu {
   /** 那台的号 ⇒ 恢复菜单的账号组（按这个会话的那一家；还不知道是哪一家 ⇒ 不出账号组，不落哪一家）。 */
   private resumeAccountsOf(origin: Machine, agent: string | null): Promise<ResumeAccounts> {
     if (agent === null) return Promise.resolve({ kind: "off" });
-    return resumeAccounts(origin, agent, { hasAccounts: agentHasAccounts(agent), agentName: displayNameOf(agent) ?? agent });
+    return resumeAccounts(origin, { agent, hasAccounts: agentHasAccounts(agent), agentName: displayNameOf(agent) });
   }
 
   /**

@@ -3,6 +3,6 @@ import type { ChoreCounts } from "./ChoreCounts";
 import type { ChoresAt } from "./ChoresAt";
 
 /**
- * `chores-merge` 的回包：各台的件数合成的那一份（设置窗角标 · 「文件与数据」顶上 · 主窗口状态栏读它）· 每台那一份（照问的先后）。
+ * `chores-merge` 的回包：各台的件数合成的那一份（设置窗角标 · 「文件与数据」顶上 · 主窗口状态栏读它）· 每台那一份：机器表里每一台必在（问的那几台照问的先后，没问的那几台——不连这台——跟在后面、带离线那一句）。
  */
 export type ChoresMerged = { total: ChoreCounts, machines: Array<ChoresAt>, };

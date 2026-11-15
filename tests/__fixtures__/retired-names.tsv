@@ -432,3 +432,31 @@ drift-merge	5.1.2
 DriftMergeCmd
 readDriftOfAll
 DriftOfAll
+transfer-upload	5.1.5
+transfer-download	5.1.5
+transfer-start	5.1.5
+transfer-stop	5.1.5
+TransferUpload	5.1.5
+TransferDownload	5.1.5
+TransferStart	5.1.5
+TransferStop	5.1.5
+TransferStartReq	5.1.5
+TransferStopReq	5.1.5
+UploadItem	5.1.5
+DownloadItem	5.1.5
+TransferUploadAsk	5.1.5
+TransferDownloadAsk	5.1.5
+TransferUploadReq	5.1.5
+TransferDownloadReq	5.1.5
+TransferCopyAsk	5.1.5
+OpenState	5.1.5
+OpenedItem	5.1.5
+TransferOpened	5.1.5
+TransferEnd	5.1.5
+TransferEndExt	5.1.5
+SFTP_HOME_MISMATCH	5.1.5
+sftp_home_mismatch	5.1.5
+MAX_TICKETS_PER_CONNECTION	5.1.5
+upload_fates	5.1.5
+upload_with	5.1.5
+forward_progress	5.1.5

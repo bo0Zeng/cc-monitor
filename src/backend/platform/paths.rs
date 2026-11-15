@@ -206,6 +206,7 @@ pub fn has_exec_bits() -> bool {
 
 /// 〔原 `assets/door.rs`，今住 `common/door.rs`〕`rel`（`/` 或 `\` 分隔）接在 `home` 底下：分隔符跟 `home` 自己的写法走
 /// （`home` 里只有 `\` ⇒ `\`，否则 `/`）—— 那台机器的 home 是什么写法由它自己的后端答，这里只照着拼。
+/// 只拼、不判家说不出（空家会拼成根上的 `/<rel>`）：家可能说不出的读者先问 [`under_home`]。
 pub fn join_under(home: &str, rel: &str) -> String {
     let sep = if home.contains('\\') && !home.contains('/') {
         '\\'
@@ -222,29 +223,62 @@ pub fn join_under(home: &str, rel: &str) -> String {
 
 /// 家目录底下一段 `/` 写的相对路径（契约 crate 里那些 `.cc-monitor/…`）⇒ 完整路径，分隔符照家目录自己的写法（[`join_under`]）：
 /// `Path::join` 不拆 `rel` 里的 `/`，Windows 上会拼成 `…\.cc-monitor/accounts`。
+/// 家目录名不是 UTF-8 ⇒ 不转字符串，逐段 `join`（转一道会把那几个字节换成替换字符、拼出另一个目录）。
+/// 不判家说不出：要判的经 [`under_home`]。
 pub fn home_join(home: &Path, rel: &str) -> PathBuf {
-    PathBuf::from(join_under(&home.to_string_lossy(), rel))
+    match home.to_str() {
+        Some(h) => PathBuf::from(join_under(h, rel)),
+        None => rel
+            .split(['/', '\\'])
+            .filter(|s| !s.is_empty())
+            .fold(home.to_path_buf(), |p, seg| p.join(seg)),
+    }
 }
 
-/// 🔴 **打头的 `~` 展开（唯一一处）**：`~` · `~/…` · `~\…`（Windows）⇒ `home` 底下（[`join_under`]，分隔符照家目录）；
-/// 别的形（`~别人/…` · 绝对 · 相对）或家目录说不出 ⇒ 原样。给人看的那一形由调用方留着原样，这里只管读盘用的那一份。
-pub fn expand_tilde_from(p: &str, home: Option<&Path>) -> String {
-    let Some(home) = home else {
-        return p.to_string();
-    };
-    let home = home.to_string_lossy();
-    match p.strip_prefix('~') {
-        Some("") => home.into_owned(),
-        Some(rest) if rest.starts_with(['/', '\\']) => join_under(&home, rest),
-        _ => p.to_string(),
+/// 🔴 **「家说不出」的唯一判法**：家没有（`None`）或是空串 ⇒ 照实拒（`bePaths.underHome.noHome`），
+/// 不拿根目录兜底成 `/<rel>`、不碰盘；否则 `rel` 接在家底下（[`home_join`]）。
+/// 后端写自家状态的句柄（`platform::fs::Own` 家那一根）· 账号库 · ccm（清单 · 钥匙文件）都问这里；各自那一句由调用方自己说。
+pub fn under_home(home: Option<&Path>, rel: &str) -> Result<PathBuf, String> {
+    match home.filter(|h| !h.as_os_str().is_empty()) {
+        Some(h) => Ok(home_join(h, rel)),
+        None => Err(copy_core::copy_text(
+            "bePaths.underHome.noHome",
+            &[("rel", rel)],
+        )),
     }
+}
+
+/// 🔴 **打头的 `~` 展开（唯一一处）**：`~` · `~/…` · `~\…`（Windows）⇒ `home` 底下（[`home_join`]，分隔符照家目录）；
+/// 别的形（`~别人/…` · 绝对 · 相对）或家目录说不出（判只在 [`under_home`]）⇒ 原样。给人看的那一形由调用方留着原样，这里只管读盘用的那一份。
+/// 照家原样拼：家名不是 UTF-8 也不转字符串一道（转一道会把那几个字节换成替换字符、指到另一个目录）；要写成字的读者经 [`expand_tilde_text`]。
+pub fn expand_tilde_from(p: &str, home: Option<&Path>) -> PathBuf {
+    match p.strip_prefix('~') {
+        Some(rest) if rest.is_empty() || rest.starts_with(['/', '\\']) => {
+            match (under_home(home, rest), home) {
+                // 裸 `~` 就是家本身（拼一道会剥掉尾上的分隔符：家是 `/` 会剥成空串）。
+                (Ok(_), Some(h)) if rest.is_empty() => h.to_path_buf(),
+                (Ok(full), _) => full,
+                (Err(_), _) => PathBuf::from(p),
+            }
+        }
+        _ => PathBuf::from(p),
+    }
+}
+
+/// 🔴 **展开后要写成字的那一形（唯一一处判）**：同 [`expand_tilde_from`]；家名不是 UTF-8、展开后写不成字 ⇒ 照实拒
+/// （`bePaths.expandTilde.notUtf8`，带用户写的那一串），不有损拼。argv · 环境变量的值 · 线上的路径都经这里。
+pub fn expand_tilde_text(p: &str, home: Option<&Path>) -> Result<String, String> {
+    expand_tilde_from(p, home)
+        .into_os_string()
+        .into_string()
+        .map_err(|_| copy_core::copy_text("bePaths.expandTilde.notUtf8", &[("path", p)]))
 }
 
 /// 路径的显示形（`home` 那一截写成 `~`）：实现住 `copy_core::path`（后端与壳同一份），这里转出给后端各处调。
 pub use copy_core::{home_short, home_short_bytes};
 
 /// 同 [`expand_tilde_from`]，家目录取这台的（[`home_dir`]）。
-pub fn expand_tilde(p: &str) -> String {
+pub fn expand_tilde(p: &str) -> PathBuf {
     expand_tilde_from(p, home_dir().as_deref())
 }
 

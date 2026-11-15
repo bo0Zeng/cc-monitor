@@ -1,5 +1,5 @@
 use super::*;
-use crate::control::cc_bus_wire::BusEnvelope;
+use crate::control::cc_bus::wire::BusEnvelope;
 use std::path::{Path, PathBuf};
 
 const A: &str = "0f3c2a1e-1111-2222-3333-444455556666";

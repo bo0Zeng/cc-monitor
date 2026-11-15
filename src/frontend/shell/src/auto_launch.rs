@@ -44,8 +44,8 @@ impl Default for AutoLaunchConfig {
     }
 }
 
-/// 数据目录里那份文件的名字（PowerShell 别名块 `cc.ps1.tpl` 照同一个名字读）。
-const FILE: &str = "auto-launch.json";
+/// 数据目录里那份文件的名字（住契约包；PowerShell 别名块 `cc.ps1.tpl` 照同一个名字读）。
+const FILE: &str = relay_route_core::AUTO_LAUNCH_FILE;
 
 /// 那份文件的读上限：里面只有一个开关和一条 exe 路径（几百字节）。超了当坏了的那一份：照缺省起、日志说是哪一份；
 /// 路径那一格 monitor 每次启动都重记，下一次写就换成好的。

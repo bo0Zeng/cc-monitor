@@ -15,7 +15,7 @@ vi.mock("../../../src/frontend/ui/session-open", () => ({ awaitArrival: h.awaitA
 vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: h.toast }));
 
 import { copyText } from "../../../src/frontend/ui/copy-table";
-import { newSessionSplit, setItem, startSetCommand, type SetMenuHost } from "../../../src/frontend/ui/set-menu";
+import { openSetMenu, setItem, startSetCommand, type SetMenuHost } from "../../../src/frontend/ui/set-menu";
 import { startSet } from "../../../src/frontend/ui/set-start";
 import type { SetOut } from "../../../src/frontend/ui/generated/SetOut";
 import type { SetPlan } from "../../../src/frontend/ui/generated/SetPlan";
@@ -127,16 +127,14 @@ describe("起一组", () => {
   });
 });
 
-describe("栏顶拆分按钮 · 命令面板那一条", () => {
-  it("「＋」开新建框；「⌄」开组菜单：新建会话 · 这台的几组（各问一次 set-plan，答回来就地换上）· 编辑组…", async () => {
+describe("栏顶「存好的几组」那一颗 · 命令面板那一条", () => {
+  it("组菜单：新建会话 · 这台的几组（各问一次 set-plan，答回来就地换上）· 编辑组…；头一项开新建框", async () => {
     h.readProfiles.mockResolvedValue({ sets: [set("工具链")] });
     h.planSet.mockResolvedValue(plan(1));
     const hs = host();
-    const el = newSessionSplit(() => "local", hs);
-    document.body.appendChild(el);
-    el.querySelector<HTMLButtonElement>('[data-role="new-session"]')!.click();
-    expect(hs.newSession).toHaveBeenCalledTimes(1);
-    el.querySelector<HTMLButtonElement>('[data-role="set-menu"]')!.click();
+    const anchor = document.createElement("button");
+    document.body.appendChild(anchor);
+    await openSetMenu(anchor, "local", hs);
     await flush();
     expect(h.planSet).toHaveBeenCalledWith("local", { name: "工具链" });
     const text = document.body.textContent ?? "";
@@ -144,19 +142,6 @@ describe("栏顶拆分按钮 · 命令面板那一条", () => {
     expect(text).toContain("工具链");
     expect(text).toContain("MORE-SAID");
     expect(text).toContain(copyText("setMenu.list.edit"));
-  });
-
-  it("窄栏里「＋」也开新建框（组菜单只在「⌄」）", async () => {
-    h.readProfiles.mockResolvedValue({ sets: [] });
-    document.body.dataset.tabBar = "folded";
-    const hs = host();
-    const el = newSessionSplit(() => "local", hs);
-    document.body.appendChild(el);
-    el.querySelector<HTMLButtonElement>('[data-role="new-session"]')!.click();
-    await flush();
-    expect(hs.newSession).toHaveBeenCalledTimes(1);
-    expect(document.body.querySelector("[role=menu]")).toBeNull();
-    delete document.body.dataset.tabBar;
   });
 
   it("命令面板「起一组…」开的是同一张组菜单", async () => {

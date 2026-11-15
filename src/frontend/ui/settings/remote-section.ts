@@ -22,7 +22,7 @@ import { openPortForwardPanel } from "./port-forward";
 import type { Host } from "../generated/Host";
 import type { MachineRow } from "../generated/MachineRow";
 import { listForwards, stopForward } from "../port-forward-reads";
-import { askInterrupts } from "./interrupts";
+import { askForwards } from "./interrupts";
 // 配置数据层在 src/frontend/ui/remote-config.ts，这里只排版。
 import {
   readRemoteConfig,
@@ -70,7 +70,6 @@ const REMOTE_INFO_TEXT = (): string =>
  * 远端的别名块：只做**组合**（`cct() { ccm --tmux "$@"; }`），不含任何实现 —— 实现都在 `ccm` 里。
  * 不装成 shell 函数的理由：函数**优先于 PATH**，与用户已有同名函数硬冲突且必然遮蔽；远端是 zsh/fish 时 `.bashrc` 根本不被 source。
  */
-// 单一来源：src/shared/ccm-aliases.sh（后端 sftp.rs include_str! 同一文件，杜绝漂移）
 import { copyText } from "../copy-table";
 import { sayFailure } from "../kit/detail";
 
@@ -723,7 +722,7 @@ export class RemoteSection {
     if (!this.cards.includes(card)) return;
     const name = card.displayName();
     const origin = card.persistedKey;
-    const forwards = origin ? ((await askInterrupts(origin))?.forwards ?? 0) : 0;
+    const forwards = origin ? await askForwards(origin) : 0;
     if (!this.cards.includes(card)) return;
     const { idx, pageId, row, after } = this.dropCard(card);
     let undone = false;

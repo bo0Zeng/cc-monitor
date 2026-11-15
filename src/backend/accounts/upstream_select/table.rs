@@ -5,7 +5,7 @@
 //! 只按账号查，claude 的 3 号与 codex 的 3 号就是同一行 ⇒ codex 会话会拿到 claude 那一行的上游与 key、错发到 Anthropic。
 //! 键两段，一段都不许省：查 `(codex, 3)` 查不到 ⇒ `/s/` 回 404，一个字节不发上游。
 //! 凭据文件本身没有 agent 这一维（`creds-core` 那份格式只有账号 id）：装表时每一行挂在谁名下由调用方显式交进来
-//! （[`build`] 的 `agent` 入参，今天恒是 `super::CREDENTIALS_FILE_AGENT`）。本模块自己不认识任何一个 agent 的名字。
+//! （[`build`] 的 `agent` 入参，今天恒是 `super::Upstreams::file_agent` 那一家）。本模块自己不认识任何一个 agent 的名字。
 //!
 //! # 上游与 key 只能同源
 //!
@@ -135,13 +135,12 @@ pub(crate) static WHY_PLAINTEXT_OFF_LOOPBACK: std::sync::LazyLock<String> =
 /// 一条 `base_url` 能用 ⇒ 装成 `Base`；不能用 ⇒ 那一句（装表与写口 `file_face.rs` 共用）。
 /// 明文只许回环判的是**这一刻的字面**，不是「连出去之后落到哪」（解析到回环的域名照样拒）。
 pub fn base_if_usable(url: &str) -> Result<Base, &'static str> {
-    let base = Base::parse(url).map_err(|i| i.0)?;
     match upstream_url_core::usable(url) {
+        Ok(u) => Ok(crate::relay::base_from(u)),
+        Err(upstream_url_core::Unusable::Shape(i)) => Err(crate::relay::shape_said(i)),
         Err(upstream_url_core::Unusable::PlaintextOffLoopback) => {
             Err(WHY_PLAINTEXT_OFF_LOOPBACK.as_str())
         }
-        // 形状那几形上面 `Base::parse` 已经说过（同一个 `parse`）。
-        _ => Ok(base),
     }
 }
 
@@ -192,7 +191,7 @@ fn note_for_auth_style(style: AuthStyle) -> Option<&'static str> {
 /// # 「装不进去」的判断都在这里，都出声
 ///
 /// 1. 账号 id 当不了路由段 —— 走 [`segment_is_safe`]，与 `route::parse` 同一个谓词；装进去也永远匹配不上任何请求。
-/// 2. `base_url` 解析不了 —— 走 `Base::parse`。不回落到默认上游：打错的端点回落到官方端点，症状是「配了第三方 API，它却在用官方的」。
+/// 2. `base_url` 解析不了 —— 走 `relay::base_of`。不回落到默认上游：打错的端点回落到官方端点，症状是「配了第三方 API，它却在用官方的」。
 /// 3. 明文 http 指向非回环 —— 见 [`WHY_PLAINTEXT_OFF_LOOPBACK`]。
 /// 4. `auth_style` 认不出 / 说不发头却又配了 key —— 见 [`WHY_AUTH_STYLE_UNKNOWN`] / [`WHY_NO_AUTH_WITH_KEY`]。都不回落。
 ///

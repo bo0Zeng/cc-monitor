@@ -28,7 +28,7 @@ import kotlinx.coroutines.sync.withLock
 /**
  * 一条会话的正文跟读（[ChatSession] 持有；名字带 `Locked` 的在它的锁里调）：手上读到哪（续点 · 尾段起点 · 下一行的行号）、
  * 认记录文件 · 读最后一屏 · 交续点对齐那台 · 按行号补缺 · 往上翻 · 从一处命中读起。读到的记录排进 [body]，排进了就叫一声 [took]；
- * 没读成的那一句照 [failSession] · [readFailed] 上屏。
+ * 没读成的那一格照 [failSession] · [readFailed] 上屏。
  */
 internal class ChatRecord(
     private val link: CoreLink,
@@ -43,7 +43,7 @@ internal class ChatRecord(
     /** 排进了 [body]（分段要不要重问由持有者记）。 */
     private val took: () -> Unit,
     private val publishLocked: () -> Unit,
-    private val failSession: (String?) -> Unit,
+    private val failSession: (SessionFailure?) -> Unit,
     private val readFailed: (String?) -> Unit,
     /** 从一处命中读起：命中那一页的第一张卡（落点）。 */
     private val landed: (String?) -> Unit,
@@ -151,9 +151,9 @@ internal class ChatRecord(
     /** 只有会话 id：问那台 `history-facts {sid}`，它在自己的记录树里找那份记录（回包的 `path`）；找不到 · 问不到 ⇒ 那台写好的那一句上屏。 */
     private suspend fun byId(s: String): Pair<String, FactsReply>? {
         val r = link.call(HistoryFacts.COMMAND, HistoryFacts.bySid(s), READ_MS)
-        if (r !is Reply.Ok) return null.also { failSession(r.problem(machine, HistoryFacts.COMMAND, link.offline.value)?.text) }
+        if (r !is Reply.Ok) return null.also { failSession(r.problem(machine, HistoryFacts.COMMAND, link.offline.value)?.failure()) }
         val f = HistoryFacts.of(r.data)
-        val p = f?.path ?: return null.also { failSession(unreadableReply(machine, HistoryFacts.COMMAND, r.data.toString()).text) }
+        val p = f?.path ?: return null.also { failSession(unreadableReply(machine, HistoryFacts.COMMAND, r.data.toString()).failure()) }
         return p to f
     }
 
@@ -308,7 +308,7 @@ internal class ChatRecord(
         anchorOffset = anchor.offset
         anchorPath = anchor.path
         anchorMark = anchor.mark
-        state.value = state.value.copy(canLoadOlder = head > 0L, failedWhy = null, historyError = null)
+        state.value = state.value.copy(canLoadOlder = head > 0L, failure = null, historyError = null)
         publishLocked()
     }
 

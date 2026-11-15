@@ -120,9 +120,42 @@ pub(crate) struct Scanned {
     pub shared_mcp: bool,
 }
 
-/// 一个条目的键（种类 ＋ 名字）：「新见到」按它记，扩展页一行也按它分。
-pub(crate) fn entry_key(kind: ExtKind, name: &str) -> String {
-    format!("{}/{name}", kind.as_str())
+/// 一个条目的键（家 ＋ 种类 ＋ 名字）：「新见到」· 备注按它记，扩展页一行也按它分。
+/// 缺省那一家（`agent` = `None`）⇒ `种类/名字`（同只有一家时那一形）；别的家 ⇒ `家/种类/名字`，同名不相撞。
+pub(crate) fn entry_key(agent: Option<&str>, kind: ExtKind, name: &str) -> String {
+    match agent {
+        None => format!("{}/{name}", kind.as_str()),
+        Some(a) => format!("{a}/{}/{name}", kind.as_str()),
+    }
+}
+
+/// 一家的条目带上家（线上那一格经 [`crate::agents::family_tag`]：缺省那一家不写、别的家写上它，判在 [`crate::agents::unless_default`]）。
+/// 这里只记那一格（`Option<AgentKind>`）；对人的叫法不在这里拼，只经 [`crate::agents::family_said_among`]。
+pub(crate) fn tag_family(kind: &str, default: Option<&str>, assets: &mut [Asset]) {
+    let agent = crate::agents::family_tag(kind, default);
+    for a in assets {
+        a.agent = agent.clone();
+    }
+}
+
+/// 各家扫出来的（[`crate::agents::asset_sightings`]，照 `registry` 那几家）⇒ 一份带家、排好序的条目（家 · 种类 · 名字 · 项目）＋ 读不出来的那几句。
+pub(crate) fn assets_of_families(
+    registry: &[crate::agents::Adapter],
+    sightings: &[(&'static str, crate::agents::Sightings)],
+) -> (Vec<Asset>, Vec<String>) {
+    let default = crate::agents::asset_default_among(registry);
+    let mut out = Vec::new();
+    let mut problems = Vec::new();
+    for (kind, s) in sightings {
+        let (mut assets, p) = assets_from(std::slice::from_ref(s));
+        tag_family(kind, default, &mut assets);
+        out.extend(assets);
+        problems.extend(p);
+    }
+    out.sort_by(|a, b| {
+        (&a.agent, &a.kind, &a.name, &a.project).cmp(&(&b.agent, &b.kind, &b.name, &b.project))
+    });
+    (out, problems)
 }
 
 // ───────────────────────── 摘要（纯） ─────────────────────────
@@ -158,6 +191,7 @@ pub(crate) fn mcp_asset(
     f.part(ExtKind::Mcp.as_str().as_bytes())
         .part(canonical(def).as_bytes());
     Asset {
+        agent: None,
         kind: ExtKind::Mcp,
         name: name.to_string(),
         project: project.map(str::to_string),
@@ -290,6 +324,7 @@ pub(crate) fn skill_asset(
         }
     }
     Asset {
+        agent: None,
         kind: ExtKind::Skill,
         name: name.to_string(),
         project: project.map(str::to_string),
@@ -320,6 +355,7 @@ pub(crate) fn plugin_from_code(from: crate::agents::PluginFrom) -> &'static str 
 }
 
 /// 一个插件 → 目录条目。`digest` 按市场 · 版本 · 组成算（同一版各台相同）；开不开不进摘要，记在 `off`。
+/// 那一家的写法原样记进 `summary.key`（[`plugin_exec::KEY`](super::plugin_exec::KEY)：装 · 删交它、列出来照它比）。
 pub(crate) fn plugin_asset(p: &crate::agents::PluginSeen) -> Asset {
     let parts = json!({
         "skills": p.parts.skills,
@@ -334,12 +370,14 @@ pub(crate) fn plugin_asset(p: &crate::agents::PluginSeen) -> Asset {
         .part(p.version.as_deref().unwrap_or("").as_bytes())
         .part(canonical(&parts).as_bytes());
     Asset {
+        agent: None,
         kind: ExtKind::Plugin,
         name: p.name.clone(),
         project: p.project.clone(),
         dir: Some(p.root.display().to_string()),
         digest: f.hex(),
         summary: json!({
+            (super::plugin_exec::KEY): p.key,
             "market": p.market,
             "version": p.version,
             "description": p.description,
@@ -381,12 +419,15 @@ pub(crate) fn assets_from(sightings: &[crate::agents::Sightings]) -> (Vec<Asset>
 /// 这台上开过会话的项目目录：取历史清单那一份（项目清单每一行的 `projectPath`），不另起一份扫描。
 /// 列不出来 ⇒ 空 ＋ 一句话（「这台没有项目」与「这台的项目列不出来」不许合成一句）。
 pub(crate) fn session_projects() -> (Vec<String>, Option<String>) {
-    session_projects_at(&crate::history::listing::agent_home())
+    session_projects_at(&crate::agents::local_homes())
 }
 
 /// [`session_projects`] 的本体：agent 的家由调用方给（判据拿临时家目录喂）。
-pub(crate) fn session_projects_at(agent_home: &Path) -> (Vec<String>, Option<String>) {
-    let projects = match crate::history::listing::list_projects(agent_home) {
+pub(crate) fn session_projects_at(
+    agent_home: impl crate::agents::IntoHomes,
+) -> (Vec<String>, Option<String>) {
+    let agent_home = crate::agents::IntoHomes::into_homes(agent_home);
+    let projects = match crate::history::listing::list_projects(&agent_home) {
         Ok(p) => p.unwrap_or_default(),
         Err(e) => return (Vec::new(), Some(e)),
     };
@@ -400,26 +441,33 @@ pub(crate) fn session_projects_at(agent_home: &Path) -> (Vec<String>, Option<Str
     (dirs, None)
 }
 
-/// 这台现扫一次：先取项目清单，再交适配层扫用户级 ＋ 那几个项目。
+/// 这台现扫一次：先取项目清单，再交适配层扫用户级 ＋ 那几个项目；扫出的插件再照各家自己的列表标经不经插件命令管。
 pub(crate) fn scan_here() -> Scanned {
     let (projects, why) = session_projects();
-    let user_mcp = crate::accounts::manage::mcp_share_exec::user_mcp_file();
-    let (assets, mut problems) = assets_from(&crate::agents::asset_sightings(
-        &projects,
-        user_mcp.as_deref(),
+    let (mut assets, mut problems) = assets_of_families(
+        crate::agents::REGISTRY,
+        &crate::agents::asset_sightings(&projects, &|kind| {
+            crate::accounts::manage::mcp_share_exec::user_mcp_file(kind)
+        }),
+    );
+    problems.extend(super::plugin_exec::mark_by_command(
+        crate::agents::REGISTRY,
+        &mut assets,
+        &super::plugin_exec::run_listing,
     ));
     problems.extend(why);
-    let shared_mcp = crate::platform::paths::home_dir()
-        .and_then(|h| {
-            crate::accounts::manage::mcp_share_exec::store_file_in(&h.display().to_string())
-        })
-        .is_some();
     Scanned {
         assets,
         projects,
         problems,
-        shared_mcp,
+        shared_mcp: shared_mcp_at(crate::platform::paths::home_dir().as_deref()),
     }
+}
+
+/// 家目录 `home` 底下有没有账号库（用户级 MCP 是各账号共用的那一份）：照家原样拼，家名不是 UTF-8 也照实带。家说不出 ⇒ 没有。
+pub(crate) fn shared_mcp_at(home: Option<&Path>) -> bool {
+    home.and_then(crate::accounts::manage::mcp_share_exec::store_path_in)
+        .is_some()
 }
 
 // ───────────────────────── 合并与判定（纯） ─────────────────────────
@@ -528,7 +576,11 @@ pub(crate) fn note_known(cat: &mut Catalog, now: u64) -> bool {
     let keys: Vec<String> = cat
         .machines
         .values()
-        .flat_map(|s| s.assets.iter().map(|a| entry_key(a.kind, &a.name)))
+        .flat_map(|s| {
+            s.assets
+                .iter()
+                .map(|a| entry_key(a.agent.as_deref(), a.kind, &a.name))
+        })
         .collect();
     let mut noted = false;
     for k in keys {
@@ -556,21 +608,22 @@ pub(crate) fn merge(cat: &mut Catalog, incoming: BTreeMap<String, Snapshot>) -> 
     changed
 }
 
-/// 「别的机器有的，这台怎样」—— 每个（种类, 名字）一行，只列别处有的。判定只在这里。
+/// 「别的机器有的，这台怎样」—— 每个（家, 种类, 名字）一行（两家同名各一行），只列别处有的。判定只在这里。
 pub(crate) fn rows(cat: &Catalog) -> Vec<CatalogRow> {
     let mine: Vec<&Asset> = cat
         .machines
         .get(&cat.self_id)
         .map(|s| s.assets.iter().collect())
         .unwrap_or_default();
-    let mut by_key: BTreeMap<(ExtKind, String), Vec<CatalogFrom>> = BTreeMap::new();
+    let mut by_key: BTreeMap<(Option<cmd_wire::AgentKind>, ExtKind, String), Vec<CatalogFrom>> =
+        BTreeMap::new();
     for (id, snap) in &cat.machines {
         if *id == cat.self_id {
             continue;
         }
         for a in &snap.assets {
             by_key
-                .entry((a.kind, a.name.clone()))
+                .entry((a.agent.clone(), a.kind, a.name.clone()))
                 .or_default()
                 .push(CatalogFrom {
                     machine: id.clone(),
@@ -582,10 +635,10 @@ pub(crate) fn rows(cat: &Catalog) -> Vec<CatalogRow> {
     }
     by_key
         .into_iter()
-        .map(|((kind, name), from)| {
+        .map(|((agent, kind, name), from)| {
             let here: Vec<&&Asset> = mine
                 .iter()
-                .filter(|a| a.kind == kind && a.name == name)
+                .filter(|a| a.agent == agent && a.kind == kind && a.name == name)
                 .collect();
             let state = if here.is_empty() {
                 HERE_MISSING
@@ -598,6 +651,7 @@ pub(crate) fn rows(cat: &Catalog) -> Vec<CatalogRow> {
                 HERE_DIFFERS
             };
             CatalogRow {
+                agent,
                 kind,
                 name,
                 state: state.to_string(),
@@ -692,16 +746,21 @@ fn new_machine_id() -> String {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    let mut f = crate::common::digest::Fnv::default();
-    f.part(
-        home()
-            .map(|h| h.to_string_lossy().into_owned())
-            .unwrap_or_default()
-            .as_bytes(),
+    machine_id_of(
+        home().as_deref(),
+        &machine_label(),
+        nanos,
+        std::process::id(),
     )
-    .part(machine_label().as_bytes())
-    .part(&nanos.to_le_bytes())
-    .part(&std::process::id().to_le_bytes());
+}
+
+/// [`new_machine_id`] 的摘要本体（判据直接喂）：家目录照字节进摘要，不先转成字。
+fn machine_id_of(home: Option<&Path>, label: &str, nanos: u128, pid: u32) -> String {
+    let mut f = crate::common::digest::Fnv::default();
+    f.part(home.map_or(&[][..], |h| h.as_os_str().as_encoded_bytes()))
+        .part(label.as_bytes())
+        .part(&nanos.to_le_bytes())
+        .part(&pid.to_le_bytes());
     f.hex()
 }
 

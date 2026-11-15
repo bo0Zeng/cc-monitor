@@ -194,7 +194,7 @@ impl Pictures {
 
     /// 经 [`chunk_core::pull_capped`] 逐块读回；读到一半被扔了 ⇒ `Ok(None)`（不再读下一块）。
     async fn read(&self, key: &PicKey, l: &Load) -> Result<Option<Vec<u8>>, String> {
-        let ask = Asking(super::chunk_upload::Over {
+        let ask = Asking(super::source::Over {
             line: &l.line,
             origin: &l.origin,
         });
@@ -232,8 +232,8 @@ impl Pictures {
     }
 }
 
-/// 读一张图问那台的那一口（就是分块那一圈的 [`super::chunk_upload::Over`]）：没成 ⇒ `Some(那一句)`；`None` ＝ 那一张被扔了。
-struct Asking<'a>(super::chunk_upload::Over<'a>);
+/// 读一张图问那台的那一口（就是分块那一圈的 [`super::source::Over`]）：没成 ⇒ `Some(那一句)`；`None` ＝ 那一张被扔了。
+struct Asking<'a>(super::source::Over<'a>);
 
 impl chunk_core::Ask for Asking<'_> {
     type Err = Option<String>;

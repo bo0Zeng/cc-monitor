@@ -20,15 +20,6 @@ fn the_old_dial_entry_is_gone() {
     );
 }
 
-/// 暂存区那一根（拨号核心装的远端写根）与提交那一侧（`files::commit`）是同一个串。
-#[test]
-fn the_staging_root_is_the_one_the_commit_side_reads() {
-    assert_eq!(
-        ssh_dial::sftp::STAGING_ROOT,
-        crate::files::commit::STAGING_DIR
-    );
-}
-
 // ── 开终端那道守卫 × 后端自己渲的每一条远端命令 ──
 
 /// 线上那一形的一台。
@@ -221,7 +212,7 @@ async fn a_resident_call_stops_waiting_once_the_asker_is_gone() {
     let _ = std::fs::remove_dir_all(&dh);
     let run = relay_route_core::listen_dir_for(&dh);
     std::fs::create_dir_all(&run).unwrap();
-    std::fs::set_permissions(&run, std::os::unix::fs::PermissionsExt::from_mode(0o700)).unwrap();
+    test_home::set_dir_mode(&run, 0o700);
     let _mute = own_chan::bind(&relay_route_core::listen_socket_for(&dh)).expect("绑");
     let asked = crate::wire::listen::ResidentCall {
         cmd: "machines-list".into(),

@@ -1,7 +1,7 @@
 //! **复制到另一台机器** —— 那一问（机器 ＋ 落点目录）与「放到」那一块小目录选择器。
 //!
 //! 做的那一半住本机后端（`transfer-copy`：经本机中转 A → 本机暂存 → B 暂存 → B 提交，目录整棵逐个文件，逐项结局，
-//! 半路失败或撤清两头暂存）；窗口发一条（[`super::batch`]：带票 · 同名问一次 · 断了带票再问 · 撤），一步都不拼。
+//! 半路失败或撤清两头暂存）；窗口发一条寻址本机的（[`super::transfer`] · [`super::batch`]：带票 · 同名问一次 · 断了带票再问 · 撤），一步都不拼。
 //! 本机不在机器那一栏里：落到本机是「下载」。
 //! ⚠ 「在两个窗口之间拖」没做：两个窗口是两个进程，egui 里没有跨进程拖放 —— 入口是右键「复制到另一台…」。
 
@@ -9,33 +9,7 @@ use std::sync::{Arc, Mutex};
 
 use copy_core::copy_text;
 
-/// 菜单上那一项的字。**唯一住址**。
-pub static CROSS_LABEL: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| copy_text("rsFilewinCrossCopy.label.cross", &[]));
-
-/// 机器下拉里给人看的名字：本机（地址只一个家 `cmd_wire::LOCAL`）写「本机」，别的照名字。
-pub fn shown_machine(origin: &str) -> String {
-    if origin == cmd_wire::LOCAL {
-        copy_text("detail.label.local", &[])
-    } else {
-        origin.to_string()
-    }
-}
-
-/// 框里那一格（给人看的名字，或手填的名字）→ 发出去的机器地址：「本机」⇒ 本机后端的地址。
-pub fn origin_of(shown: &str) -> String {
-    let t = shown.trim();
-    if t == copy_text("detail.label.local", &[]) {
-        cmd_wire::LOCAL.to_string()
-    } else {
-        t.to_string()
-    }
-}
-
-/// 两台之间复制一组那一条（本机后端；monitor 补上两台的拨号请求）。
-pub const CMD_CROSS: &str = <cmd_wire::transfer::TransferCopyAsk as cmd_wire::Call>::NAME;
-
-/// 那一问（UI 线程自己的）：要复制的那几项 ＋ 用户正在填的机器名与目标目录。
+/// 那一问（UI 线程自己的）：要复制的那几项 ＋ 选中的那台（机器键）与目标目录。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CrossPrompt {
     /// 标题里那一格（一项 ⇒ 它的名字；多项 ⇒ `n 项`）。
@@ -188,7 +162,7 @@ impl DirPick {
         let (me, line) = (self.clone(), line.clone());
         h.spawn(async move {
             let to = super::source::Origin::named(now.machine.clone());
-            let op = super::writeops::WriteOp::Mkdir {
+            let op = super::writeops::SingleOp::Mkdir {
                 dir: now.path.clone(),
                 name: name.clone(),
             };

@@ -41,4 +41,12 @@ bgTab?: Tab,
 /**
  * pb 的插件根目录：空串 ⇒ 删掉（回到认装着的插件）。
  */
-pbDir?: string, };
+pbDir?: string, 
+/**
+ * 计划页手加的目录（整节换掉；空表 ⇒ 一个都不加）。
+ */
+planDirs?: Array<string>, 
+/**
+ * 状态行模板：`null` ⇒ 回到随包的缺省；字串 ⇒ 照存（空串 ⇒ 不留那一行；认不出的键照存）。没给 ⇒ 不动。
+ */
+statusLine?: string | null, };

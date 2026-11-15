@@ -63,8 +63,7 @@ impl FileWindow {
         }
         // 落点 ＝ 选择器上选到的（还没读出来 ⇒ 框留着、出声：落点要一条绝对路径）。
         let pick = self.cross_pick.shown();
-        let p = if pick.machine == crate::cross_copy::origin_of(&p.machine) && !pick.path.is_empty()
-        {
+        let p = if pick.machine == p.machine && !pick.path.is_empty() {
             crate::cross_copy::remember_dir(&pick.machine, &pick.target());
             crate::cross_copy::CrossPrompt {
                 dir: pick.target(),
@@ -78,30 +77,31 @@ impl FileWindow {
                 Some(copy_text("rsFilewinCrossCopy.dir.notAbsolute", &[("dir", &p.dir)]).into());
             return false;
         }
-        // 一组一条：`transfer-copy`（寻址 ＝ 这一台，`to` ＝ 落点那台）；在本机后端里做 ⇒ 撤与断开认本机。
-        let ask = cmd_wire::transfer::TransferCopyAsk {
-            to: p.machine.trim().to_string(),
-            items: p
-                .srcs
+        // 一组一条寻址本机的 `transfer-copy`（这一台 → 落点那台）：在本机后端里做 ⇒ 发 · 撤 · 断开都认本机。
+        let req = crate::transfer::copy_req(
+            &self.source.origin(),
+            &crate::source::Origin::named(p.machine.clone()),
+            p.srcs
                 .iter()
                 .map(|s| cmd_wire::transfer::CopyFrom {
                     path: cmd_wire::files::WirePath(s.bytes()),
                     name: None,
                 })
                 .collect(),
-            to_dir: cmd_wire::files::WirePath::from(p.dir.as_str()),
-            on_exists: None,
-            decide: None,
-            ticket: None,
-        };
-        let plan = batch_core::Plan {
-            verb: batch_core::Verb::Copy,
-            cmd: crate::cross_copy::CMD_CROSS,
-            args: serde_json::to_value(&ask).unwrap_or_default(),
-            names: p.names.clone(),
-            into: Some(format!("{}:{}", p.machine.trim(), p.dir)),
-            machine: self.source.label(),
-        };
+            cmd_wire::files::WirePath::from(p.dir.as_str()),
+            None,
+        );
+        let plan = crate::transfer::plan(
+            batch_core::Verb::Copy,
+            &req,
+            p.names.clone(),
+            format!(
+                "{}:{}",
+                copy_core::machine_word(&cmd_wire::Machine::named(p.machine.as_str())),
+                p.dir
+            ),
+            self.source.label(),
+        );
         let home = crate::source::Origin::local();
         if !self.start_batch(plan, home, egui_phosphor::regular::ARROWS_LEFT_RIGHT, ctx) {
             return false;
@@ -118,7 +118,7 @@ impl FileWindow {
             return;
         };
         let pal = crate::theme::palette(ui.ctx());
-        let machine = crate::cross_copy::origin_of(&p.machine);
+        let machine = p.machine.clone();
         // 选择器跟着下拉那台走：换了机器（或刚打开）⇒ 去那台上次的落点 / 主目录。
         let pick = self.cross_pick_follow(ui, &machine);
         let here = self.source.origin().to_string();
@@ -126,13 +126,14 @@ impl FileWindow {
             .machines
             .iter()
             .filter(|m| **m != here && m.as_str() != cmd_wire::LOCAL)
-            .map(|m| crate::cross_copy::shown_machine(m))
+            .cloned()
             .collect();
         let err = self.prompt_failure();
         let mut go_to: Option<String> = None;
         let mut picked: Option<String> = None;
         let mut mkdir = false;
-        let shown_machine = p.machine.clone();
+        let word = |m: &str| copy_core::machine_word(&cmd_wire::Machine::named(m));
+        let shown = word(&p.machine);
         let hit = crate::kit::dialog(
             ui.ctx(),
             "filewin-cross-copy",
@@ -147,7 +148,7 @@ impl FileWindow {
                     .iter()
                     .map(|m| {
                         crate::kit::Entry::Row(
-                            crate::kit::MenuRow::new("", m.clone()).checked(*m == p.machine),
+                            crate::kit::MenuRow::new("", word(m)).checked(*m == p.machine),
                         )
                     })
                     .collect();
@@ -155,7 +156,7 @@ impl FileWindow {
                     ui,
                     "filewin-cross-machine",
                     w,
-                    format!("{}  {}", egui_phosphor::regular::DESKTOP, shown_machine),
+                    format!("{}  {}", egui_phosphor::regular::DESKTOP, shown),
                     &entries,
                 ) {
                     p.machine = machines[k].clone();
@@ -180,7 +181,7 @@ impl FileWindow {
                 if !pick.path.is_empty() {
                     let target = copy_text(
                         "rsFilewinCrossCopy.prompt.hint",
-                        &[("machine", &shown_machine), ("path", &pick.target())],
+                        &[("machine", &shown), ("path", &pick.target())],
                     );
                     ui.add(
                         egui::Label::new(egui::RichText::new(&target).size(12.0).color(pal.text2))
@@ -196,10 +197,7 @@ impl FileWindow {
             &[
                 (copy_text("kit.dialog.cancel", &[]), crate::kit::Btn::Plain),
                 (
-                    copy_text(
-                        "rsFilewinCrossCopy.prompt.go",
-                        &[("machine", &shown_machine)],
-                    ),
+                    copy_text("rsFilewinCrossCopy.prompt.go", &[("machine", &shown)]),
                     crate::kit::Btn::Primary,
                 ),
             ],
@@ -290,9 +288,11 @@ pub(super) fn cross_crumbs(
         if ui
             .add(
                 egui::Button::new(
-                    egui::RichText::new(crate::cross_copy::shown_machine(&pick.machine))
-                        .size(12.0)
-                        .color(pal.text2),
+                    egui::RichText::new(copy_core::machine_word(&cmd_wire::Machine::named(
+                        pick.machine.as_str(),
+                    )))
+                    .size(12.0)
+                    .color(pal.text2),
                 )
                 .frame(false),
             )

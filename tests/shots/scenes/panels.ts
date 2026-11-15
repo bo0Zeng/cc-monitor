@@ -41,7 +41,7 @@ function accountGoneWorld(): World {
   w.ops["session-open"] = () => {
     throw new Refuse("account_unavailable", copyText("beLaunchAccount.unavailable.lastToDefault", { name: "personal", alt: "work" }), {
       field: null,
-      unavailable: { requested: "personal", pinned: true, listKnown: true, alternative: "work" },
+      unavailable: { requested: "personal", pinned: true, listKnown: true, alternative: "work", login: true },
     });
   };
   return w;
@@ -53,7 +53,7 @@ function forkUnavailableWorld(): World {
   w.ops["session-open"] = () => {
     throw new Refuse("account_unavailable", "personal 选不了", {
       field: "account",
-      unavailable: { requested: "personal", pinned: true, listKnown: true, alternative: "work" },
+      unavailable: { requested: "personal", pinned: true, listKnown: true, alternative: "work", login: true },
     });
   };
   return w;
@@ -191,12 +191,12 @@ export const PANEL_SCENES: Scene[] = [
     await click('[role="dialog"] button[aria-label="账号"]');
     await sleep(500);
   }),
-  panel("panel-new-session-more", "起新会话 · 更多", "「更多」展开：tmux 会话名（那台铸的作占位）· 启动命令", async () => {
+  panel("panel-new-session-more", "起新会话 · 更多", "默认开在托管终端：「更多」展开只有启动命令（tmux 会话名那一格只在选了 tmux 时有）", async () => {
     await openCommandBar();
     await type("[data-role=command-input]", "新建会话");
     await key("Enter");
     await waitFor('[role="dialog"] button[aria-label="账号"]:not([data-value=""])');
-    await click(await byText('[role="dialog"] button', copyText("newSession.more.plain")));
+    await click(await byText('[role="dialog"] button', copyText("newSession.more.fork")));
     await sleep(500);
   }),
   panel("panel-new-session-nodir", "起新会话 · 目录那一格不行", "点［新建］、那台说目录不在：错误落在目录那一格下，框不关", async () => {
@@ -400,7 +400,7 @@ export const PANEL_SCENES: Scene[] = [
   }),
   panel("panel-history", "历史", "右上时钟：按项目列出本机与远端的历史会话", async () => {
     await mainReady(ALL_TABS);
-    await click(".history-trigger");
+    await click('[data-head="history"]');
     await waitFor(".history-view");
     await sleep(1200);
   }),
@@ -445,10 +445,10 @@ export const PANEL_SCENES: Scene[] = [
     await rightClick(tabs[3]);
     await sleep(900);
   }),
-  panel("panel-sftp-picker", "文件按钮 · 选机器", "右上文件夹：有多台机器时先选去哪台", async () => {
+  panel("panel-sftp-picker", "文件按钮 · 选机器", "栏顶文件夹：有多台机器时先选去哪台", async () => {
     await mainReady(ALL_TABS);
-    await click(".head-more-trigger");
-    await click(await byText("[role^=menuitem]", copyText("mobDrawer.item.files")));
+    await click('[data-head="files"]');
+    await waitFor("[role=menu]");
     await sleep(600);
   }),
   panel("panel-stream-closed", "会话流断了的提示", "devbox 的会话流被那台后端关掉：右下角报错提示", async () => {
@@ -522,7 +522,7 @@ export const PANEL_SCENES: Scene[] = [
     await click(".status-account");
     await sleep(500);
   }),
-  panel("panel-head-more", "栏顶 · 更多去处", "栏顶只常驻新建 · 历史 · 设置；右端 ⋯ 里是计划 · 远端文件 · 会话总览 · 终端名单 · cc-bus", async () => {
+  panel("panel-head-more", "栏顶 · 更多去处", "栏顶默认常驻新建 · 组 · 历史 · 计划 · 文件 · 设置；右端 ⋯ 里是不在栏上的那几项（会话总览 · 终端名单 · cc-bus）＋「调整栏顶按钮…」", async () => {
     await mainReady(ALL_TABS);
     await click(".head-more-trigger");
     await waitFor("[role=menu]");
@@ -610,8 +610,7 @@ export const PANEL_SCENES: Scene[] = [
     "文件窗口进程一启动就退了：toast 标题是壳写好的那一句（只说原因词），灰字是那台，［复制详情］里是退出状态与它的错误输出",
     async () => {
       await mainReady(ALL_TABS);
-      await click(".head-more-trigger");
-      await click(await byText("[role^=menuitem]", copyText("mobDrawer.item.files")));
+      await click('[data-head="files"]');
       const item = await byText("[role^=menuitem]", "devbox", 2000).catch(() => null);
       if (item) await click(item);
       await byText("[role=alert]", /文件窗口未启动/);
@@ -634,7 +633,7 @@ export const PANEL_SCENES: Scene[] = [
     "壳命令失败：toast 标题是壳写好的那一句（哪件事 ＋ 原因词），不再在界面那句后面接原文；［复制详情］里是时刻 · 本机 · 命令 · 原话",
     async () => {
       await mainReady(ALL_TABS);
-      await click(".settings-trigger");
+      await click('[data-head="settings"]');
       await byText("[role=alert]", /打开设置窗口失败/);
       await sleep(300);
     },
@@ -664,8 +663,9 @@ function frontScene(id: string, title: string, desc: string, act: Scene["act"], 
   return { ...panel(id, title, desc, act, w), hostOs: "windows" };
 }
 
+/** 会话头「拉前」那一颗（「看它的终端」是另一颗 `terminal`）。 */
 async function clickHeadFront(): Promise<void> {
-  await click('[data-head="terminal"]');
+  await click('[data-head="front"]');
 }
 
 /** 结局那一条底部条（toast：出错 ⇒ alert，别的 ⇒ status）。 */
@@ -743,11 +743,11 @@ export const FRONT_SCENES: Scene[] = [
     await click(await byText(`${FRONT_TOAST.split(", ").map((x) => `${x} button`).join(", ")}`, "在 cc-monitor 里打开"));
     await sleep(800);
   }, wayland), hostOs: "linux" },
-  frontScene("panel-terminal-remote-here", "终端 · 远端会话在这里开", "devbox 上的会话：脸上 far 那一格说在这里开 ⇒ 点「终端」切到底部抽屉的终端页看它那一屏（不去拉外部窗口）", async () => {
+  frontScene("panel-terminal-remote-here", "终端 · 远端会话在这里开", "devbox 上的会话：点「看它的终端」切到底部抽屉的终端页看它那一屏（不去拉外部窗口）", async () => {
     await mainReady(ALL_TABS);
     await openTab(3);
     await sleep(400);
-    await clickHeadFront();
+    await click('[data-head="terminal"]');
     await sleep(800);
   }, () => {}),
 ];

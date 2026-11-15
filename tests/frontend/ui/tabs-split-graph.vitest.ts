@@ -104,6 +104,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/launch-slot.ts", // 起新会话之后的占位标签页：栏末那几行与盖在消息流上的那一页（报到了换成真的）
     "src/frontend/ui/front-result.ts", // 拉窗结局 ⇒ 底部一条的标题 · 正文 · 按钮
     "src/frontend/ui/backend-deploy.ts", // ↗ 浮层［更新］就地把这一版换到那台（与机器卡同一处部署）
+    "src/frontend/ui/ipc/one-in-flight.ts", // 任务清单那一问（建 tab · `refreshTasks`）同一会话一次一问、回来至多补一趟
     "src/frontend/ui/ipc/origin.ts", // 本机 / 远端只经这一处判（线上缺省 = 本机的那一下表示法转换也在这里）
     "src/frontend/ui/live-card.ts", // 中转抄出的流式活卡：tap 格进状态机、同对账键的记录落盘即撤卡；子运行那几行
     "src/frontend/ui/record-reads.ts", // 出口省掉的正文展开那一下按骨架偏移取回那一行（`readRecordById`，挂在 tab 的 `fullRecord` 上）
@@ -154,6 +155,7 @@ const DEPS: Record<string, readonly string[]> = {
   // 大纲的界面从直接建 `UserInputPanel` 换成建查找面板（它里面挂着大纲）⇒ `user-input-panel` 只剩类型依赖。
   "src/frontend/ui/tab-stream-view.ts": [
     "src/frontend/ui/agent-profile.ts", // 渲染上下文 / 刻度悬停：说话那一方叫什么（按会话的那一家取短名）
+    "src/frontend/ui/body-cache.ts", // 卡正文缓存：交回占位 / 尾部窗口的卡滚回来、预取回来的正文从这里拿
     "src/frontend/ui/branch-button.ts",
     "src/frontend/ui/branch-fold.ts",
     "src/frontend/ui/cards/index.ts",
@@ -175,6 +177,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/render-stream-record.ts",
     "src/frontend/ui/render.ts", // 关 tab 时 `releaseEnhanceRoot`：lazy 补算的 IO 按滚动容器分
     "src/frontend/ui/session-reads.ts", // 会话读面三问改走通道：骨架索引 ＋ 会话内查找经它问那台后端（替掉包装层那两条）
+    "src/frontend/ui/session-face.ts", // 流里在等的那几处（刻度 · 那一步 · 建卡上下文）照 `needsOf`：脸说在等 ＋ 事实里那一份
     "src/frontend/ui/skeleton-view.ts",
     "src/frontend/ui/startup-perf.ts", // 冷起首个标签页的正文走按行号补读：首批那一句与启动 timeline 在这条路上记
     "src/frontend/ui/stream.ts",
@@ -194,6 +197,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/app-store.ts", // 号徽章 · 悬停那两行照会话那台写好的 `session-account`；停发那一句照 `rotation-view`：都从 store 读
     "src/frontend/ui/copy-table.ts", // 按钮上的图标 · 悬停提示 · 集合名提示进了文案表
     "src/frontend/ui/ipc/origin.ts", // 远端 tab 才挂 `.remote` / 走远端那条 ↗
+    "src/frontend/ui/ipc/chan-caller.ts", // 远端 tab 那一格的机器名照那台成品的 `name`（`machineName` 只读机器状态记下的那份，不起调用）
     "src/frontend/ui/keybindings/registry.ts", // 组头就地改名：改名时 Esc 走 overlay 栈；悬停提示里现拼键位
     "src/frontend/ui/kit/badge.ts", // 机器徽标 · 「需手动」计数 · 键帽
     "src/frontend/ui/kit/icon.ts", // 行尾动作 · 刷新 · 图钉 · 齿轮（Phosphor）
@@ -202,6 +206,9 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/kit/morph.ts", // 行与组头照新的一串摆（`place`：留着的原地不动、次序不对才挪）
     "src/frontend/ui/kit/popover.ts", // 「需手动」点开的那个浮层（开 · 关 · 数据变了原地换内容）
     "src/frontend/ui/needs-panel.ts", // 那个浮层里排什么（会话 · 计划项 · 会话外的每一项 · 断开 / 无法读取）
+    "src/frontend/ui/needs-book.ts", // 两颗各读核心合好的一列：哪一列对哪颗点、叫什么只在 `columnFace` 一处（P29 块三）
+    "src/frontend/ui/open-settings.ts", // 浮层里写了认不出的家的号那一行［去设置］：开设置窗
+    "src/frontend/ui/settings-dest.ts", // 那一行落到设置窗账号栏那个号（`accountOf`：带家的锚点）
     "src/frontend/ui/kit/status-dot.ts", // 状态点
     "src/frontend/ui/kit/tooltip.ts", // 悬停卡（锚在行右侧）· 行尾动作的悬停提示
     "src/frontend/ui/session-face.ts", // 一个会话读成什么：状态点 · 状态句 · peek · 需手动（标签页行 · 会话头 · 悬停卡同一份）

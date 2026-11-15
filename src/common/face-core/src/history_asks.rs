@@ -14,15 +14,17 @@ pub fn reveal_of(origin: &Machine, project_path: &str) -> bool {
     origin.is_local() && !project_path.is_empty()
 }
 
-/// 删除确认的正文：这台的记录不点名机器、那一台的点名；说不清在不在跑 ⇒ 换行再接一句。
+/// 删除确认的正文：这台的记录不点名机器、那一台的点名（照它的名字）；说不清在不在跑 ⇒ 换行再接一句。
 pub fn delete_ask(origin: &Machine, delete: CanDelete) -> Words {
-    let head = if origin.is_local() {
-        copy_text("history.delete.body", &[])
-    } else {
-        copy_text(
-            "history.delete.bodyRemote",
-            &[("machine", &origin.to_string())],
-        )
+    delete_ask_named(origin.host_name(), delete)
+}
+
+/// 同 [`delete_ask`]，点名照给的称呼（`named` ＝ 那一台给人看的称呼；问的这一端自己的记录 ⇒ `None`、不点名）：
+/// 手机核心照它的机器表称呼重写合好的那几行用这一个。
+pub fn delete_ask_named(named: Option<&str>, delete: CanDelete) -> Words {
+    let head = match named {
+        None => copy_text("history.delete.body", &[]),
+        Some(machine) => copy_text("history.delete.bodyRemote", &[("machine", machine)]),
     };
     Words(match delete {
         CanDelete::Unsure => format!("{head}\n{}", copy_text("history.delete.unsure", &[])),

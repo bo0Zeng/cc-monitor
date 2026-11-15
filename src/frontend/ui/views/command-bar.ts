@@ -17,10 +17,14 @@ import { icon, type IconName } from "../kit/icon";
 import { kbd, tag } from "../kit/badge";
 import { statusDot, type DotState, type MachineDotState } from "../kit/status-dot";
 import { copyText } from "../copy-table";
+import { columnFace } from "../needs-book";
 import s from "./command-bar.module.css";
 
-/** 分组（空输入时按这个顺序列；有输入时只分「会话」「命令」，打中一台另排最前一块）。 */
-export type CommandGroup = "needs" | "current" | "machine" | "open" | "window" | "account";
+/**
+ * 分组（空输入时按这个顺序列；有输入时只分「会话」「命令」，打中一台另排最前一块）。
+ * `answerable`（待答请求）· `manual`（需手动）两组只装会话行：哪条进哪组由宿主照「待答请求 · 需手动」那本账的两列给，面板不看 `waiting` 自己判。
+ */
+export type CommandGroup = "answerable" | "manual" | "current" | "machine" | "open" | "window" | "account";
 
 /** 会话行要画的那几样（标签页栏同一份事实）。 */
 export interface SessionFace {
@@ -55,7 +59,7 @@ export interface Command {
   /** 右侧：当前键位（会话行是它的数字键）。 */
   hint?: string;
   icon?: IconName;
-  /** 命令归哪一组；会话行不给。 */
+  /** 命令归哪一组；会话行只给 `answerable` / `manual`（在账的那一列里），不在账里 ⇒ 不给（空输入不列）。 */
   group?: CommandGroup;
   /** 会话行（给了就按会话画、按会话排）。 */
   session?: SessionFace;
@@ -127,11 +131,15 @@ export function filterCommands(cmds: Command[], query: string): Command[] {
     .map((x) => x.c);
 }
 
-const GROUP_ORDER: readonly CommandGroup[] = ["needs", "current", "machine", "open", "window", "account"];
+const GROUP_ORDER: readonly CommandGroup[] = ["answerable", "manual", "current", "machine", "open", "window", "account"];
+
+/** 只装会话行的那两组。 */
+const SESSION_GROUPS: ReadonlySet<CommandGroup> = new Set(["answerable", "manual"]);
 
 /** 每一段的标题（骨架字，不随数据变）。 */
 const GROUP_TITLE: Record<CommandGroup | "sessions" | "commands", () => string> = {
-  needs: () => copyText("beSession.needs.unknown"),
+  answerable: () => columnFace("answerable").name,
+  manual: () => columnFace("manual").name,
   current: () => copyText("commandBar.group.current"),
   machine: () => copyText("detail.label.machine"),
   open: () => copyText("mobTerms.row.attach"),
@@ -146,14 +154,14 @@ function groupTitle(g: CommandGroup | "sessions" | "commands"): string {
 }
 
 /**
- * 这一刻要列的段：空输入按分组（会话只列在等你的）；有输入时会话一段、命令一段（机器行只在空输入时列）；
+ * 这一刻要列的段：空输入按分组（会话只列宿主分进待答请求 · 需手动那两组的）；有输入时会话一段、命令一段（机器行只在空输入时列）；
  * 给了打中的那一块 ⇒ 它排最前，块里列过的不再重复。纯函数。
  */
 export function sections(cmds: Command[], query: string, block: MachineBlock | null = null): { title: string; items: Command[] }[] {
   if (!query.trim()) {
     return GROUP_ORDER.map((g) => ({
       title: groupTitle(g),
-      items: cmds.filter((c) => (g === "needs" ? c.session?.waiting != null : !c.session && (c.group ?? "open") === g)),
+      items: cmds.filter((c) => (SESSION_GROUPS.has(g) ? c.session !== undefined && c.group === g : !c.session && (c.group ?? "open") === g)),
     })).filter((sec) => sec.items.length > 0);
   }
   const hit = filterCommands(

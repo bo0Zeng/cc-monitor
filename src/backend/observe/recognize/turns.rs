@@ -28,6 +28,7 @@ pub(crate) const REPLY_LINES: usize = 3;
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(rename_all = "camelCase")]
 pub struct TurnRow {
     /// 这一轮开头那一行（你说的那句）的字节位置 ⇒ 下次从这里接着取；这一轮的范围到下一轮的 `at`（最后一轮到文件尾）。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
@@ -41,7 +42,6 @@ pub struct TurnRow {
     pub(crate) start: String,
     pub(crate) end: String,
     /// 起在看的那一台钟上的钟面 `HH:MM`（答 `history-turns` 那一下按请求的时区写，[`TurnRow::stamp`]；解不出 ⇒ 空串）。界面照抄、不换算。
-    #[serde(rename = "startText")]
     pub(crate) start_text: String,
     /// 你那句的第一行（≤ [`SAID_MAX`] 字）。
     pub(crate) said: String,
@@ -67,6 +67,10 @@ pub struct TurnRow {
     pub(crate) phase: Phase,
     /// 过程段（文件序）：一段一行，界面把那一行插在 `after` 那张卡后面、把这一段的卡收进去。空 ⇒ 这一轮什么都不折。
     pub(crate) folds: Vec<Fold>,
+    /// 轮条上这一轮的悬停头（「轮 n · 钟面 · 工具 ×k」，n ＝ 这份记录里第几轮；答 `history-turns` 那一下 [`TurnRow::tip`] 写，扫描那一层不写）。界面照抄。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub(crate) tip_text: Option<String>,
     /// 最后一段过程是这一轮的尾巴（后面没有露着的了）：还在跑时「现在：…」「等你批准：…」写在它上面。
     #[serde(skip)]
     pub(crate) tail_fold: bool,
@@ -80,11 +84,11 @@ pub struct TurnRow {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[cfg_attr(any(test, feature = "ts"), ts(rename = "FoldSegment"))]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct Fold {
     /// 这一段跟在哪一条后面：这一轮你那句，或露着的某一条（uuid）。一段只有一个 `after`，界面按它认段。
     pub(crate) after: String,
     /// `after` 那一条的行号（界面按它与 `untilLine` 在骨架账本里取这一段的那几行）。
-    #[serde(rename = "afterLine")]
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub(crate) after_line: u64,
     /// 那一行的字（后端写好，界面按语气排版、段间加分隔）。
@@ -95,13 +99,11 @@ pub(crate) struct Fold {
     /// 回退掉的那一轮不归上一轮的段）。只有最后一轮的尾巴那一段没有（到记录尾）：别的段都有，两端只照 `after` → `until` 收段、不另找边界。
     pub(crate) until: Option<String>,
     /// `until` 那一条的行号（没有 ⇒ 没有）。
-    #[serde(rename = "untilLine")]
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number | null"))]
     pub(crate) until_line: Option<u64>,
     /// 此刻：只有还没收尾的那一轮的尾巴那一段会是在跑 / 在等你（[`dress_live`]）。
     pub(crate) phase: Phase,
     /// 这一段里第一处失败落在哪（「跳到第一处失败」照它走，界面不自己找）；这一段没有失败 ⇒ 没有。
-    #[serde(rename = "firstFail")]
     pub(crate) first_fail: Option<FailAt>,
     /// 这一段第一条 / 最后一条记录的时刻（右端那一截按它写，不出帧）。
     #[serde(skip)]
@@ -313,6 +315,20 @@ impl TurnRow {
             f.start_text = face(&f.start);
             f.span = done_span(&f.start, &f.end, &f.start_text, &face(&f.end));
         }
+    }
+
+    /// 写悬停头那一句：`n` ＝ 这一轮是这份记录里第几轮（1 起，与分叉框的「轮次」同一个数法）。在 [`Self::stamp`] 之后调（要钟面）。
+    pub(crate) fn tip(&mut self, n: u64) {
+        let (n, tools) = (n.to_string(), self.tools.to_string());
+        // 钟面解不出（空串）⇒ 时刻那一截整段不写。
+        self.tip_text = Some(if self.start_text.is_empty() {
+            copy_core::copy_text("stream.rail.tipNoTime", &[("n", &n), ("tools", &tools)])
+        } else {
+            copy_core::copy_text(
+                "stream.rail.tip",
+                &[("n", &n), ("time", &self.start_text), ("tools", &tools)],
+            )
+        });
     }
 }
 

@@ -49,7 +49,7 @@ pub(crate) const SKILLS_DIR: &str = "~/.claude/skills";
 pub(crate) const PROJECTS_DIR: &str = "~/.claude/projects/";
 
 /// 足迹申报表里**这一家**的那一半（从 `footprint/registry.rs::TOOLS` 搬来，逐字未改）：
-/// 落点在这一家的布局里的受管工具。经注册表（`agents::Adapter::footprint`）汇进 `footprint::registry::tools`。
+/// 落点在这一家的布局里的受管工具。经注册表（`agents::Adapter::footprint`）汇进 `footprint::registry::tools_among`。
 pub(crate) const TOOLS: &[ToolSpec] = &[
     ToolSpec {
         id: "cc-bus",
@@ -254,15 +254,15 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
         installable: true,
         uninstallable: true,
         carriers: &[
-            // **推 / 拉**（B）：这份文件唯一的写入来源 —— 条目是从另一台机器那份里**原样**拷来的（`mcp_sync.rs`），
-            //   写经那台后端 `Door::put`；卸经 `ext-uninstall-apply`。远端那台的足迹栏按那台机器问（RM1a），`host` 是两端皆可（项目在哪台它就在哪台）。
+            // **推 / 拉**（B）：这份文件唯一的写入来源 —— 条目是从另一台机器那份里**原样**拷来的，
+            //   写经那台后端；卸也经那台后端。远端那台的足迹栏按那台机器问（RM1a），`host` 是两端皆可（项目在哪台它就在哪台）。
             Carrier {
                 source: ToolSource::Generated,
                 destination: ToolDestination::ProjectRelative(PROJECT_MCP_FILE),
                 touches: &[TouchedFile {
                     path: PROJECT_MCP_FILE,
                     host: HostScope::Either,
-                    // 资产目录那一块的「装到这台」（MCP）走的就是这一格（同一条命令 `mcp_sync_apply`，只勾那一条）。
+                    // 资产目录那一块的「装到这台」（MCP）走的就是这一格（与推 / 拉同一条写口，只勾那一条）。
                     effect: TouchEffect::OwnedFile,
                 }],
             },
@@ -274,6 +274,9 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
 pub(crate) const UNMANAGED_ENV: &[UnmanagedEnv] = &[UnmanagedEnv {
     id: "claude-cli",
     display_name: Text(|| copy_text("rsToolRegistry.env.agentCliName", &[])),
+    required: true,
+    how: Some("https://docs.anthropic.com/en/docs/claude-code/setup"),
+    asks_install: true,
     who: Provisioning::UserProvides,
     probe: EnvProbe::InSessionShell,
     named: "claude",
@@ -289,4 +292,9 @@ pub(crate) const FACE: crate::agents::FootprintFace = crate::agents::FootprintFa
     user_settings: user_settings_files,
     stop_hook_commands: super::settings_hooks::stop_hook_commands,
     stop_hook_slots: super::settings_hooks::stop_hook_slots,
+    hook_trust: None,
 };
+
+#[cfg(test)]
+#[path = "../../../../tests/backend/agents/claudecode/footprint_tests.rs"]
+mod tests;

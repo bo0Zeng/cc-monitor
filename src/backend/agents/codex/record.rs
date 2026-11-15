@@ -6,16 +6,21 @@
 //!
 //! Codex 格式**未文档、每几个 minor 版 churn**（openai/codex 源码 + web 交叉证）→ **不建 rigid typed enum**（每字段漂移即崩），
 //! 在 `serde_json::Value` 上**宽容抽取**：逐行不崩、每 record/field 当 optional、**alias 归一 `turn_*`↔`task_*`**、
-//! 未知 type → `Other`（前向兼容不崩）。
+//! 未知 type → `Other`（前向兼容不崩），登漂移账（[`drift_snapshot`]）。
 //!
-//! 记录信封（本机实测 codex-cli 0.144.6）：`{"timestamp","type","payload":{...}}`。顶层 `type` ∈
-//! session_meta/turn_context/world_state/response_item/event_msg；后两者的 `payload.type` 再细分。
+//! 记录信封（本机实测 codex-cli 0.144.6）：`{"timestamp","type","payload":{...}}`。顶层 `type`
+//! 照 openai/codex 的 `RolloutItem`（`codex-history` 那个包，核到 rust-v0.167.0）；`response_item` · `event_msg` 的 `payload.type` 再细分。
+//!
+//! 两种记录形（`session_meta.history_mode`）：Legacy 形另写 `event_msg.user_message` · `agent_message`，Paginated 形（新会话的默认）
+//! 另写 `event_msg.item_completed`；两形都写 `response_item`（模型看到的那一份，resume 也照它重建），会话正文只照它出，
+//! 那两种另写的投影不另出记录（一句话只出一次）。
 
 use super::parse::{normalize_event, payload_type, unwrap_envelope};
-use crate::agents::record::{Block, Body, Record};
-use crate::agents::SpeakerExt as _;
+use crate::agents::drift::{DriftFaceWord, DriftLedger};
+use crate::agents::record::{Block, Body, Heard, Record};
 use crate::agents::{Speaker, StepResult, Translated, UserText};
 use serde_json::Value;
+use std::path::{Path, PathBuf};
 
 /// Codex 记录的**语义种类**（防御分类；未知/未来 → `Other*`，不崩）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,14 +54,22 @@ pub(crate) enum CodexRecordKind {
     TokenUsage,
     /// 顶层 inter_agent_communication_metadata —— 来信的元数据（`trigger_turn`）。簿记，不出记录。
     AgentMailMeta,
-    /// event_msg 其它子型（mcp_tool_call_end / thread_rolled_back / thread_settings_applied / …）。
+    /// Codex 自己的执行标记（顶层 compacted · dynamic_tools_updated · retained_context · security_risk_score · realtime_item）：不出记录。
+    Marker,
+    /// event_msg item_completed —— 一件事做完的投影（Paginated 形每件都写，Legacy 形只写几种）。
+    /// 说的话 · 工具调用与输出同一件事 `response_item` 里另有一份（两形都写，记录照那一份出），这一份不另出记录；
+    /// 子线程的派出 · 收场只在这里说（[`child_link`]）。
+    ItemCompleted,
+    /// event_msg 其它认得的子型（Codex 落盘的那几种：mcp_tool_call_end / thread_rolled_back / thread_settings_applied / …）。
     OtherEvent,
+    /// event_msg 认不得的子型（登漂移账）。
+    UnknownEvent,
     /// 未知顶层 type / 信封缺失（前向兼容、坏行）。
     Other,
 }
 
 /// 防御分类：unwrap 信封 → 顶层 type（+ 必要时 payload.type，alias 归一）→ [`CodexRecordKind`]。
-/// 任何缺失/未知 → `Other`/`OtherEvent`（不崩、前向兼容）。
+/// 任何缺失/未知 → `Other`/`UnknownEvent`（不崩、前向兼容）。
 pub(crate) fn classify(v: &Value) -> CodexRecordKind {
     use CodexRecordKind as K;
     let Some((top, payload)) = unwrap_envelope(v) else {
@@ -69,6 +82,11 @@ pub(crate) fn classify(v: &Value) -> CodexRecordKind {
         "inter_agent_communication" => K::AgentMail,
         "inter_agent_communication_metadata" => K::AgentMailMeta,
         "token_usage_record" => K::TokenUsage,
+        "compacted"
+        | "dynamic_tools_updated"
+        | "retained_context"
+        | "security_risk_score"
+        | "realtime_item" => K::Marker,
         "response_item" => match payload_type(payload) {
             Some("message") => K::Message,
             Some("reasoning") => K::Reasoning,
@@ -84,10 +102,51 @@ pub(crate) fn classify(v: &Value) -> CodexRecordKind {
             Some("user_message") => K::UserMessage,
             Some("agent_message") => K::AgentMessage,
             Some("token_count") => K::TokenCount,
-            _ => K::OtherEvent, // mcp_tool_call_end / thread_rolled_back / … / 未知
+            Some("item_completed") => K::ItemCompleted,
+            Some(t) if KNOWN_EVENTS.contains(&t) => K::OtherEvent,
+            _ => K::UnknownEvent,
         },
         _ => K::Other, // 未知顶层 type（未来新增记录种类）
     }
+}
+
+/// Codex 落盘、这里不翻的那几种 `event_msg` 子型（照 openai/codex 落盘规则（`codex_rollout::policy` 里给 `event_msg` 的那张表）抄，核到 rust-v0.167.0；
+/// 上面单列的那几种不在这里）。不在这张表里的 ⇒ 认不得，登漂移账。
+const KNOWN_EVENTS: &[&str] = &[
+    "thread_goal_updated",
+    "thread_rolled_back",
+    "thread_settings_applied",
+    "agent_reasoning",
+    "agent_reasoning_raw_content",
+    "entered_review_mode",
+    "exited_review_mode",
+    "patch_apply_end",
+    "context_compacted",
+    "mcp_tool_call_end",
+    "web_search_end",
+    "image_generation_end",
+    "sub_agent_activity",
+];
+
+/// 一轮的 id：那一轮 `task_started` 的 `turn_id`（分叉认轮用）。别的行 ⇒ `None`。
+pub fn turn_id(v: &Value) -> Option<&str> {
+    if classify(v) != CodexRecordKind::TurnStarted {
+        return None;
+    }
+    unwrap_envelope(v)?.1.get("turn_id").and_then(Value::as_str)
+}
+
+/// rollout 一行 ⇒ Codex 自报的两窗额度（`event_msg` `token_count` 的 `rate_limits`；形状与窗口名见 [`super::parse::snapshot_windows`]）。
+/// 别的行 · 没带两窗 · 别的一族 ⇒ `None`。记进额度账走 `ledger::record_probe` 那一口（来源 `usage`）。
+pub fn quota_said(v: &Value) -> Option<Vec<crate::agents::QuotaWindow>> {
+    if classify(v) != CodexRecordKind::TokenCount {
+        return None;
+    }
+    let (_, payload) = unwrap_envelope(v)?;
+    let at = super::parse::envelope_ts(v)
+        .and_then(crate::common::time::parse_iso8601_ms)
+        .and_then(|ms| u64::try_from(ms / 1000).ok());
+    super::parse::snapshot_windows(payload.get("rate_limits")?, at)
 }
 
 /// **此刻在干什么**（注册表 `RecordFace.activity`；这一家没有进程状态文件，只有记录里的事件说得出）：
@@ -113,6 +172,7 @@ pub(crate) fn activity_of(
 /// `[{type:input_text|output_text, text}]`（手机端 Phase D 审计 9/9 坐实）。当 String 处理会静默丢**全部**
 /// 文本（且 String fixture 绿着骗过）。数组→拼各项 `text`（`input_image` 等无 text 项自然跳过）；
 /// 防御：裸 String→原样；其它→""。**fixture 必用真机数组 shape。**
+/// 图片两边的框（[`is_image_frame`]）不是话，不进正文（图本身在图片块里，[`image_blocks`]）。
 pub(crate) fn flatten_text(v: &Value) -> String {
     match v {
         Value::String(s) => s.clone(),
@@ -120,12 +180,51 @@ pub(crate) fn flatten_text(v: &Value) -> String {
             .iter()
             .filter_map(|it| match it {
                 Value::String(s) => Some(s.clone()),
-                _ => it.get("text").and_then(Value::as_str).map(str::to_string),
+                _ => it
+                    .get("text")
+                    .and_then(Value::as_str)
+                    .filter(|t| !is_image_frame(t))
+                    .map(str::to_string),
             })
             .collect::<Vec<_>>()
             .join("\n"),
         _ => String::new(),
     }
+}
+
+/// Codex 把一张图夹在两段框里交给模型：本地图 `<image name=[Image #N] path="…">` · 内联图 `<image>`，收尾都是 `</image>`
+/// （照 openai/codex `codex_protocol::models::is_local_image_open_tag_text` 等几问抄，整项相等才算）。
+fn is_image_frame(t: &str) -> bool {
+    t == "<image>" || t == "</image>" || (t.starts_with("<image name=") && t.ends_with('>'))
+}
+
+/// 人说的那一条里的图（`content` 里的 `input_image`，内联的 `data:image/…;base64,…` 那一形；本地图 Codex 落盘前已内联成这一形）⇒
+/// 图片块（`at` ＝ 这一行的起点字节偏移，`n` 按先后数；取图那一条照它读回字节）。按文件号引用的（`file_id`）画不出 ⇒ 不出块。
+fn image_blocks(content: &Value, at: u64) -> Vec<Block> {
+    inline_images(content)
+        .enumerate()
+        .map(|(n, (media_type, data))| Block::Image {
+            media_type: media_type.to_string(),
+            bytes: (data.trim_end_matches('=').len() as u64) * 3 / 4,
+            at,
+            n: u32::try_from(n).unwrap_or(u32::MAX),
+        })
+        .collect()
+}
+
+/// `content` 里画得出的那几张图（媒体类型 · base64 字节），按先后。记录的图片块与一拍里的 `Image` 都只照它数。
+pub(crate) fn inline_images(content: &Value) -> impl Iterator<Item = (&str, &str)> {
+    let items = content.as_array().map(Vec::as_slice).unwrap_or(&[]);
+    items.iter().filter_map(|it| {
+        if it.get("type").and_then(Value::as_str) != Some("input_image") {
+            return None;
+        }
+        let url = it.get("image_url").and_then(Value::as_str)?;
+        let (media_type, data) = url.strip_prefix("data:")?.split_once(";base64,")?;
+        media_type
+            .starts_with("image/")
+            .then_some((media_type, data))
+    })
 }
 
 /// reasoning 的文本：`payload.summary`（array `[{text}]` 或裸串）→ 拍平。**真机 summary 恒 []**
@@ -358,7 +457,7 @@ fn mail_of(text: &str) -> Mail<'_> {
 
 /// 一封信是谁说的：`author` 是收信方的上级（收信方路径在它底下）⇒ 主会话那一侧发来的（派活 ⇒ `agentTask`，后来的话 ⇒ `coordinator`）；
 /// 否则 ⇒ 子 agent（或同级）发来的，`FINAL_ANSWER` ＝ 交回。
-fn mail_said(text: &str, author: Option<&str>, recipient: Option<&str>) -> UserText {
+fn mail_said(text: &str, author: Option<&str>, recipient: Option<&str>) -> Heard {
     let m = mail_of(text);
     let from = author.or(m.sender);
     let from_above = match (from, recipient) {
@@ -372,44 +471,49 @@ fn mail_said(text: &str, author: Option<&str>, recipient: Option<&str>) -> UserT
             speaker: Speaker::AgentTask,
             parts: face_core::record::brief_parts(m.payload),
             text: m.payload.to_string(),
-        },
-        (true, _) => UserText::of(Speaker::Coordinator {
-            body: Some(m.payload.trim().to_string()).filter(|b| !b.is_empty()),
-            doc: None,
-        }),
-        (false, kind) => UserText::of(Speaker::AgentMessage {
-            from: from.map(str::to_string),
-            name: None,
-            handback: kind == Some("FINAL_ANSWER"),
-            body: Some(m.payload.trim().to_string()).filter(|b| !b.is_empty()),
-            doc: None,
-        }),
+        }
+        .into(),
+        (true, _) => Heard::of(
+            Speaker::Coordinator { doc: None },
+            Some(m.payload.trim().to_string()).filter(|b| !b.is_empty()),
+        ),
+        (false, kind) => Heard::of(
+            Speaker::AgentMessage {
+                from: from.map(str::to_string),
+                name: None,
+                handback: kind == Some("FINAL_ANSWER"),
+                doc: None,
+            },
+            Some(m.payload.trim().to_string()).filter(|b| !b.is_empty()),
+        ),
     }
 }
 
-fn said_as(says: KindSays, text: &str, human_text: String) -> UserText {
+fn said_as(says: KindSays, text: &str, human_text: String) -> Heard {
     match says {
         KindSays::Human | KindSays::Unknown => UserText {
             speaker: Speaker::Human,
             text: human_text,
             parts: Vec::new(),
-        },
-        KindSays::Interrupt => UserText::of(Speaker::Interrupt),
-        KindSays::Shell => UserText::of(shell(text)),
-        KindSays::SubagentNotice => UserText::of(subagent_notice(text)),
+        }
+        .into(),
+        KindSays::Interrupt => UserText::of(Speaker::Interrupt).into(),
+        KindSays::Shell => UserText::of(shell(text)).into(),
+        KindSays::SubagentNotice => UserText::of(subagent_notice(text)).into(),
         KindSays::AgentMail => mail_said(text, None, None),
         KindSays::Compact => UserText {
-            speaker: Speaker::compact(text.trim()),
+            speaker: Speaker::CompactSummary { title_text: None },
             text: text.trim().to_string(),
             parts: Vec::new(),
-        },
-        KindSays::System => UserText::of(Speaker::System { body: None }),
+        }
+        .into(),
+        KindSays::System => UserText::of(Speaker::System { body: None }).into(),
     }
 }
 
 /// 有宿主注解时：先看有没有非人的那几类（中断 · `!` 命令 · 通知 · 来信 · 压缩摘要），再看有没有人说的那几项
 /// （正文只取那几项），全是系统注入 ⇒ 系统；剩下的（种类表里没有）⇒ 人。注解与 `content` 对不齐 ⇒ `None`（退到具名框）。
-fn by_kinds(kinds: &[&str], items: &[Value]) -> Option<UserText> {
+fn by_kinds(kinds: &[&str], items: &[Value]) -> Option<Heard> {
     if kinds.is_empty() || kinds.len() != items.len() {
         return None;
     }
@@ -432,14 +536,15 @@ fn by_kinds(kinds: &[&str], items: &[Value]) -> Option<UserText> {
         ));
     }
     if says.iter().all(|k| *k == KindSays::System) {
-        return Some(UserText::of(Speaker::System { body: None }));
+        return Some(UserText::of(Speaker::System { body: None }).into());
     }
     let all = flatten_text(&Value::Array(items.to_vec()));
     Some(said_as(KindSays::Unknown, "", all.trim().to_string()))
 }
 
-/// 一条 `response_item.message`（`role` ∈ user / developer / assistant）是谁说的；是 agent 自己的回复 ⇒ `None`。
-pub(crate) fn message_said(payload: &Value) -> Option<UserText> {
+/// 一条 `response_item.message`（`role` ∈ user / developer / assistant）是谁说的（来信的正文原文跟着交出，[`Heard`]）；
+/// 是 agent 自己的回复 ⇒ `None`。
+pub(crate) fn message_said(payload: &Value) -> Option<Heard> {
     let role = payload.get("role").and_then(Value::as_str);
     let content = payload.get("content").unwrap_or(&Value::Null);
     let items = content.as_array().map(Vec::as_slice).unwrap_or(&[]);
@@ -451,11 +556,14 @@ pub(crate) fn message_said(payload: &Value) -> Option<UserText> {
             let interrupt = kinds
                 .as_ref()
                 .is_some_and(|k| k.iter().any(|k| kind_says(k) == KindSays::Interrupt));
-            Some(UserText::of(if interrupt {
-                Speaker::Interrupt
-            } else {
-                Speaker::System { body: None }
-            }))
+            Some(
+                UserText::of(if interrupt {
+                    Speaker::Interrupt
+                } else {
+                    Speaker::System { body: None }
+                })
+                .into(),
+            )
         }
         Some("assistant") => {
             // 别的 agent 的来信这一版也可能以 assistant 角色写进来（种类说得出）；其余是这一家自己的回复。
@@ -474,7 +582,7 @@ pub(crate) fn message_said(payload: &Value) -> Option<UserText> {
 }
 
 /// agent 之间的一封信（`response_item.agent_message` · 顶层 `inter_agent_communication`）是谁说的。
-pub(crate) fn agent_mail_said(payload: &Value) -> UserText {
+pub(crate) fn agent_mail_said(payload: &Value) -> Heard {
     let text = flatten_text(payload.get("content").unwrap_or(&Value::Null));
     let s = |k: &str| payload.get(k).and_then(Value::as_str);
     mail_said(&text, s("author"), s("recipient"))
@@ -492,21 +600,46 @@ pub(crate) fn translated(line: &crate::agents::Line<'_>) -> Result<Option<Transl
         return Ok(None);
     }
     let v = line.value().ok_or_else(|| "not JSON".to_string())?;
+    let record = record_of(v, line.start());
     Ok(Some(Translated {
-        record: record_of(v, line.start()),
+        unsent: unsent_of(v, record.as_ref()),
+        // 这一家没有重试那一类 ⇒ 后端的行不带私有格。
+        record: record.map(crate::agents::record::BackRecord::from),
         cwd: None,
+        // `token_count` 那一行自报的两窗（读记录那一路据它进账）。
+        quota_said: quota_said(v),
     }))
+}
+
+/// 这一行只给后端看的那几格：记录里出了图片块（[`image_blocks`]）⇒ 那几张图的字节，与块同一个数法（[`inline_images`]，按先后）。
+/// 这一家的结果没有读文件那一类（`reads` 空）。
+fn unsent_of(v: &Value, record: Option<&Record>) -> crate::agents::Unsent {
+    let imaged = matches!(
+        record.map(|r| &r.body),
+        Some(Body::Said { blocks, .. }) if blocks.iter().any(|b| matches!(b, Block::Image { .. }))
+    );
+    let content = unwrap_envelope(v)
+        .and_then(|(_, p)| p.get("content"))
+        .unwrap_or(&Value::Null);
+    crate::agents::Unsent {
+        images: if imaged {
+            inline_images(content).map(|(_, d)| d.to_string()).collect()
+        } else {
+            Vec::new()
+        },
+        reads: Default::default(),
+    }
 }
 
 /// Codex rollout 记录 ⇒ 通用记录：
 ///
 /// | rollout | 通用记录 |
 /// |---|---|
-/// | `response_item.message`（user / developer 角色，或别家来信）· `agent_message` · `inter_agent_communication` | `said`（谁说的本家判，[`message_said`]） |
+/// | `response_item.message`（user / developer 角色，或别家来信）· `agent_message` · `inter_agent_communication` | `said`（谁说的本家判，[`message_said`]；`input_image` ⇒ 图片块，[`image_blocks`]） |
 /// | `response_item.message`（assistant 角色）· `reasoning` · 工具调用 | `reply`（`autoReply` 恒假：没考据到等价物） |
 /// | 工具调用的输出 | `said`（工具结果） |
-/// | 认不出的顶层类型 · 认不出的 `response_item` 子型 | `unread`（写好的一句 ＋ 原文摘录） |
-/// | 事件 · 元记录 | 无记录 |
+/// | 认不出的顶层类型 · 认不出的 `response_item` 子型 | `unread`（写好的一句 ＋ 原文摘录），登漂移账 |
+/// | 事件 · 元记录（`item_completed` 是同一件事在 `response_item` 之外的另一份投影：两形都另写 `response_item`）| 无记录；认不出的 `event_msg` 子型登漂移账 |
 ///
 /// `id`：`payload.id`；没有（user / developer / 工具输出常没有）⇒ 按这一行的起点字节偏移合成（[`crate::agents::line_id`]）。
 pub fn record_of(v: &Value, start: u64) -> Option<Record> {
@@ -514,15 +647,22 @@ pub fn record_of(v: &Value, start: u64) -> Option<Record> {
     let payload = unwrap_envelope(v).map_or(&Value::Null, |(_, p)| p);
     let body = match classify(v) {
         K::Message => {
-            let text = flatten_text(payload.get("content").unwrap_or(&Value::Null));
+            let content = payload.get("content").unwrap_or(&Value::Null);
+            let text = flatten_text(content);
             match message_said(payload) {
-                Some(who) => said(who, text_blocks(text)),
+                Some(who) => {
+                    let mut blocks = text_blocks(text);
+                    if who.who.speaker == Speaker::Human {
+                        blocks.extend(image_blocks(content, start));
+                    }
+                    said(who.said(), blocks)
+                }
                 None => reply(crate::agents::record::reply_blocks(text_blocks(text))),
             }
         }
         K::AgentMail => {
             let text = flatten_text(payload.get("content").unwrap_or(&Value::Null));
-            said(agent_mail_said(payload), text_blocks(text))
+            said(agent_mail_said(payload).said(), text_blocks(text))
         }
         // 真机 summary 恒 [] ⇒ 空文本给空 blocks（免一个空的推理块）。
         K::Reasoning => reply(match reasoning_text(v) {
@@ -562,25 +702,46 @@ pub fn record_of(v: &Value, start: u64) -> Option<Record> {
         // 认不出的顶层类型 · 认不出的 response_item 子型：每行一条 `unread`（相邻同类由出记录页那一遍并）。
         K::Other => {
             let top = v.get("type").and_then(Value::as_str);
-            let kind = match top {
-                Some("response_item") => payload.get("type").and_then(Value::as_str),
-                t => t,
+            let (face, kind) = match top {
+                Some("response_item") => (
+                    DriftFace::UnknownItemType,
+                    payload.get("type").and_then(Value::as_str),
+                ),
+                t => (DriftFace::UnknownRecordType, t),
             };
+            drift(face, kind.unwrap_or_default());
             crate::agents::record::unread_body(
                 crate::agents::record::UnreadWhy::UnknownType,
                 kind.map(str::to_string),
                 &v.to_string(),
             )
         }
+        K::UnknownEvent => {
+            drift(
+                DriftFace::UnknownEventType,
+                payload_type(payload).unwrap_or_default(),
+            );
+            return None;
+        }
         _ => return None,
     };
     let at = super::parse::envelope_ts(v).map(String::from);
-    let id = payload
-        .get("id")
+    Some(crate::agents::record::record(
+        AGENT.into(),
+        record_id(v, start),
+        at,
+        body,
+    ))
+}
+
+/// 一行记录的 id（起点字节偏移是 `start`）：`payload.id`；没有 ⇒ 按起点合成（[`crate::agents::line_id`]）。
+/// 记录页与分叉认「叉在哪一条」读的是同一个。
+pub(crate) fn record_id(v: &Value, start: u64) -> String {
+    unwrap_envelope(v)
+        .and_then(|(_, p)| p.get("id"))
         .and_then(Value::as_str)
         .filter(|id| !id.is_empty())
-        .map_or_else(|| crate::agents::line_id(start), str::to_string);
-    Some(crate::agents::record::record(AGENT.into(), id, at, body))
+        .map_or_else(|| crate::agents::line_id(start), str::to_string)
 }
 
 /// 文本 ⇒ 内容块：空 ⇒ 没有块（免空气泡）。
@@ -612,6 +773,249 @@ fn reply(blocks: Vec<Block>) -> Body {
         runs: Default::default(),
         error: None,
     }
+}
+
+// ─── 子 agent 线程：一条会话是谁派出的 · 叉自哪一条（`session_meta`）───
+
+/// `session_meta` 说的这条线程的来处。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Thread<'a> {
+    /// 派出它的那条线程（`source.subagent.thread_spawn.parent_thread_id`）；不是派出来的 ⇒ `None`。
+    pub parent: Option<&'a str>,
+    /// 派出时取的昵称 · 角色（`agent_nickname` · `agent_role`，旧名 `agent_type`）。
+    pub nickname: Option<&'a str>,
+    pub role: Option<&'a str>,
+    /// 叉自哪一条（`forked_from_id`）。
+    pub forked_from: Option<&'a str>,
+}
+
+/// 一行 `session_meta` ⇒ 这条线程的来处；别的行 ⇒ `None`。形状照 openai/codex `codex-rs/protocol/src/protocol.rs`
+/// （`SessionMeta` · `SessionSource::SubAgent(SubAgentSource::ThreadSpawn{…})`，核到 rust-v0.167.0）。
+pub fn thread_of(v: &Value) -> Option<Thread<'_>> {
+    let p = match unwrap_envelope(v)? {
+        ("session_meta", p) => p,
+        _ => return None,
+    };
+    let spawn = p
+        .get("source")
+        .and_then(|s| s.get("subagent"))
+        .and_then(|s| s.get("thread_spawn"))
+        .filter(|s| s.is_object());
+    // 昵称 · 角色：派出那一格写着的为准，没写 ⇒ `session_meta` 自己那一格。
+    let of = |k: &str| spawn.and_then(|sp| str_at(sp, k).or_else(|| str_at(p, k)));
+    Some(Thread {
+        parent: spawn.and_then(|sp| str_at(sp, "parent_thread_id")),
+        nickname: of("agent_nickname"),
+        role: of("agent_role").or_else(|| of("agent_type")),
+        forked_from: str_at(p, "forked_from_id"),
+    })
+}
+
+fn str_at<'a>(o: &'a Value, k: &str) -> Option<&'a str> {
+    o.get(k).and_then(Value::as_str)
+}
+
+/// 一份 rollout 开头那条 `session_meta` 说的父线程（不是子线程 · 读不出 ⇒ `None`）。
+fn parent_sid_of(p: &Path) -> Option<String> {
+    head_spawn(p).map(|(parent, _, _)| parent)
+}
+
+/// 一份 rollout 开头那条 `session_meta`：是子线程 ⇒（父线程 · 昵称 · 角色）；不是 · 读不出 ⇒ `None`。
+fn head_spawn(p: &Path) -> Option<(String, Option<String>, Option<String>)> {
+    let pick = |v: &Value| {
+        let t = thread_of(v)?;
+        Some(serde_json::json!([t.parent, t.nickname, t.role]).to_string())
+    };
+    let said: Vec<Option<String>> =
+        serde_json::from_str(&crate::agents::first_in_head(p, pick)?).ok()?;
+    let mut it = said.into_iter();
+    let parent = it.next().flatten().filter(|s| !s.is_empty())?;
+    Some((parent, it.next().flatten(), it.next().flatten()))
+}
+
+/// 记录根下按日期放的一份 rollout（`<根>/YYYY/MM/DD/rollout-….jsonl`）⇒（根 · 那一天的相对目录）。
+fn dated(p: &Path) -> Option<(&Path, &Path)> {
+    let root = p.ancestors().nth(4)?;
+    Some((root, p.parent()?.strip_prefix(root).ok()?))
+}
+
+/// 子线程的记录住哪：子线程是记录根下自己的一份 rollout，开头 `session_meta` 写着父线程（注册表 `RecordFace.children` 那一格）。
+pub const CHILDREN: crate::agents::ChildFace = crate::agents::ChildFace {
+    sources: child_sources,
+    owner: child_owner,
+    find: child_find,
+    hint: child_hint,
+    written: child_written,
+    spawned: child_spawned,
+};
+
+/// 父那一份 ⇒ 它派出的子线程那几份（按名字次序）。子线程不早于父线程起 ⇒ 只看父那一天及以后的日期目录。
+fn child_sources(parent: &Path) -> Vec<PathBuf> {
+    let (Some(sid), Some((root, day))) = (super::parse::codex_sid_from_path(parent), dated(parent))
+    else {
+        return Vec::new();
+    };
+    walkdir::WalkDir::new(root)
+        .min_depth(4)
+        .max_depth(4)
+        .sort_by_file_name()
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|e| e.file_type().is_file())
+        .map(walkdir::DirEntry::into_path)
+        .filter(|p| {
+            p != parent
+                && super::history::is_session_file(p)
+                && dated(p).is_some_and(|(_, d)| d >= day)
+                && parent_sid_of(p).as_deref() == Some(sid.as_str())
+        })
+        .collect()
+}
+
+/// 子线程那一份 ⇒ 父那一份（同一个记录根下按 sid 找）；不是子线程 · 父记录已删 ⇒ `None`。
+fn child_owner(child: &Path) -> Option<PathBuf> {
+    owner_walk(child, &mut |_| {})
+}
+
+/// [`child_owner`] 的本体：父子多在同一天起 ⇒ 先只读子线程那一天的目录，找不到再扫整个记录根（跳过已读的那一天）；
+/// 两步都调按 sid 找会话那一处找法（父 sid 不成形 ⇒ 它不读盘、答 `None`）。每读一个目录告诉 `seen` 一声（判据数它）。
+fn owner_walk(child: &Path, seen: &mut dyn FnMut(&Path)) -> Option<PathBuf> {
+    use super::history::{find_session_in, DATED_DEPTH};
+    let (root, _) = dated(child)?;
+    let day = child.parent()?;
+    let sid = parent_sid_of(child)?;
+    find_session_in(day, 1, None, &sid, seen)
+        .or_else(|| find_session_in(root, DATED_DEPTH, Some(day), &sid, seen))
+}
+
+/// 记录根下 id 为这个的子线程那一份；那一条不是子线程 ⇒ `None`。
+fn child_find(root: &Path, id: &str) -> Option<PathBuf> {
+    super::history::find_session(root, id)
+        .ok()
+        .filter(|p| parent_sid_of(p).is_some())
+}
+
+/// 父记录的一行可能说到子线程（[`child_link`] 会答出东西）：派出的那次调用做完了 · 子线程有了动静。
+fn child_hint(line: &str) -> bool {
+    line.contains("\"CollabAgentToolCall\"") || line.contains("\"SubAgentActivity\"")
+}
+
+/// 一条记录写着的时刻（信封 `timestamp`，毫秒）。
+fn child_written(v: &Value) -> Option<u64> {
+    super::parse::envelope_ts(v)
+        .and_then(crate::common::time::parse_iso8601_ms)
+        .and_then(|ms| u64::try_from(ms).ok())
+}
+
+/// 子线程那一份 ⇒ 它是哪个子运行 · 昵称 · 角色。派它的那次调用的 id 子线程那一侧不写 ⇒ 说不出（对上靠父那一侧的 [`child_link`]）。
+fn child_spawned(child: &Path) -> Option<crate::agents::ChildLink> {
+    let sid = super::parse::codex_sid_from_path(child)?;
+    let (_, label, kind) = head_spawn(child)?;
+    Some(crate::agents::ChildLink {
+        run: Some(sid),
+        label,
+        kind,
+        ..Default::default()
+    })
+}
+
+/// 父记录里说到子线程的那几条（注册表 `RecordFace.child_link` 那一格），只在 `item_completed` 里：
+/// 派出（`CollabAgentToolCall`，`tool` 为 `spawn_agent`）⇒ 那次调用对上它派出的每一条（带昵称 · 角色）；
+/// 子线程做完（`SubAgentActivity`，`kind` 为 `completed`）⇒ 收场；被打断（`interrupted`）⇒ 叫停。
+pub fn child_link(v: &Value) -> Vec<crate::agents::ChildLink> {
+    use crate::agents::{ChildLink, RunEnd};
+    if classify(v) != CodexRecordKind::ItemCompleted {
+        return Vec::new();
+    }
+    let Some(item) = unwrap_envelope(v).and_then(|(_, p)| p.get("item")) else {
+        return Vec::new();
+    };
+    let s = |o: &Value, k: &str| o.get(k).and_then(Value::as_str).map(str::to_string);
+    match item.get("type").and_then(Value::as_str) {
+        Some("CollabAgentToolCall")
+            if item.get("tool").and_then(Value::as_str) == Some("spawn_agent") =>
+        {
+            let Some(tool) = s(item, "id") else {
+                return Vec::new();
+            };
+            let agents = item.get("receiver_agents").and_then(Value::as_array);
+            let ids = item.get("receiver_thread_ids").and_then(Value::as_array);
+            let link = |run: String, a: Option<&Value>| ChildLink {
+                tool: Some(tool.clone()),
+                run: Some(run),
+                label: a.and_then(|a| s(a, "agent_nickname")),
+                kind: a.and_then(|a| s(a, "agent_role").or_else(|| s(a, "agent_type"))),
+                ..Default::default()
+            };
+            match agents.filter(|a| !a.is_empty()) {
+                Some(agents) => agents
+                    .iter()
+                    .filter_map(|a| Some(link(s(a, "thread_id")?, Some(a))))
+                    .collect(),
+                None => ids
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|id| Some(link(id.as_str()?.to_string(), None)))
+                    .collect(),
+            }
+        }
+        Some("SubAgentActivity") => {
+            let end = match item.get("kind").and_then(Value::as_str) {
+                Some("completed") => RunEnd::Done,
+                Some("interrupted") => RunEnd::Stopped,
+                _ => return Vec::new(),
+            };
+            s(item, "agent_thread_id")
+                .map(|run| ChildLink {
+                    run: Some(run),
+                    end: Some(end),
+                    ..Default::default()
+                })
+                .into_iter()
+                .collect()
+        }
+        _ => Vec::new(),
+    }
+}
+
+// ─── 漂移账：认不出的记录（通用形 `agents::drift`；面的名字是这一家的词）───
+
+/// 这一家记账的几处。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum DriftFace {
+    /// 认不出的顶层 `type`（出一条 `unread`）。
+    UnknownRecordType,
+    /// 认不出的 `response_item` 子型（出一条 `unread`）。
+    UnknownItemType,
+    /// 认不出的 `event_msg` 子型（不出记录）。
+    UnknownEventType,
+    /// 记录根下压缩存的 rollout（`.jsonl.zst`，Codex 那个本地线程存储压缩的特性，默认关）：这里读不了，不当会话。
+    CompressedRollout,
+}
+
+impl DriftFaceWord for DriftFace {
+    fn word(self) -> &'static str {
+        match self {
+            DriftFace::UnknownRecordType => "unknown_record_type",
+            DriftFace::UnknownItemType => "unknown_item_type",
+            DriftFace::UnknownEventType => "unknown_event_type",
+            DriftFace::CompressedRollout => "compressed_rollout",
+        }
+    }
+}
+
+/// 这一家的账（计数 · 封顶 · 排序是通用那一本的）。
+static DRIFT_LEDGER: std::sync::Mutex<DriftLedger<DriftFace>> =
+    std::sync::Mutex::new(DriftLedger::new());
+
+/// 记一笔（本进程内计数，不落盘）。
+pub(crate) fn drift(face: DriftFace, key: &str) {
+    DriftLedger::lock(&DRIFT_LEDGER).record(face, key);
+}
+
+/// 这一家的账（注册表 `RecordFace.drift` 那一格）。
+pub fn drift_snapshot() -> Vec<crate::agents::drift::DriftFaceReport> {
+    DriftLedger::lock(&DRIFT_LEDGER).snapshot()
 }
 
 #[cfg(test)]

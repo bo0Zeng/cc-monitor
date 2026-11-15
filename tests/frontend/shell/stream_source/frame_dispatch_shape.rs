@@ -64,7 +64,7 @@ fn the_two_dispatch_layers_cover_every_frame_kind_without_a_catch_all() {
         include_str!("../../../../src/common/cmd-wire/src/frame.rs"),
         "pub enum Frame<R = Record> {",
     );
-    assert_eq!(kinds.len(), 22, "帧种表读空了 / 读错了：{kinds:?}");
+    assert_eq!(kinds.len(), 24, "帧种表读空了 / 读错了：{kinds:?}");
     assert_eq!(arms(route, "Frame::"), kinds, "`route` 的臂不是全部帧种");
     let ordered = variants(&prod, "pub(crate) enum Ordered {");
     assert!(
@@ -78,22 +78,23 @@ fn the_two_dispatch_layers_cover_every_frame_kind_without_a_catch_all() {
     );
 }
 
-/// 交活卡的地方恰好一处：分派第一层那一臂直接交会话流句柄（本机远端同一处，origin 是这条流的）。
+/// 交活卡成品的地方恰好两处：本机那一台分派第一层那一臂（origin 是这条流的）· 别台 `relayed` 的 `live` 那一臂（收的那一头）；壳不折。
 #[test]
 fn live_cards_are_handed_over_in_one_place_with_the_stream_origin() {
     let prod = guard_core::production_code(include_str!(
         "../../../../src/frontend/shell/src/stream_source/dispatch.rs"
     ));
-    guard_core::find_pinned(body_of(&prod, "route"), "r.on_live_card(origin, l)")
-        .unwrap_or_else(|e| panic!("活卡那一臂不是恰好一处、或 origin 不是这条流的：{e}"));
-    let mut n = 0;
+    guard_core::find_pinned(body_of(&prod, "route"), "r.on_live_now(origin, l)")
+        .unwrap_or_else(|e| panic!("本机活卡那一臂不是恰好一处、或 origin 不是这条流的：{e}"));
+    let (mut n, mut folds) = (0, 0);
     for (_, raw) in guard_core::scan_tree!(
         &guard_core::addr::repo_root().join("src/frontend/shell/src"),
         &["rs"]
     ) {
-        n += guard_core::production_code(&raw)
-            .matches(".on_live_card(")
-            .count();
+        let code = guard_core::production_code(&raw);
+        n += code.matches(".on_live_now(").count();
+        folds += code.matches(".on_live_card(").count();
     }
-    assert_eq!(n, 1, "交活卡的地方不是恰好一处");
+    assert_eq!(n, 2, "交活卡成品的地方不是本机 · 别台各一处");
+    assert_eq!(folds, 0, "壳又在折原样的活卡");
 }

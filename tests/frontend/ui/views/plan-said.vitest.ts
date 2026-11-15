@@ -52,10 +52,10 @@ const cell = (id: string, extra: Partial<PlanCell> = {}): PlanCell =>
     look: "none",
     end: null,
     quiet: null,
-    whyCode: null,
     whyShort: null,
     sets: [],
     block: null,
+    rootOf: null,
     owner: null,
     signer: null,
     covers: [],
@@ -77,8 +77,6 @@ const slice = (extra: Partial<PlanSlice> = {}): PlanSlice =>
     stale: null,
     bare: false,
     kinds: [],
-    phases: [],
-    doneValue: "已签收",
     top: ["A1", "A2"],
     progress: { done: 1, of: 2 },
     openCells: 1,
@@ -86,10 +84,9 @@ const slice = (extra: Partial<PlanSlice> = {}): PlanSlice =>
     unbuiltBlocks: [],
     unowned: { paths: null, why: null },
     pendingSets: [],
-    check: { unreadable: [], unparsed: [], red: [], undecidable: [] },
+    check: { unreadable: [], unparsed: [], red: [] },
     labels: { A1: "A1 标题A1", A2: "A2 标题A2" },
-    cells: [cell("A1"), cell("A2", { said: { trail: null, blockRoot: "后端·块根" } })],
-    archived: [],
+    cells: [cell("A1"), cell("A2", { rootOf: "A2", said: { trail: null, blockRoot: "后端·块根" } })],
     audits: [],
     needs: [],
     needCount: 0,
@@ -185,7 +182,7 @@ describe("退回框的块名照后端那一份", () => {
     const s = slice();
     expect(cellTarget(s, s.cells[1]!).blockTitle).toBe("后端·块名A2");
     expect(cellTarget(s, s.cells[0]!).blockTitle).toBe("后端·块名project");
-    const need = { key: "k", kind: "top", block: "project", cell: null, sid: null, acked: false, title: "", lines: [], pos: null } as PlanNeed;
+    const need = { key: "k", kind: "top", block: "project", cell: null, sid: null, title: "", lines: [], pos: null, who: null } as PlanNeed;
     expect(topTarget(s, need)?.blockTitle).toBe("后端·块名project");
   });
 });

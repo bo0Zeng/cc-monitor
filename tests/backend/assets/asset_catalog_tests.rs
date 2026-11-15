@@ -48,6 +48,7 @@ fn snap(gen: u64, names: &[&str]) -> Snapshot {
         assets: names
             .iter()
             .map(|n| Asset {
+                agent: None,
                 kind: ExtKind::Skill,
                 name: (*n).into(),
                 project: None,
@@ -173,12 +174,13 @@ fn a_kind_is_spelled_and_ordered_as_on_the_wire() {
     let mut by_wire = spelled.clone();
     by_wire.sort_unstable();
     assert_eq!(spelled, by_wire);
-    assert_eq!(entry_key(ExtKind::Mcp, "fs"), "mcp/fs");
+    assert_eq!(entry_key(None, ExtKind::Mcp, "fs"), "mcp/fs");
 }
 
 #[test]
 fn rows_judge_missing_differs_same_per_kind_and_name() {
     let asset = |kind: ExtKind, name: &str, d: &str, project: Option<&str>| Asset {
+        agent: None,
         kind,
         name: name.into(),
         project: project.map(str::to_string),
@@ -558,4 +560,93 @@ fn hx2_the_first_catalog_is_born_once_even_when_two_writers_race() {
         "第二个写者生了自己的 id —— 幽灵机器那一形"
     );
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// 两个替身家（同一种假 agent、换了家名）都声明资产面，同一个项目里同名的一个 skill ⇒ 目录里两条、各标各的家、键不相撞；
+/// 缺省那一家那一条不写家（同只有一家时那一形）；只一家声明 ⇒ 与今天逐条相等。
+#[test]
+fn each_family_with_an_asset_face_is_scanned_on_its_own_and_tagged() {
+    let proj = test_home::scratch("catalog-two-families");
+    std::fs::create_dir_all(crate::agents::fake::project_skills_root(&proj).join("demo")).unwrap();
+    let projects = vec![proj.display().to_string()];
+    let fam = |kind, env, wrapper, default| {
+        crate::agents::fake::family_row(kind, env, wrapper, default, || None)
+    };
+    let reg = [
+        fam("fake", "CCM_FAKE_A", "fakea", true),
+        fam("fake2", "CCM_FAKE_B", "fakeb", false),
+    ];
+    let seen = crate::agents::asset_sightings_among(&reg, &projects, &|_| None);
+    assert_eq!(
+        seen.iter().map(|(k, _)| *k).collect::<Vec<_>>(),
+        vec!["fake", "fake2"],
+        "每一家各扫一份、注册序"
+    );
+    let (assets, problems) = assets_of_families(&reg, &seen);
+    assert!(problems.is_empty(), "{problems:?}");
+    let tags: Vec<(Option<&str>, &str)> = assets
+        .iter()
+        .map(|a| (a.agent.as_deref(), a.name.as_str()))
+        .collect();
+    assert_eq!(tags, vec![(None, "demo"), (Some("fake2"), "demo")]);
+    let keys: Vec<String> = assets
+        .iter()
+        .map(|a| entry_key(a.agent.as_deref(), a.kind, &a.name))
+        .collect();
+    assert_eq!(
+        keys,
+        vec!["skill/demo".to_string(), "fake2/skill/demo".to_string()]
+    );
+
+    // 别的机器两家都有，这台只有缺省那一家的 ⇒ 两行：缺省那一家 same，另一家 missing（同名不相撞）。
+    let mut cat = fresh("me".into());
+    let at = |assets: Vec<Asset>| Snapshot {
+        label: "x".into(),
+        gen: 1,
+        seen_at: 0,
+        assets,
+        project_dirs: vec![],
+        notes: Default::default(),
+        shared_mcp: false,
+    };
+    cat.machines
+        .insert("me".into(), at(vec![assets[0].clone()]));
+    cat.machines.insert("other".into(), at(assets.clone()));
+    let got: Vec<(Option<String>, String, String)> = rows(&cat)
+        .into_iter()
+        .map(|r| (r.agent.map(|a| a.to_string()), r.name, r.state))
+        .collect();
+    assert_eq!(
+        got,
+        vec![
+            (None, "demo".to_string(), HERE_SAME.to_string()),
+            (
+                Some("fake2".to_string()),
+                "demo".to_string(),
+                HERE_MISSING.to_string()
+            ),
+        ]
+    );
+
+    // 只一家声明 ⇒ 跟今天一样：不写家，与单家那一份逐条相等。
+    let one = &reg[..1];
+    let seen = crate::agents::asset_sightings_among(one, &projects, &|_| None);
+    let (alone, _) = assets_of_families(one, &seen);
+    assert_eq!(alone, assets_from(&[seen[0].1.clone()]).0);
+    assert!(alone.iter().all(|a| a.agent.is_none()));
+    let _ = std::fs::remove_dir_all(&proj);
+}
+
+/// 🔴 两个家只差非 UTF-8 的那几个字节 ⇒ 机器 id 不同（家照字节进摘要；转成字会把两个都写成 U+FFFD、撞成一个）。
+#[cfg(unix)]
+#[test]
+fn two_homes_that_differ_only_in_non_utf8_bytes_get_different_machine_ids() {
+    use std::os::unix::ffi::OsStrExt as _;
+    let a = Path::new(std::ffi::OsStr::from_bytes(b"/home/u\xff"));
+    let b = Path::new(std::ffi::OsStr::from_bytes(b"/home/u\xfe"));
+    // 正控：转成字时两个一模一样。
+    assert_eq!(a.to_string_lossy(), b.to_string_lossy());
+    let id = |h: &Path| machine_id_of(Some(h), "u@h", 7, 1);
+    assert_eq!(id(a), id(a), "同一份输入同一个 id");
+    assert_ne!(id(a), id(b), "家的字节不同 ⇒ id 不同");
 }

@@ -3,4 +3,4 @@
 /**
  * 事实上用不了的原因（跟设置无关的那几种）。
  */
-export type FactWhy = "refused" | "overage" | "used" | "login" | "key";
+export type FactWhy = "refused" | "overage" | "used" | "login" | "key" | "baseUntouched";

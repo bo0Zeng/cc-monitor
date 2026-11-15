@@ -23,6 +23,10 @@ pub struct UpstreamDesc {
     /// 用户自己的上游地址（agent 继承来的上游地址变量，不是我们那一形）原样；`None` ＝ 照这一家的默认上游。
     /// 有它 ⇒ 中转把这条会话的直通请求发到这里，鉴权头原样（[`super::Accounts`] 的 `resolve`）。
     pub base: Option<String>,
+    /// `ccm` 起会话时这条会话用的号（路由第 2 段那个值域）；`None` ＝ 没记（旧的那份 · 没说是哪个号）。
+    /// 先不知道会话号的那一家（那一家声明 `Bind::Origin`）：中转第一发按来处读它，把会话绑到这个号。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account: Option<String>,
     /// 起 agent 的那个进程。
     pub pid: u32,
     /// 写下的时刻（unix 秒）。
@@ -101,6 +105,29 @@ pub fn of(data: &Path, origin: &str) -> Option<UpstreamDesc> {
     }
 }
 
+/// ★ 进程 `pid` 起来时注入了中转没有（`data` ＝ 数据目录）：`ccm` 注入中转时总给不从环境变量读上游地址的那一家留一份描述
+/// （`control::ccm::egress::onto`），带着起 agent 那个进程的 pid ⇒ 有一份记着它 ⇒ 是。
+/// 没有 ⇒ unix 上不是（`ccm` 就地 exec，pid 就是 agent 那个进程）；别处说不清（`ccm` 起子进程等它，记的是 `ccm` 自己的 pid）。
+/// 会话归号判「经不经本机中转」时，不从环境变量读的那一家问这里（进程入口把 [`relayed_here`] 接给会话归号那一侧）。
+pub fn relayed(data: &Path, pid: u32) -> Option<bool> {
+    let dir = data.join(NOTES_DIR).join(SUB);
+    let hit = crate::platform::fs::Ro::read_dir(&dir).is_ok_and(|rd| {
+        rd.flatten().any(|ent| {
+            matches!(DESC.read(&ent.path()), crate::common::own_state::Read::Present(d) if d.pid == pid)
+        })
+    });
+    if hit {
+        Some(true)
+    } else {
+        cfg!(unix).then_some(false)
+    }
+}
+
+/// [`relayed`]，数据目录照这台的；没有数据目录 ⇒ 说不清。
+pub fn relayed_here(pid: u32) -> Option<bool> {
+    crate::platform::paths::data_home().and_then(|d| relayed(&d, pid))
+}
+
 /// 中转开上游那一口要的那只手：来处 ⇒ 这条会话的出网描述（数据目录取自 `own`；没有描述 ⇒ `None`，中转照这台的）。
 pub(crate) fn egress_of(own: &Own) -> crate::relay::EgressOf {
     let data = own.root().map(|p| p.as_path().to_path_buf());
@@ -116,7 +143,7 @@ pub(crate) fn egress_of(own: &Own) -> crate::relay::EgressOf {
 pub(crate) fn base_of(own: &Own, origin: &str) -> Option<Result<Base, &'static str>> {
     let data = own.root()?;
     let raw = of(data.as_path(), origin)?.base?;
-    Some(Base::parse(&raw).map_err(|i| i.0))
+    Some(crate::relay::base_of(&raw))
 }
 
 /// ★ **一条会话的上游是不是用户自己的**（唯一判的地方；`data` ＝ 数据目录）：会话血缘里绑给它的来处、那份描述里有用户的地址。
@@ -136,6 +163,29 @@ pub(crate) fn own_upstream_of(data: &Path, sid: &str) -> bool {
 /// [`own_upstream_of`]，数据目录照这台的。
 pub fn own_upstream_here(sid: &str) -> bool {
     crate::platform::paths::data_home().is_some_and(|d| own_upstream_of(&d, sid))
+}
+
+/// ★ 起会话那个号（唯一一处）：先不知道会话号的那一家（[`crate::agents::Bind::Origin`]）⇒ 这一发带的来处那份描述里记的号；
+/// 描述里没有号 · 没有描述 · 没带来处 · 先定会话号的那一家 ⇒ 照路由第 2 段 `seg2`。`data` ＝ 数据目录。
+pub fn bound_account(
+    data: &Path,
+    bind: crate::agents::Bind,
+    seg2: &str,
+    origin: Option<&str>,
+) -> String {
+    let pinned = (bind == crate::agents::Bind::Origin)
+        .then(|| of(data, origin?)?.account)
+        .flatten();
+    pinned.unwrap_or_else(|| seg2.to_string())
+}
+
+/// 起会话那条中转地址（不带钥匙的那一形）⇒ 路由第 2 段的号（[`UpstreamDesc::account`] 记的就是它）。
+/// 没说是哪个号（`_`）· 不是中转地址 ⇒ `None`。
+pub fn account_in(relay_url: &str) -> Option<String> {
+    let path = upstream_url_core::parse(relay_url).ok()?.path;
+    let target = format!("{path}/");
+    let p = relay_route_core::parse_target(&target)?;
+    (p.seg2 != relay_route_core::UNDECLARED_ACCOUNT_SEGMENT).then(|| p.seg2.to_string())
 }
 
 /// 来处 ⇒ 文件名；不过段闸 ⇒ 拒（不让一段来处拼出目录外的路径）。

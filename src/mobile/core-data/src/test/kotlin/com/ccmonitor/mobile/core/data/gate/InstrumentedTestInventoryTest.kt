@@ -142,6 +142,7 @@ class InstrumentedTestInventoryTest {
                 "core-rs/src/androidTest/kotlin/com/ccmonitor/mobile/core/rs/CoreLoadTest.kt",
                 "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/PublicKeyDeriverTest.kt",
                 "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/RustTransportTest.kt",
+                "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/SshKeyGeneratorTest.kt",
             )
 
         /** 逐文件 `@Test` 方法数。 */
@@ -150,18 +151,19 @@ class InstrumentedTestInventoryTest {
                 "app/src/androidTest/kotlin/com/ccmonitor/mobile/SmokeTest.kt" to 1,
                 "app/src/androidTest/kotlin/com/ccmonitor/mobile/ui/chat/needs/NeedsSheetShotTest.kt" to 5,
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/HostDaoTest.kt" to 1,
-                "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/KeystoreCryptoTest.kt" to 4,
+                "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/KeystoreCryptoTest.kt" to 2,
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/CacheDaoTest.kt" to 3,
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/HostRemovalDaoTest.kt" to 2,
-                "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/MigrationTest.kt" to 6,
+                "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/MigrationTest.kt" to 7,
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/RestoreDefaultKeysTest.kt" to 2,
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/SeedOnCreateTest.kt" to 1,
                 "core-rs/src/androidTest/kotlin/com/ccmonitor/mobile/core/rs/CoreLoadTest.kt" to 1,
                 "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/PublicKeyDeriverTest.kt" to 2,
                 "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/RustTransportTest.kt" to 5,
+                "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/SshKeyGeneratorTest.kt" to 2,
             )
 
-        const val PINNED_TOTAL_TESTS = 33
+        const val PINNED_TOTAL_TESTS = 34
         const val CI_WORKFLOW = "scripts/android-test.sh"
         const val ANDROID_TEST_JOB = "connectedDebugAndroidTest"
         const val CLASS_FILTER = "testInstrumentationRunnerArguments.class="

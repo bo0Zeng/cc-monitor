@@ -7,7 +7,6 @@
 use crate::accounts::sign_in::*;
 use crate::agents::SignInFace;
 use crate::common::said::Said;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -20,6 +19,7 @@ fn face() -> SignInFace {
 
 struct Rig {
     root: PathBuf,
+    face: SignInFace,
 }
 
 impl Drop for Rig {
@@ -31,6 +31,11 @@ impl Drop for Rig {
 impl Rig {
     /// `script` ＝ 读到链接之后那一段（`$CLAUDE_CONFIG_DIR` 由作业交）。
     fn new(tag: &str, script: &str) -> Rig {
+        Rig::with(face(), tag, script)
+    }
+
+    /// 照 `face` 那一形：`bin/<它的程序名>` 是那份脚本。
+    fn with(face: SignInFace, tag: &str, script: &str) -> Rig {
         let root = std::env::temp_dir().join(format!(
             "login-{tag}-{}-{}",
             std::process::id(),
@@ -41,25 +46,16 @@ impl Rig {
         ));
         std::fs::create_dir_all(root.join("bin")).unwrap();
         std::fs::create_dir_all(root.join("acct")).unwrap();
-        let p = root.join("bin").join("claude");
+        let p = root.join("bin").join(face.program);
         let body = if script.starts_with("#!") {
             format!("{script}\n")
         } else {
             format!("#!/bin/sh\n{script}\n")
         };
-        // 本进程只写一份旁稿，`bin/claude` 由 `cp` 那个子进程写：本进程里从没有过 `bin/claude` 的写 fd。
-        // 在本进程里直接写 ⇒ 并行测试里别的线程正在 fork 时，子进程在 fork 与 exec 之间还攥着那份写 fd，
-        // 这时 exec 它 ＝ `ETXTBSY`（`Text file busy (os error 26)`，机器忙时撞得到）。登录作业照 `PATH` 找 `claude`，不能改经 `/bin/sh` 起。
-        let draft = root.join("claude.draft");
-        std::fs::write(&draft, body).unwrap();
-        let cp = std::process::Command::new("cp")
-            .arg(&draft)
-            .arg(&p)
-            .status()
-            .unwrap();
-        assert!(cp.success(), "cp 没写成：{cp:?}");
-        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
-        Rig { root }
+        // 经 test-home 写（本进程里从没有过它的写 fd，旁边线程正 fork 时 exec 它不撞 ETXTBSY）。
+        // 登录作业照 `PATH` 找程序，不能改经 `/bin/sh` 起。
+        test_home::write_exe(&p, &body);
+        Rig { root, face }
     }
 
     fn dir(&self) -> String {
@@ -74,7 +70,7 @@ impl Rig {
         let dir = self.dir();
         (
             SignInAsk {
-                face: face(),
+                face: self.face,
                 target: account,
                 dir: None,
                 then: &[],
@@ -335,4 +331,155 @@ fn the_login_runs_with_the_session_shell_path_and_says_where_it_looked() {
 /// 只出现在「起会话那个 shell」那一份 `PATH` 里的一个目录（不必存在）。
 fn rig_bin_marker() -> &'static str {
     "/nonexistent/session-only"
+}
+
+// ── 不粘回的那两形 · 退出 · 状态：替身家各声明一形（`agents::fake` 的 `SHOW_CODE_FACE` · `NO_PASTE_FACE`），核心照声明走、不认哪一家。
+
+use crate::agents::fake::{NO_PASTE_FACE, SHOW_CODE_FACE};
+
+const FAKE_DEVICE: &str = "https://login.fake.test/device?ticket=t1";
+
+/// 替身家的登录子命令：`login …` 先印链接、隔一会儿再印码（显示码那一形），等判据放行（`go`）才自己退 0；
+/// `logout` 删那个号目录里的凭据、退 0（`fail-out` 在 ⇒ 说一句、退 1）；`status` 照 `state` 那份文件说话、退它写的码。
+fn fake_script() -> String {
+    format!(
+        r#"case "$1" in
+login)
+  echo "Open {FAKE_DEVICE} in any browser"
+  if [ "$2" = "--show-code" ]; then sleep 0.2; echo "Your code is"; echo ""; echo "ABCD-1234"; fi
+  while [ ! -e go ] && [ -d bin ]; do sleep 0.02; done
+  echo "signed in"; exit 0 ;;
+logout)
+  if [ -e fail-out ]; then echo "logout refused: fake" >&2; exit 1; fi
+  rm -f "$CCM_FAKE_ACCOUNT_DIR/fake-login.ndjson"; exit 0 ;;
+status)
+  read -r said code < state; echo "$said"; exit "$code" ;;
+esac
+exit 9"#
+    )
+}
+
+fn once(rig: &Rig) -> OnceAsk {
+    OnceAsk {
+        face: rig.face,
+        dir: Some(rig.dir()),
+        cwd: Some(rig.root.clone()),
+        path: Some(rig.path()),
+    }
+}
+
+/// 显示码那一形：`start` 等到链接与码都印了才回（码在链接后面隔一会儿才来），回包带那段码；不粘回 ——
+/// 粘什么都不写进去；它自己退 0 ⇒ 「结束了」回调报「成」、作业收了。
+#[test]
+fn a_shown_code_starts_with_link_and_code_and_ends_when_it_exits() {
+    let rig = Rig::with(SHOW_CODE_FACE, "showcode", &fake_script());
+    let (tx, rx) = std::sync::mpsc::channel::<(String, SignInEnd)>();
+    let tx = Mutex::new(tx);
+    let (mut a, dir) = rig.ask("acct-showcode", conn());
+    a.dir = Some(Box::leak(dir.into_boxed_str()));
+    let s = start(
+        &a,
+        Box::new(move |job, e| {
+            let _ = tx.lock().unwrap().send((job.to_string(), e.clone()));
+        }),
+    )
+    .expect("起得来");
+    assert_eq!(s.url, FAKE_DEVICE);
+    assert_eq!(s.code.as_deref(), Some("ABCD-1234"), "回包要带那段码");
+    assert_eq!(
+        finish(&s.job, "ABCD-1234"),
+        Err(FinishFail::BadPaste),
+        "这一形不粘回"
+    );
+    std::fs::write(rig.root.join("go"), "").unwrap();
+    let got = rx
+        .recv_timeout(guard_core::wall::CEILING)
+        .expect("它没自己退");
+    assert_eq!(got, (s.job.clone(), SignInEnd::Done));
+    assert_eq!(finish(&s.job, "x"), Err(FinishFail::NoJob));
+}
+
+/// 显示码那一形印了链接、没印码就退了 ⇒ 起不成（不回一个没有码的「起好了」）。
+#[test]
+fn a_shown_code_that_never_comes_is_a_failed_start() {
+    let rig = Rig::with(
+        SHOW_CODE_FACE,
+        "nocode",
+        &format!("echo \"Open {FAKE_DEVICE}\"\necho 'device flow unavailable' >&2\nexit 1"),
+    );
+    let log: Log = Default::default();
+    let (mut a, dir) = rig.ask("acct-nocode", conn());
+    a.dir = Some(Box::leak(dir.into_boxed_str()));
+    let e = start(&a, on_end(&log)).expect_err("没有码 ⇒ 起不成");
+    assert!(
+        e.raw
+            .as_deref()
+            .unwrap_or("")
+            .contains("device flow unavailable"),
+        "{e:?}"
+    );
+}
+
+/// 不粘回那一形：印了链接就回、不带码；它自己退 0 ⇒ 「成」。
+#[test]
+fn a_no_paste_login_starts_on_the_link_and_ends_when_it_exits() {
+    let rig = Rig::with(NO_PASTE_FACE, "nopaste", &fake_script());
+    let (tx, rx) = std::sync::mpsc::channel::<(String, SignInEnd)>();
+    let tx = Mutex::new(tx);
+    let (mut a, dir) = rig.ask("acct-nopaste", conn());
+    a.dir = Some(Box::leak(dir.into_boxed_str()));
+    let s = start(
+        &a,
+        Box::new(move |job, e| {
+            let _ = tx.lock().unwrap().send((job.to_string(), e.clone()));
+        }),
+    )
+    .expect("起得来");
+    assert_eq!((s.url.as_str(), s.code.as_deref()), (FAKE_DEVICE, None));
+    std::fs::write(rig.root.join("go"), "").unwrap();
+    let got = rx
+        .recv_timeout(guard_core::wall::CEILING)
+        .expect("它没自己退");
+    assert_eq!(got, (s.job, SignInEnd::Done));
+}
+
+/// 退出：跑那一家声明的那一条、号目录照它的 `dir_env` 交 ⇒ 它自己删凭据、退 0 ⇒ 成；退非 0 ⇒ 不成、原话带它说的；
+/// 没声明退出的那一形 ⇒ `Ok(false)`（不起任何东西）。
+#[test]
+fn sign_out_runs_the_declared_command_for_that_account() {
+    let rig = Rig::with(SHOW_CODE_FACE, "out", &fake_script());
+    let creds = rig.root.join("acct").join("fake-login.ndjson");
+    std::fs::write(&creds, "{}").unwrap();
+    assert_eq!(sign_out(&once(&rig)), Ok(true));
+    assert!(!creds.exists(), "那一家自己删了那个号的凭据");
+
+    std::fs::write(rig.root.join("fail-out"), "").unwrap();
+    let e = sign_out(&once(&rig)).expect_err("退非 0 ⇒ 不成");
+    assert!(
+        e.raw
+            .as_deref()
+            .unwrap_or("")
+            .contains("logout refused: fake"),
+        "{e:?}"
+    );
+
+    let mut a = once(&rig);
+    a.face = NO_PASTE_FACE;
+    assert_eq!(sign_out(&a), Ok(false), "没声明退出 ⇒ 不起");
+}
+
+/// 状态：照那一家的读法读成登没登；读不出 ⇒ 不成（不当「没登」）；没声明 ⇒ `Ok(None)`。
+#[test]
+fn status_reads_signed_in_by_the_declared_reader() {
+    let rig = Rig::with(SHOW_CODE_FACE, "status", &fake_script());
+    let state = rig.root.join("state");
+    std::fs::write(&state, "signed-in 0\n").unwrap();
+    assert_eq!(status(&once(&rig)), Ok(Some(true)));
+    std::fs::write(&state, "whatever 3\n").unwrap();
+    assert_eq!(status(&once(&rig)), Ok(Some(false)));
+    std::fs::write(&state, "huh 0\n").unwrap();
+    assert!(status(&once(&rig)).is_err(), "读不出 ⇒ 不成");
+    let mut a = once(&rig);
+    a.face = NO_PASTE_FACE;
+    assert_eq!(status(&a), Ok(None));
 }

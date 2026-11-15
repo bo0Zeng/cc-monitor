@@ -107,6 +107,20 @@ mod tests {
         "stream/inbound/registry/link.rs",
         "stream/inbound/registry/machine.rs",
         "stream/inbound/registry/terminals.rs",
+        // `agents/` 的各面：每一面的类型与按家问的入口，只认 kind 值、不认任何一家的名字与格式。
+        "agents/record_face.rs",
+        "agents/text_face.rs",
+        "agents/launch_face.rs",
+        "agents/ask_face.rs",
+        "agents/local_face.rs",
+        "agents/accounts_face.rs",
+        "agents/upstream_face.rs",
+        "agents/quota_face.rs",
+        "agents/mcp_face.rs",
+        "agents/history_face.rs",
+        "agents/asset_face.rs",
+        "agents/attach_face.rs",
+        "agents/footprint_face.rs",
     ];
 
     /// **整棵进表的子树**（相对 `src/`，按前缀认）：其下每一份 `.rs` 都是通用层，**新长出来的文件从第一天就在扫**
@@ -281,6 +295,20 @@ mod tests {
             "stream/inbound/registry/link.rs",
             "stream/inbound/registry/machine.rs",
             "stream/inbound/registry/terminals.rs",
+            // `agents/` 的各面
+            "agents/record_face.rs",
+            "agents/text_face.rs",
+            "agents/launch_face.rs",
+            "agents/ask_face.rs",
+            "agents/local_face.rs",
+            "agents/accounts_face.rs",
+            "agents/upstream_face.rs",
+            "agents/quota_face.rs",
+            "agents/mcp_face.rs",
+            "agents/history_face.rs",
+            "agents/asset_face.rs",
+            "agents/attach_face.rs",
+            "agents/footprint_face.rs",
         ];
         // 整棵进表的子树（[`CORE_TREES`]），同上只增不减、两张表同轮改。
         const EVER_DECLARED_TREES: &[&str] = &[

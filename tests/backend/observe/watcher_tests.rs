@@ -54,7 +54,7 @@ fn the_event_dispatch_has_no_catch_all_arm() {
              ⇒ 要新增变体就在这里显式处理它；确实无事可做也请写成具名臂加一句注释。"
     );
 }
-use super::test_support::{claude_in_pane, kind_of, pidfile_of};
+use super::test_support::{kind_of, pane_env_sleep_with_pidfile, pidfile_of};
 use super::*;
 use crate::wire::SessionFaceExt as _;
 use std::time::Duration;
@@ -1166,7 +1166,11 @@ fn is_jsonl_and_is_session_json_classify_correctly() {
 /// pidfile 的字节只经适配层翻成一行（`agents::proc_fact`）：会话 id 那一格。
 #[test]
 fn parse_session_id_extracts_the_field() {
-    let sid = |b: &[u8]| crate::agents::proc_fact(b).and_then(|f| f.sid);
+    let sid = |b: &[u8]| {
+        crate::agents::local_homes()[0]
+            .proc_fact(b)
+            .and_then(|f| f.sid)
+    };
     let blob = br#"{"sessionId":"abc-123","pid":4242}"#;
     assert_eq!(sid(blob), Some("abc-123".to_string()));
     // Missing field / wrong type / garbage → None.
@@ -1295,7 +1299,7 @@ fn the_rewatch_path_still_exists_with_its_rescan() {
 ///
 /// # 今天的 8 处（7 → 8：账号 manifest 所在目录；8 → 9：`agent_home` 那一处挪进可重入挂法、多一道它的上一层；
 /// 9 → 8：账号目录那一处删了，改走 `rewatch_agent_home`（`AccountsEar`）—— 少的就是它；
-/// 8 → 9：`AccountsEar::arm_subs` 挂各号目录（盯凭据文件））
+/// 8 → 9：`SubdirsEar::arm_subs` 挂各号目录（盯凭据文件）；托管终端那一层 `hosts/` 也走 `SubdirsEar`，处数不变）
 ///
 /// | 处 | 归属 | 换 inode 怎么办 |
 /// |---|---|---|
@@ -1307,7 +1311,7 @@ fn the_rewatch_path_still_exists_with_its_rescan() {
 /// | `arm_ears` 里 socket 目录的**父**（从 `watch_loop` 挪进去，起步与「重新对齐」共用） | 等 socket 目录出现 | 同上 |
 /// | `HomeEars::arm` 里 `sessions` 起步那次 | 起步挂一次，之后归 `rewatch_sessions` | 已有 |
 /// | `watch_loop` 里 tmux socket **所在目录**（P3 复活探测） | 一次性触发器，socket 换 inode 由上面那条目录耳朵覆盖 | 已有 |
-/// | `AccountsEar::arm_subs` 里各号目录 | 盯号目录里的凭据文件（登录完成那一刻推一帧） | 号目录被删重建 ⇒ 账号目录里那一格事件到 `on_path` ⇒ `arm_subs` 按盘上此刻重挂（不在了的先摘） |
+/// | `SubdirsEar::arm_subs` 里各子目录 | 账号目录（`AccountsEar`）下各号目录：盯凭据文件（登录完成那一刻推一帧）；托管终端那一层（`HostsEar`）下各托管终端的家：盯 `facts.json`（事实一改重对打标） | 子目录被删重建 ⇒ 上一层里那一格事件到 `on_path` ⇒ `arm_subs` 按盘上此刻重挂（不在了的先摘） |
 #[test]
 fn every_watch_site_answers_the_inode_swap_question() {
     let src = include_str!("../../../src/backend/observe/watcher.rs");
@@ -1511,8 +1515,8 @@ fn the_session_name_follows_the_records_even_when_nobody_watches() {
             pid: 1,
             sid: "sess-1".into(),
             status: None,
-            waiting_for: None,
             activity: None,
+            since: None,
             facts: crate::history::search_rules::LabelFacts {
                 project_dir: Some("/w/proj".into()),
                 ..Default::default()
@@ -1520,6 +1524,8 @@ fn the_session_name_follows_the_records_even_when_nobody_watches() {
             path: Some(path.to_string_lossy().into_owned()),
             beat: std::time::SystemTime::now(),
             frozen: false,
+            attachable: None,
+            held: Held::Writer,
         },
     );
     watch_sessions(
@@ -1663,6 +1669,55 @@ fn plain_lifecycle_regression() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
+/// 「只算活着的」只有一个判活口（`history::live_table::author_check`）：账上那一份活不活与活会话表那一行同一判。
+/// 造法：宣告过的 pidfile 改记一个对不上的 `procStart`（进程还在、可不是写它的那一条）⇒ 表判它不活；
+/// watcher 对账（`reconcile_sessions`）照同一判摘下它、交出去的那一态也不再说它活着。
+#[cfg(target_os = "linux")]
+#[test]
+fn the_ledger_judges_alive_the_way_the_live_table_does() {
+    let dir = std::env::temp_dir().join(format!("ccm-alive1-{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("projects")).unwrap();
+    let pid = std::process::id();
+    let ticks = proc_starttime(pid).expect("own starttime");
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
+    let mut sink = FrameSink::new(tx);
+    let mut state = ReaderState::new(dir.join("projects"));
+    let path = dir.join(format!("{pid}.json"));
+    let write = |start: u64| {
+        std::fs::write(
+            &path,
+            format!(r#"{{"pid":{pid},"sessionId":"al-sid","cwd":"/x","kind":"interactive","procStart":"{start}","status":"busy"}}"#),
+        )
+        .unwrap();
+    };
+    write(ticks);
+    process_session_added(&path, &mut state, &mut sink);
+    assert!(state.heard("al-sid").is_some(), "核上了 ⇒ 活着");
+    while rx.try_recv().is_ok() {}
+    write(ticks + 1);
+    let kind = crate::agents::claudecode::AGENT_KIND;
+    assert!(
+        crate::history::live_table::author_check(kind, pid, Some(ticks + 1), &path).is_err(),
+        "表那一判：不是写它的那一条"
+    );
+    // 账上那一份记的也是这个对不上的启动时刻（PID 复用那一形：进程在，可不是它）⇒ 交出去的那一态不算它。
+    for e in state.sessions.values_mut() {
+        e.held = Held::Pidfile {
+            kind,
+            recorded: Some(ticks + 1),
+        };
+    }
+    assert_eq!(state.heard("al-sid"), None, "账上那一份同一判：不活");
+    reconcile_sessions(&dir, &mut state, &mut sink, None);
+    assert_eq!(state.heard("al-sid"), None, "watcher 同一判：不活");
+    assert!(
+        std::iter::from_fn(|| rx.try_recv().ok())
+            .any(|f| matches!(f, Frame::SessionLeft(crate::wire::SessionLeft { ref sid, .. }) if sid == "al-sid")),
+        "摘下"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
 /// 宣告那张脸带上这条会话跑在哪个号下（宣告那一刻问 [`Reactions::account_of`] 一声）：界面徽章只读这一格，起停不再回头问。
 /// 判不出号（没接上判号那一手 / 它说不知道）⇒ 那一格不上线。真判号（进程环境对账号库）的判据住账号库那一侧
 /// （`library_tests::an_announced_process_is_attributed_to_the_account_whose_dir_it_runs_under`）。
@@ -1692,7 +1747,7 @@ fn the_announcement_says_which_account_the_session_runs_under() {
             other => panic!("expected SessionAdded, got {other:?}"),
         };
         // 之后那几张活的脸（在干什么变了）照旧带宣告时判的号。
-        let later = state.live_face(sid, None).account;
+        let later = state.live_face(sid).account;
         (got, later)
     };
     let b = Some("b".to_string());
@@ -1773,20 +1828,14 @@ fn status_diff_emits_session_status_frame() {
     write("waiting", Some("permission prompt"));
     process_session_added(&pidfile, &mut state, &mut sink);
     match rx.try_recv() {
-        Ok(Frame::SessionStatus(crate::wire::SessionStatus {
-            sid,
-            face,
-            waiting_for,
-            ..
-        })) => {
-            assert_eq!(sid, "st-sid");
+        Ok(Frame::SessionStatus(s)) => {
+            assert_eq!(s.sid, "st-sid");
             assert_eq!(
-                face.life,
+                s.face.life,
                 crate::wire::WireLife::Live {
                     activity: Some(SessionActivity::NeedsYou)
                 }
             );
-            assert_eq!(waiting_for.as_deref(), Some("permission prompt"));
         }
         other => panic!("expected SessionStatus, got {other:?}"),
     }
@@ -1797,11 +1846,41 @@ fn status_diff_emits_session_status_frame() {
         rx.try_recv(),
         Ok(Frame::SessionStatus(crate::wire::SessionStatus {
             face,
-            waiting_for: None,
             ..
         })) if face.life == crate::wire::WireLife::Live { activity: Some(SessionActivity::Idle) }
     ));
     std::fs::remove_dir_all(&dir).ok();
+}
+
+/// ★ 在等什么那一格（`session_status.waiting_for` 与专为它照抄的 pidfile 原词）删干净：手写源码里一处不剩。
+/// 正控：同一趟扫描认得出 pidfile 那个词还在适配层里读（翻成等的是什么框）。
+#[test]
+fn the_waiting_for_cell_is_gone_from_the_hand_written_sources() {
+    // 手写的 Rust 源码整棵（src/：后端 · 共用契约 · 壳）。
+    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let files: Vec<(std::path::PathBuf, String)> = guard_core::scan_tree!(&src, &["rs"]);
+    let hits = |needle: &str| -> Vec<String> {
+        files
+            .iter()
+            .filter(|(_, s)| s.contains(needle))
+            .map(|(p, _)| p.display().to_string())
+            .collect()
+    };
+    assert!(
+        hits("\"waitingFor\"")
+            .iter()
+            .any(|p| p.ends_with("claudecode/pidfile.rs")),
+        "正控：适配层读 pidfile 那个词的那一处该扫得到"
+    );
+    // 线上那一格 · watcher 账上照抄的那一格与挑它的那一判 · 照抄 pidfile 原词那一格 · 壳日志那一项。
+    for needle in [
+        "waiting_for: Option<String>",
+        "fn waiting_for(",
+        "waiting_word",
+        "waiting_for={",
+    ] {
+        assert_eq!(hits(needle), Vec::<String>::new(), "「{needle}」还在");
+    }
 }
 
 /// 在 monitor 里改的名（这台的注解）是第一档：注解那份文件动了重读 ⇒ 改了名的活会话一帧 `session_status`；没变的不发。
@@ -2154,7 +2233,11 @@ fn the_record_path_reaches_the_client_once_the_record_appears_after_the_announce
 
 #[test]
 fn background_reads_through_the_adapter() {
-    let is_background = |b: &[u8]| crate::agents::proc_fact(b).is_some_and(|f| f.background);
+    let is_background = |b: &[u8]| {
+        crate::agents::local_homes()[0]
+            .proc_fact(b)
+            .is_some_and(|f| f.background)
+    };
     assert!(
         is_background(br#"{"sessionId":"s","kind":"bg","jobId":"j"}"#),
         "真实 bg 样本形态"
@@ -2166,7 +2249,11 @@ fn background_reads_through_the_adapter() {
 
 #[test]
 fn parse_procstart_ticks_variants() {
-    let parse_procstart_ticks = |b: &[u8]| crate::agents::proc_fact(b).and_then(|f| f.proc_start);
+    let parse_procstart_ticks = |b: &[u8]| {
+        crate::agents::local_homes()[0]
+            .proc_fact(b)
+            .and_then(|f| f.proc_start)
+    };
     assert_eq!(
         parse_procstart_ticks(br#"{"sessionId":"abc","procStart":"12285972"}"#),
         Some(12285972),
@@ -2608,7 +2695,11 @@ fn vis2_s3_an_agent_home_created_after_start_still_announces_its_session() {
 
     let (etx, erx) = std::sync::mpsc::channel::<WatchEvent>();
     let (mut fs_watch, pending) = fs_ears(etx).expect("文件耳朵起不来");
-    let mut ears = HomeEars::new(&home, &projects, &sessions);
+    let mut ears = HomeEars::new(
+        &crate::agents::IntoHomes::into_homes(&home)[0],
+        &projects,
+        &sessions,
+    );
     ears.arm(&mut fs_watch);
     // ①
     assert_eq!(
@@ -2732,14 +2823,21 @@ fn a_batch_counts_as_an_accounts_change_only_when_the_manifest_is_in_it() {
     let far = PathBuf::from("/h/.claude/projects/p/s.jsonl");
     assert!(manifest_touched(
         [other.as_path(), m.as_path()].into_iter(),
-        &m
+        Some(&m)
     ));
-    assert!(manifest_touched([m.as_path(), m.as_path()].into_iter(), &m));
+    assert!(manifest_touched(
+        [m.as_path(), m.as_path()].into_iter(),
+        Some(&m)
+    ));
     assert!(!manifest_touched(
         [other.as_path(), far.as_path()].into_iter(),
-        &m
+        Some(&m)
     ));
-    assert!(!manifest_touched(std::iter::empty(), &m));
+    assert!(!manifest_touched(std::iter::empty(), Some(&m)));
+    assert!(
+        !manifest_touched([m.as_path()].into_iter(), None),
+        "家说不出（没有 manifest）⇒ 不算"
+    );
 }
 
 /// 接线：`Notify` 那一臂里**恰好一处**问 `manifest_touched`、真了发 `changed {accounts}`，
@@ -2769,7 +2867,14 @@ fn a_needs_login_cache_in_an_account_dir_or_the_agent_home_is_recognised() {
     let accts = Path::new("/h/.cc-monitor/accounts");
     let home = Path::new("/h/.claude");
     let files = ["mcp-needs-auth-cache.json"];
-    let hit = |p: &str| needs_login_touched([Path::new(p)].into_iter(), Some(accts), home, &files);
+    let hit = |p: &str| {
+        needs_login_touched(
+            [Path::new(p)].into_iter(),
+            Some(accts),
+            &crate::agents::IntoHomes::into_homes(home),
+            &files,
+        )
+    };
     assert!(hit(
         "/h/.cc-monitor/accounts/work/mcp-needs-auth-cache.json"
     ));
@@ -2783,7 +2888,7 @@ fn a_needs_login_cache_in_an_account_dir_or_the_agent_home_is_recognised() {
     assert!(!needs_login_touched(
         [Path::new("/h/.claude/mcp-needs-auth-cache.json")].into_iter(),
         Some(accts),
-        home,
+        &crate::agents::IntoHomes::into_homes(home),
         &[]
     ));
 }
@@ -2898,8 +3003,8 @@ fn a_new_process_taking_a_live_sid_counts_as_its_arrival() {
 
 /// 打标那一手的替身：照控制面在「环境读得到、`TMUX_PANE` 没设」时的结局答（容器 `{host: none}`，没写）。
 /// 真打标住控制面（本包够不到），接真打标的那几条挂主 crate（`watcher_on_upper_tests.rs`）。
-pub(super) fn no_terminal_host(_: u32, _: &str) -> (Option<crate::wire::SessionContainer>, bool) {
-    (Some(crate::wire::SessionContainer::None), false)
+pub(super) fn no_terminal_host(_: u32, _: &str) -> crate::host::managed::Tagged {
+    crate::host::managed::Tagged::seated(Some(crate::wire::SessionContainer::None), false)
 }
 
 /// **「清单报完了」那一帧的位置**：Phase 1 的每一帧 `session_added` 之后、恰好一帧。
@@ -2994,6 +3099,51 @@ fn sessions_replayed_follows_every_initial_session_added_exactly_once() {
     assert_eq!(kinds(&mut rx), vec!["sessions_replayed"]);
 }
 
+/// ★ 打标那一手说这个进程没控制终端（主会话里起的 `claude -p` 那一形，判法在控制面）⇒ 当后台宣告：
+/// 帧上 `background: true`（不成 tab），pidfile 自己说的是交互也一样；有控制终端的照 pidfile 说的。
+#[test]
+fn a_session_without_a_controlling_terminal_is_announced_as_background() {
+    fn detached(_: u32, _: &str) -> crate::host::managed::Tagged {
+        crate::host::managed::Tagged {
+            detached: true,
+            ..Default::default()
+        }
+    }
+    let mut kid = crate::platform::proc::test_support::spawn_settled_sleep(|c| {
+        c.env_remove("TMUX_PANE").env_remove("TMUX");
+    });
+    let backgrounds = [detached as Tag, no_terminal_host as Tag].map(|tag| {
+        let dir = std::env::temp_dir().join(format!(
+            "ccm-detached-bg-{}-{}",
+            std::process::id(),
+            tag as usize
+        ));
+        let sessions = dir.join("sessions");
+        std::fs::create_dir_all(&sessions).unwrap();
+        super::test_support::pidfile_of(&sessions, kid.id(), "detached-1");
+        let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
+        let mut sink = FrameSink::new(tx);
+        let mut state = ReaderState::new(dir.join("projects"));
+        state.tag = tag;
+        initial_session_scan(&sessions, &mut state, &mut sink);
+        let mut got = Vec::new();
+        while let Ok(f) = rx.try_recv() {
+            if let Frame::SessionAdded(a) = f {
+                got.push(a.background);
+            }
+        }
+        std::fs::remove_dir_all(&dir).ok();
+        got
+    });
+    let _ = kid.kill();
+    let _ = kid.wait();
+    assert_eq!(
+        backgrounds,
+        [vec![true], vec![false]],
+        "没控制终端的进程没当后台宣告（或有控制终端的被当成了后台）"
+    );
+}
+
 /// 起步那一下「先挂耳朵、再初扫」（[`arm_then_scan`]）：挂耳朵那一刻之后、初扫之前落下的 pidfile 由初扫报出
 /// （原先先扫后挂，这一形两头都看不见 —— e2e `resume-frames` 间歇红的根因）。
 /// 扫的过程中排队的事件交给主循环时都不再出帧：已报过的再来一次「有动静」不重报；初扫之前就没了的那份，
@@ -3014,21 +3164,26 @@ fn a_pidfile_landing_once_the_ears_are_up_is_announced_by_the_initial_scan() {
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(dir.join("projects"));
     // 「挂耳朵」那一步里：一份活会话的 pidfile 落下；另一份落下又被删掉（初扫之前就没了，事件照样排着队）。
-    arm_then_scan(&sessions, &mut state, &mut sink, || {
-        std::fs::write(
+    arm_then_scan(
+        std::slice::from_ref(&sessions),
+        &mut state,
+        &mut sink,
+        || {
+            std::fs::write(
             &live,
             format!(
                 r#"{{"pid":{pid},"sessionId":"arm-live","cwd":"/x","kind":"interactive","procStart":"{ticks}"}}"#
             ),
         )
         .unwrap();
-        std::fs::write(
-            &gone,
-            r#"{"pid":1,"sessionId":"arm-gone","cwd":"/x","kind":"interactive"}"#,
-        )
-        .unwrap();
-        std::fs::remove_file(&gone).unwrap();
-    });
+            std::fs::write(
+                &gone,
+                r#"{"pid":1,"sessionId":"arm-gone","cwd":"/x","kind":"interactive"}"#,
+            )
+            .unwrap();
+            std::fs::remove_file(&gone).unwrap();
+        },
+    );
     let mut frames = Vec::new();
     while let Ok(f) = rx.try_recv() {
         frames.push(f);
@@ -3276,7 +3431,7 @@ fn an_in_place_rewrite_that_grew_is_caught_by_the_tail_fingerprint() {
 #[test]
 fn the_two_session_file_frames_have_exactly_these_bytes() {
     use crate::wire::{to_line, RereadWhy};
-    let gone = Frame::SessionFileGone(crate::wire::SessionFileGone {
+    let gone = crate::wire::WireFrame::SessionFileGone(crate::wire::SessionFileGone {
         session_id: "s".into(),
         path: "/p/s.jsonl".into(),
         said: crate::common::cells::Words("那一句".into()),
@@ -3289,7 +3444,7 @@ fn the_two_session_file_frames_have_exactly_these_bytes() {
         (RereadWhy::Truncated, "truncated"),
         (RereadWhy::Rewritten, "rewritten"),
     ] {
-        let f = Frame::SessionFileReread(crate::wire::SessionFileReread {
+        let f = crate::wire::WireFrame::SessionFileReread(crate::wire::SessionFileReread {
             session_id: "s".into(),
             path: "/p/s.jsonl".into(),
             why,
@@ -3319,7 +3474,7 @@ fn gap1_an_accounts_dir_created_or_rebuilt_after_start_is_still_heard() {
     let (mut fs_watch, pending) = fs_ears(etx).expect("文件耳朵起不来");
     let mut ear = AccountsEar::new(&dir);
     ear.arm(&mut fs_watch);
-    let armed = (ear.watched, ear.parent_watched);
+    let armed = (ear.0.watched, ear.0.parent_watched);
     // 建目录 ⇒ 等到它自己那一格事件；再写 manifest ⇒ 等到 manifest 那一格。回 (目录事件到没到, manifest 事件到没到)。
     let round = |ear: &mut AccountsEar, fs_watch: &mut _| {
         std::fs::create_dir_all(&dir).unwrap();
@@ -3334,7 +3489,7 @@ fn gap1_an_accounts_dir_created_or_rebuilt_after_start_is_still_heard() {
                     dir_seen |= ear.on_path(fs_watch, ev);
                 }
                 manifest_seen |=
-                    dir_seen && manifest_touched(evs.iter().map(PathBuf::as_path), &manifest);
+                    dir_seen && manifest_touched(evs.iter().map(PathBuf::as_path), Some(&manifest));
             }
         }
         (dir_seen, manifest_seen)
@@ -3415,7 +3570,7 @@ fn a_credentials_file_appearing_in_an_account_dir_is_heard() {
     std::fs::create_dir_all(&fresh).unwrap();
     // 号目录出现那一格先到（重挂各号目录），之后那份凭据才听得见。
     let deadline = std::time::Instant::now() + guard_core::wall::CEILING;
-    while !ear.subs.contains(&fresh) && std::time::Instant::now() < deadline {
+    while !ear.0.subs.contains(&fresh) && std::time::Instant::now() < deadline {
         if let Some(evs) = woke(&erx, &pending, Duration::from_millis(200)) {
             for ev in &evs {
                 ear.on_path(&mut fs_watch, ev);
@@ -3488,8 +3643,8 @@ fn resync_for_one_sid_catches_up_its_jsonl_from_the_cursor() {
     let sessions = dir.join("sessions");
     let proj = dir.join("projects").join("p");
     std::fs::create_dir_all(&proj).unwrap();
-    let mut a = claude_in_pane(&sessions, "%1", "sid-a", "idle");
-    let mut b = claude_in_pane(&sessions, "%2", "sid-b", "idle");
+    let mut a = pane_env_sleep_with_pidfile(&sessions, "%1", "sid-a", "idle");
+    let mut b = pane_env_sleep_with_pidfile(&sessions, "%2", "sid-b", "idle");
     for sid in ["sid-a", "sid-b"] {
         std::fs::write(proj.join(format!("{sid}.jsonl")), "{\"n\":0}\n").unwrap();
     }
@@ -3512,7 +3667,13 @@ fn resync_for_one_sid_catches_up_its_jsonl_from_the_cursor() {
             .unwrap();
         writeln!(f, "{{\"n\":1}}").unwrap();
     }
-    let one = resync_sessions(&sessions, &mut state, &mut sink, Some("sid-a")).caught_up;
+    let one = resync_sessions(
+        std::slice::from_ref(&sessions),
+        &mut state,
+        &mut sink,
+        Some("sid-a"),
+    )
+    .caught_up;
     let mut lines: Vec<String> = Vec::new();
     while let Ok(f) = rx.try_recv() {
         if let Frame::Line(crate::wire::Line { session_id, .. }) = f {
@@ -3527,7 +3688,8 @@ fn resync_for_one_sid_catches_up_its_jsonl_from_the_cursor() {
             .unwrap();
         writeln!(f, "{{\"n\":{n}}}").unwrap();
     }
-    let all = resync_sessions(&sessions, &mut state, &mut sink, None).caught_up;
+    let all =
+        resync_sessions(std::slice::from_ref(&sessions), &mut state, &mut sink, None).caught_up;
     for k in [&mut a, &mut b] {
         let _ = k.kill();
         let _ = k.wait();
@@ -3567,10 +3729,15 @@ fn a_task_written_after_start_is_heard_for_its_session() {
     std::fs::create_dir_all(&home).unwrap();
     let projects = crate::agents::claudecode::paths::projects_root(&home);
     let sessions = crate::agents::claudecode::paths::sessions_root(&home);
-    let tasks = crate::observe::tasks_query::tasks_root(&home);
+    let tasks =
+        crate::observe::tasks_query::tasks_root(&crate::agents::IntoHomes::into_homes(&home)[0]);
     let (etx, erx) = std::sync::mpsc::channel::<WatchEvent>();
     let (mut fs_watch, pending) = fs_ears(etx).expect("文件耳朵起不来");
-    let mut ears = HomeEars::new(&home, &projects, &sessions);
+    let mut ears = HomeEars::new(
+        &crate::agents::IntoHomes::into_homes(&home)[0],
+        &projects,
+        &sessions,
+    );
     ears.arm(&mut fs_watch);
     assert!(!ears.tasks_watched, "夹具坏了：tasks/ 一开始就在");
     let (tx, _rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
@@ -3676,7 +3843,7 @@ fn a_mid_turn_line_on_the_live_stream_is_said_once_with_its_own_id_and_moment() 
     let mut got = Vec::new();
     while let Ok(f) = rx.try_recv() {
         if let Frame::Line(crate::wire::Line { record, .. }) = f {
-            got.push(record.map(|r| (r.id, r.at.unwrap_or_default())));
+            got.push(record.map(|r| (r.rec.id, r.rec.at.unwrap_or_default())));
         }
     }
     assert_eq!(
@@ -3941,12 +4108,15 @@ fn off_of_record(body: &str) -> Vec<String> {
 }
 
 /// 一份合成记录的冷接宣告：起一个认得出的活会话（本进程当写它的那个），宣告出去；回（帧，这份记录的链索引整条走过几格）。
+/// `body` 空 ⇒ 宣告时记录还没建（会话刚起、还没写第一行；建了却是空的那份要等开头那一行，不在这一刻宣告）。
 fn announce_record(dir: &Path, sid: &str, body: &str) -> (Vec<Frame>, ReaderState) {
     let proj = dir.join("projects").join("proj-h");
     std::fs::create_dir_all(&proj).unwrap();
     let pid = std::process::id();
     let ticks = proc_starttime(pid).expect("own starttime");
-    std::fs::write(proj.join(format!("{sid}.jsonl")), body).unwrap();
+    if !body.is_empty() {
+        std::fs::write(proj.join(format!("{sid}.jsonl")), body).unwrap();
+    }
     let pidfile = dir.join(format!("{pid}.json"));
     std::fs::write(
         &pidfile,
@@ -4022,7 +4192,7 @@ fn reading_a_big_batch_of_new_lines_walks_the_chain_once() {
     let n = 3_000;
     let body = long_branchy_record(n, 14, 4);
     let want = off_of_record(&body);
-    // 宣告时记录还是空的（游标在 0），之后整份一口气写进来。
+    // 宣告时记录还没建（游标在 0），之后整份一口气写进来。
     let (_, mut state) = announce_record(&dir, "hot-sid2", "");
     let path = dir.join("projects").join("proj-h").join("hot-sid2.jsonl");
     std::fs::write(&path, &body).unwrap();
@@ -4324,13 +4494,10 @@ fn the_announcement_carries_the_hidden_cell_and_a_change_is_pushed() {
             body: Some(cmd_wire::frame::HiddenNow { hidden: None }),
         }]
     );
-    assert!(matches!(
-        state.added.get("sid-h"),
-        Some(Frame::SessionAdded(crate::wire::SessionAdded {
-            hidden: None,
-            ..
-        }))
-    ));
+    assert!(state
+        .added
+        .get("sid-h")
+        .is_some_and(|a| a.wire.hidden.is_none()));
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -4613,6 +4780,31 @@ fn an_ask_coming_and_going_flips_the_announced_dot() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
+/// 钩子交来「一轮结束」（活会话表记上、敲那条会话的铃）⇒ 那条会话补推一帧：pidfile 说在跑却比事件旧 ⇒ 闲着。
+#[cfg(target_os = "linux")]
+#[test]
+fn a_turn_ended_event_resends_the_face_as_idle_over_an_older_busy_pidfile() {
+    let second = std::time::Duration::from_secs(1);
+    let (dir, pidfile, mut state) = frozen_fixture("turn-ended", "hb-turn-ended", "busy", second);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
+    let mut sink = FrameSink::new(tx);
+    process_session_added(&pidfile, &mut state, &mut sink);
+    while rx.try_recv().is_ok() {}
+    crate::history::live_table::hear("hb-turn-ended", crate::agents::AgentEvent::TurnEnded);
+    needs_rang(
+        Default::default(),
+        Some("hb-turn-ended".to_string()),
+        &mut state,
+        &mut sink,
+        &|_: &str| Vec::new(),
+    );
+    let dot = std::iter::from_fn(|| rx.try_recv().ok())
+        .filter_map(|f| face_of(&f).map(|f| f.dot))
+        .last();
+    assert_eq!(dot, Some(crate::wire::SessionDot::Idle), "照事件 ⇒ 闲着");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
 /// ★ 子 agent 挂上待答请求 ⇒ 那个会话的运行表那一项配上 needs、发一帧；没变不发；撤了再发一帧（不带了）。
 #[test]
 fn an_ask_from_a_sub_agent_dresses_its_run_and_sends_the_table() {
@@ -4620,7 +4812,10 @@ fn an_ask_from_a_sub_agent_dresses_its_run_and_sends_the_table() {
     crate::observe::runs::testing::seed_running(&state.book, "s-n", "a", None);
     let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
     let mut sink = FrameSink::new(tx);
-    let ask = crate::agents::asks::specimen();
+    let ask = crate::agents::asks::Asked {
+        ask: crate::agents::asks::specimen(),
+        since_ms: 1,
+    };
     let hung = |sid: &str| {
         if sid == "s-n" {
             vec![ask.clone()]
@@ -4687,7 +4882,11 @@ fn a_sessions_dir_created_after_start_marks_the_live_table_dirty_on_rescan() {
 
     let (etx, _erx) = std::sync::mpsc::channel::<WatchEvent>();
     let (mut fs_watch, _pending) = fs_ears(etx).expect("文件耳朵起不来");
-    let mut ears = HomeEars::new(&home, &projects, &sessions);
+    let mut ears = HomeEars::new(
+        &crate::agents::IntoHomes::into_homes(&home)[0],
+        &projects,
+        &sessions,
+    );
     ears.arm(&mut fs_watch);
     assert!(
         !ears.sessions_watched,
@@ -4921,7 +5120,7 @@ fn the_waiting_line_is_repushed_once_the_live_table_is_published() {
     };
     write("busy", "");
     process_session_added(&pidfile, &mut state, &mut sink);
-    publish_and_resay(&dir, &mut state, &mut sink);
+    publish_and_resay(&mut state, &mut sink);
     while rx.try_recv().is_ok() {}
     // pidfile 改成在等：造脸那一下发布着的还是说在跑的那张表。
     write(
@@ -4929,7 +5128,7 @@ fn the_waiting_line_is_repushed_once_the_live_table_is_published() {
         r#","waitingFor":"permission prompt","statusUpdatedAt":1791201602000"#,
     );
     process_session_added(&pidfile, &mut state, &mut sink);
-    publish_and_resay(&dir, &mut state, &mut sink);
+    publish_and_resay(&mut state, &mut sink);
     let mut last = None;
     while let Ok(f) = rx.try_recv() {
         if let Frame::SessionStatus(s) = f {
@@ -4941,4 +5140,1163 @@ fn the_waiting_line_is_repushed_once_the_live_table_is_published() {
     assert_eq!(face.line.0, kind, "等的种类照新表写");
     assert!(face.clock.is_some(), "带已等多久那一截：{face:?}");
     std::fs::remove_dir_all(&dir).ok();
+}
+
+/// 那条连接收到的帧（按到的先后）。
+fn drained(rx: &mut FrameRx) -> Vec<Frame> {
+    let mut v = Vec::new();
+    while let Ok(f) = rx.try_recv() {
+        v.push(f);
+    }
+    v
+}
+
+/// ★ 先红的那一条：attach 行要了成品的连接（桌面壳）收一帧 `session_added` ⇒ 紧跟一帧 `session_seats` 带那一条此刻整条；
+/// 不要成品的连接（手机 · 各台的常驻流）一帧都不多。
+#[test]
+fn a_folded_connection_gets_the_seat_right_after_each_session_frame() {
+    let (tx0, mut rx0) = frame_channel(CHANNEL_MAX_BYTES.as_len());
+    let mut sink = FrameSink::new(tx0);
+    let (tx1, mut rx1) = frame_channel(CHANNEL_MAX_BYTES.as_len());
+    sink.subs
+        .push(Sub::new(1, tx1, crate::common::time::Tz::default()).folded());
+    sink.send(added_frame("fold-a"));
+    let plain: Vec<String> = drained(&mut rx0).iter().map(kind_of).collect();
+    assert_eq!(plain, ["session_added"], "不要成品的连接多收了");
+    let got = drained(&mut rx1);
+    let Frame::SessionAdded(meta) = &got[0] else {
+        panic!("会话帧原样在前：{got:?}")
+    };
+    assert!(
+        matches!(&got[1..], [Frame::SessionSeats(s)]
+            if !s.whole && s.seats == [cmd_wire::frame::SessionSeat::of("fold-a", Some(meta), None, None, None)]),
+        "{got:?}"
+    );
+}
+
+/// 那个会话的一行记录（画成 `draw` 那一形）。
+fn drawn_line(sid: &str, seq: u64, draw: cmd_wire::record::Draw) -> Frame {
+    Frame::Line(crate::wire::Line {
+        session_id: sid.into(),
+        path: format!("/w/{sid}.jsonl"),
+        seq,
+        record: Some(
+            cmd_wire::record::Record {
+                agent: cmd_wire::AgentKind::new("claude"),
+                id: format!("r{seq}"),
+                at: None,
+                time_text: None,
+                at_ms: None,
+                draw,
+                human: false,
+                body: cmd_wire::record::Body::Title {
+                    text: String::new(),
+                    by: cmd_wire::record::TitleBy::Agent,
+                },
+            }
+            .into(),
+        ),
+        cwd: None,
+        byte_offset: seq,
+        rid: None,
+    })
+}
+
+/// 收到的帧里的未读那几帧（会话 · 写好的字）。
+fn unread_of(frames: &[Frame]) -> Vec<(String, Option<String>)> {
+    frames
+        .iter()
+        .filter_map(|f| match f {
+            Frame::SessionUnread(u) => Some((u.sid.clone(), u.said.as_ref().map(|w| w.0.clone()))),
+            _ => None,
+        })
+        .collect()
+}
+
+/// 一条只看 `watch` 那几个的连接（号 `id`）。
+fn watching_sub(id: u64, watch: &[&str]) -> (Sub, FrameRx) {
+    let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
+    let mut sub = Sub::new(id, tx, crate::common::time::Tz::default());
+    sub.watching = Some(watch.iter().map(|s| s.to_string()).collect());
+    (sub, rx)
+}
+
+/// ★ 未读按连接数：只看 a 的那条连接，b 每扇一行该建卡的记录加一（行照旧不投给它）、不建卡的行不算；
+/// 一批末了只给它一帧写好的字，没变不再给；超 99 写「99+」，封顶之后字不变不再给。没报过名单（全看）的那条连接一帧未读都没有。
+#[test]
+fn a_background_sessions_card_lines_are_counted_per_connection() {
+    use cmd_wire::record::Draw;
+    let (tx0, mut rx0) = frame_channel(CHANNEL_MAX_BYTES.as_len());
+    let mut sink = FrameSink::new(tx0);
+    let (sub, mut rx1) = watching_sub(1, &["a"]);
+    sink.subs.push(sub);
+    for seq in 1..=3 {
+        sink.send(drawn_line("b", seq, Draw::Card));
+    }
+    sink.send(drawn_line("b", 4, Draw::Steps));
+    sink.send(drawn_line("a", 5, Draw::Card));
+    sink.settle_unread();
+    let got = drained(&mut rx1);
+    assert!(
+        !got.iter()
+            .any(|f| matches!(f, Frame::Line(l) if l.session_id == "b")),
+        "名单外的行照旧不投：{got:?}"
+    );
+    assert_eq!(unread_of(&got), [("b".to_string(), Some("3".to_string()))]);
+    assert!(
+        unread_of(&drained(&mut rx0)).is_empty(),
+        "全看的连接没有未读"
+    );
+    sink.settle_unread();
+    assert!(unread_of(&drained(&mut rx1)).is_empty(), "没变不再给");
+    for seq in 6..=105 {
+        sink.send(drawn_line("b", seq, Draw::Card));
+    }
+    sink.settle_unread();
+    assert_eq!(
+        unread_of(&drained(&mut rx1)),
+        [("b".to_string(), Some("99+".to_string()))]
+    );
+    sink.send(drawn_line("b", 106, Draw::Card));
+    sink.settle_unread();
+    assert!(
+        unread_of(&drained(&mut rx1)).is_empty(),
+        "封顶之后字不变不给"
+    );
+}
+
+/// ★ 进名单清零（给一帧不带字的）、在看时来的行不算；出名单从 0 起数（「离开那一刻」就是从那一刻起数）。
+#[test]
+fn watching_a_session_clears_its_unread_and_leaving_counts_from_zero() {
+    use cmd_wire::record::Draw;
+    let (tx0, _rx0) = frame_channel(CHANNEL_MAX_BYTES.as_len());
+    let mut sink = FrameSink::new(tx0);
+    let (sub, mut rx) = watching_sub(1, &["a"]);
+    sink.subs.push(sub);
+    let mut state = ReaderState::new(std::path::PathBuf::from("/nonexistent-projects"));
+    let ask = |sids: &[&str]| crate::wire::WatchAsk {
+        sids: sids.iter().map(|s| s.to_string()).collect(),
+        branch: Vec::new(),
+        kept: Vec::new(),
+    };
+    sink.send(drawn_line("b", 1, Draw::Card));
+    sink.send(drawn_line("b", 2, Draw::Card));
+    sink.settle_unread();
+    assert_eq!(
+        unread_of(&drained(&mut rx)),
+        [("b".to_string(), Some("2".to_string()))]
+    );
+    watch_sessions(1, ask(&["a", "b"]), &mut state, &mut sink);
+    sink.settle_unread();
+    assert_eq!(unread_of(&drained(&mut rx)), [("b".to_string(), None)]);
+    sink.send(drawn_line("b", 3, Draw::Card));
+    sink.settle_unread();
+    assert!(unread_of(&drained(&mut rx)).is_empty(), "在看时来的不算");
+    watch_sessions(1, ask(&["a"]), &mut state, &mut sink);
+    sink.settle_unread();
+    assert!(unread_of(&drained(&mut rx)).is_empty(), "刚离开还是 0");
+    sink.send(drawn_line("b", 4, Draw::Card));
+    sink.settle_unread();
+    assert_eq!(
+        unread_of(&drained(&mut rx)),
+        [("b".to_string(), Some("1".to_string()))]
+    );
+}
+
+/// ★ 就地重报那一份（挤丢过帧之后）带上这条连接此刻的未读：丢过的那一帧未读补得回来。
+#[test]
+fn a_report_carries_the_connections_unread_now() {
+    use cmd_wire::record::Draw;
+    let (tx0, _rx0) = frame_channel(CHANNEL_MAX_BYTES.as_len());
+    let mut sink = FrameSink::new(tx0);
+    let (sub, mut rx) = watching_sub(1, &[]);
+    sink.subs.push(sub);
+    let mut state = ReaderState::new(std::path::PathBuf::from("/nonexistent-projects"));
+    sink.send(drawn_line("b", 1, Draw::Card));
+    sink.settle_unread();
+    drained(&mut rx);
+    report_to(1, &mut state, &mut sink);
+    assert_eq!(
+        unread_of(&drained(&mut rx)),
+        [("b".to_string(), Some("1".to_string()))]
+    );
+}
+
+/// ★ 要成品的连接（桌面壳）：未读那一帧之后紧跟那一条此刻整条，整条里带写好的字。
+#[test]
+fn a_folded_connections_seat_carries_its_unread() {
+    use cmd_wire::record::Draw;
+    let (tx0, _rx0) = frame_channel(CHANNEL_MAX_BYTES.as_len());
+    let mut sink = FrameSink::new(tx0);
+    let (sub, mut rx) = watching_sub(1, &["a"]);
+    sink.subs.push(sub.folded());
+    sink.send(added_frame("b"));
+    sink.send(drawn_line("b", 1, Draw::Card));
+    sink.settle_unread();
+    let got = drained(&mut rx);
+    let Some(Frame::SessionSeats(s)) = got.last() else {
+        panic!("末了是那一条此刻整条：{got:?}")
+    };
+    assert_eq!(s.seats.len(), 1, "{s:?}");
+    assert_eq!(s.seats[0].sid, "b");
+    assert_eq!(s.seats[0].unread.as_ref().map(|w| w.0.as_str()), Some("1"));
+}
+
+/// ★ 一帧 `session_seats` 挤丢了 ⇒ 那条连接下一帧之前先收一份整本（不等重连）。
+#[test]
+fn a_lost_seats_frame_is_made_good_with_the_whole_book_before_the_next_frame() {
+    let a = added_frame("lost-a");
+    // 装得下那一帧宣告、装不下紧跟的那一格；空着时装得下一份整本。
+    let (tx, mut rx) = frame_channel(2 * wire_bytes(&a));
+    let mut sub = Sub::new(1, tx, crate::common::time::Tz::default()).folded();
+    sub.push(a);
+    let first: Vec<String> = drained(&mut rx).iter().map(kind_of).collect();
+    assert_eq!(first, ["session_added"], "那一格 seats 该是挤丢了");
+    sub.push(Frame::changed(Changed::Groups {}));
+    let got = drained(&mut rx);
+    assert!(
+        matches!(&got[0], Frame::SessionSeats(s)
+            if s.whole && s.seats.iter().map(|x| x.sid.as_str()).collect::<Vec<_>>() == ["lost-a"]),
+        "{got:?}"
+    );
+}
+
+/// 判据替身：别台此刻的整本（只答 `gap-pi`）。
+fn gap_pi_whole(machine: &str) -> Option<cmd_wire::frame::SessionSeats> {
+    (machine == "gap-pi").then(|| cmd_wire::frame::SessionSeats {
+        seats: vec![cmd_wire::frame::SessionSeat::of(
+            "pi-s", None, None, None, None,
+        )],
+        listed: true,
+        whole: true,
+    })
+}
+
+/// ★ 别台转来的一格挤丢了 ⇒ 补那台 `gap` 时紧跟那台此刻的整本（丢的可能是一格 `seats`，不等重连）。
+#[test]
+fn a_lost_relayed_frame_is_paid_with_a_gap_and_that_machines_whole_book() {
+    relayed_wholes(gap_pi_whole);
+    let line = Frame::Relayed(Relayed::Line {
+        machine: "gap-pi".into(),
+        line: format!(
+            "{{\"kind\":\"session_status\",\"pad\":\"{}\"}}",
+            "x".repeat(400)
+        ),
+    });
+    let (tx, mut rx) = frame_channel(wire_bytes(&line) + 20);
+    let mut sub = Sub::new(1, tx, crate::common::time::Tz::default());
+    sub.push(line.clone());
+    sub.push(line.clone());
+    assert_eq!(drained(&mut rx).len(), 1, "第二格该挤丢");
+    sub.push(Frame::changed(Changed::Groups {}));
+    let got = drained(&mut rx);
+    assert!(
+        matches!(&got[..2], [Frame::Relayed(Relayed::Gap { machine }), Frame::Relayed(Relayed::Seats { machine: m2, seats })]
+            if machine == "gap-pi" && m2 == "gap-pi" && seats.whole),
+        "{got:?}"
+    );
+}
+
+/// 号目录列表 ⇒ 根表要的「那一家各号的家」（`kinds` 里那一家才有，号名不要紧）。
+fn homes_by(
+    dirs: Vec<(&'static str, PathBuf)>,
+) -> impl Fn(&crate::agents::Adapter) -> Vec<crate::agents::AccountHome> {
+    move |a| {
+        dirs.iter()
+            .filter(|(k, _)| *k == a.kind)
+            .map(|(_, d)| crate::agents::AccountHome {
+                account: Some(d.display().to_string()),
+                home: d.clone(),
+            })
+            .collect()
+    }
+}
+
+/// 各号的会话目录：每一家 × 那一家的每个号（根表上那一根）各一个记录根；几个号链成同一处的只算一个；
+/// 号表多一个号 ⇒ 它的记录根随即在里面。
+#[cfg(unix)]
+#[test]
+fn every_account_of_every_family_gets_its_own_record_root_once() {
+    let fake = crate::agents::fake::AGENT_KIND;
+    let reg = [crate::agents::fake::full_row(|| None)];
+    let pairs = |v: Vec<crate::agents::AccountRoot>| -> Vec<(&'static str, PathBuf)> {
+        v.into_iter().map(|r| (r.kind, r.root)).collect()
+    };
+    let watched = |dirs: &[(&'static str, PathBuf)]| {
+        crate::agents::watched_roots_among(&reg, &homes_by(dirs.to_vec()), &[])
+    };
+    let root = test_home::scratch("acctroots");
+    let (a, b, c, d) = (
+        root.join("a"),
+        root.join("b"),
+        root.join("c"),
+        root.join("d"),
+    );
+    let root_of = |dir: &Path| crate::agents::records_root_among(&reg, fake, dir).unwrap();
+    for dir in [&a, &b, &d] {
+        std::fs::create_dir_all(root_of(dir)).unwrap();
+    }
+    std::fs::create_dir_all(&c).unwrap();
+    std::os::unix::fs::symlink(root_of(&a), root_of(&c)).unwrap();
+    let two = vec![(fake, a.clone()), (fake, b.clone()), (fake, c.clone())];
+    assert_eq!(
+        pairs(watched(&two)),
+        vec![(fake, root_of(&a)), (fake, root_of(&b))],
+        "c 的会话目录链到 a 那一份 ⇒ 只算一次"
+    );
+    let mut three = two.clone();
+    three.push((fake, d.clone()));
+    assert_eq!(
+        pairs(watched(&three)),
+        vec![
+            (fake, root_of(&a)),
+            (fake, root_of(&b)),
+            (fake, root_of(&d))
+        ],
+        "号表多一个号 ⇒ 它的记录根随即在里面"
+    );
+    assert!(
+        watched(&[("nobody", a.clone())]).is_empty(),
+        "认不出的家没有记录根"
+    );
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// 替身家（「开着即活」那一形）建两个号、各写一份会话 ⇒ 两份都出 `session_added`；号表多一个号 ⇒ 它的目录随即跟上，
+/// 号表少一个号 ⇒ 它的目录摘掉。写者是本测试进程自己（开着那两份写）。
+#[cfg(target_os = "linux")]
+#[test]
+fn sessions_written_under_two_accounts_both_announce_and_a_new_account_is_followed() {
+    use crate::agents::fake;
+    let kind = fake::AGENT_KIND;
+    let reg = [crate::agents::Adapter {
+        live: crate::agents::LiveBy::HeldOpen,
+        ..fake::full_row(|| None)
+    }];
+    let root = test_home::scratch("acctannounce2");
+    let (a, b, c) = (root.join("a"), root.join("b"), root.join("c"));
+    let sids = [
+        "00000000-0000-4000-8000-0000000000a1",
+        "00000000-0000-4000-8000-0000000000b2",
+    ];
+    let mut held = Vec::new();
+    for (dir, sid) in [(&a, sids[0]), (&b, sids[1])] {
+        let proj = crate::agents::records_root_among(&reg, kind, dir)
+            .unwrap()
+            .join("p");
+        std::fs::create_dir_all(&proj).unwrap();
+        let mut f = std::fs::File::create(proj.join(fake::session_file_name(sid))).unwrap();
+        std::io::Write::write_all(&mut f, b"{}\n").unwrap();
+        held.push(f);
+    }
+    std::fs::create_dir_all(crate::agents::records_root_among(&reg, kind, &c).unwrap()).unwrap();
+    let dirs = |ds: &[&PathBuf]| -> Vec<(&'static str, PathBuf)> {
+        ds.iter().map(|d| (kind, (*d).clone())).collect()
+    };
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
+    let mut sink = FrameSink::new(tx);
+    let mut state = ReaderState::new(root.join("projects"));
+    let first = state.follow_accounts(&reg, &homes_by(dirs(&[&a, &b])));
+    assert_eq!(first.added.len(), 2, "两个号的会话目录都跟上");
+    assert!(first.added.iter().all(|(_, by_writer)| *by_writer));
+    settle_all_writers(&mut state, &mut sink, None);
+    let mut announced = std::collections::BTreeSet::new();
+    while let Ok(f) = rx.try_recv() {
+        if let Frame::SessionAdded(s) = f {
+            announced.insert(s.sid.clone());
+        }
+    }
+    assert_eq!(
+        announced,
+        sids.iter().map(|s| s.to_string()).collect(),
+        "两个号各写一份 ⇒ 两份都出 session_added"
+    );
+    let third = state.follow_accounts(&reg, &homes_by(dirs(&[&a, &b, &c])));
+    assert_eq!(
+        third
+            .added
+            .iter()
+            .map(|(r, _)| r.clone())
+            .collect::<Vec<_>>(),
+        vec![crate::agents::records_root_among(&reg, kind, &c).unwrap()],
+        "号表多一个号 ⇒ 只补它那一个"
+    );
+    let fewer = state.follow_accounts(&reg, &homes_by(dirs(&[&a, &c])));
+    assert_eq!(
+        fewer.removed,
+        vec![crate::agents::records_root_among(&reg, kind, &b).unwrap()],
+        "号表少一个号 ⇒ 摘它那一个"
+    );
+    drop(held);
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// ★ 照根表盯：替身合成历史家（一个家两根：日期根 ＋ 归档根）两个号 ⇒ 四根都挂上；号表少一个号 ⇒ 它那两根摘掉；
+/// 多一个号 ⇒ 补挂它那两根。
+#[test]
+fn every_root_of_every_account_on_the_root_table_is_followed() {
+    use crate::agents::fake::runs::history as chats;
+    let reg = [crate::agents::Adapter {
+        live: crate::agents::LiveBy::HeldOpen,
+        ..chats::row(|| None)
+    }];
+    let root = test_home::scratch("watchroots");
+    let (a, b, c) = (root.join("a"), root.join("b"), root.join("c"));
+    let two_roots = |h: &Path| vec![chats::records_root(h), chats::shelf_root(h)];
+    for h in [&a, &b, &c] {
+        for r in two_roots(h) {
+            std::fs::create_dir_all(r).unwrap();
+        }
+    }
+    let homes =
+        |hs: &[&PathBuf]| homes_by(hs.iter().map(|h| (chats::KIND, (*h).clone())).collect());
+    let added = |d: &AccountRoots| d.added.iter().map(|(r, _)| r.clone()).collect::<Vec<_>>();
+    let mut state = ReaderState::new(root.join("projects"));
+    let first = state.follow_accounts(&reg, &homes(&[&a, &b]));
+    assert_eq!(
+        added(&first),
+        [two_roots(&a), two_roots(&b)].concat(),
+        "两个号各两根 ⇒ 四根都挂上"
+    );
+    assert!(first.removed.is_empty());
+    let fewer = state.follow_accounts(&reg, &homes(&[&a]));
+    assert_eq!(fewer.removed, two_roots(&b), "号表少一个号 ⇒ 它那两根摘掉");
+    assert!(added(&fewer).is_empty());
+    let more = state.follow_accounts(&reg, &homes(&[&a, &c]));
+    assert_eq!(added(&more), two_roots(&c), "号表多一个号 ⇒ 补挂它那两根");
+    assert!(more.removed.is_empty());
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// 号目录经链接给出 ⇒ 挂上的根是解开链接后的那一份（写者那一路报回的是真路径，根要跟它比得上）。
+#[cfg(target_os = "linux")]
+#[test]
+fn a_root_reached_through_a_link_is_followed_by_its_real_path() {
+    use crate::agents::fake::runs::history as chats;
+    let reg = [crate::agents::Adapter {
+        live: crate::agents::LiveBy::HeldOpen,
+        ..chats::row(|| None)
+    }];
+    let root = test_home::scratch("watchroots-link");
+    let real = root.join("real");
+    std::fs::create_dir_all(chats::records_root(&real)).unwrap();
+    std::fs::create_dir_all(chats::shelf_root(&real)).unwrap();
+    let link = root.join("link");
+    std::os::unix::fs::symlink(&real, &link).unwrap();
+    let mut state = ReaderState::new(root.join("projects"));
+    let got = state.follow_accounts(&reg, &homes_by(vec![(chats::KIND, link)]));
+    let real = crate::platform::writers::absolute(&real);
+    assert_eq!(
+        got.added.iter().map(|(r, _)| r.clone()).collect::<Vec<_>>(),
+        vec![chats::records_root(&real), chats::shelf_root(&real)],
+        "根该是解开链接后的真路径"
+    );
+    let again = state.follow_accounts(&reg, &homes_by(vec![(chats::KIND, root.join("link"))]));
+    assert_eq!(
+        again,
+        AccountRoots::default(),
+        "号表没变 ⇒ 再对齐一趟不摘不挂"
+    );
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// ★ 号目录经链接给出、那个号底下开着一份记录写 ⇒ 那份会话照样宣告（写者那一路报回的是真路径）。
+#[cfg(target_os = "linux")]
+#[test]
+fn a_session_under_an_account_reached_through_a_link_is_announced() {
+    use crate::agents::fake;
+    let kind = fake::AGENT_KIND;
+    let reg = [crate::agents::Adapter {
+        live: crate::agents::LiveBy::HeldOpen,
+        ..fake::full_row(|| None)
+    }];
+    let root = test_home::scratch("acctlink-announce");
+    let real = root.join("real");
+    let sid = "00000000-0000-4000-8000-0000000000c3";
+    let proj = crate::agents::records_root_among(&reg, kind, &real)
+        .unwrap()
+        .join("p");
+    std::fs::create_dir_all(&proj).unwrap();
+    let mut held = std::fs::File::create(proj.join(fake::session_file_name(sid))).unwrap();
+    std::io::Write::write_all(&mut held, b"{}\n").unwrap();
+    let link = root.join("link");
+    std::os::unix::fs::symlink(&real, &link).unwrap();
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
+    let mut sink = FrameSink::new(tx);
+    let mut state = ReaderState::new(root.join("projects"));
+    state.follow_accounts(&reg, &homes_by(vec![(kind, link)]));
+    settle_all_writers(&mut state, &mut sink, None);
+    let mut announced = Vec::new();
+    while let Ok(f) = rx.try_recv() {
+        if let Frame::SessionAdded(s) = f {
+            announced.push(s.sid.clone());
+        }
+    }
+    assert_eq!(
+        announced,
+        vec![sid.to_string()],
+        "经链接的号底下开着写的那一份该宣告"
+    );
+    drop(held);
+    std::fs::remove_dir_all(&root).ok();
+}
+
+// ── 记录里自报的额度（替身家那一种行）──
+
+/// 交上层那一手收到的（那一家 · 记录 · 几窗）。
+static QUOTA_SAID: std::sync::Mutex<Vec<(String, PathBuf, Vec<crate::agents::QuotaWindow>)>> =
+    std::sync::Mutex::new(Vec::new());
+
+fn heard_quota(
+    _own: &crate::platform::fs::Own,
+    kind: &'static str,
+    record: &Path,
+    windows: Vec<crate::agents::QuotaWindow>,
+) {
+    QUOTA_SAID.lock().unwrap_or_else(|e| e.into_inner()).push((
+        kind.to_string(),
+        record.to_path_buf(),
+        windows,
+    ));
+}
+
+fn no_tag(_: u32, _: &str) -> crate::host::managed::Tagged {
+    crate::host::managed::Tagged::default()
+}
+
+/// ★ 读记录那一路一行解出那一家自报的额度 ⇒ 当场交上层（那一家 · 这份记录 · 那几窗），不等会话停；别的行不交。
+#[test]
+fn a_line_that_reports_quota_is_handed_up_with_its_record() {
+    let (tx, _rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
+    let mut sink = FrameSink::new(tx);
+    let scratch = test_home::scratch("quota-said");
+    let root = scratch.join("convos");
+    let mut state = ReaderState::new(PathBuf::from("/p"));
+    let row = crate::agents::fake::full_row(|| None);
+    state.add_root(
+        crate::agents::fake::AGENT_KIND,
+        root.clone(),
+        root.clone(),
+        row.records.expect("记录面"),
+        false,
+    );
+    state.launch = Some((
+        Reactions {
+            tmux_server_up: || {},
+            session_seen: |_, _, _| {},
+            tag: no_tag,
+            account_of: |_, _| None,
+            quota_said: heard_quota,
+        },
+        crate::platform::fs::Own::issue_data_at(&scratch),
+    ));
+    let path = root.join("p1").join("sess-s9.ndjson");
+    let path_str = path.to_string_lossy().into_owned();
+    for (i, raw) in [
+        r#"{"role":"human","node":"n1","when":"t","words":"hi"}"#,
+        r#"{"meter":{"burst":[0.25,1800003600],"long":[0.5,1800086400]}}"#,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let line = ReadLine {
+            seq: i as u64,
+            raw: raw.to_string(),
+            byte_offset: 0,
+            start: 0,
+        };
+        send_line("s9", &path_str, line, &mut state, &mut sink, false);
+    }
+    let got = std::mem::take(&mut *QUOTA_SAID.lock().unwrap_or_else(|e| e.into_inner()));
+    assert_eq!(got.len(), 1, "只有自报额度那一行交上去：{got:?}");
+    let (kind, record, windows) = &got[0];
+    assert_eq!(kind, crate::agents::fake::AGENT_KIND);
+    assert_eq!(record, &path);
+    assert_eq!(
+        windows
+            .iter()
+            .map(|w| (w.name.as_str(), w.used))
+            .collect::<Vec<_>>(),
+        vec![("burst", Some(0.25)), ("long", Some(0.5))]
+    );
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// ★ 记录里自报的额度认哪个号：记录落在哪个号的会话目录底下就是哪个号（照那一家的记录根）；不在任何一个号底下 ⇒ 不猜。
+#[test]
+fn a_record_belongs_to_the_account_whose_records_root_holds_it() {
+    let scratch = test_home::scratch("owner-of-record");
+    let reg = [crate::agents::fake::full_row(|| None)];
+    let kind = crate::agents::fake::AGENT_KIND;
+    let first = scratch.join("first");
+    let second = scratch.join("second");
+    for d in [&first, &second] {
+        std::fs::create_dir_all(d.join("convos").join("p1")).expect("mkdir");
+    }
+    let accounts = vec![
+        ("first".to_string(), first.clone()),
+        ("second".to_string(), second.clone()),
+    ];
+    let rec = second.join("convos").join("p1").join("sess-s9.ndjson");
+    assert_eq!(
+        crate::agents::owner_of_record(&reg, kind, &rec, &accounts).as_deref(),
+        Some("second")
+    );
+    let stray = scratch.join("elsewhere").join("sess-s9.ndjson");
+    assert_eq!(
+        crate::agents::owner_of_record(&reg, kind, &stray, &accounts),
+        None
+    );
+    // 号目录本身（不在记录根底下）也不算。
+    let beside = first.join("sess-s9.ndjson");
+    assert_eq!(
+        crate::agents::owner_of_record(&reg, kind, &beside, &accounts),
+        None
+    );
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// ★ 记录不住记录树的那一家（合成历史面：一个家两根，日期根 ＋ 归档根）也照根表认号：
+/// 号 b 归档根底下那一份 ⇒ b；号 a 日期根底下那一份 ⇒ a；两根之外 ⇒ 不猜。
+#[test]
+fn a_record_under_any_root_on_the_root_table_belongs_to_that_account() {
+    use crate::agents::fake::runs::history as chats;
+    let scratch = test_home::scratch("owner-of-record-roots");
+    let reg = [chats::row(|| None)];
+    let (a, b) = (scratch.join("a"), scratch.join("b"));
+    for h in [&a, &b] {
+        std::fs::create_dir_all(chats::records_root(h)).expect("mkdir");
+        std::fs::create_dir_all(chats::shelf_root(h)).expect("mkdir");
+    }
+    let accounts = vec![("a".to_string(), a.clone()), ("b".to_string(), b.clone())];
+    let shelved = chats::shelf_root(&b).join(chats::file_name("s1"));
+    assert_eq!(
+        crate::agents::owner_of_record(&reg, chats::KIND, &shelved, &accounts).as_deref(),
+        Some("b"),
+        "归档根也是那个号的根"
+    );
+    let dated = chats::records_root(&a).join(chats::file_name("s2"));
+    assert_eq!(
+        crate::agents::owner_of_record(&reg, chats::KIND, &dated, &accounts).as_deref(),
+        Some("a")
+    );
+    let beside = a.join(chats::file_name("s3"));
+    assert_eq!(
+        crate::agents::owner_of_record(&reg, chats::KIND, &beside, &accounts),
+        None,
+        "号目录本身不是根"
+    );
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// ★ 要成品的连接（attach 行带 `folded`）断了，它那本会话簿跟着摘：连上又断开三次 ⇒ 这边的会话簿条数回到零。
+/// 走生产那一条：`WatcherPoke::attach` 发 `Join` · 丢 `Attachment` 发 `Leave`，照读循环那两臂分派。
+#[test]
+fn a_folded_connection_takes_its_session_book_with_it_when_it_leaves() {
+    let books = |sink: &FrameSink| sink.subs.iter().filter(|s| s.book.is_some()).count();
+    let mut state = ReaderState::new(std::path::PathBuf::from("/nonexistent-projects"));
+    let (tx0, _rx0) = frame_channel(CHANNEL_MAX_BYTES.as_len());
+    let mut sink = FrameSink::new(tx0);
+    let (events_tx, events) = std::sync::mpsc::channel();
+    let poke = WatcherPoke(events_tx);
+    let dispatch = |sink: &mut FrameSink, state: &mut ReaderState| {
+        while let Ok(ev) = events.try_recv() {
+            match ev {
+                WatchEvent::Join(sub, watch) => join(sub, watch, state, sink),
+                WatchEvent::Leave(id) => sink.leave(id),
+                _ => panic!("连上断开只该有 Join · Leave"),
+            }
+        }
+    };
+    for round in 0..3 {
+        let (rx, at) = poke.attach(&crate::common::time::Tz::default(), None, true);
+        dispatch(&mut sink, &mut state);
+        assert_eq!(books(&sink), 1, "第 {round} 次连上没有那本会话簿");
+        sink.send(added_frame(&format!("book-{round}")));
+        drop(at);
+        dispatch(&mut sink, &mut state);
+        assert_eq!(books(&sink), 0, "第 {round} 次断开后会话簿没摘");
+        drop(rx);
+    }
+    assert_eq!(sink.subs.len(), 1, "只剩夹具那一条不要成品的连接");
+}
+
+/// 「某号凭据变了」认那几家声明的凭据文件名（`LoginFace.creds_file`），不写死哪一家：替身家的凭据名在 ⇒ 认；
+/// 注册表里没有一家声明的名字 ⇒ 不认；不在 `<账号库>/<号>/` 底下 ⇒ 不认。
+#[test]
+fn a_credentials_change_is_recognised_by_the_names_the_families_declare() {
+    let reg = [crate::agents::fake::full_row(|| None)];
+    let creds = reg[0]
+        .accounts
+        .and_then(|f| f.login)
+        .expect("替身家声明了凭据文件")
+        .creds_file;
+    let accts = Path::new("/h/.cc-monitor/accounts");
+    assert!(credentials_touched_among(
+        &reg,
+        &accts.join("f").join(creds),
+        accts
+    ));
+    assert!(!credentials_touched_among(
+        &reg,
+        &accts
+            .join("f")
+            .join(crate::agents::claudecode::LOGIN.creds_file),
+        accts
+    ));
+    assert!(
+        !credentials_touched_among(&reg, &accts.join(creds), accts),
+        "不在号目录里"
+    );
+}
+
+/// 子运行那几条判据的替身家记录面（`fake/history.rs`：子运行与父平铺同一目录，只开头那一行 `under` 指父）。
+#[cfg(target_os = "linux")]
+fn chat_face() -> crate::agents::RecordFace {
+    use crate::agents::fake;
+    fn chat_sid(p: &Path) -> Option<String> {
+        let n = p.file_name()?.to_str()?;
+        Some(
+            n.strip_prefix("chat-")?
+                .strip_suffix(".ndjson")?
+                .to_string(),
+        )
+    }
+    fn is_chat(p: &Path) -> bool {
+        chat_sid(p).is_some()
+    }
+    let mut face = fake::full_row(|| None).records.expect("记录面");
+    face.sid = chat_sid;
+    face.is_session_file = is_chat;
+    face.run_of = fake::runs::FACES.run_of;
+    face.children = fake::runs::history::RUNS.children;
+    face
+}
+
+/// 在替身家记录根底下写几份记录（sid · 正文），都开着写；回开着的句柄。
+#[cfg(target_os = "linux")]
+fn held_records(root: &Path, recs: &[(&str, &str)]) -> Vec<std::fs::File> {
+    std::fs::create_dir_all(root).unwrap();
+    recs.iter()
+        .map(|(sid, body)| {
+            let p = root.join(crate::agents::fake::runs::history::file_name(sid));
+            let mut f = std::fs::File::create(p).unwrap();
+            std::io::Write::write_all(&mut f, body.as_bytes()).unwrap();
+            f
+        })
+        .collect()
+}
+
+/// 父 `ppp` 一份 ＋ 子运行 `kid` 一份（开头 `under` 指 `ppp`）。
+const PARENT_AND_CHILD: [(&str, &str); 2] = [
+    ("ppp", "{\"chat\":\"ppp\",\"dir\":\"/w\",\"said\":\"hi\"}\n"),
+    (
+        "kid",
+        "{\"chat\":\"kid\",\"under\":\"ppp\"}\n{\"lane\":\"kid\",\"use\":\"Grep\"}\n",
+    ),
+];
+
+/// ★ 认新会话先问那一家的 `ChildFace.owner`：替身家一份父记录、一份子运行记录都开着写 ⇒ 只宣告父那一条，子运行进父的运行表；
+/// 这一家不答 owner ⇒ 两条都宣告。
+#[cfg(target_os = "linux")]
+#[test]
+fn a_child_run_record_is_not_announced_as_a_session_but_joins_its_parents_runs() {
+    use crate::agents::fake;
+    let face = chat_face();
+    let scratch = test_home::scratch("child-not-session");
+    let root = fake::runs::history::records_root(&scratch);
+    let (parent, child) = ("ppp", "kid");
+    let held = held_records(&root, &PARENT_AND_CHILD);
+    let announced = |face: crate::agents::RecordFace| {
+        let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
+        let mut sink = FrameSink::new(tx);
+        let mut state = ReaderState::new(scratch.join("projects"));
+        state.add_root(fake::AGENT_KIND, root.clone(), root.clone(), face, true);
+        settle_all_writers(&mut state, &mut sink, None);
+        let mut sids = std::collections::BTreeSet::new();
+        while let Ok(f) = rx.try_recv() {
+            if let Frame::SessionAdded(s) = f {
+                sids.insert(s.sid.clone());
+            }
+        }
+        let runs: Vec<String> = state.book.runs(parent).into_iter().map(|r| r.run).collect();
+        (sids, runs)
+    };
+    let (sids, runs) = announced(face);
+    assert_eq!(
+        sids,
+        [parent.to_string()].into(),
+        "子运行的记录不是会话：只宣告父那一条"
+    );
+    assert_eq!(runs, vec![child.to_string()], "子运行进父的运行表");
+    let mut mute = face;
+    mute.children = None;
+    let (sids, _) = announced(mute);
+    assert_eq!(
+        sids,
+        [parent.to_string(), child.to_string()].into(),
+        "这一家不答 owner ⇒ 两条都宣告（夹具对得上那一道闸）"
+    );
+    drop(held);
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// ★ 判为子运行的记录记账：同一份子运行记录连收两批「打开了」⇒ 那一家的 `owner` 只问它一次（第二批跟在跟的一样跳过）。
+/// `ChildFace` 的面在别的包里、包不了一层数次数 ⇒ 让「再问一次」露出来：两批之间删掉父那一份，再问的话替身家的 `owner`
+/// 答 None（孤儿）、这份就被当成会话宣告；只问一次 ⇒ 两批都不出 `session_added`。
+#[cfg(target_os = "linux")]
+#[test]
+fn a_record_judged_a_child_run_is_not_asked_about_again_on_the_next_open() {
+    use crate::agents::fake;
+    let scratch = test_home::scratch("child-asked-once");
+    let root = fake::runs::history::records_root(&scratch);
+    let held = held_records(&root, &PARENT_AND_CHILD);
+    let kid = root.join(fake::runs::history::file_name("kid"));
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
+    let mut sink = FrameSink::new(tx);
+    let mut state = ReaderState::new(scratch.join("projects"));
+    state.add_root(
+        fake::AGENT_KIND,
+        root.clone(),
+        root.clone(),
+        chat_face(),
+        true,
+    );
+    let opened = || crate::platform::writers::OpenBatch {
+        opened: vec![kid.clone()],
+        closed: Vec::new(),
+        overflowed: false,
+    };
+    on_writers(opened(), &mut state, &mut sink);
+    std::fs::remove_file(root.join(fake::runs::history::file_name("ppp"))).unwrap();
+    on_writers(opened(), &mut state, &mut sink);
+    while let Ok(f) = rx.try_recv() {
+        if let Frame::SessionAdded(s) = f {
+            panic!(
+                "第二批「打开了」又问了 owner、把子运行 {} 当会话宣告",
+                s.sid
+            );
+        }
+    }
+    drop(held);
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// ★ 孤儿子运行：开头 `under` 指着一份不在的父 ⇒ 那一家的 `owner` 答不出父 ⇒ 照独立会话宣告（在清单里露出来、不藏）。
+#[cfg(target_os = "linux")]
+#[test]
+fn an_orphan_child_run_record_is_announced_as_a_session_of_its_own() {
+    use crate::agents::fake;
+    let scratch = test_home::scratch("child-orphan");
+    let root = fake::runs::history::records_root(&scratch);
+    let held = held_records(&root, &PARENT_AND_CHILD[1..]);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
+    let mut sink = FrameSink::new(tx);
+    let mut state = ReaderState::new(scratch.join("projects"));
+    state.add_root(
+        fake::AGENT_KIND,
+        root.clone(),
+        root.clone(),
+        chat_face(),
+        true,
+    );
+    settle_all_writers(&mut state, &mut sink, None);
+    let mut sids = std::collections::BTreeSet::new();
+    while let Ok(f) = rx.try_recv() {
+        if let Frame::SessionAdded(s) = f {
+            sids.insert(s.sid.clone());
+        }
+    }
+    assert_eq!(sids, ["kid".to_string()].into(), "父不在的子运行照会话宣告");
+    drop(held);
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// 子运行的记录开头那一行还没到齐的那一刻：替身家父 `ppp` 开着写、子 `kid` 开着写却只写了 `first`（空 · 没写完的半行）⇒ 此刻不宣告；
+/// 之后补上开头那一行（`rest`）、记录动了那一下 ⇒ 认成子运行：仍不宣告，进父的运行表。
+#[cfg(target_os = "linux")]
+fn head_lands_a_tick_later(tag: &str, first: &str, rest: &str) {
+    use crate::agents::fake;
+    let scratch = test_home::scratch(tag);
+    let root = fake::runs::history::records_root(&scratch);
+    let mut held = held_records(&root, &[PARENT_AND_CHILD[0], ("kid", first)]);
+    let kid = root.join(fake::runs::history::file_name("kid"));
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
+    let mut sink = FrameSink::new(tx);
+    let mut state = ReaderState::new(scratch.join("projects"));
+    state.add_root(
+        fake::AGENT_KIND,
+        root.clone(),
+        root.clone(),
+        chat_face(),
+        true,
+    );
+    let announced = |rx: &mut FrameRx| {
+        let mut sids = std::collections::BTreeSet::new();
+        while let Ok(f) = rx.try_recv() {
+            if let Frame::SessionAdded(s) = f {
+                sids.insert(s.sid.clone());
+            }
+        }
+        sids
+    };
+    settle_all_writers(&mut state, &mut sink, None);
+    assert_eq!(
+        announced(&mut rx),
+        ["ppp".to_string()].into(),
+        "开头那一行没到的子运行记录此刻不认、不当会话宣告"
+    );
+    std::io::Write::write_all(&mut held[1], rest.as_bytes()).unwrap();
+    record_moved(&kid, &mut state, &mut sink);
+    assert!(
+        announced(&mut rx).is_empty(),
+        "开头那一行到了 ⇒ 认成子运行，不宣告"
+    );
+    let runs: Vec<String> = state.book.runs("ppp").into_iter().map(|r| r.run).collect();
+    assert_eq!(runs, vec!["kid".to_string()], "子运行进父的运行表");
+    drop(held);
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// ★ 空的子运行记录（建了、开头那一行还没写）：此刻不认，之后写了开头那一行再认成子运行。
+#[cfg(target_os = "linux")]
+#[test]
+fn an_empty_child_run_record_is_judged_once_its_head_line_lands() {
+    head_lands_a_tick_later(
+        "child-head-empty",
+        "",
+        "{\"chat\":\"kid\",\"under\":\"ppp\"}\n{\"lane\":\"kid\",\"use\":\"Grep\"}\n",
+    );
+}
+
+/// ★ 开头那一行写到一半（没有换行）：同样先不认，写完那一行再认。
+#[cfg(target_os = "linux")]
+#[test]
+fn a_half_written_head_line_is_not_judged_until_it_is_whole() {
+    head_lands_a_tick_later(
+        "child-head-half",
+        "{\"chat\":\"kid\",\"und",
+        "er\":\"ppp\"}\n{\"lane\":\"kid\",\"use\":\"Grep\"}\n",
+    );
+}
+
+/// ★ 普通会话（不是子运行）的记录建了还空着：此刻先不宣告；开头那一行到齐、记录动了那一下就宣告 —— 只拖到开头那一行到为止。
+#[cfg(target_os = "linux")]
+#[test]
+fn a_plain_session_with_an_empty_record_is_announced_once_its_head_line_lands() {
+    use crate::agents::fake;
+    let scratch = test_home::scratch("plain-head-empty");
+    let root = fake::runs::history::records_root(&scratch);
+    let mut held = held_records(&root, &[("ppp", "")]);
+    let ppp = root.join(fake::runs::history::file_name("ppp"));
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
+    let mut sink = FrameSink::new(tx);
+    let mut state = ReaderState::new(scratch.join("projects"));
+    state.add_root(
+        fake::AGENT_KIND,
+        root.clone(),
+        root.clone(),
+        chat_face(),
+        true,
+    );
+    let announced = |rx: &mut FrameRx| {
+        let mut sids = Vec::new();
+        while let Ok(f) = rx.try_recv() {
+            if let Frame::SessionAdded(s) = f {
+                sids.push(s.sid.clone());
+            }
+        }
+        sids
+    };
+    settle_all_writers(&mut state, &mut sink, None);
+    assert!(announced(&mut rx).is_empty(), "开头那一行没到 ⇒ 此刻不宣告");
+    std::io::Write::write_all(&mut held[0], PARENT_AND_CHILD[0].1.as_bytes()).unwrap();
+    record_moved(&ppp, &mut state, &mut sink);
+    assert_eq!(
+        announced(&mut rx),
+        vec!["ppp".to_string()],
+        "开头那一行到了 ⇒ 当场宣告"
+    );
+    drop(held);
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// ★ 说不出是哪一家的一行（`None`）⇒ 不按哪一家读：整行照解（与不问哪一家的 [`crate::agents::Line::new`] 同一份）；
+/// 交了那一家的记录面 ⇒ 照它读（替身家不读簿记行，只留链事实那几格、话不留）。两边真有分别，`None` 那一边才证得出没按某家解。
+#[test]
+fn a_line_whose_family_is_not_told_is_read_whole_not_as_some_family() {
+    let face = crate::agents::fake::full_row(|| None)
+        .records
+        .expect("记录面");
+    let raw = r#"{"role":"note","node":"n0","when":"t","words":"簿记"}"#;
+    let words = |l: &crate::agents::Line<'_>| l.value().and_then(|v| v.get("words")).cloned();
+    let untold = crate::agents::Line::whole(None, raw, 0);
+    assert_eq!(
+        untold.value(),
+        crate::agents::Line::new(raw, 0).value(),
+        "说不出那一家 ⇒ 不问哪一家，整行照解"
+    );
+    assert_eq!(words(&untold), Some(serde_json::json!("簿记")));
+    let told = crate::agents::Line::whole(Some(&face), raw, 0);
+    assert_eq!(
+        words(&told),
+        None,
+        "交了那一家 ⇒ 照它读：簿记行只留链事实那几格"
+    );
+    assert_eq!(
+        told.value().and_then(|v| v.get("node")).cloned(),
+        Some(serde_json::json!("n0"))
+    );
+}
+
+/// 替身家的解析面再加一类：人说的那一行（`"role":"human"`）出一条标题记录（人起的，不改名），好让「是不是分叉来的」那一问被问到。
+fn fake_parse_with_said(
+    line: &crate::agents::Line<'_>,
+) -> Result<Option<crate::agents::Translated>, String> {
+    use crate::agents::record::{Body, TitleBy};
+    let Some(v) = line.value() else {
+        return Ok(None);
+    };
+    if v.get("role").and_then(serde_json::Value::as_str) != Some("human") {
+        return Ok(None);
+    }
+    let id = v
+        .get("node")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("n");
+    Ok(Some(crate::agents::Translated {
+        record: Some(crate::agents::record::BackRecord {
+            rec: crate::agents::record::record(
+                crate::agents::fake::AGENT_KIND.into(),
+                id.to_string(),
+                None,
+                Body::Title {
+                    text: "x".into(),
+                    by: TitleBy::User,
+                },
+            ),
+            retry: None,
+        }),
+        cwd: None,
+        quota_said: None,
+        unsent: Default::default(),
+    }))
+}
+
+/// ★ 实时那一路，记录根在 watcher 手里、却不在根表上（替身家：照路径认不出是哪一家的）⇒ 家照手里那一根，与面同一个来源：
+/// 簿记行照那一家只留几格（不整行建树）· 头一句照那一家问是不是分叉来的；行帧照发、链事实照那一根的记录面记。
+#[test]
+fn a_live_line_takes_its_family_from_the_root_in_hand() {
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES.as_len());
+    let mut sink = FrameSink::new(tx);
+    let scratch = test_home::scratch("live-family-of-root");
+    let root = scratch.join("convos");
+    let mut state = ReaderState::new(PathBuf::from("/p"));
+    let mut face = crate::agents::fake::full_row(|| None)
+        .records
+        .expect("记录面");
+    face.parse = fake_parse_with_said;
+    state.add_root(
+        crate::agents::fake::AGENT_KIND,
+        root.clone(),
+        root.clone(),
+        face,
+        false,
+    );
+    let path = root.join("p1").join("sess-s7.ndjson");
+    assert_eq!(
+        crate::agents::record_kind_of(&path),
+        None,
+        "夹具要的是根表上认不出"
+    );
+    state.sessions.insert(
+        scratch.join("7.json"),
+        SessionEntry {
+            pid: 7,
+            sid: "s7".into(),
+            status: None,
+            activity: None,
+            since: None,
+            facts: Default::default(),
+            path: Some(path.to_string_lossy().into_owned()),
+            beat: std::time::SystemTime::now(),
+            frozen: false,
+            attachable: None,
+            held: Held::Writer,
+        },
+    );
+    let mut send = |state: &mut ReaderState, seq: u64, raw: &str| {
+        let line = ReadLine {
+            seq,
+            raw: raw.to_string(),
+            byte_offset: 0,
+            start: 0,
+        };
+        send_line("s7", &path.to_string_lossy(), line, state, &mut sink, false);
+    };
+    let trees = || crate::agents::TREE_BUILDS.with(std::cell::Cell::get);
+    let before = trees();
+    send(
+        &mut state,
+        0,
+        r#"{"role":"note","node":"n0","when":"t","words":"簿记"}"#,
+    );
+    assert_eq!(trees(), before, "簿记行照那一根的家只留几格，不整行建树");
+    send(
+        &mut state,
+        1,
+        r#"{"role":"human","node":"n1","up":"n0","when":"t","words":"hi","from":"src"}"#,
+    );
+    let forked = state
+        .sessions
+        .values()
+        .find(|e| e.sid == "s7")
+        .is_some_and(|e| e.facts.forked);
+    assert!(forked, "头一句照那一根的家问到：分叉来的");
+    let mut records = Vec::new();
+    while let Ok(f) = rx.try_recv() {
+        if let Frame::Line(crate::wire::Line { record, .. }) = f {
+            records.push(record.map(|r| r.rec.id));
+        }
+    }
+    assert_eq!(records, vec![None, Some("n1".to_string())], "行帧照发");
+    assert_eq!(state.branches.len(), 1, "链事实照它所在那一根的记录面记下");
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// ★ 账号库目录只问「家说不出」那唯一一判（[`crate::platform::paths::under_home`]）：家缺 · 家是空串 ⇒ 不盯（`None`），
+/// 不落到相对路径（那是起后端那一刻的当前目录底下）；说得出 ⇒ 家底下那一处。
+#[test]
+fn the_accounts_dir_is_not_a_relative_path_when_home_is_unknown() {
+    assert_eq!(accts_dir_here(None), None, "家缺 ⇒ 不盯");
+    assert_eq!(accts_dir_here(Some(Path::new(""))), None, "家是空串 ⇒ 不盯");
+    let home = test_home::scratch("accts-dir-here");
+    assert_eq!(
+        accts_dir_here(Some(&home)),
+        Some(crate::platform::paths::home_join(
+            &home,
+            relay_route_core::ACCOUNTS_DIR_REL
+        ))
+    );
+    std::fs::remove_dir_all(&home).ok();
+}
+
+/// ★ 配置文件同问那唯一一判：家缺 · 家是空串 ⇒ 不盯，不落到相对路径；说得出 ⇒ 家底下那一份。
+#[test]
+fn the_profiles_file_is_not_a_relative_path_when_home_is_unknown() {
+    assert_eq!(profiles_file_here(None), None, "家缺 ⇒ 不盯");
+    assert_eq!(
+        profiles_file_here(Some(Path::new(""))),
+        None,
+        "家是空串 ⇒ 不盯"
+    );
+    let home = test_home::scratch("profiles-file-here");
+    assert_eq!(
+        profiles_file_here(Some(&home)),
+        Some(crate::platform::paths::home_join(
+            &home,
+            relay_route_core::PROFILES_REL
+        ))
+    );
+    std::fs::remove_dir_all(&home).ok();
 }

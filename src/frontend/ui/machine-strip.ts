@@ -1,6 +1,6 @@
 /**
  * **机器条**（A2-17-6-1）：钉在标签页栏底、往上长（标签页不跳位），一行一台、只列没连上的那几台。
- * 行上照那台的状态成品摆（`MachineState`：后端 `deploy::machine` 判的进不进条与语气 `strip` · 名字旁那个词 · 那一句 · 修法），界面不按 SSH 层自推、不去抖；
+ * 行上照那台的状态成品摆（`MachineState`：进不进条与语气 `strip` 由 `copy_core::machine::strip` 判 · 名字旁那个词 · 那一句 · 修法），界面不按 SSH 层自推、不去抖；
  * 连上那一下那一行当场摘掉，不弹提示。多于 3 台收成一行「未连上（n）」，点开逐台列。窄栏只剩点（悬停是那一句）。
  */
 import type { MachineState } from "./generated/MachineState";
@@ -21,7 +21,7 @@ export interface StripHost {
   fix(origin: string, fix: MachineFix): void;
 }
 
-/** 条上那一行的语气画哪种点（进不进条 · 语气由后端 `deploy::machine::strip` 定，这里只挑样子）。 */
+/** 条上那一行的语气画哪种点（进不进条 · 语气由 `copy_core::machine::strip` 定，这里只挑样子）。 */
 const DOT: Record<Tone, MachineDotState> = {
   plain: "up",
   now: "unknown",

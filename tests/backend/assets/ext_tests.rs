@@ -6,21 +6,53 @@ use super::*;
 /// 卸那一对的入参仍用 JSON 写：经 `typed::take` 解成入参类型（同帧面那一跳；形状不对 ⇒ `bad_args`），回包写成 JSON 比。
 fn answer_uninstall_preview(
     d: &dyn Door,
-    env: &Env,
+    env: &TestEnv,
     a: &Value,
 ) -> Result<Value, crate::common::said::Said> {
     let req = crate::wire::typed::take(a)?;
-    super::answer_uninstall_preview(d, env, &req).map(|r| serde_json::to_value(r).unwrap())
+    super::answer_uninstall_preview(d, &env.env(), &req).map(|r| serde_json::to_value(r).unwrap())
 }
 
 fn answer_uninstall_apply(
     d: &dyn Door,
-    env: &Env,
+    env: &TestEnv,
     record: Record,
     a: &Value,
 ) -> Result<Value, crate::common::said::Said> {
     let req = crate::wire::typed::take(a)?;
-    super::answer_uninstall_apply(d, env, record, &req).map(|r| serde_json::to_value(r).unwrap())
+    super::answer_uninstall_apply(d, &env.env(), record, &req)
+        .map(|r| serde_json::to_value(r).unwrap())
+}
+
+/// 一台机器上一家的扩展住哪（夹具那一份：临时目录 · 替身家）；交给本体时现拼成 [`Env`]（用户级 skill 根经 `Roots` 覆盖）。
+struct TestEnv {
+    skills: Option<PathBuf>,
+    user_mcp: Option<PathBuf>,
+    ledger: Option<PathBuf>,
+    home: Option<PathBuf>,
+    reg: &'static [crate::agents::Adapter],
+    /// 规整后的家（默认那一家 ⇒ 缺）。
+    agent: Option<cmd_wire::AgentKind>,
+}
+
+impl TestEnv {
+    fn env(&self) -> Env<'_> {
+        Env {
+            roots: crate::assets::skill_install::Roots {
+                registry: self.reg,
+                user: self.skills.as_deref(),
+            },
+            agent: self.agent.clone(),
+            ledger: self.ledger.clone(),
+            home: self.home.clone(),
+            run: &no_plugin_commands,
+        }
+    }
+}
+
+/// 夹具里不跑插件命令（要跑的那几条判据自己交记账的替身）。
+fn no_plugin_commands(_: &[String]) -> Result<crate::assets::plugin_exec::Ran, Said> {
+    Err(Said::new("io_failed", "判据里不跑插件命令".to_string()))
 }
 use crate::assets::aliases::test_support::HomeDoor;
 use crate::assets::asset_catalog::{Scanned, Snapshot, Visits};
@@ -72,6 +104,7 @@ fn temp(tag: &str) -> PathBuf {
 
 fn asset(kind: ExtKind, name: &str, digest: &str, project: Option<&str>) -> Asset {
     Asset {
+        agent: None,
         kind,
         name: name.into(),
         project: project.map(str::to_string),
@@ -199,17 +232,22 @@ fn the_table_judges_every_cell_place_and_target() {
     assert_eq!(
         names,
         vec![
-            (None, true, true, "me@h".into()),
+            (
+                None,
+                true,
+                true,
+                copy_core::machine_word(&cmd_wire::Machine::local())
+            ),
             (Some("devbox".into()), false, true, "devbox".into()),
             (None, false, false, "u@r2".into()),
         ],
-        "本机在前；认得出的用可达表里的名字；没连上的用它自报的称呼"
+        "本机在前、名字经 machine_word；认得出的用可达表里的名字；没连上的用它自报的称呼"
     );
     // 自己发版的那两样（planned-build · code-picture）另有判据（`a_known_extension_…`）。
     let rows: Vec<&ExtRow> = list
         .rows
         .iter()
-        .filter(|r| !is_release(r.kind, &r.name))
+        .filter(|r| !is_release(r.kind, &r.name, r.agent.as_ref()))
         .collect();
     let got: Vec<(String, bool, Vec<String>)> = rows
         .iter()
@@ -359,7 +397,7 @@ fn a_skill_and_an_mcp_with_the_same_name_are_listed_as_two_rows() {
 
 /// 一台机器 = 一个临时家目录（skill 根 · 用户级 MCP · 装记录 · 目录文件 · 一个开过会话的项目）。
 struct M {
-    env: Env,
+    env: TestEnv,
     cat: PathBuf,
     label: &'static str,
     proj: PathBuf,
@@ -371,11 +409,13 @@ fn machine(base: &Path, tag: &'static str) -> M {
         std::fs::create_dir_all(home.join(d)).unwrap();
     }
     M {
-        env: Env {
+        env: TestEnv {
             skills: Some(home.join(".claude/skills")),
             user_mcp: Some(home.join(".claude.json")),
             ledger: Some(home.join(".cc-monitor/skill-installs.json")),
             home: Some(home.clone()),
+            reg: crate::agents::REGISTRY,
+            agent: None,
         },
         cat: home.join(".cc-monitor/assets-catalog.json"),
         label: tag,
@@ -398,12 +438,12 @@ impl M {
             &self.projects(),
         );
         let (assets, problems) = asset_catalog::assets_from(&[s]);
-        let home = self.env.home.clone().unwrap().display().to_string();
+        let home = self.env.home.clone().unwrap();
         Scanned {
             assets,
             projects: self.projects(),
             problems,
-            shared_mcp: crate::accounts::manage::mcp_share_exec::store_file_in(&home).is_some(),
+            shared_mcp: crate::accounts::manage::mcp_share_exec::store_path_in(&home).is_some(),
         }
     }
     fn refresh(&self, incoming: Option<BTreeMap<String, Snapshot>>) -> Catalog {
@@ -422,35 +462,32 @@ impl M {
     fn inner(&self, cmd: &str, args: &Value) -> Result<Value, crate::common::said::Said> {
         let skills = self.env.skills.clone().unwrap();
         let ledger = self.env.ledger.clone().unwrap();
-        let root = match args.get("project").and_then(Value::as_str) {
-            Some(p) => crate::agents::skill_root_at(
-                crate::agents::asset_kind().unwrap(),
-                Some(Path::new(p)),
-            )
-            .unwrap(),
-            None => skills.clone(),
+        // 用户级根换成这台的临时家；项目级照项目目录由本体自己算。
+        let roots = crate::assets::skill_install::Roots {
+            registry: crate::agents::REGISTRY,
+            user: Some(&skills),
         };
         let record = |a: &crate::assets::skill_ledger::RecordReq| {
             super::super::skill_ledger::record_at(
                 &crate::platform::fs::Own::issue_at(
                     ledger.parent().and_then(std::path::Path::parent).unwrap(),
                 ),
-                Some(&skills),
+                crate::assets::skill_install::Roots::here_with(Some(&skills)),
                 a,
             )
         };
         let r = match cmd {
             "skill-read" => via(args, |r| {
-                super::super::skill_install::answer_read_at(Some(&root), r)
+                super::super::skill_install::answer_read_at(roots, r)
             }),
             "skill-install-plan" => via(args, |r| {
-                super::super::skill_install::answer_plan_with(&NoFacts, Some(&root), r)
+                super::super::skill_install::answer_plan_with(&NoFacts, roots, r)
             }),
             "skill-install-apply" => via(args, |r| {
                 super::super::skill_flow::answer_install(
                     &self.door(),
                     &NoFacts,
-                    Some(&root),
+                    crate::assets::skill_install::Roots::here_with(Some(&skills)),
                     &record,
                     r,
                 )
@@ -672,7 +709,7 @@ async fn a_skill_goes_to_the_other_machine_and_comes_back_off() {
             &crate::platform::fs::Own::issue_at(
                 ledger.parent().and_then(std::path::Path::parent).unwrap(),
             ),
-            Some(&skills),
+            crate::assets::skill_install::Roots::here_with(Some(&skills)),
             a,
         )
     };
@@ -755,7 +792,7 @@ async fn an_mcp_entry_goes_over_without_its_secret_and_comes_back_off() {
             &crate::platform::fs::Own::issue_at(
                 ledger.parent().and_then(std::path::Path::parent).unwrap(),
             ),
-            Some(&skills),
+            crate::assets::skill_install::Roots::here_with(Some(&skills)),
             a,
         )
     };
@@ -918,9 +955,9 @@ fn make_library(m: &mut M) {
     )
     .expect("加号");
     mcp_share_exec::sync(&d).expect("加号之后同步共用的 MCP");
-    let store = crate::accounts::manage::mcp_share_exec::store_file_in(&home.display().to_string())
+    let store = crate::accounts::manage::mcp_share_exec::store_path_in(&home)
         .expect("建了库却没有共用的那一份");
-    m.env.user_mcp = Some(PathBuf::from(store));
+    m.env.user_mcp = Some(store);
 }
 
 /// 各账号共用的那一份里此刻有哪几个名字（经帧命令那一侧读，异源于扩展页）。
@@ -929,6 +966,9 @@ fn shared_names(m: &M) -> Vec<String> {
     crate::accounts::manage::mcp_share_exec::read(&m.door())
         .expect("读共用的那一份")
         .servers
+        .into_iter()
+        .map(|s| s.name)
+        .collect()
 }
 
 /// ★ 有账号库的那台：MCP「装到全局」能选；装 ⇒ 写进那台各账号共用的那一份（所有号都有）、卡上说清删除只有一条路与什么时候用上；
@@ -1004,7 +1044,7 @@ async fn an_mcp_entry_goes_global_into_the_shared_set_and_comes_back_off() {
             &crate::platform::fs::Own::issue_at(
                 ledger.parent().and_then(std::path::Path::parent).unwrap(),
             ),
-            Some(&skills),
+            crate::assets::skill_install::Roots::here_with(Some(&skills)),
             a,
         )
     };
@@ -1022,7 +1062,7 @@ async fn an_mcp_entry_goes_global_into_the_shared_set_and_comes_back_off() {
 #[test]
 fn a_note_travels_with_the_catalog_to_the_other_backend() {
     let (base, t) = two("note");
-    let key = asset_catalog::entry_key(ExtKind::Skill, "cc-bus");
+    let key = asset_catalog::entry_key(None, ExtKind::Skill, "cc-bus");
     let (ca, changed) = asset_catalog::update_noting(
         &own_at(&t.a.cat),
         t.a.scan(),
@@ -1234,6 +1274,7 @@ fn a_foreign_skill_or_mcp_entry_is_backed_up_before_it_goes() {
     let u = json!({ "kind": "mcp", "name": "x", "at": { "level": "project", "dir": m.proj.display().to_string() } });
     let card = answer_uninstall_preview(&m.door(), &m.env, &u).unwrap();
     assert_eq!(card["recorded"], false);
+    assert_eq!(card["backup"], Value::Null, "MCP 不另抄备份：{card}");
     let mut ua = u.clone();
     ua["token"] = card["token"].clone();
     let done = answer_uninstall_apply(&m.door(), &m.env, &record, &ua).expect("卸不掉");
@@ -1244,15 +1285,8 @@ fn a_foreign_skill_or_mcp_entry_is_backed_up_before_it_goes() {
         json!({ "y": { "command": "d" } }),
         "别的条目动了"
     );
-    let copy = said_path(&done["note"], "beExt.uninstall.copiedTo");
-    assert!(copy.starts_with(&backups), "{copy:?} 不在备份目录里");
-    let kept: Value =
-        serde_json::from_str(&std::fs::read_to_string(copy.join(".mcp.json")).unwrap()).unwrap();
-    assert_eq!(
-        kept["mcpServers"]["x"],
-        json!({ "command": "c" }),
-        "MCP 那份原文没抄进备份"
-    );
+    // 原文只记在装记录里（撤回那一条判据钉）：不另抄、不说抄到了哪。
+    assert_eq!(done["note"], Value::Null, "{done}");
     // 这台没建账号库：用户级 MCP 只读，卸也拒。
     let e = answer_uninstall_preview(
         &m.door(),
@@ -1261,6 +1295,82 @@ fn a_foreign_skill_or_mcp_entry_is_backed_up_before_it_goes() {
     )
     .expect_err("用户级也给卸");
     assert_eq!(e.code.as_deref(), Some("refused"));
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// 门只收字：家目录 · skill 目录 · 里面的文件名不是合法 UTF-8 ⇒ 卸那一对照实拒，
+/// 不换成替换字符拼出一个指到别处的路径，也一个字节不动。
+#[cfg(unix)]
+#[test]
+fn a_path_that_is_not_utf8_is_refused_not_rewritten() {
+    use std::os::unix::ffi::OsStrExt as _;
+    let base = temp("not-utf8");
+    let odd = |p: &Path, b: &[u8]| p.join(std::ffi::OsStr::from_bytes(b));
+    let u = json!({ "kind": "skill", "name": "mine", "at": { "level": "user" } });
+    let record = |_: &crate::assets::skill_ledger::RecordReq| Ok(Default::default());
+    // 家名不是 UTF-8（skill 在它底下）· 家是字、skill 里一份文件名不是。
+    for (shape, home, odd_file) in [
+        ("家名", odd(&base, b"h\xff"), false),
+        ("文件名", base.join("h"), true),
+    ] {
+        let mut m = machine(&base, "m");
+        m.env.home = Some(home.clone());
+        m.env.skills = Some(home.join("skills"));
+        m.env.ledger = Some(base.join("ledger.json"));
+        let dir = home.join("skills").join("mine");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("SKILL.md"), "mine\n").unwrap();
+        if odd_file {
+            std::fs::write(odd(&dir, b"x\xfe.md"), "x\n").unwrap();
+        }
+        let door = HomeDoor(base.clone());
+        let e = answer_uninstall_preview(&door, &m.env, &u).expect_err(shape);
+        assert_eq!(e.code.as_deref(), Some("refused"), "{shape}：{e:?}");
+        let mut ua = u.clone();
+        ua["token"] = json!("t");
+        let e = answer_uninstall_apply(&door, &m.env, &record, &ua).expect_err(shape);
+        assert_eq!(e.code.as_deref(), Some("refused"), "{shape}：{e:?}");
+        assert!(dir.join("SKILL.md").exists(), "{shape}：拒了还动了");
+        let _ = std::fs::remove_dir_all(&home);
+    }
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// 删一条用户自己写的项目级 MCP 条目 ⇒ 装记录记下删之前的原文（进「改过的用户文件」）；撤回 ⇒ 字节与删之前逐字节相同。
+#[test]
+fn removing_a_users_own_mcp_entry_is_recorded_and_revert_restores_the_bytes() {
+    let base = temp("drop-revert");
+    let m = machine(&base, "m");
+    let ledger = m.env.ledger.clone().unwrap();
+    let own = own_at(&ledger);
+    let record = |r: &crate::assets::skill_ledger::RecordReq| {
+        crate::assets::skill_ledger::record_at(
+            &own,
+            crate::assets::skill_install::Roots::here_with(None),
+            r,
+        )
+    };
+    let file = m.proj.join(".mcp.json");
+    let mine = "{\n  \"mcpServers\": {\n    \"x\": {\"command\": \"c\"},\n    \"y\": {\"command\": \"d\"}\n  }\n}\n";
+    std::fs::write(&file, mine).unwrap();
+    let u = json!({ "kind": "mcp", "name": "x", "at": { "level": "project", "dir": m.proj.display().to_string() } });
+    let card = answer_uninstall_preview(&m.door(), &m.env, &u).unwrap();
+    let mut ua = u.clone();
+    ua["token"] = card["token"].clone();
+    let done = answer_uninstall_apply(&m.door(), &m.env, &record, &ua).expect("卸不掉");
+    assert_ne!(std::fs::read_to_string(&file).unwrap(), mine, "正控：删了");
+    let touched = crate::assets::skill_ledger::load_at(&ledger)
+        .unwrap()
+        .touched;
+    let path = done["path"].as_str().unwrap();
+    assert_eq!(touched.keys().collect::<Vec<_>>(), [path], "删了没记账");
+    crate::assets::mcp_sync_flow::revert_project(&m.door(), &ledger, &record, path)
+        .expect("撤不回");
+    assert_eq!(std::fs::read(&file).unwrap(), mine.as_bytes());
+    assert!(crate::assets::skill_ledger::load_at(&ledger)
+        .unwrap()
+        .touched
+        .is_empty());
     let _ = std::fs::remove_dir_all(&base);
 }
 
@@ -1318,7 +1428,7 @@ async fn the_wire_matches_the_cross_language_golden() {
             &crate::platform::fs::Own::issue_at(
                 ledger.parent().and_then(std::path::Path::parent).unwrap(),
             ),
-            Some(&skills),
+            crate::assets::skill_install::Roots::here_with(Some(&skills)),
             a,
         )
     };
@@ -1534,12 +1644,16 @@ fn ext_loc_judged_bad_args_omits_sentinel_value_from_rejection() {
 }
 
 /// ★ 插件一格：用户级开着 ⇒ 与「这一版」比（`same` / `differs`）· 用户级关着、项目里开着 ⇒ `project` · 装着却都关着 ⇒ `off` · 没有 ⇒ `missing`。
-/// 插件只读：哪一格都没有「装到…」也没有「卸载」，说同一句为什么；每处带自己那一句（版本 · 开关 · 出处）。卸载那条命令收到插件 ⇒ 拒。
+/// 没声明插件那一格的家，插件只读：哪一格都没有「装到…」也没有「卸载」，说同一句为什么；每处带自己那一句（版本 · 开关 · 出处）。卸载那条命令收到它的插件 ⇒ 拒。
 #[test]
 fn a_plugin_cell_says_on_off_or_project_and_offers_no_install() {
-    let ro = copy_text("beExt.note.pluginReadOnly", &[]);
+    // 没声明插件那一格的家：第二家替身（注册了、`plugin_cells` 是 None）。
+    let reg = crate::agents::fake::two_families();
+    let said = crate::agents::family_said_among(reg, "fake2");
+    let ro = copy_text("beExt.note.pluginReadOnly", &[("family", &said)]);
     let plugin = |digest: &str, project: Option<&str>, off: bool| Asset {
         off,
+        agent: Some(cmd_wire::AgentKind::from("fake2")),
         summary: json!({ "market": "mkt", "version": "1.0", "from": "user",
                          "parts": { "skills": ["triage"], "commands": [], "agents": [], "hooks": ["Stop"], "mcp": [] } }),
         ..asset(ExtKind::Plugin, "github", digest, project)
@@ -1566,7 +1680,7 @@ fn a_plugin_cell_says_on_off_or_project_and_offers_no_install() {
     );
     cat.machines
         .insert("e".into(), snap("e", vec![plugin("p1", None, true)], &[]));
-    let list = table(&cat, &reach);
+    let list = table_among(reg, &cat, &reach);
     let row = list
         .rows
         .iter()
@@ -1647,22 +1761,211 @@ fn a_plugin_cell_says_on_off_or_project_and_offers_no_install() {
         .map(|k| copy_text(k, &[]))
         .collect::<Vec<_>>()
     );
-    // 卸载那条命令收到插件 ⇒ 拒。
+    // 卸载那条命令收到没声明那一家的插件 ⇒ 拒。
     let d = temp("plugin-uninstall");
-    let env = Env {
+    let reg = crate::agents::fake::two_families();
+    let env = TestEnv {
         home: Some(d.clone()),
         skills: None,
         user_mcp: None,
         ledger: None,
+        reg,
+        agent: Some(cmd_wire::AgentKind::from("fake2")),
     };
     let door = HomeDoor(d.clone());
     let e = answer_uninstall_preview(
         &door,
         &env,
-        &json!({ "kind": "plugin", "name": "github", "at": { "level": "user" } }),
+        &json!({ "kind": "plugin", "name": "github", "agent": "fake2", "at": { "level": "user" } }),
     )
     .expect_err("插件给卸了");
-    assert_eq!((e.code.as_deref(), e.said), (Some("refused"), ro));
+    let said = crate::agents::family_said_among(reg, "fake2");
+    assert_eq!(
+        (e.code.as_deref(), e.said),
+        (
+            Some("refused"),
+            copy_text("beExt.note.pluginReadOnly", &[("family", &said)])
+        )
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// ★ 声明了插件那一格的家：卸之前那张卡写要跑的那一行、记号是列出来的那一条；确认 ⇒ 跑删那一行（名字恰在里面），
+/// 看卡之后列出来的那一条变了 ⇒ `stale`、一行都不跑；列里没有它 ⇒ `not_found`；项目那一级 ⇒ 拒。
+#[test]
+fn a_declared_familys_plugin_is_removed_by_its_own_command() {
+    use crate::assets::plugin_exec::Ran;
+    use std::cell::RefCell;
+    let d = temp("plugin-remove");
+    let door = HomeDoor(d.clone());
+    // 替身家的写法（`shelf/widget`）与界面交来的光名字（`widget`）不同：删交的是那一家列出来的写法。
+    let roster = RefCell::new("shelf/widget 1.0 on\n".to_string());
+    let seen: RefCell<Vec<Vec<String>>> = RefCell::new(Vec::new());
+    let run = |argv: &[String]| -> Result<Ran, Said> {
+        seen.borrow_mut().push(argv.to_vec());
+        Ok(Ran {
+            code: Some(0),
+            stdout: if argv.last().map(String::as_str) == Some("roster") {
+                roster.borrow().clone()
+            } else {
+                String::new()
+            },
+            stderr: String::new(),
+        })
+    };
+    let env = Env {
+        roots: crate::assets::skill_install::Roots {
+            registry: crate::agents::fake::two_families(),
+            user: None,
+        },
+        agent: None,
+        ledger: None,
+        home: Some(d.clone()),
+        run: &run,
+    };
+    // 行上带来源（那一家的写法）：卸照它找那一条。
+    let req = |name: &str, at: Value| -> ExtUninstallReq {
+        crate::wire::typed::take(
+            &json!({ "kind": "plugin", "name": name, "source": format!("shelf/{name}"), "at": at }),
+        )
+        .unwrap()
+    };
+    let user = json!({ "level": "user" });
+    let card = super::answer_uninstall_preview(&door, &env, &req("widget", user.clone()))
+        .expect("声明了 ⇒ 出卡");
+    assert_eq!(card.path, "fakeagent gadget drop shelf/widget");
+    assert_eq!(card.files, ["widget"]);
+    assert_eq!(card.backup, None);
+    assert_eq!(
+        card.said,
+        copy_text(
+            "beExt.uninstall.pluginByCommand",
+            &[("cmd", "fakeagent gadget drop shelf/widget")]
+        )
+    );
+    let noop =
+        |_: &crate::assets::skill_ledger::RecordReq| -> Result<_, Said> { Ok(Default::default()) };
+    let apply = |token: &str| -> ExtUninstallApplyReq {
+        crate::wire::typed::take(&json!({ "kind": "plugin", "name": "widget",
+                                          "source": "shelf/widget", "at": user, "token": token }))
+        .unwrap()
+    };
+    // 看卡之后变了（关掉了）⇒ stale，不跑删。
+    *roster.borrow_mut() = "shelf/widget 1.0 off\n".into();
+    seen.borrow_mut().clear();
+    let e = super::answer_uninstall_apply(&door, &env, &noop, &apply(&card.token))
+        .expect_err("变了还删");
+    assert_eq!(e.code.as_deref(), Some("stale"));
+    assert!(seen
+        .borrow()
+        .iter()
+        .all(|a| !a.contains(&"drop".to_string())));
+    *roster.borrow_mut() = "shelf/widget 1.0 on\n".into();
+    let done =
+        super::answer_uninstall_apply(&door, &env, &noop, &apply(&card.token)).expect("确认 ⇒ 删");
+    assert!(seen
+        .borrow()
+        .iter()
+        .any(|a| a == &["fakeagent", "gadget", "drop", "shelf/widget"]));
+    assert_eq!(done.changed, ["shelf/widget"]);
+    let e = super::answer_uninstall_preview(&door, &env, &req("lamp", user.clone()))
+        .expect_err("列里没有");
+    assert_eq!(e.code.as_deref(), Some("not_found"));
+    let e = super::answer_uninstall_preview(
+        &door,
+        &env,
+        &req(
+            "widget",
+            json!({ "level": "project", "dir": d.display().to_string() }),
+        ),
+    )
+    .expect_err("项目那一级");
+    assert_eq!(e.code.as_deref(), Some("refused"));
+    // 自己发版的那一样是拷进 skills 目录的那一份，不经那一家的插件命令卸：拒，一行不跑。
+    seen.borrow_mut().clear();
+    let e = super::answer_uninstall_preview(&door, &env, &req("planned-build", user.clone()))
+        .expect_err("自己发版的插件给卸了");
+    assert_eq!(
+        (e.code.as_deref(), e.said),
+        (
+            Some("refused"),
+            copy_text("beExt.uninstall.releasePlugin", &[])
+        )
+    );
+    assert!(seen.borrow().is_empty(), "拒了还跑命令");
+    // 只读那一句只说没声明的那一家。
+    assert_eq!(
+        read_only_among(crate::agents::fake::two_families(), ExtKind::Plugin, None),
+        None
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// ★ 那一家列出来同一个光名字两条（写法不同）：卸照行上带的来源（那一家的写法）找那一条、只删它；
+/// 插件不带来源 ⇒ 入参错，一条删都不跑（不照光名字猜、不取第一条）。
+#[test]
+fn a_plugin_is_uninstalled_by_its_rows_source_not_its_bare_name() {
+    use crate::assets::plugin_exec::Ran;
+    use std::cell::RefCell;
+    let d = temp("plugin-dup");
+    let door = HomeDoor(d.clone());
+    let seen: RefCell<Vec<Vec<String>>> = RefCell::new(Vec::new());
+    let run = |argv: &[String]| -> Result<Ran, Said> {
+        seen.borrow_mut().push(argv.to_vec());
+        Ok(Ran {
+            code: Some(0),
+            stdout: if argv.last().map(String::as_str) == Some("roster") {
+                "shelf/widget 1.0 on\nrack/widget 2.0 on\n".to_string()
+            } else {
+                String::new()
+            },
+            stderr: String::new(),
+        })
+    };
+    let env = Env {
+        roots: crate::assets::skill_install::Roots {
+            registry: crate::agents::fake::two_families(),
+            user: None,
+        },
+        agent: None,
+        ledger: None,
+        home: Some(d.clone()),
+        run: &run,
+    };
+    let user = json!({ "level": "user" });
+    let noop =
+        |_: &crate::assets::skill_ledger::RecordReq| -> Result<_, Said> { Ok(Default::default()) };
+    // 不带来源 ⇒ 说不出是哪一条：入参错，一条删都不跑（不照光名字猜）。
+    let bare: ExtUninstallReq =
+        crate::wire::typed::take(&json!({ "kind": "plugin", "name": "widget", "at": user }))
+            .unwrap();
+    let e = super::answer_uninstall_preview(&door, &env, &bare).expect_err("没带来源给了卡");
+    assert_eq!(e.code.as_deref(), Some("bad_args"));
+    // 带了 rack 那一行的来源 ⇒ 卡与删都只认那一条。
+    let req: ExtUninstallReq = crate::wire::typed::take(
+        &json!({ "kind": "plugin", "name": "widget", "source": "rack/widget", "at": user }),
+    )
+    .unwrap();
+    let card = super::answer_uninstall_preview(&door, &env, &req).expect("带来源却没给卡");
+    assert_eq!(card.path, "fakeagent gadget drop rack/widget");
+    let apply: ExtUninstallApplyReq = crate::wire::typed::take(&json!({ "kind": "plugin",
+        "name": "widget", "source": "rack/widget", "at": user, "token": card.token }))
+    .unwrap();
+    let done = super::answer_uninstall_apply(&door, &env, &noop, &apply).expect("确认却没删");
+    assert_eq!(done.changed, ["rack/widget"]);
+    let drops: Vec<Vec<String>> = seen
+        .borrow()
+        .iter()
+        .filter(|a| a.contains(&"drop".to_string()))
+        .cloned()
+        .collect();
+    assert_eq!(
+        drops,
+        [["fakeagent", "gadget", "drop", "rack/widget"]
+            .map(String::from)
+            .to_vec()],
+        "删的不只是那一行的那一条"
+    );
     let _ = std::fs::remove_dir_all(&d);
 }
 
@@ -1766,4 +2069,828 @@ fn a_known_extension_is_recommended_where_missing_and_shows_its_version_where_in
         .cells
         .iter()
         .all(|c| c.places.iter().all(|p| !p.uninstall)));
+}
+
+// ───────────────────────── 照请求里的家（两个替身家） ─────────────────────────
+
+/// ★ 两家同名 skill ⇒ 表里两行、各带家（默认那一家那一行不写家，线上形同只有一家时）；行上「新见到」照带家的条目键判。
+#[test]
+fn two_families_with_a_same_named_skill_are_two_rows_each_with_its_family() {
+    let mut cat = asset_catalog::fresh("h".into());
+    let mut second = asset(ExtKind::Skill, "demo", "d2", None);
+    second.agent = Some(cmd_wire::AgentKind::from("fake2"));
+    cat.machines.insert(
+        "h".into(),
+        snap(
+            "me@h",
+            vec![asset(ExtKind::Skill, "demo", "d1", None), second],
+            &[],
+        ),
+    );
+    cat.visits.prev = 5;
+    cat.known.insert(
+        asset_catalog::entry_key(Some("fake2"), ExtKind::Skill, "demo"),
+        9,
+    );
+    let list = table(&cat, &[]);
+    let rows: Vec<Value> = list
+        .rows
+        .iter()
+        .filter(|r| r.name == "demo")
+        .map(|r| serde_json::to_value(r).unwrap())
+        .collect();
+    let got: Vec<(Option<Value>, Value, Value)> = rows
+        .iter()
+        .map(|r| {
+            (
+                r.get("agent").cloned(),
+                r["new"].clone(),
+                r["cells"][0]["state"].clone(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        got,
+        vec![
+            (None, json!(false), json!("same")),
+            (Some(json!("fake2")), json!(true), json!("same")),
+        ],
+        "两家同名的 skill 没分成各带家的两行"
+    );
+}
+
+/// 一台家里一个项目，两家各在自己的项目级根底下有一份同名 skill（不是 cc-monitor 装的）。
+fn two_family_project(tag: &str) -> (PathBuf, PathBuf) {
+    let d = temp(tag);
+    let proj = d.join("proj");
+    for root in [
+        crate::agents::fake::project_skills_root(&proj),
+        crate::agents::fake::second_project_skills_root(&proj),
+    ] {
+        std::fs::create_dir_all(root.join("demo")).unwrap();
+        std::fs::write(root.join("demo/SKILL.md"), format!("{}\n", root.display())).unwrap();
+    }
+    std::fs::create_dir_all(d.join(".cc-monitor")).unwrap();
+    (d, proj)
+}
+
+fn family_env(home: &Path, agent: Option<&str>) -> TestEnv {
+    TestEnv {
+        skills: None,
+        user_mcp: None,
+        ledger: Some(home.join(".cc-monitor/skill-installs.json")),
+        home: Some(home.to_path_buf()),
+        reg: crate::agents::fake::two_families(),
+        agent: agent.map(cmd_wire::AgentKind::from),
+    }
+}
+
+/// ★ 卸照请求里的家：指名第二家 ⇒ 卡上 · 卸掉的是第二家那一份、卡带回家；不指名 ⇒ 默认那一家，卡上不多出 `agent`
+/// （旧对端不带 `agent` 的帧照收）；认不出的家 ⇒ `bad_args`，不退回默认那一家。
+#[test]
+fn uninstall_follows_the_requested_family() {
+    let (d, proj) = two_family_project("uninstall-two-families");
+    let door = HomeDoor(d.clone());
+    let at = json!({ "level": "project", "dir": proj.display().to_string() });
+    let first = crate::agents::fake::project_skills_root(&proj).join("demo");
+    let second = crate::agents::fake::second_project_skills_root(&proj).join("demo");
+    let args = |agent: Option<&str>| {
+        let mut a = json!({ "kind": "skill", "name": "demo", "at": at });
+        if let Some(k) = agent {
+            a["agent"] = json!(k);
+        }
+        a
+    };
+    let card =
+        answer_uninstall_preview(&door, &family_env(&d, Some("fake2")), &args(Some("fake2")))
+            .expect("第二家那一份卸不了");
+    assert_eq!(
+        (card["path"].clone(), card.get("agent").cloned()),
+        (json!(second.display().to_string()), Some(json!("fake2"))),
+        "指名第二家，卡上不是第二家那一份"
+    );
+    let plain = answer_uninstall_preview(&door, &family_env(&d, None), &args(None))
+        .expect("默认那一家卸不了");
+    assert_eq!(
+        (plain["path"].clone(), plain.get("agent").cloned()),
+        (json!(first.display().to_string()), None),
+        "不带 agent 不是默认那一家，或卡上多出了 agent"
+    );
+    let mut apply = args(Some("fake2"));
+    apply["token"] = card["token"].clone();
+    let noop =
+        |_: &crate::assets::skill_ledger::RecordReq| -> Result<_, Said> { Ok(Default::default()) };
+    answer_uninstall_apply(&door, &family_env(&d, Some("fake2")), &noop, &apply)
+        .expect("第二家那一份没卸成");
+    assert!(!second.exists(), "第二家那一份还在");
+    assert!(first.join("SKILL.md").exists(), "卸第二家却动了默认那一家");
+    let e = Env::here(Some(&cmd_wire::AgentKind::from("nope")))
+        .err()
+        .expect("认不出的家退回了默认那一家");
+    assert_eq!(e.code.as_deref(), Some("bad_args"));
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// 一台 `h` 上两家各有一份同名的 `demo`（默认那一家 · `fake2`）。
+fn two_family_catalog() -> Catalog {
+    let mut cat = asset_catalog::fresh("h".into());
+    let mut second = asset(ExtKind::Skill, "demo", "d2", None);
+    second.agent = Some(cmd_wire::AgentKind::from("fake2"));
+    cat.machines.insert(
+        "h".into(),
+        snap(
+            "me@h",
+            vec![asset(ExtKind::Skill, "demo", "d1", None), second],
+            &[],
+        ),
+    );
+    cat
+}
+
+/// ★ 备注写在带家的那一行上：给第二家那一行写备注 ⇒ 只那一行带备注（行上读的键与写的键同一个）；
+/// 不带 `agent` 的帧照收，写的是默认那一家那一行。
+#[test]
+fn a_note_lands_on_the_row_of_its_family() {
+    let cat = std::cell::RefCell::new(two_family_catalog());
+    let write = |k: &str, t: &str| -> Result<Catalog, Said> {
+        asset_catalog::set_note(&mut cat.borrow_mut(), k, t, 1);
+        Ok(cat.borrow().clone())
+    };
+    let notes = |c: &Catalog| -> Vec<(Option<String>, Option<String>)> {
+        table(c, &[])
+            .rows
+            .iter()
+            .filter(|r| r.name == "demo")
+            .map(|r| (r.agent.as_deref().map(str::to_string), r.note.clone()))
+            .collect()
+    };
+    let req: ExtNoteReq = crate::wire::typed::take(
+        &json!({ "kind": "skill", "name": "demo", "agent": "fake2", "text": "第二家的" }),
+    )
+    .expect("带 agent 的备注帧收不下");
+    let got = answer_note_among(crate::agents::fake::two_families(), &req, &write).unwrap();
+    assert_eq!(got.note.as_deref(), Some("第二家的"));
+    assert_eq!(
+        notes(&cat.borrow()),
+        vec![
+            (None, None),
+            (Some("fake2".into()), Some("第二家的".into()))
+        ],
+        "第二家那一行的备注没落在它那一行上"
+    );
+    let plain: ExtNoteReq =
+        crate::wire::typed::take(&json!({ "kind": "skill", "name": "demo", "text": "默认的" }))
+            .expect("旧对端不带 agent 的帧收不下");
+    answer_note_among(crate::agents::fake::two_families(), &plain, &write).unwrap();
+    assert_eq!(
+        notes(&cat.borrow()),
+        vec![
+            (None, Some("默认的".into())),
+            (Some("fake2".into()), Some("第二家的".into()))
+        ],
+        "不带 agent 没写到默认那一家那一行"
+    );
+}
+
+/// ★ 卸项目级 MCP 照那一家：指名第二家 ⇒ 卡上 · 卸掉的是第二家那份行式配置里那一行，别的行一字不变；
+/// 默认那一家那一份一个字节不动。
+#[test]
+fn uninstalling_a_project_mcp_edits_the_requested_familys_file() {
+    let (d, proj) = two_family_project("uninstall-mcp-two-families");
+    let door = HomeDoor(d.clone());
+    let first = proj.join(".fake-mcp.json");
+    let second = proj.join("fake2-mcp.conf");
+    let first_text = "server x {\"command\":\"a\"}\n";
+    let second_text =
+        "# 我的设置\nserver x {\"command\":\"c\"}\nlevel 3\nserver y {\"command\":\"d\"}\n";
+    std::fs::write(&first, first_text).unwrap();
+    std::fs::write(&second, second_text).unwrap();
+    let env = |agent: Option<&str>| TestEnv {
+        reg: crate::agents::fake::two_families(),
+        ..family_env(&d, agent)
+    };
+    let args = json!({ "kind": "mcp", "name": "x", "agent": "fake2", "at": { "level": "project", "dir": proj.display().to_string() } });
+    let card =
+        answer_uninstall_preview(&door, &env(Some("fake2")), &args).expect("第二家那一份卸不了");
+    assert_eq!(
+        (card["path"].clone(), card.get("agent").cloned()),
+        (json!(second.display().to_string()), Some(json!("fake2"))),
+        "卡上不是第二家那一份"
+    );
+    let mut apply = args.clone();
+    apply["token"] = card["token"].clone();
+    let noop =
+        |_: &crate::assets::skill_ledger::RecordReq| -> Result<_, Said> { Ok(Default::default()) };
+    answer_uninstall_apply(&door, &env(Some("fake2")), &noop, &apply).expect("第二家那一条没卸成");
+    assert_eq!(
+        std::fs::read_to_string(&second).unwrap(),
+        "# 我的设置\nlevel 3\nserver y {\"command\":\"d\"}\n",
+        "第二家那份不是只少了那一行"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&first).unwrap(),
+        first_text,
+        "卸第二家却动了默认那一家的文件"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// ★ 「推荐 · 未装」只属默认那一家：第二家在一台上装了一个与推荐项同名的 skill ⇒ 它那一行别的台不标推荐；
+/// 默认那一家那一行（哪台都没装）照旧每格都说推荐。
+#[test]
+fn recommended_is_said_only_on_the_default_familys_row() {
+    let mut cat = asset_catalog::fresh("h".into());
+    let mut theirs = asset(ExtKind::Skill, "code-picture", "d2", None);
+    theirs.agent = Some(cmd_wire::AgentKind::from("fake2"));
+    cat.machines
+        .insert("h".into(), snap("me@h", vec![theirs], &[]));
+    cat.machines.insert("a".into(), snap("a", vec![], &[]));
+    let reach = vec![("a".to_string(), Some("a".to_string()))];
+    let list = table(&cat, &reach);
+    let recommended = copy_text("beExt.state.recommended", &[]);
+    let said: Vec<(Option<String>, Vec<bool>)> = list
+        .rows
+        .iter()
+        .filter(|r| r.name == "code-picture")
+        .map(|r| {
+            (
+                r.agent.as_deref().map(str::to_string),
+                r.cells.iter().map(|c| c.said == recommended).collect(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        said,
+        vec![
+            (None, vec![true, true]),
+            (Some("fake2".into()), vec![false, false]),
+        ],
+        "第二家同名那一行也标了推荐，或默认那一家的推荐格变了"
+    );
+}
+
+/// ★ 表上照带家的行认：第二家项目级的 MCP 行给「装到…」，落点里全局那一处拒（全局那一份只认默认那一家）、项目那一处可选；
+/// 第二家全局那一级的 MCP 行没有「装到…」、说那一句。默认那一家同名那一行照给。
+/// 自己发版的例外只属默认那一家：默认那一家的 planned-build 插件给「装到…」，第二家同名插件只读。
+#[test]
+fn bring_is_judged_on_the_familys_row() {
+    let mut cat = asset_catalog::fresh("h".into());
+    let fake2 = || Some(cmd_wire::AgentKind::from("fake2"));
+    let mut mcp2 = asset(ExtKind::Mcp, "x", "m2", Some("/p"));
+    mcp2.agent = fake2();
+    let mut glob2 = asset(ExtKind::Mcp, "g", "g2", None);
+    glob2.agent = fake2();
+    let mut pb2 = asset(ExtKind::Plugin, "planned-build", "p2", None);
+    pb2.agent = fake2();
+    cat.machines.insert(
+        "h".into(),
+        snap(
+            "me@h",
+            vec![
+                asset(ExtKind::Mcp, "x", "m1", Some("/p")),
+                mcp2,
+                glob2,
+                asset(ExtKind::Plugin, "planned-build", "p1", None),
+                pb2,
+            ],
+            &["/p"],
+        ),
+    );
+    cat.machines.insert("a".into(), snap("a", vec![], &["/q"]));
+    let reach = vec![("a".to_string(), Some("a".to_string()))];
+    let list = table(&cat, &reach);
+    let row = |kind: ExtKind, name: &str, second: bool| {
+        list.rows
+            .iter()
+            .find(|r| r.kind == kind && r.name == name && r.agent.is_some() == second)
+            .unwrap_or_else(|| panic!("没有 {name}（第二家 {second}）那一行"))
+    };
+    // 「a」那一格（第二列）。
+    let a = |r: &ExtRow| (r.cells[1].bring.is_some(), r.cells[1].note.clone());
+    assert_eq!(
+        a(row(ExtKind::Mcp, "x", false)).0,
+        true,
+        "默认那一家的 MCP 没给装到…"
+    );
+    let family = copy_text("beExt.note.userMcpFamily", &[]);
+    let bring = row(ExtKind::Mcp, "x", true).cells[1]
+        .bring
+        .clone()
+        .expect("第二家项目级的 MCP 没给装到…");
+    let targets: Vec<(ExtLoc, Option<String>)> = bring
+        .targets
+        .iter()
+        .map(|t| (t.at.clone(), t.note.clone()))
+        .collect();
+    assert_eq!(
+        targets,
+        vec![
+            (ExtLoc::User, Some(family.clone())),
+            (ExtLoc::Project { dir: "/q".into() }, None),
+        ],
+        "第二家项目级 MCP 的落点：全局那一处没拒，或项目那一处不可选"
+    );
+    assert_eq!(
+        bring.scope.to,
+        ExtLoc::Project { dir: "/q".into() },
+        "建议的落点不是那台的项目"
+    );
+    assert_eq!(
+        a(row(ExtKind::Mcp, "g", true)),
+        (false, Some(family)),
+        "第二家全局那一级的 MCP 也给了装到…，或没说为什么"
+    );
+    assert_eq!(
+        a(row(ExtKind::Plugin, "planned-build", false)).0,
+        true,
+        "默认那一家的 planned-build 没走自己发版的例外"
+    );
+    assert_eq!(
+        a(row(ExtKind::Plugin, "planned-build", true)),
+        (
+            false,
+            Some(copy_text(
+                "beExt.note.pluginReadOnly",
+                &[("family", &copy_text("rsAgents.family.unsaid", &[]))]
+            ))
+        ),
+        "第二家同名插件也走了自己发版的例外（它不在生产注册表里 ⇒ 叫法照实说名称未声明）"
+    );
+}
+
+/// ★ 家先规整：指名默认那一家 ⇒ 与不指名同一份（`Env` 里记成缺，卡上不多出 `agent`）。
+#[test]
+fn naming_the_default_family_is_stored_as_none() {
+    let default =
+        crate::agents::asset_default_among(crate::agents::REGISTRY).expect("这台有默认那一家");
+    let env = Env::here(Some(&cmd_wire::AgentKind::from(default))).expect("指名默认那一家给拒了");
+    assert_eq!(env.agent, None, "指名默认那一家没规整成缺");
+}
+
+/// ★ 备注也先规整家：指名默认那一家 ⇒ 写到默认那一家那一行；认不出的家 ⇒ `bad_args`、一笔不写。
+#[test]
+fn a_note_naming_the_default_family_or_an_unknown_one() {
+    let cat = std::cell::RefCell::new(two_family_catalog());
+    let wrote = std::cell::Cell::new(0);
+    let write = |k: &str, t: &str| -> Result<Catalog, Said> {
+        wrote.set(wrote.get() + 1);
+        asset_catalog::set_note(&mut cat.borrow_mut(), k, t, 1);
+        Ok(cat.borrow().clone())
+    };
+    let take = |v: Value| -> ExtNoteReq { crate::wire::typed::take(&v).unwrap() };
+    let reg = crate::agents::fake::two_families();
+    answer_note_among(
+        reg,
+        &take(json!({ "kind": "skill", "name": "demo", "agent": "fake", "text": "默认的" })),
+        &write,
+    )
+    .unwrap();
+    let notes: Vec<(Option<String>, Option<String>)> = table(&cat.borrow(), &[])
+        .rows
+        .iter()
+        .filter(|r| r.name == "demo")
+        .map(|r| (r.agent.as_deref().map(str::to_string), r.note.clone()))
+        .collect();
+    assert_eq!(
+        notes,
+        vec![(None, Some("默认的".into())), (Some("fake2".into()), None)],
+        "指名默认那一家的备注没落在默认那一家那一行"
+    );
+    let n = wrote.get();
+    let e = answer_note_among(
+        reg,
+        &take(json!({ "kind": "skill", "name": "demo", "agent": "ghost", "text": "x" })),
+        &write,
+    )
+    .expect_err("认不出的家也写了备注");
+    assert_eq!(e.code.as_deref(), Some("bad_args"));
+    assert_eq!(wrote.get(), n, "认不出的家也落了一笔");
+}
+
+/// ★ 那一家没声明项目级 MCP 文件 ⇒ 卸那一条 `bad_args`，不退回默认那一家，两份文件都不动。
+#[test]
+fn uninstalling_a_project_mcp_of_a_family_without_one_is_bad_args() {
+    let (d, proj) = two_family_project("uninstall-mcp-no-file");
+    let door = HomeDoor(d.clone());
+    let first = proj.join(".fake-mcp.json");
+    let text = "server x {\"command\":\"a\"}\n";
+    std::fs::write(&first, text).unwrap();
+    static NONE: std::sync::OnceLock<Vec<crate::agents::Adapter>> = std::sync::OnceLock::new();
+    let reg = NONE.get_or_init(|| {
+        let fam = |kind, env, wrapper, default| {
+            crate::agents::fake::family_row(kind, env, wrapper, default, || None)
+        };
+        let mut assets = crate::agents::fake::ASSETS_B;
+        assets.project_mcp_file = "";
+        let second = crate::agents::Adapter {
+            assets: Some(assets),
+            ..fam("fake2", "CCM_FAKE_B", "fakeb", false)
+        };
+        vec![fam("fake", "CCM_FAKE_A", "fakea", true), second]
+    });
+    let env = TestEnv {
+        reg,
+        ..family_env(&d, Some("fake2"))
+    };
+    let args = json!({ "kind": "mcp", "name": "x", "agent": "fake2", "at": { "level": "project", "dir": proj.display().to_string() } });
+    let e =
+        answer_uninstall_preview(&door, &env, &args).expect_err("没声明项目级 MCP 的家也给卸了");
+    assert_eq!(e.code.as_deref(), Some("bad_args"), "{}", e.said);
+    assert_eq!(
+        std::fs::read_to_string(&first).unwrap(),
+        text,
+        "动了默认那一家的文件"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// ★ 项目级 MCP 读不懂 ⇒ 卸那一句带上是哪份文件（不只一个原因片段）。
+#[test]
+fn an_unreadable_project_mcp_says_which_file() {
+    let (d, proj) = two_family_project("uninstall-mcp-unreadable");
+    let door = HomeDoor(d.clone());
+    let second = proj.join("fake2-mcp.conf");
+    std::fs::write(&second, "server x {坏的\n").unwrap();
+    let env = TestEnv {
+        reg: crate::agents::fake::two_families(),
+        ..family_env(&d, Some("fake2"))
+    };
+    let args = json!({ "kind": "mcp", "name": "x", "agent": "fake2", "at": { "level": "project", "dir": proj.display().to_string() } });
+    let e = answer_uninstall_preview(&door, &env, &args).expect_err("读不懂也给卸了");
+    assert_eq!(e.code.as_deref(), Some("bad_file"), "{}", e.said);
+    assert!(
+        e.said.contains(&*second.display().to_string()),
+        "那一句没说是哪份文件：{}",
+        e.said
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// ★ 两家同名 ⇒ 每行带那一家的叫法（后端写好的成品，照注册表里那一家行头上的名字；说不出的家照实说名称未声明、不露 kind）；
+/// 只一家 ⇒ 不给这一格（线上形同只有一家时）。
+#[test]
+fn rows_say_their_family_when_more_than_one_family_is_listed() {
+    let saids = |cat: &Catalog| -> Vec<(Option<String>, Option<Value>)> {
+        table(cat, &[])
+            .rows
+            .iter()
+            .filter(|r| r.name == "demo")
+            .map(|r| {
+                (
+                    r.agent.as_deref().map(str::to_string),
+                    serde_json::to_value(r).unwrap().get("agentSaid").cloned(),
+                )
+            })
+            .collect()
+    };
+    let default =
+        crate::agents::asset_default_among(crate::agents::REGISTRY).expect("这台有默认那一家");
+    assert_eq!(
+        saids(&two_family_catalog()),
+        vec![
+            (
+                None,
+                Some(json!(crate::agents::family_said_among(
+                    crate::agents::REGISTRY,
+                    default
+                )))
+            ),
+            (
+                Some("fake2".into()),
+                Some(json!(copy_text("rsAgents.family.unsaid", &[])))
+            ),
+        ],
+        "两家同名的行没各显各家的叫法"
+    );
+    let mut one = asset_catalog::fresh("h".into());
+    one.machines.insert(
+        "h".into(),
+        snap("me@h", vec![asset(ExtKind::Skill, "demo", "d1", None)], &[]),
+    );
+    assert_eq!(saids(&one), vec![(None, None)], "只一家也多出了家名那一格");
+}
+
+/// ★ 「不止一家」数的是认出来的家：缺家的那行认默认那一家，明写默认那一家的行与它同一家 ⇒ 只一家，不写叫法；
+/// 再来一行别家的 ⇒ 两家，缺家的那行写默认那一家的叫法（同账号页 MCP 那一份，判法只一处）。
+#[test]
+fn a_row_naming_the_default_family_is_the_same_family_as_one_naming_none() {
+    let reg = crate::agents::fake::two_families();
+    let saids = |rows: Vec<Asset>| -> Vec<(Option<String>, Option<String>)> {
+        let mut cat = asset_catalog::fresh("h".into());
+        cat.machines.insert("h".into(), snap("me@h", rows, &[]));
+        table_among(reg, &cat, &[])
+            .rows
+            .into_iter()
+            .filter(|r| r.name.starts_with("demo"))
+            .map(|r| (r.agent.as_deref().map(str::to_string), r.agent_said))
+            .collect()
+    };
+    let mut named = asset(ExtKind::Skill, "demo-b", "d2", None);
+    named.agent = Some(cmd_wire::AgentKind::from("fake"));
+    let unnamed = asset(ExtKind::Skill, "demo-a", "d1", None);
+    assert_eq!(
+        saids(vec![unnamed.clone(), named.clone()]),
+        vec![(None, None), (Some("fake".into()), None)],
+        "明写默认那一家当成了另一家"
+    );
+    let mut other = asset(ExtKind::Skill, "demo-c", "d3", None);
+    other.agent = Some(cmd_wire::AgentKind::from("fake2"));
+    let said = |k: &str| Some(crate::agents::family_said_among(reg, k));
+    assert_eq!(
+        saids(vec![unnamed, named, other]),
+        vec![
+            (None, said("fake")),
+            (Some("fake".into()), said("fake")),
+            (Some("fake2".into()), said("fake2")),
+        ]
+    );
+}
+
+/// ★ 第二家的用户级 MCP 不经这里卸（各号共用的那一份是默认那一家的；第二家那一格读的是它自己那份）：
+/// 有账号库的那台，表上第二家那一处不给「卸载」、说为什么；默认那一家同名那一处照给。
+#[test]
+fn a_second_familys_user_mcp_offers_no_uninstall() {
+    let mut cat = asset_catalog::fresh("h".into());
+    let mut second = asset(ExtKind::Mcp, "x", "m2", None);
+    second.agent = Some(cmd_wire::AgentKind::from("fake2"));
+    let mut s = snap(
+        "me@h",
+        vec![asset(ExtKind::Mcp, "x", "m1", None), second],
+        &[],
+    );
+    s.shared_mcp = true;
+    cat.machines.insert("h".into(), s);
+    let list = table(&cat, &[]);
+    let user_place = |second: bool| {
+        let r = list
+            .rows
+            .iter()
+            .find(|r| r.kind == ExtKind::Mcp && r.name == "x" && r.agent.is_some() == second)
+            .unwrap_or_else(|| panic!("没有 x（第二家 {second}）那一行"));
+        let p = &r.cells[0].places[0];
+        assert_eq!(p.at, ExtLoc::User);
+        (p.uninstall, p.note.clone())
+    };
+    assert_eq!(
+        user_place(false),
+        (true, None),
+        "默认那一家的全局 MCP 不给卸了"
+    );
+    assert_eq!(
+        user_place(true),
+        (false, Some(copy_text("beExt.note.userMcpFamily", &[]))),
+        "第二家的全局 MCP 也给了卸载，或没说为什么"
+    );
+}
+
+/// ★ 指名第二家卸用户级 MCP ⇒ 拒（看卡 · 卸都拒），各号共用的那一份（默认那一家的）一字不变、那一条还在。
+#[cfg(unix)]
+#[test]
+fn uninstalling_a_second_familys_user_mcp_leaves_the_shared_set_alone() {
+    let base = temp("uninstall-user-mcp-second");
+    let mut m = machine(&base, "b");
+    make_library(&mut m);
+    let door = m.door();
+    crate::accounts::manage::mcp_share_exec::put(&door, "x", &json!({ "command": "srv" }))
+        .expect("共用的那一份放不进 x");
+    let store = m.env.user_mcp.clone().unwrap();
+    let before = std::fs::read_to_string(&store).unwrap();
+    let env = TestEnv {
+        skills: m.env.skills.clone(),
+        user_mcp: m.env.user_mcp.clone(),
+        ledger: m.env.ledger.clone(),
+        home: m.env.home.clone(),
+        reg: crate::agents::fake::two_families(),
+        agent: Some(cmd_wire::AgentKind::from("fake2")),
+    };
+    let args = json!({ "kind": "mcp", "name": "x", "agent": "fake2", "at": { "level": "user" } });
+    let want = (
+        Some("refused".to_string()),
+        copy_text("beExt.note.userMcpFamily", &[]),
+    );
+    let e = answer_uninstall_preview(&door, &env, &args).expect_err("第二家的全局 MCP 也给了卸卡");
+    assert_eq!((e.code.clone(), e.said.clone()), want, "看卡没照第二家拒");
+    let mut apply = args.clone();
+    apply["token"] = json!(crate::common::digest::fnv_digest(&before));
+    let noop =
+        |_: &crate::assets::skill_ledger::RecordReq| -> Result<_, Said> { Ok(Default::default()) };
+    let e =
+        answer_uninstall_apply(&door, &env, &noop, &apply).expect_err("第二家的全局 MCP 也卸了");
+    assert_eq!((e.code, e.said), want, "卸没照第二家拒");
+    assert_eq!(
+        std::fs::read_to_string(&store).unwrap(),
+        before,
+        "卸第二家却动了各号共用的那一份"
+    );
+    assert_eq!(
+        shared_names(&m),
+        vec!["x".to_string()],
+        "共用的那一份里 x 没了"
+    );
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// ★ 声明了插件那一格的家：表上的「卸载」「装到…」只给经那一家插件命令管的（目录里标了 `byCommand` 为真的）；
+/// 标了假的不给、说不经插件命令管；没标的（列不出 · 旧对端）也不给、照实说列不出；
+/// 标了真、条目上却没有那一家的写法（旧对端扫出的那一形）⇒ 当缺，同列不出。
+#[test]
+fn only_plugins_its_family_lists_get_uninstall_and_bring() {
+    let reg = crate::agents::fake::two_families();
+    let keyless = |name: &str, by: Option<bool>| {
+        let mut a = asset(ExtKind::Plugin, name, "p1", None);
+        a.summary = json!({ "market": "m", "version": "1", "from": "user" });
+        if let Some(b) = by {
+            a.summary[crate::assets::plugin_exec::BY_COMMAND] = json!(b);
+        }
+        a
+    };
+    let plugin = |name: &str, by: Option<bool>| {
+        let mut a = keyless(name, by);
+        a.summary[crate::assets::plugin_exec::KEY] = json!(format!("shelf/{name}"));
+        a
+    };
+    let mut cat = asset_catalog::fresh("h".into());
+    cat.machines.insert(
+        "h".into(),
+        snap(
+            "me@h",
+            vec![
+                plugin("widget", Some(true)),
+                plugin("lamp", Some(false)),
+                plugin("old", None),
+                keyless("bare", Some(true)),
+            ],
+            &[],
+        ),
+    );
+    cat.machines.insert("a".into(), snap("a", vec![], &[]));
+    let reach = vec![("a".to_string(), Some("a".to_string()))];
+    let list = table_among(reg, &cat, &reach);
+    let row = |name: &str| {
+        list.rows
+            .iter()
+            .find(|r| r.kind == ExtKind::Plugin && r.name == name)
+            .unwrap_or_else(|| panic!("没有 {name} 那一行"))
+    };
+    let widget = row("widget");
+    assert!(widget.cells[0].places[0].uninstall, "列表里有的没给卸载");
+    assert!(widget.cells[1].bring.is_some(), "列表里有的没给装到…");
+    let not = copy_text("beExt.plugin.notByCommand", &[]);
+    let unlisted = copy_text("beExt.plugin.unlisted", &[]);
+    assert_ne!(not, unlisted, "两句该是两把键");
+    for (name, not) in [("lamp", &not), ("old", &unlisted), ("bare", &unlisted)] {
+        let r = row(name);
+        assert!(!r.cells[0].places[0].uninstall, "{name} 给了卸载");
+        assert_eq!(r.cells[0].places[0].note.as_deref(), Some(not.as_str()));
+        assert!(r.cells[1].bring.is_none(), "{name} 给了装到…");
+        assert_eq!(r.cells[1].note.as_deref(), Some(not.as_str()));
+    }
+    // 有写法的那几行带上来源（写法 ＋ 照市场写好的那一句）；没写法的（旧对端）不带。
+    assert_eq!(
+        widget.source,
+        Some(ExtSource {
+            key: "shelf/widget".into(),
+            said: copy_text("beExt.row.source", &[("market", "m")]),
+        })
+    );
+    assert_eq!(row("bare").source, None, "没写法的那一行编了来源");
+}
+
+/// ★ 同一个光名字在那一家装着两条（两个市场来的）⇒ 表上两行、不取第一条：各带各的来源（写法 · 市场），
+/// 各自那一格照自己那一条判（版本各对、各给卸载与「装到…」）；同一来源在两台 ⇒ 仍是一行。
+#[test]
+fn same_name_plugins_from_two_markets_are_two_rows_each_with_its_source() {
+    let reg = crate::agents::fake::two_families();
+    let plugin = |market: &str, version: &str| {
+        let mut a = asset(ExtKind::Plugin, "widget", &format!("d-{market}"), None);
+        a.summary = json!({
+            (crate::assets::plugin_exec::KEY): format!("{market}/widget"),
+            (crate::assets::plugin_exec::BY_COMMAND): true,
+            "market": market,
+            "version": version,
+            "from": "user",
+        });
+        a
+    };
+    let mut cat = asset_catalog::fresh("h".into());
+    cat.machines.insert(
+        "h".into(),
+        snap(
+            "me@h",
+            vec![plugin("shelf", "1.0"), plugin("rack", "2.0")],
+            &[],
+        ),
+    );
+    cat.machines
+        .insert("a".into(), snap("a", vec![plugin("rack", "2.0")], &[]));
+    let reach = vec![("a".to_string(), Some("a".to_string()))];
+    let list = table_among(reg, &cat, &reach);
+    let rows: Vec<&ExtRow> = list
+        .rows
+        .iter()
+        .filter(|r| r.kind == ExtKind::Plugin && r.name == "widget")
+        .collect();
+    assert_eq!(rows.len(), 2, "同名两条没各出一行：{rows:?}");
+    for market in ["shelf", "rack"] {
+        let key = format!("{market}/widget");
+        let r = rows
+            .iter()
+            .find(|r| r.source.as_ref().map(|s| s.key.as_str()) == Some(key.as_str()))
+            .unwrap_or_else(|| panic!("没有来源 {key} 那一行"));
+        assert_eq!(
+            r.source.as_ref().map(|s| s.said.clone()),
+            Some(copy_text("beExt.row.source", &[("market", market)])),
+            "{key} 那一行的来源那一句不对"
+        );
+        let here = &r.cells[0];
+        assert!(here.places[0].uninstall, "{key} 那一行没给卸载");
+        assert_eq!(
+            r.detail
+                .iter()
+                .find(|d| d.label == copy_text("beExt.detail.market", &[]))
+                .map(|d| d.value.as_str()),
+            Some(market),
+            "{key} 那一行的内容取了别的那一条"
+        );
+        // rack 两台都有 ⇒ 一行里两格都在；shelf 只在这台 ⇒ 那台那一格给「装到…」。
+        match market {
+            "rack" => assert_ne!(
+                r.cells[1].state,
+                ExtState::Missing,
+                "同一来源在两台成了两行"
+            ),
+            _ => assert!(r.cells[1].bring.is_some(), "shelf 那一行没给装到…"),
+        }
+    }
+}
+
+/// 卸项目级 MCP（主线 · 第二家同形）：先记账、再写文件 —— 记账写不进 ⇒ 那份配置一个字节不动、整趟照记账那一句报错。
+#[test]
+fn uninstalling_a_project_mcp_leaves_the_file_alone_when_the_ledger_cannot_record() {
+    let (d, proj) = two_family_project("uninstall-mcp-record-first");
+    let door = HomeDoor(d.clone());
+    let second = proj.join("fake2-mcp.conf");
+    let text = "server x {\"command\":\"c\"}\nserver y {\"command\":\"d\"}\n";
+    std::fs::write(&second, text).unwrap();
+    let env = TestEnv {
+        reg: crate::agents::fake::two_families(),
+        ..family_env(&d, Some("fake2"))
+    };
+    let args = json!({ "kind": "mcp", "name": "x", "agent": "fake2", "at": { "level": "project", "dir": proj.display().to_string() } });
+    let card = answer_uninstall_preview(&door, &env, &args).expect("卸不了");
+    let mut apply = args.clone();
+    apply["token"] = card["token"].clone();
+    let refuse = |_: &crate::assets::skill_ledger::RecordReq| -> Result<_, Said> {
+        Err(crate::wire::spec::fail(
+            "ledger_unreadable",
+            Said::from("记不上".to_string()),
+        ))
+    };
+    let e = answer_uninstall_apply(&door, &env, &refuse, &apply).expect_err("记不上还卸了");
+    assert_eq!(e.code.as_deref(), Some("ledger_unreadable"));
+    assert_eq!(
+        std::fs::read_to_string(&second).unwrap(),
+        text,
+        "记不上却动了那份配置"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// 卸项目级 MCP：账先记上了、文件却写不上（那一层目录只读）⇒ 照记之前的样子把记录放回（`mcp-undo`），整趟报错。
+#[cfg(unix)]
+#[test]
+fn uninstalling_a_project_mcp_puts_the_record_back_when_the_file_cannot_be_written() {
+    let (d, proj) = two_family_project("uninstall-mcp-undo");
+    let door = HomeDoor(d.clone());
+    let second = proj.join("fake2-mcp.conf");
+    let text = "server x {\"command\":\"c\"}\nserver y {\"command\":\"d\"}\n";
+    std::fs::write(&second, text).unwrap();
+    let env = TestEnv {
+        reg: crate::agents::fake::two_families(),
+        ..family_env(&d, Some("fake2"))
+    };
+    let args = json!({ "kind": "mcp", "name": "x", "agent": "fake2", "at": { "level": "project", "dir": proj.display().to_string() } });
+    let card = answer_uninstall_preview(&door, &env, &args).expect("卸不了");
+    let mut apply = args.clone();
+    apply["token"] = card["token"].clone();
+    let ops = std::cell::RefCell::new(Vec::new());
+    let record = |r: &crate::assets::skill_ledger::RecordReq| -> Result<_, Said> {
+        ops.borrow_mut()
+            .push(serde_json::to_value(r).unwrap()["op"].clone());
+        Ok(crate::assets::skill_ledger::RecordReply {
+            prior: Some(Default::default()),
+            ..Default::default()
+        })
+    };
+    test_home::set_dir_mode(&proj, 0o555);
+    let got = answer_uninstall_apply(&door, &env, &record, &apply);
+    test_home::set_dir_mode(&proj, 0o755);
+    got.expect_err("写不上却说卸成了");
+    assert_eq!(std::fs::read_to_string(&second).unwrap(), text);
+    assert_eq!(
+        *ops.borrow(),
+        vec![json!("mcp-drop"), json!("mcp-undo")],
+        "记录没放回"
+    );
+    let _ = std::fs::remove_dir_all(&d);
 }

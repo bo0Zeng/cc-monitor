@@ -7,7 +7,7 @@ use super::test_support::book_row;
 use super::*;
 use crate::accounts::quota::ledger::{self, Ledger};
 use crate::accounts::quota::rotation;
-use crate::relay::{Base, Mode};
+use crate::relay::Mode;
 use creds_core::store::AuthStyle;
 
 const UUID_A: &str = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
@@ -22,7 +22,7 @@ fn now() -> u64 {
 fn dead_token_endpoint() -> TokenEndpoint {
     let port = crate::refusing_port::refusing_port();
     TokenEndpoint {
-        base: Base::parse(&format!("http://127.0.0.1:{port}")).expect("base"),
+        base: crate::relay::base_of(&format!("http://127.0.0.1:{port}")).expect("base"),
         rest: "/v1/oauth/token".into(),
         deadline: std::time::Duration::from_millis(2_000),
     }
@@ -188,17 +188,26 @@ fn a_subscription_account_brings_its_token_and_identity() {
     let sent = body_of(UUID_A, false);
     let Ok(Go::Sub {
         account,
-        token,
+        heads,
         body,
     }) = prep(&hop, &own, &sent, &no_row, "b")
     else {
         panic!("b 该备成订阅号那一发");
     };
     assert_eq!(account, "b");
-    assert!(
-        token.same_secret(&SecretKey::new("fake-access-of-b")),
-        "令牌不是 b 那一份"
-    );
+    match heads.as_slice() {
+        [(
+            "Authorization",
+            HeadValue::Token {
+                prefix: "Bearer ",
+                token,
+            },
+        )] => assert!(
+            token.same_secret(&SecretKey::new("fake-access-of-b")),
+            "令牌不是 b 那一份"
+        ),
+        _ => panic!("Claude 那一家换号只写 Authorization 一个头"),
+    }
     let body = body.expect("请求体里有身份格，该换");
     assert_eq!(identity_in(&body).as_deref(), Some(UUID_B));
     assert_eq!(
@@ -295,7 +304,7 @@ fn the_relay_sends_by_what_was_prepared() {
     let table = RoutingTable::build([(
         AGENT.to_string(),
         "k".to_string(),
-        Base::parse("https://k.invalid").expect("base"),
+        crate::relay::base_of("https://k.invalid").expect("base"),
         Some(SecretKey::new("KEY-K")),
         AuthStyle::DEFAULT,
     )]);
@@ -320,7 +329,7 @@ fn the_relay_sends_by_what_was_prepared() {
                     tag,
                 } => Said::Sub(
                     upstream.host_header(),
-                    auth.write.map(|(_, v)| v.to_string()),
+                    auth.write.first().map(|(_, v)| v.to_string()),
                     body.map(<[u8]>::to_vec),
                     tag.to_string(),
                 ),
@@ -347,7 +356,13 @@ fn the_relay_sends_by_what_was_prepared() {
     assert_eq!(
         said(Go::Sub {
             account: "b".into(),
-            token: SecretKey::new("TOKEN-B"),
+            heads: vec![(
+                "Authorization",
+                HeadValue::Token {
+                    prefix: "Bearer ",
+                    token: SecretKey::new("TOKEN-B"),
+                },
+            )],
             body: Some(b"swapped".to_vec()),
         }),
         Said::Sub(
@@ -450,5 +465,349 @@ fn account_zero_is_not_a_rotation_account() {
         )
         .account,
         acct_core::BARE_ACCOUNT
+    );
+}
+
+// ── 替身家（`agents::fake::upstream`）：换号头 · 用满回包 · 不声明换号头 ──
+
+/// 中转对一个去处做的那一下：去处的上游 · 剥的名单 · 写的头 · 回包（各取一份自有值）。
+#[derive(Debug, PartialEq)]
+enum Did {
+    Swap {
+        clear: Vec<String>,
+        write: Vec<(String, String)>,
+        tag: String,
+    },
+    Reply {
+        status: String,
+        headers: Vec<(String, String)>,
+        body: Vec<u8>,
+    },
+    Other,
+}
+
+fn did(go: Go) -> Did {
+    let table = RoutingTable::build(std::iter::empty());
+    let ups = super::super::Upstreams::from_env(&|_| None).expect("内置默认");
+    let key = RouteKey {
+        seg1: AGENT.to_string(),
+        seg2: "a".to_string(),
+    };
+    let mut out = Did::Other;
+    dispatch_go(&table, &ups, Mode::Passthrough, &key, &[], go, &mut |d| {
+        out = match d {
+            Destination::Substitute { auth, tag, .. } => Did::Swap {
+                clear: auth.clear.iter().map(|n| n.to_ascii_lowercase()).collect(),
+                write: auth
+                    .write
+                    .iter()
+                    .map(|(n, v)| (n.to_string(), v.to_string()))
+                    .collect(),
+                tag: tag.to_string(),
+            },
+            Destination::Reply {
+                status,
+                headers,
+                body,
+                ..
+            } => Did::Reply {
+                status: status.to_string(),
+                headers: headers.to_vec(),
+                body: body.to_vec(),
+            },
+            _ => Did::Other,
+        };
+    });
+    out
+}
+
+/// ★ 替身家声明换两个头、策略选了第二个号 ⇒ 转发那一发恰带第二个号的那两个头（令牌那一格带前缀、凭据里点名的那一格原样）；
+/// 剥的名单是鉴权头全集并上这两个头名 ⇒ 下游原来带的鉴权头（连同与这两个同名的）一条不剩。
+#[test]
+fn a_family_that_declares_two_swap_heads_gets_both_of_the_second_account() {
+    let field = |f: &str| (f == "org").then(|| "org-of-second".to_string());
+    let go = swap_go(
+        "second",
+        crate::agents::fake::upstream::SWAP_HEADS,
+        &mut || Ok((SecretKey::new("TOKEN-OF-SECOND"), None)),
+        &field,
+    )
+    .expect("两个头都取得到");
+    let Did::Swap { clear, write, tag } = did(go) else {
+        panic!("该是换头那一发");
+    };
+    assert_eq!(
+        write,
+        vec![
+            (
+                "X-Fake-Pass".to_string(),
+                "Seat TOKEN-OF-SECOND".to_string()
+            ),
+            ("X-Fake-Org".to_string(), "org-of-second".to_string()),
+        ]
+    );
+    assert_eq!(tag, "second");
+    for gone in ["authorization", "x-api-key", "x-fake-pass", "x-fake-org"] {
+        assert!(
+            clear.iter().any(|c| c == gone),
+            "{gone} 不在剥的名单里：{clear:?}"
+        );
+    }
+}
+
+/// 点名的那一格凭据里没有 ⇒ 接不上（要登录），不发一个缺头的请求。
+#[test]
+fn a_swap_head_whose_cell_is_missing_does_not_go() {
+    let go = swap_go(
+        "second",
+        crate::agents::fake::upstream::SWAP_HEADS,
+        &mut || Ok((SecretKey::new("T"), None)),
+        &|_| None,
+    );
+    assert!(matches!(go, Err(Unready::NeedsLogin)));
+}
+
+/// ★ 硬上限停发：回的字节恰是替身家自己写的那一份用满回包（状态 · 头 · 体一个字节不差），中转不改。
+#[test]
+fn a_hold_replies_exactly_the_familys_own_limit_reply() {
+    let reply = crate::agents::fake::upstream::limit_reply(1_800_003_600, 1_800_000_000, None);
+    let want = Did::Reply {
+        status: reply.status.to_string(),
+        headers: reply.headers.clone(),
+        body: reply.body.clone(),
+    };
+    assert_eq!(did(Go::Hold { reply }), want);
+}
+
+/// ★ 替身家不声明换号头 ⇒ 不换：照起会话那个号走（[`Go::Start`]）。
+#[test]
+fn a_family_without_swap_heads_stays_on_the_start_account() {
+    let mut login = || -> Result<(SecretKey, Option<Vec<u8>>), Unready> {
+        panic!("不换号就不该登录、续令牌")
+    };
+    let go = swap_go("second", &[], &mut login, &|_| None);
+    assert!(matches!(go, Ok(Go::Start)));
+}
+
+// ── 替身家（`agents::fake`）的账号 0：声明不续不写 ⇒ 令牌到期的那一态说得出「不由 cc-monitor 续」 ──
+
+/// 替身家的登录面，只把账号身份那一格换成读得出（替身家自己那一格恒读不出，判不到身份之后那几步）。
+fn fake_face(base_login: crate::agents::BaseLogin) -> LoginFace {
+    LoginFace {
+        identity_in: |p| p.is_file().then(|| "who".to_string()),
+        base_login,
+        ..crate::agents::fake::full_row(|| None)
+            .accounts
+            .and_then(|f| f.login)
+            .expect("替身家声明了登录面")
+    }
+}
+
+/// 替身家那一形的凭据（`stamped` ＝ 上次续的那一秒，过期 ＝ 它 ＋ 一小时）写进 `dir`。
+fn fake_creds_in(dir: &Path, stamped_s: u64) {
+    std::fs::create_dir_all(dir).expect("mkdir");
+    let doc = serde_json::json!({
+        "session": {"bearer": "acc", "renewal": "ref", "app": "a", "grants": ["g"]},
+        "stamped": stamped_s,
+    });
+    std::fs::write(dir.join("fake-login.ndjson"), doc.to_string()).expect("creds");
+}
+
+/// 一个号在替身家的这一形下的登录态：`base` ⇒ 账号 0（家目录下那份配置）；否则号载体。
+fn fake_login(
+    home: &Home,
+    base_login: crate::agents::BaseLogin,
+    base: bool,
+    stamped_s: u64,
+) -> LoginState {
+    let face = fake_face(base_login);
+    let (dir, at) = if base {
+        (
+            (crate::agents::fake::full_row(|| None)
+                .accounts
+                .expect("替身家有账号面")
+                .shared_root)(&home.root),
+            Some(home.root.clone()),
+        )
+    } else {
+        (home.dir("c"), None)
+    };
+    fake_creds_in(&dir, stamped_s);
+    let when = oauth::When {
+        renew: crate::agents::Renew::Anytime,
+        in_use: |_| false,
+        base,
+    };
+    home.hop(&[], &[])
+        .sub_login(&face, &dir, at.as_deref(), when, now())
+        .login
+}
+
+/// ★ 声明账号 0 不续不写的那一家：账号 0 令牌过期 ⇒ 登录态是「不由 cc-monitor 续」那一态（不是正常、也不是要重新登录）；
+/// 没过期 ⇒ 正常；同一家的号载体过期 ⇒ 照续，正常；不声明的那一家账号 0 过期 ⇒ 照续，正常。
+#[test]
+fn an_expired_account_zero_left_to_its_family_says_so() {
+    use crate::agents::BaseLogin::{Renew, Untouched};
+    let stale = now() - 7_200;
+    let fresh = now() - 60;
+    let home = Home::new("base-untouched");
+    assert_eq!(
+        fake_login(&home, Untouched, true, stale),
+        LoginState::BaseUntouched
+    );
+    let home = Home::new("base-fresh");
+    assert_eq!(fake_login(&home, Untouched, true, fresh), LoginState::Ok);
+    let home = Home::new("carrier-stale");
+    assert_eq!(fake_login(&home, Untouched, false, stale), LoginState::Ok);
+    let home = Home::new("renewed-base");
+    assert_eq!(fake_login(&home, Renew, true, stale), LoginState::Ok);
+}
+
+// ── 替身家注册表喂进上游选择（[`Hop::among`]）：换号那一路对账号 0 只读 ──
+
+/// 替身家一家的账号库：账号 0（家目录下那份配置）与号载体 `c`；号表照替身家注册表认家。
+fn fake_hop(home: &Home) -> Hop {
+    home.hop_of(acct_core::AccountBook {
+        // 号表照实写是替身家的号（没说家只认默认那一家，替身家不是默认）。
+        accounts: [
+            book_row("0", None, false),
+            book_row("c", Some(home.dir("c")), false),
+        ]
+        .into_iter()
+        .map(|a| acct_core::ManifestAccount {
+            agent: Some(crate::agents::fake::AGENT_KIND.to_string()),
+            ..a
+        })
+        .collect(),
+    })
+    .among(super::test_support::fake_registry())
+}
+
+fn fake_turn<'a>(body: &'a [u8], row: &'a dyn Fn(&str) -> Option<bool>) -> Turn<'a> {
+    Turn {
+        agent: crate::agents::fake::AGENT_KIND,
+        start: "a",
+        sid: "s",
+        body,
+        row,
+        now: now(),
+    }
+}
+
+/// ★ 声明账号 0 不续不写的那一家：账号 0 令牌过期 ⇒ 换号那一路判接不上、原因是「不由 cc-monitor 续」（不是要重新登录），
+/// 凭据文件一字不变、不拿续期锁；同一家的号载体过期了照常判接得上（归我方续），没过期的照常换上它的两个头。
+#[test]
+fn a_family_fed_in_reports_an_expired_account_zero_as_left_to_it() {
+    use super::test_support::fake_creds_in;
+    let home = Home::new("fake-base");
+    let hop = fake_hop(&home);
+    let own = home.own();
+    let base = home.root.join("shared");
+    fake_creds_in(&base, now() - 7_200);
+    let before = std::fs::read(base.join("fake-login.ndjson")).expect("read");
+    let lib = hop.book();
+    let body = b"{}".to_vec();
+    let a = fake_turn(&body, &no_row);
+    assert_eq!(
+        hop.reach(&a, &lib, "0").err(),
+        Some(Unready::BaseUntouched),
+        "过期的账号 0 该判接不上、不由 cc-monitor 续"
+    );
+    assert_eq!(
+        hop.prepare(&own, &a, &lib, "0").err(),
+        Some(Unready::BaseUntouched),
+        "换到过期的账号 0 该报不由 cc-monitor 续"
+    );
+    assert_eq!(
+        std::fs::read(base.join("fake-login.ndjson")).expect("read"),
+        before,
+        "账号 0 的凭据被动了"
+    );
+    let mut left: Vec<String> = crate::platform::fs::Ro::read_dir(&base)
+        .expect("read_dir")
+        .map(|e| e.expect("entry").file_name().to_string_lossy().into_owned())
+        .collect();
+    left.sort();
+    assert_eq!(
+        left,
+        ["fake-login.ndjson"],
+        "账号 0 的号目录里多出了凭据文件以外的东西（锁 · 旁稿）"
+    );
+
+    fake_creds_in(&home.dir("c"), now() - 7_200);
+    assert!(
+        matches!(hop.reach(&a, &lib, "c"), Ok(Reach::Sub)),
+        "过期的号载体归我方续，该判接得上"
+    );
+    fake_creds_in(&home.dir("c"), now() - 60);
+    match hop.prepare(&own, &a, &lib, "c") {
+        Ok(Go::Sub { account, heads, .. }) => {
+            assert_eq!(account, "c");
+            let names: Vec<&str> = heads.iter().map(|(n, _)| *n).collect();
+            assert_eq!(names, ["X-Fake-Pass", "X-Fake-Org"]);
+        }
+        Ok(_) => panic!("号载体没换上它的头"),
+        Err(e) => panic!("号载体接不上：{e:?}"),
+    }
+}
+
+/// ★ 续令牌一时没成、等下次再试的号（[`oauth::missed::Unrenewed::RetryAt`]）：「此刻能不能用」只由 [`Hop::sub_login`] 一处给 ——
+/// 帧面（[`Hop::show_facts`]）与换号那一路（[`Hop::reach`]）同一个说法：都说此刻用不了，帧面带着几点再试。
+#[test]
+fn an_account_waiting_to_retry_its_renewal_is_told_the_same_on_both_sides() {
+    let home = Home::new("fake-retry");
+    let hop = fake_hop(&home);
+    let own = home.own();
+    let lib = hop.book();
+    let body = b"{}".to_vec();
+    let a = fake_turn(&body, &no_row);
+    // 号载体过期：换到它那一下去续，续期端点不听 ⇒ 记成一时没续上、到点再试。
+    fake_creds_in(&home.dir("c"), now() - 7_200);
+    assert!(
+        hop.prepare(&own, &a, &lib, "c").is_err(),
+        "续期端点不听，该接不上"
+    );
+    let face = hop
+        .login_face(crate::agents::fake::AGENT_KIND)
+        .expect("替身家声明了登录面");
+    assert!(
+        matches!(
+            oauth::missed::missed(&home.dir("c"), &face, now()),
+            Some(oauth::missed::Unrenewed::RetryAt(_))
+        ),
+        "前提：那个号记成一时没续上"
+    );
+    let shown = hop.show_facts(crate::agents::fake::AGENT_KIND, &lib, "c", &no_row, now());
+    let reached = hop.reach(&a, &lib, "c");
+    assert_eq!(
+        shown.login == LoginState::Ok && shown.retry_at.is_none(),
+        reached.is_ok(),
+        "帧面说登录 {:?}、几点再试 {:?}，换号那一路说 {:?}：两边说法不一",
+        shown.login,
+        shown.retry_at,
+        reached.as_ref().err()
+    );
+    assert_eq!(
+        reached.err(),
+        Some(Unready::NeedsLogin),
+        "等再试的号此刻该接不上"
+    );
+    assert!(
+        shown.retry_at.is_some_and(|t| t > now()),
+        "帧面该带着几点再试"
+    );
+    let tz = crate::common::time::Tz::default();
+    let fact = hop.fact_one(
+        crate::agents::fake::AGENT_KIND,
+        &lib,
+        "c",
+        &no_row,
+        now(),
+        &tz,
+    );
+    assert_eq!(
+        fact.blocked.and_then(|b| b.until),
+        shown.retry_at,
+        "事实那一格的「几点回来」该照同一个再试时刻"
     );
 }

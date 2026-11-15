@@ -60,6 +60,69 @@ fn spec_argv(id: &str, argv: Vec<String>) -> Spec {
     }
 }
 
+/// 起托管终端的判据整条等在兜底上限之内（`guard_core::wall::CEILING`）：哪一步等不到照实红，不挂住整片。
+/// 只给本包判据（`guard-core` 只在本包测试档）。
+#[cfg(test)]
+pub async fn within_ceiling<F: std::future::Future>(f: F) -> F::Output {
+    tokio::time::timeout(guard_core::wall::CEILING, f)
+        .await
+        .expect("兜底上限之内跑完")
+}
+
+/// 打两次标，照盘上的状态判：头一次认得出它在 `id` 这个托管终端里，sid 落进事实；第二次值一样 ⇒ 不写；名单那一行挂着它。
+/// 打标那一下等托管进程回话有期限（`client` 的读写期限）：机器忙、托管进程一时答不上，它照实说「没写成」，
+/// 可那一句 `tag` 已在托管口里排着、托管进程缓过来就写 —— 所以头一次判的是 sid 落盘（等到那个状态），不是那一下的回音。
+/// 它说写成了 ⇒ 盘上当场就是。`between` 在头一次之后跑（卡住托管进程的那条判据在这里放开）。交回头一次说没说写成。
+/// 同步地等：调它的那条线别是托管进程跑的那一条（多线程运行时，或托管进程在别的线上）。
+#[cfg(test)]
+pub fn tags_once(
+    own: &Own,
+    data: &std::path::Path,
+    id: &str,
+    pid: u32,
+    sid: &str,
+    between: impl FnOnce(),
+) -> bool {
+    use super::super::{home, rows_at, tag_pid_at};
+    let container = Some(crate::wire::SessionContainer::Managed {
+        terminal: Some(id.into()),
+    });
+    let dir = data.join("hosts").join(id);
+    let on_disk = || home::read_facts(&dir).is_some_and(|f| f.sid == sid);
+    let first = tag_pid_at(own, pid, sid).expect("认得出它住在托管终端里");
+    // 写成了 ⇒ 报那个托管终端；没写成（等回话过了期限）⇒ 此刻说不清，不报容器（接回认的是事实里挂着的 sid）。
+    assert_eq!(
+        first.container,
+        if first.wrote { container.clone() } else { None },
+        "写成了才报是哪一个托管终端"
+    );
+    if first.wrote {
+        assert!(on_disk(), "说写成了 ⇒ 盘上当场就是这个 sid");
+    }
+    between();
+    // 等到那个状态：每圈问一次盘、隔一片再问（同 `guard_core::wall::rounds` 的写法；不空转抢托管进程的 CPU）。
+    let mut landed = on_disk();
+    for () in guard_core::wall::rounds() {
+        if landed {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        landed = on_disk();
+    }
+    assert!(landed, "兜底上限之内 sid 落进了事实");
+    assert_eq!(
+        tag_pid_at(own, pid, sid),
+        Some(super::super::Tagged::seated(container, false)),
+        "值一样 ⇒ 不写"
+    );
+    assert_eq!(
+        rows_at(own).first().map(|r| r.sid.clone()),
+        Some(sid.to_string()),
+        "名单那一行挂着这个 sid"
+    );
+    first.wrote
+}
+
 /// 起托管进程（同一进程里的一个任务），等它绑好口；交回套接字路径与那个任务。
 pub async fn start(
     own: &Own,

@@ -279,10 +279,6 @@ fn the_probe_format_asks_for_both_fields() {
         PROBE_FMT.contains("#{session_windows}"),
         "少了窗口数 ⇒ Gate 3 没有输入，破坏性动作会误杀多窗口会话"
     );
-    assert!(
-        !PROBE_FMT.contains("@ccm_sid_expect"),
-        "**只认 `@ccm_sid`** —— `_expect` 是「声明了但未必跑起来」的意图，不是事实"
-    );
 }
 
 // ── 把「skip 不是通过」那个刻意决定钉住 ──────────────

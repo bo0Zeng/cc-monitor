@@ -168,8 +168,8 @@ async fn a_failed_ack_never_enters_the_ledger_and_stop_drops_the_link() {
         &reach,
         &ledger,
         |_r, _port, _u, mut down| async move {
-            // 照拨号核心写的那一形回：`DialAck::of_fail` 序列化成一行。
-            let ack = ssh_dial::DialAck::of_fail(ssh_dial::DialFail {
+            // 照拨号核心写的那一形回：`ssh_dial::failed_ack` 序列化成一行。
+            let ack = ssh_dial::failed_ack(ssh_dial::DialFail {
                 said: "port 15432 in use".to_string(),
                 detail: None,
                 fingerprint: None,
@@ -219,7 +219,10 @@ async fn a_failed_ack_never_enters_the_ledger_and_stop_drops_the_link() {
     rx.await.unwrap();
     // 计数那两行被另一个任务读 —— 让出几次，直到它照抄到 2（不睡、不定时）。
     for _ in 0..1000 {
-        if list_with(&ledger)["forwards"][0]["connCount"] == json!(2) {
+        if list_with(&ledger)["forwards"][0]["said"]
+            .as_str()
+            .is_some_and(|s| s.ends_with(" 2"))
+        {
             break;
         }
         tokio::task::yield_now().await;
@@ -229,6 +232,17 @@ async fn a_failed_ack_never_enters_the_ledger_and_stop_drops_the_link() {
         serde_json::from_str(include_str!("../__fixtures__/forward-list.golden.json")).unwrap();
     // 本机口是这一趟现找的空口（真绑）：金样里那一格换成它，别的照比。
     golden["forwards"][0]["localPort"] = json!(local);
+    // 那一行给人看的字由后端写好（界面照抄），本机口那一截跟着换。
+    golden["forwards"][0]["said"] = json!(copy_core::copy_text(
+        "portForward.reload.row",
+        &[
+            ("origin", "dev"),
+            ("localPort", &local.to_string()),
+            ("remoteHost", "localhost"),
+            ("remotePort", "5432"),
+            ("connCount", "2"),
+        ],
+    ));
     assert_eq!(id, "fwd-1");
     assert_eq!(list_with(&ledger), golden);
     assert_eq!(dropped.load(Ordering::SeqCst), 0);

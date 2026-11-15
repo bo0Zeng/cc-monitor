@@ -51,19 +51,13 @@
       {
         "here": true,
         "key": null,
-        "name": "a",
-        "projects": [
-          "<BASE>/a/proj"
-        ],
+        "name": "本机",
         "reachable": true
       },
       {
         "here": false,
         "key": "laptop",
         "name": "laptop",
-        "projects": [
-          "<BASE>/b/proj"
-        ],
         "reachable": true
       }
     ],

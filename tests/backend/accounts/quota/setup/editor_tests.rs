@@ -39,6 +39,7 @@ fn ed() -> &'static Ed {
 
 fn acct(id: &str, used5h: f64) -> Acct {
     Acct {
+        agent: String::new(),
         id: id.into(),
         api: false,
         used: [used5h, 0.0],
@@ -284,6 +285,7 @@ fn decide_case_in(e: &rhai::Engine, c: &Value, settings: &Value) -> Verdict {
         .expect("accounts")
         .iter()
         .map(|a| CtxAcct {
+            agent: String::new(),
             id: a["id"].as_str().expect("id").into(),
             pos: a["pos"].as_u64().unwrap_or(0) as usize,
             api: a["kind"] == "api",

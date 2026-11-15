@@ -6,6 +6,6 @@ import type { QueueItem } from "./QueueItem";
  */
 export type QueueList = { items: Array<QueueItem>, 
 /**
- * 最近送进 agent 的那几条的 id（先送的在前，只留最近几条）。两端都不据它判那一句的去向：回执到了就离开待发，之后只照名单与记录画。
+ * 最近送进 agent 的那几条的 id（先送的在前，只留最近几条）。名单里出现在 `sent` ⇒ 那一句已离队，两端据它收起待发（与回执到了同一个结局）。
  */
 sent: Array<string>, };

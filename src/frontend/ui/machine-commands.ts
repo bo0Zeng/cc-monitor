@@ -17,7 +17,7 @@ import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { isLocalOrigin, LOCAL, type Machine } from "./ipc/origin";
 import { NoTerminalWindow, openLoginShell, sayNoTerminal } from "./terminal-open";
 import { openNewSession } from "./new-session";
-import { openOnMachine } from "./file-window";
+import { openFileWindow } from "./file-window";
 import { openSettingsWindow } from "./open-settings";
 import { addMachineOf, machinePageOf } from "./settings-dest";
 import { toast } from "./kit/toast";
@@ -124,8 +124,8 @@ export const machineActions: MachineActions = {
     });
   },
   newSession: (origin) => void openNewSession({ origin }),
-  // 落在那台的主目录（`dir` 空）。
-  files: (origin) => void openOnMachine(origin, { dir: "" }).catch(sayFailed),
+  // 落在那台的主目录；开不起来那一句开口自己说。
+  files: (origin) => void openFileWindow(origin),
   status: (origin) => void openSettingsWindow(undefined, machinePageOf(origin)),
   addMachine: (origin) => void openSettingsWindow(undefined, addMachineOf(origin)),
 };

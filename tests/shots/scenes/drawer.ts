@@ -6,7 +6,7 @@ import type { World } from "../fake/types";
 import { defaultWorld, LOCAL } from "../fake/world";
 import { emit } from "@tauri-apps/api/event";
 import { Convo } from "../fake/records";
-import { click, mainReady, openTab, waitFor, sleep } from "./helpers";
+import { click, hover, mainReady, openTab, waitFor, sleep } from "./helpers";
 
 const ALL_TABS = 7;
 
@@ -151,11 +151,13 @@ export const DRAWER_SCENES: Scene[] = [
     await openTab(2);
     await sleep(900);
   }),
-  scene("drawer-terminal-outside", "底部抽屉 · 终端 · 不在 tmux 里", "活着、不在 tmux 里的会话（直接敲 cc 起的）：照实写「不在 tmux 里」，不说「非 cc-monitor 启动」（这台不是 Windows ⇒ 没有［切到终端］）", async () => {
+  scene("drawer-terminal-outside", "会话头 · 看它的终端 · 不在 tmux 里", "活着、不在 tmux 里的会话（直接敲 cc 起的）：「看它的终端」灰着（脸上 `can.view` 说不行），悬停写那台那一句，不说「非 cc-monitor 启动」", async () => {
     await mainReady(ALL_TABS);
-    await click("#session-head button[aria-label='看它的终端']");
-    await waitFor("#bottom-drawer [class*=empty]");
-    await sleep(800);
+    const b = await waitFor<HTMLElement>("#session-head [data-head='terminal']");
+    if (b.getAttribute("aria-disabled") !== "true") throw new Error("不在 tmux 里的会话，「看它的终端」没灰");
+    await hover(b);
+    await waitFor("[role=tooltip]");
+    await sleep(600);
   }, outsideWorld),
   {
     ...scene("drawer-terminal-live-tall", "底部抽屉 · 终端 · 实时（拉高）", "抽屉拉高到 460：头上「● 实时」（没有「画面几点 ＋ 重新看」）；画面带颜色 —— Bash 输出、路径蓝、「Building…」那一行橙、「accept edits」品红", async () => {

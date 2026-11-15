@@ -10,6 +10,7 @@ import type { NoticeRun } from "./generated/NoticeRun";
 import { applyRetries } from "./cards/api-error";
 import { paintWaiting } from "./cards/step-line";
 import { waitedNow } from "./duration-format";
+import { needsOf, stepOf } from "./session-face";
 import type { SessionFacts } from "./session-reads";
 import type { FactsChange } from "./tab-session-facts";
 import { MessageStream } from "./stream";
@@ -22,6 +23,7 @@ import { SeqSet, TailWindow, type SkeletonLedger, type TakeBudget } from "./live
 import { HeightRefiner, workerMeasure } from "./height-refiner";
 // 〔骨架〕骨架层（占位 ＋ 只物化可见区）。接入点全部带「骨架」字样，搜得到。
 import { SkeletonView, ledgerFromIndex, rowRuns } from "./skeleton-view";
+import { BodyCache } from "./body-cache";
 import { eagerBodyChars, setInjectedShown } from "./height-estimate";
 // 「大纲」与历史查看器共用同一份界面与跳转；清单问后端要（`OutlineSource`）。
 // 大纲在会话内查找面板里（`SessionFindPanel`：搜索 / 大纲两个模式，跳只有一个住址）。
@@ -56,10 +58,6 @@ import { copyText } from "./copy-table";
 export interface TabStreamHost {
   /** 按偏移取回的「没见过」的历史行：走 `onLine` 全套（去重、旁路记账、门控）。 */
   onLine(payload: JsonlLinePayload): void;
-  /** 立即整刷 tab 栏（批末 flush 中部缓冲后，攒下的未读徽标一次刷新）。 */
-  refreshTabBar(): void;
-  /** 帧末合批刷 tab 栏（live 路上后台 tab 来一行 ⇒ 未读 ＋1）。 */
-  scheduleTabBarRefresh(): void;
   /** 真用户输入上屏 ⇒ 自动跟随（路由那一半）。 */
   userActive(sessionId: string): void;
   /** 分叉产出新会话文件之后 —— 起它。 */
@@ -82,8 +80,8 @@ export function tabRenderContext(tab: Tab, host: Pick<TabStreamHost, "runLabelOf
     toolUseElements: tab.toolUseElements,
     runCards: tab.runCards,
     pendingToolResults: tab.pendingToolResults,
-    needs: tab.needs, // 在等你的那一步建出来就画成「在等你」
-    stepWait: (call) => tab.pending.find((p) => p.id === call),
+    needs: needsOf(tab), // 在等你的那一步建出来就画成「在等你」（脸说在等 ＋ 事实里那一份，同 `needsOf`）
+    stepWait: (call) => stepOf(tab, call) ?? undefined,
     retryRun: (id) => tab.retries.get(id),
     runLabelOf: (run) => host.runLabelOf(tab.sessionId, run),
     onRunCard: (tool, card) => host.markNewRunCard(tab.sessionId, tool, card),
@@ -120,6 +118,9 @@ export type TabStreamDom = Pick<
   | "toolUseElements"
   | "pendingToolResults"
 >;
+
+/** 没接骨架的 tab 至多留几张建过的卡（超了离视口远的那一截交回尾部窗口，往上翻照补批补回来）。 */
+export const BUILT_CARDS_CAP = 2000;
 
 export class TabStreamView {
   /**
@@ -168,6 +169,10 @@ export class TabStreamView {
    * `ensure` 只是把取正文的请求发出去，同步那一下去找卡必然落空。
    */
   private readonly rangeFetches = new WeakMap<Tab, Set<Promise<void>>>();
+  /** 每个 tab 的卡正文缓存（`body-cache.ts`）：建卡时顺手放、预取回来的放；物化 · 交回尾部窗口时从这里拿。关 tab 清。 */
+  private readonly bodies = new WeakMap<Tab, BodyCache>();
+  /** 每个 tab 在途的预取（seq 半开区间）：同一段不取两遍。 */
+  private readonly prefetching = new WeakMap<Tab, Array<readonly [number, number]>>();
   /**
    * 索引回来时 tab 已经切走了 ⇒ 不在后台接骨架，账本停在这里，切回来的下一帧再接（`activate`）。
    * 接骨架要插占位、量几何、补可见区 —— 在收起的 tab 里做是白干还逼排版；快速连切时一串旧切换的活全堆在后面。
@@ -192,6 +197,8 @@ export class TabStreamView {
     private readonly host: TabStreamHost,
     /** 第二级估高（Worker 精算）；环境里没有 Worker 时它自己不开。 */
     private readonly refiner: HeightRefiner = new HeightRefiner(workerMeasure()),
+    /** 没接骨架的 tab 至多留几张建过的卡（判据在 jsdom 里用小一点的数，几千张卡的 DOM 在那里慢）。 */
+    private readonly builtCap: number = BUILT_CARDS_CAP,
   ) {
     this.cold = new ColdReads(store);
     this.applyInjected(injectedShownDefault()); // 「显示系统注入」这扇窗上次的样子
@@ -349,7 +356,10 @@ export class TabStreamView {
     // 轮次刻度：同一份轮；跳与查找 / 大纲同一个住址（`jumpInTab`）。挂在流外（不随流滚），随 tab 同进同出。
     const turnRail = new TurnRail(streamEl, stream.contentElement, {
       turns: () => turnFold.all,
-      waiting: () => this.store.tabs.get(sessionId)?.needs != null,
+      waiting: () => {
+        const t = this.store.tabs.get(sessionId);
+        return t !== undefined && needsOf(t) !== null;
+      },
       speaker: () => speakerNameOf(this.store.tabs.get(sessionId)?.agent ?? null),
       // 刻度跳不过去（那一段还取不回来：骨架没接上、`jumpInTab` 已经踢了一次要骨架）⇒ 这一下就算了，再点多半已接上。
       // 不能让它成一条没人接的 rejection：全局兜底会把整条状态栏换成一行「REJ: …」。
@@ -406,6 +416,7 @@ export class TabStreamView {
         return;
       }
       if (t && t.streamEl.scrollTop <= TabStreamView.TOP_TRIGGER_PX) this.fillAbove(t);
+      else if (t) this.capBuilt(t);
     };
     streamEl.addEventListener("scroll", fillHandler, { passive: true });
     streamEl.addEventListener("scroll", tab.turnRail.onScroll, { passive: true }); // 刻度上「当前」那一格
@@ -461,6 +472,8 @@ export class TabStreamView {
     tab.seenSeqs.clear();
     // 窗口账本与缓冲持整段历史 payload（大会话数十 MB 级）⇒ 断引用；摘 fill listener
     tab.window.dispose();
+    this.bodies.get(tab)?.clear(); // 卡正文缓存同理
+    this.bodies.delete(tab);
     tab.skeleton?.dispose(); // 〔骨架〕
     tab.skeleton = null;
     tab.midBatchBuffer = [];
@@ -693,8 +706,11 @@ export class TabStreamView {
       },
     };
 
-    // 标题记录不建卡（routeMeta 是两条路共用的一份）。
-    if (routeMeta(payload) === "consumed") return;
+    // 标题记录不建卡（routeMeta 是两条路共用的一份）。它也进正文缓存（很小）：建过的卡交回尾部窗口时，那一截见过的行要整段都在手上（`capBuilt`）。
+    if (routeMeta(payload) === "consumed") {
+      this.bodiesOf(tab).put(payload);
+      return;
+    }
 
     // 门控（单洞后缀不变量，纯按 seq）：
     // - virgin ＋ 批：一律收纳，当前 tab 也一样 —— 批收尾（`batchEnd`）· 取完（`catchUpTo`）· 切进来（`activate`）只建视口那一截
@@ -717,36 +733,25 @@ export class TabStreamView {
       if (!render && tab.skeleton && !tab.skeleton.isPending(payload.seq)) render = true;
     }
     // 批期落在渲染窗口内中部的插入（seq ≥ floor 且 < 已渲染最高 seq：大增量批的老块）→ 缓冲，onBatchEnd 一次挂载（不逐帧往上方插，§21）。
-    // 离线期的真新消息照计未读（按记录计，与相邻合并、不建卡的记录略有出入，99+ 封顶下可接受）。
     if (render && this.store.inBatch && payload.seq < tab.timeline.maxSeq) {
       tab.midBatchBuffer.push(payload);
-      // 徽标刷新攒到批末 flush 一次(D 审计:600 条缓冲 = 600 次全 bar 巡检)
-      if (this.store.activeId !== tab.sessionId) tab.unread += 1;
       return;
     }
     if (!render) {
       tab.window.defer(payload);
       // 仪表(jsdom 单测无 main.ts,须防 undefined)
       if (window.__ccmPerf) window.__ccmPerf.recordsDeferred = (window.__ccmPerf.recordsDeferred ?? 0) + 1;
-      // 收纳不计未读 —— 重放历史不是「未读新消息」
       return;
     }
 
     // 批期间走惰性高亮（代码块占位 ＋ IntersectionObserver 触发再补）
     const ctx = tabRenderContext(tab, this.host, this.store.inBatch);
     const beforeSize = tab.timeline.size;
+    this.bodiesOf(tab).put(payload);
     renderContentRecord(payload, ctx, sink);
     const inserted = tab.timeline.size > beforeSize;
     if (inserted) tab.branchFolder.cardsAdded(); // 新卡可能落在回退掉的那一段里 ⇒ 帧末按清单重折
     if (inserted && payload.record.t === "reply" && payload.record.error) applyRetries(tab.streamEl, tab.retries); // 报错卡落下 ⇒ 照手上那一份重试串摆
-
-    // unread 计数：只有真新 entry 入 timeline 才算（注入进旧卡的工具结果不算）
-    if (inserted && this.store.activeId !== tab.sessionId) {
-      tab.unread += 1;
-      // 帧末合批：这里每来一行实时记录就走一次，徽标数字攒到帧末一次更新。
-      // 只合批这一处：其余整刷对没变的 tab 零 DOM 写（`tab-bar-view.ts` 与上次画的一样就不写），不贵；合批反而让「点完立刻看到」变成下一帧。
-      this.host.scheduleTabBarRefresh();
-    }
   }
 
   /**
@@ -794,18 +799,26 @@ export class TabStreamView {
   }
 
   /**
+   * 事实里说在等的那几样认不认变了（`waitCounts`：脸说在等 ＋ 手上那份是脸这一轮的；离开在等 · 又在等 · 直接换到另一轮在等都算）：
+   * 等批准那一轮的刻度 · 画成在等的那几步重画（照 `needsOf` · `stepOf` 读：不认 ⇒ 不再说在等，事实说在等的那一步画成状态不明，
+   * 事实要不到的时候也不卡着上一回那份；又认了 ⇒ 照手上的事实画回）。只动照事实画过的那几行（在等 · 状态不明）：
+   * 还没画过的那几步画成什么只等事实说。
+   */
+  waitingMoved(tab: Tab): void {
+    tab.turnRail.render();
+    this.paintStepWaits(tab, '.step-line[data-call]:is([data-state="awaiting"], [data-state="unclear"])');
+  }
+
+  /**
    * 过程里还没结果的那几步照会话事实画：`pending[].state`（在跑 · 在等批准 · 状态不明）；事实里已经没有它（那一轮过去了、
    * 被截在上界外）⇒ 状态不明。结果已经到了的不动（`paintWaiting` 自己守）。
    */
-  private paintStepWaits(tab: Tab): void {
-    const WAITING_ROWS = '.step-line[data-call]:is([data-state="pending"], [data-state="running"], [data-state="awaiting"], [data-state="unclear"])';
-    const by = new Map(tab.pending.map((p) => [p.id, p] as const));
-    const n = tab.needs;
-    for (const row of tab.streamEl.querySelectorAll<HTMLElement>(WAITING_ROWS)) {
+  private paintStepWaits(tab: Tab, rows = '.step-line[data-call]:is([data-state="pending"], [data-state="running"], [data-state="awaiting"], [data-state="unclear"])'): void {
+    const n = needsOf(tab);
+    for (const row of tab.streamEl.querySelectorAll<HTMLElement>(rows)) {
       const call = row.dataset.call ?? "";
       const waited = n?.call === call ? waitedNow(n, Date.now()) : null;
-      const p = by.get(call);
-      paintWaiting(row, p ?? null, waited, n?.kind === "approve");
+      paintWaiting(row, stepOf(tab, call), waited, n?.kind === "approve");
     }
   }
 
@@ -992,6 +1005,8 @@ export class TabStreamView {
    */
   private renderPayloadsBatch(tab: Tab, payloads: JsonlLinePayload[]): void {
     if (payloads.length === 0) return;
+    const bodies = this.bodiesOf(tab);
+    for (const p of payloads) bodies.put(p); // 交回占位 / 尾部窗口之后再建，正文从这里拿
     const ctx = tabRenderContext(tab, this.host, true);
     const sink: StreamSink = {
       timeline: tab.timeline,
@@ -1199,11 +1214,14 @@ export class TabStreamView {
       }
     }
     const view: SkeletonView = new SkeletonView(ledger, tab.streamEl, tab.timeline, {
+      // 正文先从尾部窗口拿、再从缓存拿（缓存里的都见过：只建卡），剩下的才按偏移取
       materialize: (lo, hi) => {
-        const taken = tab.window.takeRange(lo, hi);
+        const cached = this.bodiesOf(tab).takeRange(lo, hi).filter((p) => routeMeta(p) === "content");
+        const taken = [...tab.window.takeRange(lo, hi), ...cached].sort((a, b) => a.seq - b.seq);
         this.renderPayloadsBatch(tab, taken);
         return this.fetchMissingRows(tab, view, lo, hi, new Set(taken.map((p) => p.seq)));
       },
+      prefetch: (lo, hi) => this.prefetchRows(tab, view, lo, hi),
       // 交回的行早到过（`seenSeqs`）⇒ 滚回来按偏移取回、只建卡（`fetchMissingRows` 的「见过的」那一支）
       released: (_ranges, cards) => {
         forgetDetached(tab, tab.streamEl, cards);
@@ -1296,6 +1314,52 @@ export class TabStreamView {
       void fetched.finally(() => set.delete(fetched)).catch(() => {});
     }
     return runs.map(({ a, b }) => [a, b]);
+  }
+
+  private bodiesOf(tab: Tab): BodyCache {
+    let c = this.bodies.get(tab);
+    if (!c) this.bodies.set(tab, (c = new BodyCache()));
+    return c;
+  }
+
+  /**
+   * 〔骨架〕**预取**（`SkeletonHost.prefetch`）：视口远处还是占位的 `[lo, hi)` 里，正文不在手上（尾部窗口 · 缓存都没有）、
+   * 也不在途的会建卡的行，照 `fetchMissingRows` 的切段按偏移取回 —— 不建卡。回来的：见过的进缓存；
+   * 没见过的、还在占位里的走 `onLine` 全套（旁路记账、去重），门控把它收进尾部窗口（同重放推来的历史）。取不到不出声（翻到那里照旧取）。
+   */
+  private prefetchRows(tab: Tab, view: SkeletonView, lo: number, hi: number): void {
+    if (!tab.parentPath) return;
+    const bodies = this.bodiesOf(tab);
+    let busy = this.prefetching.get(tab);
+    if (!busy) this.prefetching.set(tab, (busy = []));
+    const inFlight = busy;
+    const ledger = view.ledger;
+    const have = (s: number): boolean =>
+      ledger.factsOf(s)!.dr === undefined ||
+      !view.isPending(s) ||
+      bodies.has(s) ||
+      tab.window.has(s) ||
+      inFlight.some(([a, b]) => s >= a && s < b);
+    for (const { a, b, offset, until } of rowRuns(ledger, lo, hi, have)) {
+      const run = [a, b] as const;
+      inFlight.push(run);
+      void readRange(tab.origin, tab.parentPath, offset, until, a)
+        .then((payloads) => {
+          if (this.store.tabs.get(tab.sessionId) !== tab || tab.skeleton !== view) return;
+          const floor = tab.window.floorSeq;
+          const fresh: JsonlLinePayload[] = [];
+          for (const p of payloads) {
+            if (tab.seenSeqs.has(p.seq)) bodies.put(p);
+            else if (floor !== null && p.seq < floor && view.isPending(p.seq)) fresh.push(p);
+          }
+          this.feedHistoryRows(tab, fresh);
+        })
+        .catch((e: unknown) => console.info(`[tabs] 预取正文没取到 [${a},${b})：`, e))
+        .finally(() => {
+          const i = inFlight.indexOf(run);
+          if (i >= 0) inFlight.splice(i, 1);
+        });
+    }
   }
 
   /**
@@ -1413,18 +1477,59 @@ export class TabStreamView {
       this.readForward(tab, path, have + 1, seq);
       return;
     }
-    const fresh = have >= 0 ? this.restartTail(tab) : tab;
     // 分两截取：先取上流点之下视口那一截（取到末尾），取完它还在眼前就照切进来那样物化视口那一截、停下来看时接骨架；
     // 再取更早的那一截，落在已建那一截之下、只进账本（往上翻时从账本补）。一次取整截的话点开新 tab 要空白着等完几页、喂完几百行。
     // 取回来的按批语义进账本、不建卡（当前的那一个也不建：批里来的一律收纳）。
     // 冷起首个标签页的正文走的就是这一趟（壳冷起不整份重放）⇒ 启动管线那份 timeline 在视口那一截落地时落盘（只第一次，`startup-perf.ts`）。
     const from = Math.max(0, seq - TabStreamView.WATCH_REFILL_MAX);
     const first = Math.max(from, seq - TabStreamView.WATCH_FIRST_ROWS);
-    this.readForward(fresh, path, first, undefined, () => {
+    const landed = (fresh: Tab): void => {
       if (this.inFront(fresh)) this.activate(fresh);
       noteColdFilled();
       if (first > from) this.readForward(fresh, path, from, first, () => this.updateSentinel(fresh));
+    };
+    if (have < 0) {
+      this.readForward(tab, path, first, undefined, () => landed(tab));
+      return;
+    }
+    // 正文要整份重来：视口那一截先取回来、旧的那一份照摆着；取回来之后同一个任务里拆旧换新、喂进去、物化（不留空帧）。
+    void this.collectForward(tab, path, first).then((pages) => {
+      if (pages === null || this.store.tabs.get(tab.sessionId) !== tab) return;
+      const fresh = this.restartTail(tab);
+      for (const page of pages) {
+        this.feedHistoryRows(fresh, page.payloads.filter((p) => !fresh.seenSeqs.has(p.seq)));
+        fresh.seenSeqs.addRange(page.from, page.next);
+      }
+      landed(fresh);
     });
+  }
+
+  /**
+   * 按行号从 `from` 取到末尾、先攒着不喂（{@link TabStreamView.catchUpTo} 整份重来那一形：取回来之前旧的那一份照摆着）。
+   * 同 {@link TabStreamView.readForward} 一件事一个期限；到点 · 取失败 · 这个 tab 已经换了 ⇒ `null`（旧的那一份照留）。
+   */
+  private async collectForward(tab: Tab, path: string, from: number): Promise<Awaited<ReturnType<typeof readLines>>[] | null> {
+    const budget = budgetWithin(TabStreamView.GAP_FILL_BUDGET_MS);
+    const pages: Awaited<ReturnType<typeof readLines>>[] = [];
+    let at = from;
+    for (;;) {
+      const leftMs = remaining(budget);
+      if (leftMs <= 0) {
+        console.warn(`[tabs] 整份重来前取尾段没在期限内取完（${tab.sessionId.slice(0, 8)}，停在第 ${at} 行）`);
+        return null;
+      }
+      let page: Awaited<ReturnType<typeof readLines>>;
+      try {
+        page = await readLines(tab.origin, path, at, undefined, leftMs);
+      } catch (e) {
+        console.warn(`[tabs] 整份重来前取尾段失败（${tab.sessionId.slice(0, 8)}，从第 ${at} 行）：`, e);
+        return null;
+      }
+      if (this.store.tabs.get(tab.sessionId) !== tab) return null;
+      pages.push(page);
+      if (page.eof || page.next <= at) return pages;
+      at = page.next;
+    }
   }
 
   /** 冷起补尾段先取的那一截：上流点之下这么多行（一屏多一点：冷开物化一次至多建 `COLD_CHUNK × MATERIALIZE_ROUNDS_PER_CALL` 行）。 */
@@ -1479,7 +1584,6 @@ export class TabStreamView {
     // 已知取舍(D 审计):批末 flush 不做选区守卫——unwrap/rebuild 会杀进行中选区,
     // 但 flush 不可延迟(数据必须落),且触发面(选中文本时恰逢远端大增量批)极窄。
     this.renderPayloadsBatch(tab, payloads);
-    this.host.refreshTabBar(); // 缓冲期攒下的 unread 徽标一次刷新
   }
 
   /**
@@ -1499,6 +1603,56 @@ export class TabStreamView {
    */
   private resumeTail(tab: Tab): void {
     if (tab.turnFold.all.length > 0 && this.inFront(tab)) this.fillAbove(tab);
+  }
+
+  /**
+   * 〔建过的卡有上限〕没接骨架的 tab 建过的卡超过 [`BUILT_CARDS_CAP`] ⇒ 视口上方 `KEEP_SCREENS` 屏之外的那一截交回尾部窗口：
+   * 摘卡（视口钉住第一张看得见的卡）、低水位抬到切点、那一截的正文从缓存放回账本（往上翻照补批补回来）。
+   * 只在轮与回答的开头切（同骨架的 `release`）；那一截见过的行要整段都在缓存里，缺一行就切在它之前。
+   * 视口下方的不交（尾部窗口只认后缀）；视口拿不到布局 ⇒ 不动。
+   */
+  private capBuilt(tab: Tab): void {
+    const floor = tab.window.floorSeq;
+    if (tab.skeleton || floor === null || tab.timeline.size <= this.builtCap) return;
+    const el = tab.streamEl;
+    const view = el.getBoundingClientRect();
+    if (view.height <= 0) return;
+    const limit = view.top - view.height * SkeletonView.KEEP_SCREENS;
+    const bodies = this.bodiesOf(tab);
+    let cut = floor;
+    let s = floor;
+    for (const e of tab.timeline.between(floor, tab.timeline.maxSeq + 1)) {
+      const r = e.element.getBoundingClientRect();
+      if (r.width === 0 && r.height === 0) continue; // 藏着的
+      if (r.top > limit) break;
+      let whole = true;
+      for (; s < e.seq; s++) if (tab.seenSeqs.has(s) && !bodies.has(s)) whole = false;
+      if (!whole) break;
+      const rec = bodies.get(e.seq)?.record;
+      if (e.kind === "card" && rec && rec.draw === "card" && (rec.t === "reply" || rec.human)) cut = e.seq;
+    }
+    if (cut <= floor) return;
+    const anchor = firstVisibleCard(el);
+    const anchorTop = anchor?.getBoundingClientRect().top ?? 0;
+    const cards: HTMLElement[] = [];
+    try {
+      el.style.overflowAnchor = "none";
+      for (const e of tab.timeline.removeBetween(floor, cut)) {
+        cards.push(e.element);
+        e.element.remove();
+      }
+      forgetDetached(tab, el, cards);
+      tab.branchFolder.rebuildNow();
+      tab.window.raiseFloor(cut);
+      for (const p of bodies.takeRange(floor, cut)) if (routeMeta(p) === "content") tab.window.restore(p);
+      this.updateSentinel(tab); // 哨兵（「还有 N 条」）在顶上：一并算进补偿
+      if (anchor?.isConnected) {
+        const delta = anchor.getBoundingClientRect().top - anchorTop;
+        if (delta !== 0) el.scrollTop += delta;
+      }
+    } finally {
+      el.style.overflowAnchor = "";
+    }
   }
 
   private fillAbove(tab: Tab): void {

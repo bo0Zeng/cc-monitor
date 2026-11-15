@@ -30,7 +30,7 @@ const val MACHINE_BAR_TAG = "machine-bar"
 
 /**
  * 机器条那一条要画的：那一句 · 样子 · 核心点名的那一颗修法（没有 ⇒ `null`）· 进度条 · 复制详情。
- * 样子就是核心给的那一格语气（`deploy::machine::strip`）：忙（灰，装那一段带进度）· 离线（灰虚线框）· 警示（琥珀）· 故障（红）。
+ * 样子就是核心给的那一格语气（`copy_core::machine::strip`）：忙（灰，装那一段带进度）· 离线（灰虚线框）· 警示（琥珀）· 故障（红）。
  */
 data class BarLook(
     val text: String,

@@ -5,15 +5,6 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::machine::Why;
-
-/// ack 里的协议版本：v2 = 竞速 · 跳板 · agent · 几种用法 · 阶段行。多一种用法不 bump 它（新界面凭 `uses` 认出老后端），
-/// 版本号只在同一种用法的字节形状变了时才动。
-pub const ACK_V: u32 = 2;
-
-/// 拨号代理认得的用法 —— ack 的 `uses` 原样回这张表，读的那一侧据它判「代理够不够新」。
-pub const USES: &[&str] = &["stream", "capture", "forward", "shell", "hold"];
-
 /// capture 那一形的收工记号：不认一次性子命令的老后端会把它当未知旗标、直接进流模式、第一行发 hello ——
 /// 收全的一侧见到它就提前收（不让它装 hook、不挂住），读的一侧当「太旧、要更新」。后端问远端 · 桌面与手机的重连循环同读这一份。
 pub const OLD_BACKEND_MARKER: &str = "\"kind\":\"hello\"";
@@ -82,22 +73,13 @@ pub struct DialAck {
     /// `ok=false` 时的那一句（只带原因词，不带下层原话）。
     #[serde(default)]
     pub said: Option<String>,
-    /// `ok=false` 时的复制详情（时刻 · 机器 · 命令 · 下层原话）。成功 ⇒ 不出这一格。
+    /// `ok=false` 时的复制详情（时刻 · 机器 · 命令 · 下层原话；手机拨号没成时放进复制详情）。成功 ⇒ 不出这一格。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub detail: Option<String>,
     /// 实际观察到的 host key 指纹（展示用；失败时也尽量带上）。
     #[serde(default)]
     pub fingerprint: Option<String>,
-    /// 竞速胜出的地址（`host:port`，给人看）。
-    #[serde(default)]
-    pub endpoint: Option<String>,
-    /// 同一条胜者，结构化 —— 记 last-good、下一趟当 `prefer` 交回来用它（地址不在读的那一侧解析）。失败 ⇒ `None`。
-    #[serde(default)]
-    pub winner: Option<Endpoint>,
-    /// 没拨成时的原因码；拨成了 / 说不清 ⇒ `None`。
-    #[serde(default)]
-    pub reason: Option<Why>,
     /// 目标那一台握手时给的 host key 类型。没握到那一步 ⇒ 不出这一格。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
@@ -106,82 +88,9 @@ pub struct DialAck {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub expected_fingerprint: Option<String>,
-    /// 协议版本（[`ACK_V`]；v1 代理没有这一格 ⇒ 0）。
-    #[serde(default)]
-    pub v: u32,
-    /// 这个代理认得的用法（[`USES`]）。
-    #[serde(default)]
-    pub uses: Vec<String>,
-    /// 没够着那一台（[`unreached`]：解析 · 拨不通 · 到期限一步都没动 · 跳板那一台断了）：读的那一侧照它分「那台不在」与别的失败，不自己按原因码判。
+    /// 没够着那一台（`ssh_dial::unreached`：解析 · 拨不通 · 到期限一步都没动 · 跳板那一台断了）：读的那一侧照它分「那台不在」与别的失败，不自己按原因码判。
     #[serde(default)]
     pub unreached: bool,
-}
-
-/// 没够着那一台的那几个原因码（拨号的 [`Why`]）。
-pub fn unreached(why: Option<Why>) -> bool {
-    matches!(
-        why,
-        Some(Why::Resolve | Why::Unreachable | Why::Timeout | Why::Jump)
-    )
-}
-
-impl DialAck {
-    /// 开成了：看到的指纹 · 胜出的地址（给人看的一串 ＋ 结构化的一份）。
-    pub fn opened(fingerprint: Option<String>, endpoint: String, winner: Endpoint) -> Self {
-        DialAck {
-            ok: true,
-            said: None,
-            detail: None,
-            fingerprint,
-            endpoint: Some(endpoint),
-            winner: Some(winner),
-            reason: None,
-            key_type: None,
-            expected_fingerprint: None,
-            v: ACK_V,
-            uses: uses(),
-            unreached: false,
-        }
-    }
-
-    /// 没开成的那一份写成线上那一行。
-    pub fn of_fail(f: DialFail) -> Self {
-        DialAck {
-            ok: false,
-            said: Some(f.said),
-            detail: f.detail,
-            fingerprint: f.fingerprint,
-            endpoint: None,
-            winner: None,
-            reason: f.reason,
-            key_type: f.key_type,
-            expected_fingerprint: f.expected_fingerprint,
-            v: ACK_V,
-            uses: uses(),
-            unreached: unreached(f.reason),
-        }
-    }
-}
-
-fn uses() -> Vec<String> {
-    USES.iter().map(|u| (*u).to_string()).collect()
-}
-
-/// 没开成：线上就是一行 `ok:false` 的 ack（[`DialAck::of_fail`]），进程内的调用方直接拿这一份。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DialFail {
-    /// 那一句（只带原因词，不带下层原话）。
-    pub said: String,
-    /// 复制详情（时刻 · 机器 · 命令 · 下层原话）。
-    pub detail: Option<String>,
-    /// 握手时看到的 host key 指纹（失败时也尽量带上）。
-    pub fingerprint: Option<String>,
-    /// 原因码；说不清 ⇒ `None`。
-    pub reason: Option<Why>,
-    /// 目标那一台握手时给的 host key 类型（没握到那一步 ⇒ `None`）。
-    pub key_type: Option<String>,
-    /// 「钥匙变了」时库里同类型那一把的指纹（没有 ⇒ 空串；没因钥匙被拒 ⇒ `None`）。
-    pub expected_fingerprint: Option<String>,
 }
 
 /// `use: capture` 的结果行。
@@ -381,18 +290,4 @@ pub struct DialRequest {
     /// ack 之前每过一步当场写一行「过了一步」那一形阶段行（`{"stage":{"kind":"step",…}}`，`step`）。重连循环拿它判「这一拨还在动」（`resident-client` 的 `DIAL_WITHIN`）。
     #[serde(default)]
     pub progress: bool,
-}
-
-impl DialRequest {
-    /// 竞速顺序：给了就用给的，没给就只有 `host:port`。
-    pub fn race_order(&self) -> Vec<Endpoint> {
-        if self.endpoints.is_empty() {
-            vec![Endpoint {
-                host: self.host.clone(),
-                port: self.port,
-            }]
-        } else {
-            self.endpoints.clone()
-        }
-    }
 }

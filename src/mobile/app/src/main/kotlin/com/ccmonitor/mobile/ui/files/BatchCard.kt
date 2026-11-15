@@ -26,6 +26,7 @@ import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.wire.gen.BatchLine
+import com.ccmonitor.mobile.ui.common.CopyBodyButton
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
 
 /**
@@ -71,7 +72,7 @@ fun BatchCard(
                 is BatchLine.Failed -> {
                     Text(e.said)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        CopyDetailButton(e.said, e.details.orEmpty())
+                        CopyDetailButton(e.said, e.details)
                         SecondaryButton(onClick = onDismiss) { Text(copyText("kit.drawer.close")) }
                     }
                 }
@@ -109,7 +110,7 @@ private fun FailedSheet(
         Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(e.failedTitle, style = MaterialTheme.typography.titleMedium)
             e.failed.forEach { Text(it) }
-            e.details?.let { CopyDetailButton(e.title, it.removePrefix(e.title + "\n")) }
+            CopyBodyButton(e.details)
         }
     }
 }

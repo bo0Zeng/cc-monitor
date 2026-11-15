@@ -5,9 +5,8 @@
 import type { MachineState } from "../generated/MachineState";
 import type { MachineFix } from "../generated/MachineFix";
 import type { MachineFixButton } from "../generated/MachineFixButton";
-import type { Tone } from "../generated/Tone";
 import type { MachineDotState } from "../kit/status-dot";
-import { machineDot } from "../machine-dot";
+import { machineDot, problemTone, type ProblemTone } from "../machine-dot";
 import { button } from "../kit/button";
 import { icon } from "../kit/icon";
 import { spinner } from "../kit/progress";
@@ -22,7 +21,7 @@ export interface MachineFace {
   word: string;
   problem: string;
   /** 问题行的样子：出错 · 待办 · 正在做（转圈；`bar` ＝ 装 / 更新那一段带进度条）。 */
-  tone: "error" | "warn" | "busy";
+  tone: ProblemTone;
   bar: boolean;
   fixes: MachineFixButton[];
   /** 问题行那句后面跟的复制详情（壳写好的；空 ＝ 不出［复制详情］）。 */
@@ -33,16 +32,13 @@ export interface MachineFace {
   route: string;
 }
 
-/** 条上那一行的语气 ⇒ 问题行的样子（语气 · 带不带进度由后端 `deploy::machine::strip` 定）。 */
-const TONE: Record<Tone, MachineFace["tone"]> = { plain: "warn", now: "busy", busy: "busy", need: "warn", warn: "warn", offline: "error", fail: "error" };
-
 export function machineFace(m: MachineState): MachineFace {
   return {
     dot: machineDot(m.dot),
     word: m.word,
     problem: m.said,
     // 不进条（连着 · 较新 · 停用 · 不明）还有那一句 ⇒ 待办：这几样都不是出错。
-    tone: m.strip ? TONE[m.strip.tone] : "warn",
+    tone: m.strip ? problemTone(m.strip.tone) : "warn",
     bar: m.strip?.progress ?? false,
     fixes: m.fixes,
     detail: m.detail ?? "",

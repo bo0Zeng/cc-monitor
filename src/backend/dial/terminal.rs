@@ -13,7 +13,8 @@
 //! - 钥匙路径尾 `\` 剥掉（PS < 7.3 给含空格参数加壳时尾部 `\"` 会吃掉收尾引号）；没给钥匙 ⇒ 走 ssh-agent，不带 `-i`。
 //!
 //! 拒（`refused`，说清哪一格）：命令空 / 超长 / 含控制符 · PowerShell 那一形另拒双引号（PowerShell 5.1 向原生程序传参对内嵌 `"`
-//! 有历史畸变，那是**那条送法**的约束）· 用户名 / 地址 / 跳板用户 / 跳板地址出了白名单（它们是拼进命令体的裸词）。
+//! 有历史畸变，那是**那条送法**的约束）· 用户名 / 地址 / 跳板用户 / 跳板地址出了白名单（它们是拼进命令体的裸词）
+//! · PowerShell 那一形 `-F` 那份配置的路径不是 UTF-8（POSIX 那一形照字节交 `$'…'`）。
 //!
 //! ssh 客户端用这台上找到的那一份的全路径（[`crate::platform::ssh_client`]：只查文件、不起子进程）；
 //! 没装 ⇒ 不出那一行、说没装（`no_ssh_client`）；查的时候出了错 ⇒ 说判不了（`unobservable`），不说没装。
@@ -107,11 +108,28 @@ fn jump_arg(chain: &[&super::JumpHop]) -> Result<String, Said> {
 
 /// ` -F '<cc-monitor 那份 ssh 配置>'`：目标与 `-J` 起的每台跳板都认 cc-monitor 那份主机钥匙库（`-J` 起的子 ssh 只继承 `-F`、不吃 `-o`），
 /// 不再问一遍、也不写用户的 `~/.ssh/known_hosts`；用户与系统的 ssh 配置照读（那份配置里 `Include` 着）。说不出那份 ⇒ 不带。
-pub fn config_arg(path: Option<&std::path::Path>, powershell: bool) -> String {
+/// 路径不是 UTF-8 ⇒ POSIX 那一形照字节交（`posix_quote_bytes`，`$'…'`）；PowerShell 那一形拼不出，照实拒（不拼一个不存在的文件）。
+pub fn config_arg(path: Option<&std::path::Path>, powershell: bool) -> Result<String, Said> {
     match path {
-        Some(p) => format!(" -F {}", literal(powershell, &p.to_string_lossy())),
-        None => String::new(),
+        Some(p) => Ok(format!(" -F {}", path_literal(powershell, p)?)),
+        None => Ok(String::new()),
     }
+}
+
+/// 一条路径写成本机终端方言的字面量：是 UTF-8 ⇒ 单引号那一形；不是 ⇒ POSIX 照字节交（`posix_quote_bytes`，`$'…'`），
+/// PowerShell 那一形拼不出、照实拒（不拼一个不存在的文件）。路径进终端那一行都只经这里。
+pub(crate) fn path_literal(powershell: bool, p: &std::path::Path) -> Result<String, Said> {
+    if let Some(s) = p.to_str() {
+        return Ok(literal(powershell, s));
+    }
+    #[cfg(unix)]
+    if !powershell {
+        use std::os::unix::ffi::OsStrExt as _;
+        return Ok(shell_quote_core::posix_quote_bytes(
+            p.as_os_str().as_bytes(),
+        ));
+    }
+    Err(refused(copy_text("beAssets.door.homeNotUtf8", &[])))
 }
 
 /// 本机终端方言的单引号字面量。
@@ -140,8 +158,7 @@ pub(crate) fn render(
             &[("user", &format!("{:?}", req.user))],
         )));
     }
-    let first = req
-        .race_order()
+    let first = ssh_dial::race_order(&req)
         .into_iter()
         .next()
         .unwrap_or(super::Endpoint {
@@ -174,7 +191,7 @@ pub(crate) fn render(
     } else {
         String::new()
     };
-    let known = config_arg(super::known_hosts::terminal_config().as_deref(), powershell);
+    let known = config_arg(super::known_hosts::terminal_config().as_deref(), powershell)?;
     Ok(format!(
         "{call}{ssh} -t{jump} -p {port}{key}{known} {user}@{host}{tail}",
         call = if powershell { "& " } else { "" },
@@ -328,7 +345,7 @@ pub fn answer_with(
             &dir.join(sid.as_str()),
             &req.machine.to_string(),
             &line,
-        ),
+        )?,
         _ => line.clone(),
     };
     Ok(SshCommand { window, line })
@@ -397,7 +414,7 @@ fn login_shell(
         && !name.starts_with('-')
     {
         let ssh = ssh_path(ssh, powershell)?;
-        let known = config_arg(super::known_hosts::terminal_config().as_deref(), powershell);
+        let known = config_arg(super::known_hosts::terminal_config().as_deref(), powershell)?;
         return Ok(plain(format!(
             "{call}{ssh} -t{known} {name}",
             call = if powershell { "& " } else { "" },
@@ -420,18 +437,27 @@ fn login_shell(
 }
 
 /// 本机那一台的登录 shell（不走 ssh）：POSIX `exec ${SHELL:-bash} -l`；PowerShell 窗口本身就是 shell ⇒ 只回家目录。
-/// 说不出家目录 ⇒ 判不了，不猜一个。
+/// 说不出家目录 ⇒ 判不了，不猜一个；家名不是 UTF-8 ⇒ PowerShell 那一形照实拒。
 pub(crate) fn local_login_shell(powershell: bool) -> Result<String, Said> {
+    local_login_shell_at(powershell, crate::platform::paths::home_dir().as_deref())
+}
+
+/// [`local_login_shell`] 的本体（家目录由调用方给，判据直接喂）。
+fn local_login_shell_at(powershell: bool, home: Option<&std::path::Path>) -> Result<String, Said> {
     if !powershell {
         return Ok(posix::cd_then_login_shell(None));
     }
-    let Some(home) = crate::platform::paths::home_dir() else {
+    let Some(home) = home else {
         return Err(crate::common::said::Said::new(
             "unobservable",
             copy_text("beTerminal.login.noHome", &[]),
         ));
     };
-    Ok(ps_enter(&home.to_string_lossy()))
+    // 家名不是 UTF-8 ⇒ PowerShell 那一句拼不出这个目录，照实拒（不拼一个有损的、不存在的路径）。
+    let Some(home) = home.to_str() else {
+        return Err(refused(copy_text("beAssets.door.homeNotUtf8", &[])));
+    };
+    Ok(ps_enter(home))
 }
 
 /// 这台找到的 ssh 客户端全路径；没装 / 判不了 ⇒ 那一句（不说没装）。

@@ -22,9 +22,9 @@ fn list(mcp_row: bool) -> ExtList {
     };
     serde_json::from_value(json!({
         "machines": [
-            {"key": null, "here": true, "reachable": true, "name": "me", "projects": []},
-            {"key": "laptop", "here": false, "reachable": true, "name": "laptop", "projects": []},
-            {"key": null, "here": false, "reachable": false, "name": "gone", "projects": []},
+            {"key": null, "here": true, "reachable": true, "name": "me"},
+            {"key": "laptop", "here": false, "reachable": true, "name": "laptop"},
+            {"key": null, "here": false, "reachable": false, "name": "gone"},
         ],
         "rows": rows,
         "problems": [],
@@ -113,5 +113,159 @@ async fn no_mcp_row_asks_nobody() {
         *here_asked.lock().unwrap(),
         0,
         "表里没有 MCP 行 ⇒ 本机那一份也不读"
+    );
+}
+
+/// 一条用户级 `mcp-read` 条目：名字 · 配置（`command` 那一格）· 不一致。那一句照真成品分两种：
+/// 不一致 ⇒「〈配置 不一致〉」；一致 ⇒「〈在 配置〉」（只说在哪几个号里）。
+fn held(name: &str, cfg: &str, mismatch: bool) -> serde_json::Value {
+    let said = if mismatch {
+        format!("〈{cfg} 不一致〉")
+    } else {
+        format!("〈在 {cfg}〉")
+    };
+    let mut e = json!({"scope": "user", "name": name, "server": {"command": cfg}, "held": {"said": said, "tip": null}});
+    if mismatch {
+        e["mismatch"] = json!(true);
+    }
+    e
+}
+
+/// 同 [`held`]，落在另一级（`local` · `project`）。
+fn held_at(scope: &str, name: &str, cfg: &str, mismatch: bool) -> serde_json::Value {
+    let mut e = held(name, cfg, mismatch);
+    e["scope"] = json!(scope);
+    e
+}
+
+fn entries(es: &[serde_json::Value]) -> serde_json::Value {
+    json!({"entries": es, "dirs": [], "problems": []})
+}
+
+/// 表里 MCP 那几行投成 `(那一句, 各台挑第几条)`。
+type Picked = (Option<String>, Option<Vec<Option<u32>>>);
+fn mcp_rows(l: &ExtList) -> Vec<Picked> {
+    l.rows
+        .iter()
+        .filter(|r| r.kind == crate::assets::asset_catalog::ExtKind::Mcp)
+        .map(|r| (r.held_said.clone(), r.picks.clone()))
+        .collect()
+}
+
+/// ★ 同名同配置两个号（`mcp-read` 已合成一条带两个号）⇒ 表里仍一行，不拆。
+#[tokio::test]
+async fn one_server_held_by_two_accounts_stays_one_row() {
+    let asked: Asked = Arc::default();
+    let mine = entries(&[held("x", "c1", false)]);
+    let theirs = entries(&[held("x", "c2", false)]);
+    let got = with_mcp(
+        list(true),
+        || async move { Some(mine) },
+        there(&[("laptop", theirs)], &asked),
+    )
+    .await;
+    assert_eq!(
+        mcp_rows(&got),
+        vec![(None, None)],
+        "没有一台说不一致 ⇒ 不拆（各台各自的那一份照旧）"
+    );
+}
+
+/// ★ 同名各号配置不一致 ⇒ 那一行拆成两行：各带那一份写好的那一句、各台挑哪一条（下标，没有那一份 ⇒ 空）；格子照抄。
+#[tokio::test]
+async fn differing_configs_split_into_one_row_each() {
+    let asked: Asked = Arc::default();
+    let mine = entries(&[held("x", "c1", true), held("x", "c2", true)]);
+    let got = with_mcp(list(true), || async move { Some(mine) }, there(&[], &asked)).await;
+    assert_eq!(
+        mcp_rows(&got),
+        vec![
+            (
+                Some("〈c1 不一致〉".into()),
+                Some(vec![Some(0), None, None])
+            ),
+            (
+                Some("〈c2 不一致〉".into()),
+                Some(vec![Some(1), None, None])
+            ),
+        ]
+    );
+    let mcp: Vec<_> = got
+        .rows
+        .iter()
+        .filter(|r| r.kind == crate::assets::asset_catalog::ExtKind::Mcp)
+        .collect();
+    assert_eq!(mcp[0].cells, mcp[1].cells);
+    assert_ne!(mcp[0].variant, mcp[1].variant, "拆出的几行各有各的序号");
+}
+
+/// ★ 各台照（哪一级, 配置原文）对上同一行（不照各台读出的先后）：laptop 那份一致的 c2 落在用户级 c2 那一行；
+/// 本机本地级的 c2 与用户级的 c2 各一行；行只照说不一致的那几份起（本地级 c2 在本机一致、在 laptop 不一致 ⇒ 起一行、两台都挑上），
+/// 那一句取说不一致的那一条；项目级同名那一条不进拆出的行。
+#[tokio::test]
+async fn split_rows_pair_machines_by_scope_and_config() {
+    let asked: Asked = Arc::default();
+    let mine = entries(&[
+        held("x", "c1", true),
+        held("x", "c2", true),
+        held_at("local", "x", "c2", false),
+    ]);
+    let theirs = entries(&[
+        held_at("project", "x", "p", false),
+        held("x", "c2", false),
+        held_at("local", "x", "c2", true),
+        held_at("local", "x", "c5", true),
+    ]);
+    let got = with_mcp(
+        list(true),
+        || async move { Some(mine) },
+        there(&[("laptop", theirs)], &asked),
+    )
+    .await;
+    assert_eq!(
+        mcp_rows(&got),
+        vec![
+            (
+                Some("〈c1 不一致〉".into()),
+                Some(vec![Some(0), None, None])
+            ),
+            (
+                Some("〈c2 不一致〉".into()),
+                Some(vec![Some(1), Some(1), None])
+            ),
+            (
+                Some("〈c2 不一致〉".into()),
+                Some(vec![Some(2), Some(2), None])
+            ),
+            (
+                Some("〈c5 不一致〉".into()),
+                Some(vec![None, Some(3), None])
+            ),
+        ]
+    );
+}
+
+/// ★ 只一级不一致：另一级那条一致的不起行、不被标成不一致（判只在 `mcp-read` 那一处，这里只照它说的拆）。
+#[tokio::test]
+async fn a_consistent_scope_gets_no_row_of_its_own() {
+    let asked: Asked = Arc::default();
+    let mine = entries(&[
+        held("x", "c1", true),
+        held("x", "c2", true),
+        held_at("local", "x", "c9", false),
+    ]);
+    let got = with_mcp(list(true), || async move { Some(mine) }, there(&[], &asked)).await;
+    assert_eq!(
+        mcp_rows(&got),
+        vec![
+            (
+                Some("〈c1 不一致〉".into()),
+                Some(vec![Some(0), None, None])
+            ),
+            (
+                Some("〈c2 不一致〉".into()),
+                Some(vec![Some(1), None, None])
+            ),
+        ]
     );
 }

@@ -35,18 +35,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.core.claude.link.PlanCellFace
-import com.ccmonitor.mobile.core.claude.link.PlanCellView
-import com.ccmonitor.mobile.core.claude.link.PlanList
-import com.ccmonitor.mobile.core.claude.link.PlanLook
-import com.ccmonitor.mobile.core.claude.link.PlanNeedCard
-import com.ccmonitor.mobile.core.claude.link.PlanOutlineFace
-import com.ccmonitor.mobile.core.claude.link.PlanRead
-import com.ccmonitor.mobile.core.claude.link.PlanRowFace
-import com.ccmonitor.mobile.core.claude.link.PlanSlicesFace
-import com.ccmonitor.mobile.core.claude.link.Plans
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.ResidentFeed
+import com.ccmonitor.mobile.core.claude.link.cell
+import com.ccmonitor.mobile.core.claude.link.cellsOf
+import com.ccmonitor.mobile.core.claude.link.hasKids
+import com.ccmonitor.mobile.core.claude.link.label
+import com.ccmonitor.mobile.core.claude.link.slice
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
@@ -55,71 +50,93 @@ import com.ccmonitor.mobile.core.ui.icon.BackButton
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
+import com.ccmonitor.mobile.core.wire.gen.Command
+import com.ccmonitor.mobile.core.wire.gen.Commands
+import com.ccmonitor.mobile.core.wire.gen.PlanCell
+import com.ccmonitor.mobile.core.wire.gen.PlanCellViewReq
+import com.ccmonitor.mobile.core.wire.gen.PlanList
+import com.ccmonitor.mobile.core.wire.gen.PlanListReq
+import com.ccmonitor.mobile.core.wire.gen.PlanLook
+import com.ccmonitor.mobile.core.wire.gen.PlanNeed
+import com.ccmonitor.mobile.core.wire.gen.PlanPbState
+import com.ccmonitor.mobile.core.wire.gen.PlanRead
+import com.ccmonitor.mobile.core.wire.gen.PlanReadReq
+import com.ccmonitor.mobile.core.wire.gen.PlanSlice
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
+import com.ccmonitor.mobile.ssh.machineName
 import com.ccmonitor.mobile.ui.common.rememberHostLink
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 
 /*
- * 手机计划三屏（窄屏一屏一层）：片 ⇒ 大纲 ⇒ 一格详情；一格详情里点子格再推一屏。数据是那台 `plan-list` · `plan-read` 的成品，
- * 字由内嵌核心照成品写好（[Plans]），这里只照摆、按核心给的码挑图标与颜色。不给整张图（只在本机）。
+ * 手机计划三屏（窄屏一屏一层）：片 ⇒ 大纲 ⇒ 一格详情；一格详情里点子格再推一屏。数据是那台 `plan-list` · `plan-read` 的成品
+ * （照生成类型解），随数据变的字都是后端写好的；这里只照摆、骨架字照文案表取、按后端给的码挑图标与颜色。不给整张图（只在本机）。
  */
 
-/** 一屏读到哪：读着 · 读到了 · 没读成（那一句是那台或核心写好的）。 */
+/** 一屏读到哪：读着 · 读到了 · 没读成（那一句是那台写好的）。 */
 private data class PlanLoad<T>(
     val face: T? = null,
     val failed: String? = null,
     val loading: Boolean = true,
 )
 
-/** 问那台一条计划命令，读成那一屏；没答成 ⇒ 那一句，答成了但读不成那一屏 ⇒ 读不出那一句。 */
-private suspend fun <T> ask(
+/** 问那台一条计划命令，读成那一屏；没答成 ⇒ 那一句，答成了但解不开 · 片或格不在 ⇒ 读不出那一句。 */
+private suspend fun <Q, R, T> ask(
     feed: ResidentFeed,
     machine: String,
-    command: String,
-    args: Map<String, Any?>,
-    read: (Any?) -> T?,
+    command: Command<Q, R>,
+    req: Q,
+    read: (R) -> T?,
 ): PlanLoad<T> {
-    val r = feed.call(command, args, READ_MS)
-    if (r !is Reply.Ok) return PlanLoad(failed = r.problem(machine, command, feed.offline.value)?.text, loading = false)
-    return read(r.data)?.let { PlanLoad(it, loading = false) } ?: PlanLoad(failed = unreadableReply(machine, command, r.data.toString()).text, loading = false)
+    val r = feed.call(command.name, command.args(req), READ_MS)
+    if (r !is Reply.Ok) return PlanLoad(failed = r.problem(machine, command.name, feed.offline.value)?.text, loading = false)
+    return command.reply(r.data)?.let(read)?.let { PlanLoad(it, loading = false) }
+        ?: PlanLoad(failed = unreadableReply(machine, command.name, r.data.toString()).text, loading = false)
 }
 
 /** 进屏读一次（键变了重读）。 */
 @Composable
-private fun <T> rememberPlanLoad(
+private fun <Q, R, T> rememberPlanLoad(
     hostId: String,
     key: String,
-    command: String,
-    args: Map<String, Any?>,
-    read: (Any?) -> T?,
+    command: Command<Q, R>,
+    req: Q,
+    read: (R) -> T?,
 ): PlanLoad<T> {
     rememberHostLink(hostId, "plan-$hostId")
     val backends = koinInject<HostBackends>()
     val hosts = koinInject<HostRepository>()
     val got by produceState(PlanLoad<T>(), hostId, key) {
-        val machine = runCatching { hosts.get(hostId) }.getOrNull()?.label ?: hostId
-        value = ask(backends.of(hostId), machine, command, args, read)
+        val machine = hosts.machineName(hostId)
+        value = ask(backends.of(hostId), machine, command, req, read)
     }
     return got
 }
 
-/** 片那一屏：这台的工作区，一片一行；点一行进那一片的大纲。 */
+/** 片那一屏：这台的工作区，一片一行；点一行进那一片的大纲。pb 不在 ⇒ 那台写的那一句；一片都没有 ⇒ 无计划那一句。 */
 @Composable
 fun PlanSlicesScreen(
     hostId: String,
     onBack: () -> Unit,
     onOpen: (workspace: String, slice: String) -> Unit,
 ) {
-    val load = rememberPlanLoad<PlanSlicesFace>(hostId, "list", PlanList.COMMAND, PlanList.args()) { Plans.slices(it) }
-    PlanScaffold(copyText("plan.page.title"), null, onBack, load) { face ->
-        face.said?.let { item { Note(it) } }
-        face.groups.forEach { g ->
-            item(key = "ws#${g.workspace}") { Head(g.head, mono = true) }
-            items(g.rows, key = { "slice#${g.workspace}#${it.slice}" }) { r ->
-                Line(r.slice, r.line, r.end, dot = r.need) { onOpen(g.workspace, r.slice) }
+    val load = rememberPlanLoad(hostId, "list", Commands.PlanList, PlanListReq()) { it }
+    PlanScaffold(copyText("plan.page.title"), null, onBack, load) { list: PlanList ->
+        if (list.pb.state != PlanPbState.OK) {
+            // 那台分好的两格：那一句 · 下一步。
+            item { Note(list.pb.said.orEmpty()) }
+            list.pb.hint?.let { item { Note(it) } }
+            return@PlanScaffold
+        }
+        if (list.workspaces.all { it.slices.isEmpty() }) item { Note(copyText("plan.empty.text")) }
+        val sep = copyText("kit.text.sep")
+        list.workspaces.forEach { w ->
+            item(key = "ws#${w.workspace}") { Head(w.workspace, mono = true) }
+            items(w.slices, key = { "slice#${w.workspace}#${it.name}" }) { sl ->
+                val line = sl.said.bare ?: listOfNotNull(sl.domain, sl.said.strip).filter { it.isNotEmpty() }.joinToString(sep)
+                Line(sl.name, line, sl.said.root, dot = sl.needCount > 0) { onOpen(w.workspace, sl.name) }
             }
         }
     }
@@ -135,20 +152,39 @@ fun PlanOutlineScreen(
     onBack: () -> Unit,
     onOpenCell: (id: String) -> Unit,
 ) {
-    val load = rememberPlanLoad<PlanOutlineFace>(hostId, "read#$workspace#$slice", PlanRead.COMMAND, PlanRead.args(workspace)) { Plans.outline(it, slice, sid) }
-    PlanScaffold(slice, workspace, onBack, load) { face ->
-        if (face.meta.isNotEmpty()) item { Note(face.meta.joinToString(copyText("kit.text.sep"))) }
-        items(face.needs, key = { "need#${it.kind}#${it.pos}" }) { NeedCardView(it) }
-        face.mine?.let { m ->
-            item { Head(m.head) }
-            items(m.rows, key = { "mine#${it.k}" }) { kv -> Kv(kv.k, kv.v) }
+    val load = rememberPlanLoad(hostId, "read#$workspace#$slice", Commands.PlanRead, PlanReadReq(workspace)) { r -> r.slice(slice)?.let { r to it } }
+    PlanScaffold(slice, workspace, onBack, load) { (read, sl) ->
+        val sep = copyText("kit.text.sep")
+        val meta = listOfNotNull(sl.said.bare, sl.said.strip, sl.said.readAt, sl.said.top, copyText("plan.sub.docsOnly").takeIf { sl.docsOnly })
+        if (meta.isNotEmpty()) item { Note(meta.joinToString(sep)) }
+        items(sl.needs, key = { "need#${it.key}" }) { NeedCardView(it) }
+        mine(read, sl, sid)?.let { rows ->
+            item { Head(copyText("plan.blocks.block")) }
+            items(rows, key = { "mine#${it.first}" }) { (k, v) -> Kv(k, v) }
         }
-        item { Head(face.head) }
-        rows(face.rows, "top", onOpenCell)
+        item { Head(copyText("plan.overview.progress")) }
+        rows(sl, sl.cellsOf(sl.top), "top", onOpenCell)
     }
 }
 
-/** 一格详情那一屏：状态 · 权力范围 · 要做成什么样 · 里面（点了再推一屏）· 管的文件 · agent 站在这一格看到的（点了才问）。 */
+/** 此会话接手的那一块（在这一片里才有）：块 · 阶段 · 站在哪 · 里面签了几格，没有的那一行不出。 */
+private fun mine(
+    read: PlanRead,
+    sl: PlanSlice,
+    sid: String?,
+): List<Pair<String, String>>? {
+    val b = sid?.let { read.bySession[it] }?.takeIf { it.slice == sl.name } ?: return null
+    val block = sl.blocks.firstOrNull { it.id == b.block }
+    val inside = block?.said?.inside
+    return listOfNotNull(
+        copyText("plan.blocks.block") to b.said.name,
+        b.phase?.let { copyText("plan.blocks.phase") to it },
+        b.at?.let { copyText("plan.blocks.at") to sl.label(it) },
+        inside?.let { copyText("plan.blocks.inside") to it },
+    )
+}
+
+/** 一格详情那一屏：状态 · 块根那一句 · 要做成什么样 · 里面（点了再推一屏）· 管的文件 · agent 站在这一格看到的（点了才问）。 */
 @Composable
 fun PlanCellScreen(
     hostId: String,
@@ -158,32 +194,39 @@ fun PlanCellScreen(
     onBack: () -> Unit,
     onOpenCell: (id: String) -> Unit,
 ) {
-    val load = rememberPlanLoad<PlanCellFace>(hostId, "cell#$workspace#$slice#$id", PlanRead.COMMAND, PlanRead.args(workspace)) { Plans.cell(it, slice, id) }
-    PlanScaffold(load.face?.label ?: id, load.face?.path, onBack, load) { face ->
+    val load =
+        rememberPlanLoad(hostId, "cell#$workspace#$slice#$id", Commands.PlanRead, PlanReadReq(workspace)) { r ->
+            r.slice(slice)?.let { sl -> sl.cell(id)?.let { sl to it } }
+        }
+    val title = load.face?.let { (sl, _) -> sl.label(id) } ?: id
+    val cell = load.face?.second
+    val trail = cell?.said?.trail
+    PlanScaffold(title, trail, onBack, load) { (sl, c) ->
         item {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                LookIcon(face.look)
+                LookIcon(c.look)
                 Text(
-                    listOfNotNull(face.kind, face.state).joinToString(copyText("kit.text.sep")),
+                    listOfNotNull(c.kind, c.end ?: c.quiet.orEmpty()).joinToString(copyText("kit.text.sep")),
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(start = 10.dp),
                 )
             }
         }
-        face.block?.let { item { Note(it) } }
-        face.design?.let { d ->
-            item { Head(d.head) }
-            item { Text(d.body, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
+        c.said.blockRoot?.let { item { Note(it) } }
+        c.body?.takeIf { it.isNotBlank() }?.let { body ->
+            item { Head(copyText("plan.cell.design")) }
+            item { Text(body, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
         }
-        face.inside?.let { s ->
-            item { Head(s.head) }
-            rows(s.rows, "kid", onOpenCell)
+        val kids = sl.cellsOf(c.children)
+        if (kids.isNotEmpty()) {
+            item { Head(copyText("plan.cell.inside")) }
+            rows(sl, kids, "kid", onOpenCell)
         }
-        face.files?.let { s ->
-            item { Head(s.head) }
-            items(s.rows, key = { "file#${it.path}" }) { f -> Line(f.path, f.note, f.state, mono = true) }
+        if (c.files.isNotEmpty()) {
+            item { Head(copyText("plan.cell.files")) }
+            items(c.files, key = { "file#${it.path}" }) { f -> Line(f.path, f.note, f.checkText, mono = true) }
         }
-        item { AgentView(hostId, workspace, slice, id, face) }
+        item { AgentView(hostId, workspace, slice, id) }
     }
 }
 
@@ -194,22 +237,21 @@ private fun AgentView(
     workspace: String,
     slice: String,
     id: String,
-    face: PlanCellFace,
 ) {
     val backends = koinInject<HostBackends>()
     val hosts = koinInject<HostRepository>()
     val scope = rememberCoroutineScope()
     var got by remember(id) { mutableStateOf<PlanLoad<String>?>(null) }
-    Head(face.agentHead)
+    Head(copyText("plan.cell.agentView"))
     when (val g = got) {
         null ->
             SecondaryButton(onClick = {
                 got = PlanLoad()
                 scope.launch {
-                    val machine = runCatching { hosts.get(hostId) }.getOrNull()?.label ?: hostId
-                    got = ask(backends.of(hostId), machine, PlanCellView.COMMAND, PlanCellView.args(workspace, slice, id), PlanCellView::of)
+                    val machine = hosts.machineName(hostId)
+                    got = ask(backends.of(hostId), machine, Commands.PlanCellView, PlanCellViewReq(workspace, slice, id)) { it.view }
                 }
-            }, modifier = Modifier.padding(horizontal = 8.dp)) { Text(face.agentHint) }
+            }, modifier = Modifier.padding(horizontal = 8.dp)) { Text(copyText("plan.cell.agentViewHint")) }
         else -> {
             g.failed?.let { ErrorLine(it, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
             if (g.loading) CircularProgressIndicator(Modifier.padding(16.dp).size(20.dp))
@@ -218,27 +260,29 @@ private fun AgentView(
     }
 }
 
+/** 一层格（大纲顶层 · 一格的里面）：图标 · 「编号 标题」· 右端那一句（后端写好的）· 有子格 ⇒ 箭头。 */
 private fun LazyListScope.rows(
-    rows: List<PlanRowFace>,
+    sl: PlanSlice,
+    cells: List<PlanCell>,
     tag: String,
     onOpen: (String) -> Unit,
 ) {
-    items(rows, key = { "$tag#${it.id}" }) { r ->
+    items(cells, key = { "$tag#${it.id}" }) { c ->
         Row(
-            Modifier.fillMaxWidth().clickable { onOpen(r.id) }.padding(horizontal = 16.dp, vertical = 12.dp),
+            Modifier.fillMaxWidth().clickable { onOpen(c.id) }.padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            LookIcon(r.look)
-            Text(r.label, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-            if (r.end.isNotEmpty()) Text(r.end, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-            if (r.kids) PhIcon(Ph.CaretRight, null, size = 14.dp, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            LookIcon(c.look)
+            Text(sl.label(c.id), style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            c.end?.takeIf { it.isNotEmpty() }?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) }
+            if (sl.hasKids(c)) PhIcon(Ph.CaretRight, null, size = 14.dp, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         HorizontalDivider(color = LocalAppTokens.current.borderFaint)
     }
 }
 
-/** 状态码 ⇒ 图标（只挑图标，字是核心写好的那一句）。 */
+/** 画哪一种 ⇒ 图标（只挑图标，字是后端写好的那一句）。 */
 fun lookIcon(look: PlanLook): Ph =
     when (look) {
         PlanLook.DONE -> Ph.Check
@@ -260,9 +304,9 @@ private fun lookTint(look: PlanLook): Color {
 @Composable
 private fun LookIcon(look: PlanLook) = PhIcon(lookIcon(look), null, size = 16.dp, tint = lookTint(look))
 
-/** 一条需手动：满宽的卡（琥珀底），标题 · 第几条 · 那几行。 */
+/** 一条需手动：满宽的卡（琥珀底），标题 · 第几条 · 负责人那一行（问人 · 停了那两种）· 那几行，都是后端写好的。 */
 @Composable
-private fun NeedCardView(n: PlanNeedCard) {
+private fun NeedCardView(n: PlanNeed) {
     val t = LocalAppTokens.current
     Column(
         Modifier
@@ -274,9 +318,9 @@ private fun NeedCardView(n: PlanNeedCard) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             PhIcon(Ph.WarningCircle, null, size = 16.dp, tint = t.warn)
             Text(n.title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f).padding(start = 8.dp))
-            Text(n.pos, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(n.pos.orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        n.lines.forEach {
+        (listOfNotNull(n.who) + n.lines).forEach {
             Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 24.dp, top = 4.dp))
         }
     }

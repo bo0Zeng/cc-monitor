@@ -15,6 +15,6 @@ while [ $# -gt 0 ]; do
 done
 case "$n" in ''|*[!0-9]*|0) echo "cc-bus log: -n 要正整数,给的是 '$n'" >&2; exit 2;; esac
 [ -n "$id" ] || { echo "用法: cc-bus log <id> [-n N]" >&2; exit 2; }
-ccbus_ask inbox "$(jq -cn --arg id "$id" --argjson n "$n" '{id:$id, lines:$n}')" \
+ccbus_ask bus-inbox "$(jq -cn --arg id "$id" --argjson n "$n" '{id:$id, lines:$n}')" \
   || { case "$CCBUS_CODE" in bad_*) exit 2 ;; *) exit 1 ;; esac; }
 printf '%s' "$CCBUS_OUT" | jq -c '.messages[] | del(.act_said)'

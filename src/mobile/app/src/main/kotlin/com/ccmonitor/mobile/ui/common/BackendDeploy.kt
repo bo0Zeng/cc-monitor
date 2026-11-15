@@ -38,18 +38,36 @@ class DeployPress(
 )
 
 /**
- * 按下去才连那台（这一屏在就持有那条连接：装到一半屏还在，连接不许随按钮放手），连上就叫核心装；
+ * 按下去才连那台（这一屏在就持有那条连接：装到一半屏还在，连接不许随按钮放手），连上就叫核心装，一按最多交一次（[DeployGate]）；
  * 判定 · 做法 · 话都在核心。机器设置那一行与设置屏账号卡共用这一份。
  */
 @Composable
 fun rememberDeployPress(hostId: String): DeployPress {
     val backends = koinInject<HostBackends>()
     var presses by remember(hostId) { mutableIntStateOf(0) }
+    val gate = remember(hostId) { DeployGate() }
     var held: HostLink? = null
     if (presses > 0) {
         val conn by rememberHostLink(hostId, "deploy-$hostId")
         held = conn
-        LaunchedEffect(conn, presses) { if (conn == HostLink.Ready) backends.deploy(hostId) }
+        LaunchedEffect(conn, presses) { if (gate.take(presses, conn)) backends.deploy(hostId) }
     }
     return DeployPress(held) { presses++ }
+}
+
+/**
+ * 那一按交没交给核心：第 [presses] 按、连上了（[HostLink.Ready]）、这一按还没交过 ⇒ 交，记下交到第几按；
+ * 掉线又连上不补发，再按一次才再交。只管「这一按交过没有」；要不要装（那台正在装 ⇒ 不起第二趟）由核心判。
+ */
+class DeployGate {
+    private var sent = 0
+
+    fun take(
+        presses: Int,
+        conn: HostLink?,
+    ): Boolean {
+        if (presses <= sent || conn != HostLink.Ready) return false
+        sent = presses
+        return true
+    }
 }

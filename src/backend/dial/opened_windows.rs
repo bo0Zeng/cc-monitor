@@ -10,6 +10,7 @@
 //! - 扫：每回建那一层目录（开新终端）时删掉 shell 已经不在的那几份（[`sweep`]），从没被 ↗ 问过的也不留。
 //! - 一份两行：标签 · 那台的名字。换行 LF / CRLF 都认。认不出 ⇒ 当没有。
 
+use crate::common::said::Said;
 use crate::common::seen_terminal::WindowLabel;
 use crate::platform::fs::Ro;
 use crate::platform::shell::dialect::ps_literal;
@@ -47,38 +48,42 @@ pub(crate) fn parse(body: &str) -> Option<Opened> {
 
 /// 前奏：跑这一行的那个 shell 把自己的标签与 `machine` 写进 `file`（先写旁名 `.part` 再挪过去），再接后面那一行。
 /// 写法按本机终端方言，住 `platform/shell/{posix, powershell}.rs::note_own_window`；三个词经本方言的单引号字面量。
-fn prelude(powershell: bool, file: &Path, machine: &str) -> String {
-    let file = file.to_string_lossy();
-    let part = format!("{file}.part");
-    if powershell {
-        crate::platform::shell::powershell::note_own_window(
-            &ps_literal(&file),
-            &ps_literal(&part),
-            &ps_literal(machine),
-        )
+/// 路径照字节进那一行（[`super::terminal::path_literal`]：家名不是 UTF-8 ⇒ POSIX 照字节、PowerShell 照实拒）。
+fn prelude(powershell: bool, file: &Path, machine: &str) -> Result<String, Said> {
+    let mut part = file.as_os_str().to_os_string();
+    part.push(".part");
+    let (file, part) = (
+        super::terminal::path_literal(powershell, file)?,
+        super::terminal::path_literal(powershell, Path::new(&part))?,
+    );
+    Ok(if powershell {
+        crate::platform::shell::powershell::note_own_window(&file, &part, &ps_literal(machine))
     } else {
         crate::platform::shell::posix::note_own_window(
-            &shell_quote_core::posix_quote(&file),
-            &shell_quote_core::posix_quote(&part),
+            &file,
+            &part,
             &shell_quote_core::posix_quote(machine),
         )
-    }
+    })
 }
 
 /// 开窗那一串：[`prelude`] ＋ `line` ＋ 收尾（`line` 跑完删掉 `file`，写法住 `platform/shell/{posix, powershell}.rs::then_forget_own_window`）。
 /// 于是「记录在」＝「开窗那条 ssh 还开着」：那条 ssh 怎么退的都一样，退了记录就没了；窗口整个关掉、收尾没跑 ⇒ shell 也没了，[`sweep`] 删。
-pub(crate) fn window(powershell: bool, file: &Path, machine: &str, line: &str) -> String {
-    let head = prelude(powershell, file, machine);
-    let path = file.to_string_lossy();
+/// 那份记录的路径写不进那一行（PowerShell 遇上不是 UTF-8 的家）⇒ 照实拒。
+pub(crate) fn window(
+    powershell: bool,
+    file: &Path,
+    machine: &str,
+    line: &str,
+) -> Result<String, Said> {
+    let head = prelude(powershell, file, machine)?;
+    let path = super::terminal::path_literal(powershell, file)?;
     let tail = if powershell {
-        crate::platform::shell::powershell::then_forget_own_window(line, &ps_literal(&path))
+        crate::platform::shell::powershell::then_forget_own_window(line, &path)
     } else {
-        crate::platform::shell::posix::then_forget_own_window(
-            line,
-            &shell_quote_core::posix_quote(&path),
-        )
+        crate::platform::shell::posix::then_forget_own_window(line, &path)
     };
-    format!("{head}{tail}")
+    Ok(format!("{head}{tail}"))
 }
 
 /// 那一层目录（渲开终端那一行时建好，0700）；建不成 ⇒ `None`（那一行不带前奏）。

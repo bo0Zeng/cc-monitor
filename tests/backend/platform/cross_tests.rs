@@ -15,6 +15,7 @@ mod child {
                 (crate::platform::child_env::STDERR_LOG, "~/x.log".into()),
             ],
         )
+        .expect("家写得成字")
         .into_iter()
         .map(|(k, _)| k)
         .collect();

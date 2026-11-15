@@ -303,21 +303,21 @@ fn an_edit_result_carries_its_hunks_and_file_within_a_bound() {
     assert!(r.patch.is_none());
 }
 
-/// ★★ 适配层只交数与码、不写字（右侧那一句在核心 `step_clock::said` 一处写）：读文件那一类立 `read`（照 `file.numLines`），
+/// ★★ 适配层只交数与码、不写字（右侧那一句在核心 `step_clock::said` 一处写）：读文件那一类照 `file.numLines` 判（[`reads_file`]，不上线），
 /// 命令输出几行 · 搜索命中几行只记数；改动的行差带「+a −r」（`line_diff::stat`）；未批准 · 失败交码。
 #[test]
 fn the_adapter_hands_numbers_and_codes_not_words() {
     let ok = |c: &str| json!({"type": "tool_result", "tool_use_id": "t", "content": c});
-    let r = result_of(&ok("…"), Some(&json!({"file": {"numLines": 12}})));
-    assert_eq!((r.lines, r.read, r.text.0.as_str()), (Some(12), true, ""));
-    let r = result_of(&ok("…"), Some(&json!({"stdout": "1\n2", "stderr": ""})));
-    assert_eq!(
-        (r.lines, r.read),
-        (Some(2), false),
-        "命令输出几行：不是读文件那一类"
-    );
-    let r = result_of(&ok("…"), Some(&json!({"numLines": 5, "mode": "content"})));
-    assert!(!r.read, "搜索命中几行不算读文件那一类");
+    let file = json!({"file": {"numLines": 12}});
+    let r = result_of(&ok("…"), Some(&file));
+    assert_eq!((r.lines, r.text.0.as_str()), (Some(12), ""));
+    assert!(reads_file(Some(&file)));
+    let run = json!({"stdout": "1\n2", "stderr": ""});
+    let r = result_of(&ok("…"), Some(&run));
+    assert_eq!(r.lines, Some(2));
+    assert!(!reads_file(Some(&run)), "命令输出几行：不是读文件那一类");
+    let grep = json!({"numLines": 5, "mode": "content"});
+    assert!(!reads_file(Some(&grep)), "搜索命中几行不算读文件那一类");
     let r = result_of(
         &ok("…"),
         Some(
@@ -716,6 +716,7 @@ fn one_edit_has_one_line_diff_written_by_the_core() {
         "真行号从段头起算；`\\` 那一行不占行"
     );
     assert_eq!((d.shown, d.truncated), (9, false));
+    assert!(d.show_all_text.is_none(), "都画得下 ⇒ 没有展开那一颗");
     // 调用那一份：同一处改动、增删数一样，「+N −M」同一处写。
     let s = step_of(
         "Edit",
@@ -740,6 +741,14 @@ fn a_long_diff_shows_its_head_and_keeps_whole_counts() {
     };
     assert_eq!((diff.rows.len(), diff.added, diff.removed), (1000, 1000, 0));
     assert!((diff.shown as usize) < diff.rows.len(), "收着时只画前几行");
+    assert_eq!(
+        diff.show_all_text.map(|w| w.0),
+        Some(copy_core::copy_text(
+            "diff.buildDiffBody.showAll",
+            &[("addCount", "1000"), ("delCount", "0")]
+        )),
+        "展开那一颗的字在这里写好（出口照抄）"
+    );
     assert!(!diff.truncated);
     let old: String = (0..3000).map(|i| format!("o{i}\n")).collect();
     let new: String = (0..3000).map(|i| format!("n{i}\n")).collect();

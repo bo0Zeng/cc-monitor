@@ -17,7 +17,7 @@ import { copyText } from "../../../../src/frontend/ui/copy-table";
 const VIEW = {
   enabled: true,
   sync: true,
-  servers: ["anysearch", "cclsp"],
+  servers: [{ name: "anysearch" }, { name: "cclsp" }],
   conflicts: [
     {
       name: "cclsp",
@@ -142,6 +142,52 @@ describe("别名与配置文件 · 账号与扩展", () => {
     expect(text).toContain(VIEW.notes[0]);
     expect(text).toContain(copyText("cfgPage.mcp.newSessions"));
     expect(byText(r, copyText("cfgPage.mcp.pickOpen")), "展开后标题行那颗收掉").toBeUndefined();
+  });
+
+  it("几家的条目都画：家名照抄后端写在条上的叫法；点删交回那一条自己的家，缺家的原样不带", async () => {
+    mcp = {
+      ...VIEW,
+      servers: [...VIEW.servers.map((s) => ({ ...s, agentSaid: "替身甲" })), { name: "cclsp", agent: "fake2", agentSaid: "替身乙" }],
+      conflicts: [...VIEW.conflicts.map((c) => ({ ...c, agentSaid: "替身甲" })), { name: "cclsp", agent: "fake2", agentSaid: "替身乙", choices: [{ from: "x", holders: ["x"], gone: false }] }],
+    };
+    const el = page();
+    show(el);
+    await settle();
+    const r = mcpRow(el);
+    const names = Array.from(r.querySelectorAll("[data-role=mcp-server] .cfg-list-name")).map((n) => n.textContent);
+    expect(names).toEqual(["anysearch", "cclsp", "cclsp"]);
+    const tags = Array.from(r.querySelectorAll("[data-role=mcp-server] .cfg-hint")).map((n) => n.textContent);
+    expect(tags).toEqual([" 替身甲", " 替身甲", " 替身乙"]);
+    expect(r.querySelectorAll("[data-role=mcp-conflict]").length).toBe(2);
+    expect(r.querySelectorAll("[data-role=mcp-conflict] .cfg-hint").length).toBe(2);
+    const dels = buttons(r).filter((b) => b.textContent === copyText("cfgPage.mcp.remove"));
+    dels[2].click();
+    await settle();
+    dels[1].click();
+    await settle();
+    expect(calls.filter((c) => c[0] === "accounts-mcp-remove").map((c) => c[2])).toEqual([
+      { name: "cclsp", agent: "fake2" },
+      { name: "cclsp" },
+    ]);
+  });
+
+  it("后端没写叫法 ⇒ 不画家（几家同列也不由界面自己判）", async () => {
+    mcp = { ...VIEW, servers: [...VIEW.servers, { name: "cclsp", agent: "fake2" }] };
+    const el = page();
+    show(el);
+    await settle();
+    expect(mcpRow(el).querySelectorAll("[data-role=mcp-server] .cfg-hint").length).toBe(0);
+  });
+
+  it("挑别家那一条：交回它的家", async () => {
+    mcp = { ...VIEW, conflicts: [...VIEW.conflicts, { name: "k", agent: "fake2", choices: [{ from: "x", holders: ["x"], gone: false }] }] };
+    const el = page();
+    show(el);
+    await settle();
+    const r = mcpRow(el);
+    byText(r, copyText("cfgPage.mcp.useFrom", { holders: "x" }))!.click();
+    await settle();
+    expect(calls.find((c) => c[0] === "accounts-mcp-pick")).toEqual(["accounts-mcp-pick", "devbox", { name: "k", from: "x", agent: "fake2" }]);
   });
 
   it("删一条：先问，确认了才交名字", async () => {

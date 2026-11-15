@@ -219,7 +219,14 @@ fn first_frame_comes_at_once_with_the_preview_product() {
         "实时画面要带颜色段"
     );
     // 线上形状：kind ＋ 票 ＋ 序号 ＋ 画面。
-    let wire: Value = serde_json::from_str(&crate::wire::to_line(&f).unwrap()).unwrap();
+    let wire: Value = serde_json::from_str(
+        &crate::wire::to_line(&crate::wire::FrameExit::stamp(
+            f.clone(),
+            &Default::default(),
+        ))
+        .unwrap(),
+    )
+    .unwrap();
     assert_eq!(wire["kind"], "terminal_screen");
     assert_eq!(wire["ticket"], "t1");
     assert_eq!(wire["seq"], 1);
@@ -778,7 +785,7 @@ async fn next_hosted(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Frame {
 }
 
 /// ★ 托管终端订得上实时（A3-3-32-4）：真起托管进程（假子进程 `sh`，沙箱数据目录）。订上 ⇒ 第一帧当场到、带「输入」那一格（此刻无人持有）；
-/// 回执之后一个真终端接上抢走输入 ⇒ 画面一字未变也推下一帧，`input.holder.who` 是 `terminal-window`；子进程退了 ⇒ 结束帧 `gone`。
+/// 回执之后一个真终端接上抢走输入 ⇒ 画面一字未变也推下一帧，那一句是「输入在终端窗口」；子进程退了 ⇒ 结束帧 `gone`。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_hosted_terminal_follows_live_and_a_holder_change_pushes_a_frame() {
     use crate::host::managed::run::test_support::{
@@ -801,7 +808,17 @@ async fn a_hosted_terminal_follows_live_and_a_holder_change_pushes_a_frame() {
     let f = next_hosted(&mut rx).await;
     let (ticket, mut s1, mut view) = screen_of(&f);
     assert_eq!((ticket.as_str(), s1), ("t1", 1));
-    assert_eq!(holder_of(&f)["who"], "none", "此刻无人持有");
+    assert_eq!(
+        holder_of(&f)["said"],
+        copy_text("beTerminal.holder.none", &[]),
+        "此刻无人持有"
+    );
+    let keys: Vec<String> = holder_of(&f).as_object().unwrap().keys().cloned().collect();
+    assert_eq!(
+        keys,
+        ["mine", "said"],
+        "持有者线上只给 mine · said（哪一端是后端认人用的，不上线）"
+    );
     // 子进程的 `ready` 可能晚于第一帧：回执、等到画着它的那一帧。
     loop {
         d.ack(&AckReq {
@@ -821,7 +838,10 @@ async fn a_hosted_terminal_follows_live_and_a_holder_change_pushes_a_frame() {
     let (_, s2, view2) = screen_of(&f);
     assert_eq!(s2, s1 + 1);
     assert_eq!(view2["screen"], view["screen"], "画面一字未变");
-    assert_eq!(holder_of(&f)["who"], "terminal-window");
+    assert_eq!(
+        holder_of(&f)["said"],
+        copy_text("beTerminal.holder.terminalWindow", &[])
+    );
     assert_eq!(holder_of(&f)["mine"], false);
     d.ack(&AckReq {
         ticket: "t1".into(),

@@ -38,17 +38,28 @@ async fn the_local_backend_asks_each_machine_its_needs_and_merges() {
     .await
     .expect("合得出");
     let v = serde_json::to_value(&got).unwrap();
-    assert_eq!(got.total, 2, "答了的两台加起来");
-    assert_eq!(v["items"][0]["origin"], "devbox");
-    assert_eq!(v["items"][0]["item"]["slice"], "那台的");
-    assert_eq!(v["items"][1]["origin"], cmd_wire::LOCAL);
+    assert_eq!(
+        got.manual.total, 2,
+        "答了的两台加起来（计划落需手动那一列）"
+    );
+    assert_eq!(got.asks.total, 0);
+    assert_eq!(v["manual"]["items"][0]["origin"], "devbox");
+    assert_eq!(v["manual"]["items"][0]["item"]["slice"], "那台的");
+    assert_eq!(v["manual"]["items"][1]["origin"], cmd_wire::LOCAL);
     assert_eq!(v["down"].as_array().map(Vec::len), Some(1));
     assert_eq!(v["down"][0]["origin"], "pi");
     assert!(v["down"][0]["said"].as_str().unwrap().contains("pi"), "{v}");
-    assert!(!got.sure, "有哪台没问到 ⇒ 数说不准、头那一句不带数");
+    assert!(
+        !got.manual.sure && !got.asks.sure,
+        "有哪台没问到 ⇒ 两列都说不准、头那一句不带数"
+    );
     assert_eq!(
-        got.head.0,
+        got.manual.head.0,
         copy_core::copy_text("beSession.needs.unknown", &[])
+    );
+    assert_eq!(
+        got.asks.head.0,
+        copy_core::copy_text("needs.asks.title", &[])
     );
     let asked = peers.asked();
     assert_eq!(asked.len(), 2);
@@ -111,7 +122,7 @@ async fn the_merge_asks_this_machine_and_every_connected_machine_in_its_own_tabl
     )
     .await
     .expect("合得出");
-    assert_eq!(got.total, 3, "本机与两台都问到了");
+    assert_eq!(got.manual.total, 3, "本机与两台都问到了");
     assert_eq!(peers.asked().len(), 2, "关着的那台没问");
 }
 
@@ -297,4 +308,21 @@ async fn the_needs_fake_replays_merges_made_here() {
         &(serde_json::to_string_pretty(&want).unwrap() + "\n"),
         "需手动替身的回放金样变了：界面测试照它画（needs-panel · main-window-needs · session-hidden）",
     );
+}
+
+/// 扇出问一台没问成、那一句没带码（或码是空串）⇒ 结局的码是兜底码（补码只经 `Failed::code_or_fallback`）；有码照原样。
+#[test]
+fn a_missed_ask_without_a_code_ends_with_the_fallback_code() {
+    for (code, want) in [
+        (None, "failed"),
+        (Some(""), "failed"),
+        (Some("busy"), "busy"),
+    ] {
+        let mut s = crate::common::said::Said::from("没问成");
+        s.code = code.map(str::to_string);
+        match said_end(s) {
+            cmd_wire::phone::CallEnd::Failed { code, .. } => assert_eq!(code, want, "{want}"),
+            other => panic!("该是 Failed：{other:?}"),
+        }
+    }
 }

@@ -341,6 +341,25 @@ export class TailWindow {
     return last > first ? this.pending.splice(first, last - first) : [];
   }
 
+  /** 账本里有没有这一行（不出账）。 */
+  has(seq: number): boolean {
+    if (this.pending.length === 0) return false;
+    if (this.dirty) {
+      this.pending.sort((a, b) => a.seq - b.seq);
+      this.dirty = false;
+    }
+    return this.pending[lowerBound(this.pending, seq)]?.seq === seq;
+  }
+
+  /**
+   * 渲染窗口底下那一截 `[floor, seq)` 摘掉了（没接骨架的 tab 建过的卡超上限，离视口远的交回）：低水位抬到 `seq`，
+   * 那几行的正文由调用方随后 [`restore`] 放回账本（往上翻照补批补回来）。只往上抬；virgin 不动。
+   */
+  raiseFloor(seq: number): void {
+    if (this.floor === null || seq <= this.floor) return;
+    this.floor = seq;
+  }
+
   /** Tab 关闭时调:pending 持整段历史 payload(大会话数十 MB 级),必须断引用 */
   dispose(): void {
     this.pending = [];

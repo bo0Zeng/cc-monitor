@@ -29,7 +29,7 @@ fn ask(phase: &str, round: usize, q: &str) {
     .unwrap_or_else(|f| {
         panic!(
             "history-search 答错了（{}）：{}",
-            f.code_or_fallback(),
+            cmd_wire::failed::Failed::code_or_fallback(f.code.clone()),
             f.said
         )
     })
@@ -61,7 +61,7 @@ fn ask(phase: &str, round: usize, q: &str) {
 fn sx1_real_history_search_reading() {
     let script = std::env::var("SX1_EVICT").expect("要 `SX1_EVICT` 指向 evict-page-cache.py");
     let root =
-        crate::agents::claudecode::paths::projects_root(&crate::history::listing::agent_home());
+        crate::agents::claudecode::paths::projects_root(&crate::agents::local_homes()[0].home);
     let load = std::fs::read_to_string("/proc/loadavg").unwrap_or_default();
     println!(
         "SX1 build={} load={}",

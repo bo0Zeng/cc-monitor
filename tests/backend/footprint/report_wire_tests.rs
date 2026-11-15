@@ -40,7 +40,7 @@ fn row(
         tool_id,
         tool_name: format!("{tool_id}-name"),
         tier,
-        path_declared: path,
+        path_declared: std::borrow::Cow::Borrowed(path),
         state,
     }
 }
@@ -96,8 +96,10 @@ fn base() -> Facts {
         clashes: vec![],
         dead: vec![],
         relay: vec![],
-        hooks: None,
+        hooks: vec![],
         mcp_login: vec![],
+        zero_trust: vec![],
+        outside_library: vec![],
         sshd: None,
         declined: vec![],
     }
@@ -121,7 +123,7 @@ fn relay(state: &str, path: &str, text: Option<&str>, url: Option<&str>) -> Rela
 /// 各分支都走一遍的那一份事实（同一份文件里两件那一形另一份）。
 fn every_branch() -> Facts {
     let mut f = base();
-    f.needs_install = super::data::needs_install(&report());
+    f.needs_install = super::data::needs_install(&report(), crate::agents::REGISTRY);
     f.stale_ccm = Some(StaleCcm {
         path: "/usr/local/bin/ccm".into(),
         needs_root: true,
@@ -162,17 +164,20 @@ fn every_branch() -> Facts {
             Some("http://u"),
         ),
     ];
-    f.hooks = Some(Hooks {
+    f.hooks = vec![Hooks {
+        kind: "claude".into(),
         ccbus: false,
         installed: false,
         path: "/h/.claude/settings.json".into(),
         text: None,
         items: vec![],
-    });
+        trust: None,
+    }];
     f.mcp_login = vec![McpLogin {
         name: "m".into(),
         who: vec!["a".into(), "b".into()],
-        command: "/mcp",
+        kind: "claude",
+        command: "/mcp".into(),
     }];
     f.declined = vec!["dead:/h/.zshrc".into()];
     f
@@ -182,13 +187,15 @@ fn same_file() -> Facts {
     let mut f = base();
     let text = "{\n  \"model\": \"opus\"\n}\n".to_string();
     f.relay = vec![relay("absent", "/h/s.json", Some(&text), Some("http://u"))];
-    f.hooks = Some(Hooks {
+    f.hooks = vec![Hooks {
+        kind: "claude".into(),
         ccbus: true,
         installed: false,
         path: "/h/s.json".into(),
         text: Some(text),
         items: vec![(vec!["hooks".into(), "Stop".into()], json!({"hooks": []}))],
-    });
+        trust: None,
+    }];
     f
 }
 
@@ -200,7 +207,7 @@ fn data_report_chores_keep_their_wire_bytes() {
     );
     check("data-report.todo.same-file", wire(&chores(&same_file())));
     let mut installed = same_file();
-    installed.hooks.as_mut().unwrap().installed = true;
+    installed.hooks[0].installed = true;
     installed.relay.clear();
     check(
         "data-report.todo.hooks-installed",
@@ -236,7 +243,9 @@ fn data_report_own_rows_keep_their_wire_bytes() {
     std::fs::create_dir_all(d.join(".cc-monitor/cache")).unwrap();
     std::fs::write(d.join(".cc-monitor/chores.json"), "{}").unwrap();
     std::fs::write(d.join(".cc-monitor/cache/last-seen.json"), "[1,2]").unwrap();
-    let got = wire(&super::data::own_rows(&d));
+    // `abs` 带夹具那台的家（临时目录，每趟不同）⇒ 钉之前换成占位，与 hooks-diag 金样同一做法。
+    let home = serde_json::to_string(&d.display().to_string()).unwrap();
+    let got = wire(&super::data::own_rows(&d)).replace(home.trim_matches('"'), "/HOME");
     let _ = std::fs::remove_dir_all(&d);
     check("data-report.own", got);
 }

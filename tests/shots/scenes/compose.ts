@@ -242,7 +242,8 @@ function setsWorld(): World {
   putProfileAccounts(d);
   d.files[PROFILES_FILE] = staleBook() + EXTRA;
   for (const dir of ["work/orders", "work/pb", "work/cc-bus", "work/notes", "work/ledger"]) d.files[`${dir}/.keep`] = "";
-  return { ...w, machines: [LOCAL], unseenMachines: [], sessions: w.sessions.filter((s) => s.origin === LOCAL && !s.ended), disk: { [LOCAL]: d } };
+  // 机器表也只留本机（不然界面照表去订那几台的会话流，世界里没起它们的后端）。
+  return { ...w, machines: [LOCAL], hosts: [], unseenMachines: [], sessions: w.sessions.filter((s) => s.origin === LOCAL && !s.ended), disk: { [LOCAL]: d } };
 }
 
 const declared = (): number => window.__shots?.sessions?.().declared ?? 1;
@@ -309,6 +310,7 @@ const SET_SCENES: Scene[] = [
 function localWorld(): World {
   const w = defaultWorld();
   w.machines = [LOCAL];
+  w.hosts = [];
   w.sessions = w.sessions.filter((s) => s.origin === LOCAL && !s.ended);
   w.disk = { [LOCAL]: w.disk[LOCAL] };
   w.quiet = [...(w.quiet ?? []), "groups-read"];
@@ -338,7 +340,7 @@ const RENAME_SCENES: Scene[] = [
   }),
   renameScene("compose-rename-dialog", "对话框 · 框下一行", "历史页一行 ⋯ →「改标题」：框下一行写「留空 = 原标题」", async () => {
     await mainReady(2);
-    await click(".history-trigger");
+    await click('[data-head="history"]');
     await waitFor('.history-view [role="option"]');
     await sleep(600);
     const row = document.querySelectorAll<HTMLElement>('.history-view [role="option"]')[1];

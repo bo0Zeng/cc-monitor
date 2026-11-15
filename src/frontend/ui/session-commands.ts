@@ -7,6 +7,7 @@ import type { Command } from "./views/command-bar";
 import type { Tab } from "./tab-model";
 import { dotOf, needsOf, stateWord } from "./session-face";
 import { attachBlocked } from "./face-can";
+import { machineName } from "./ipc/chan-caller";
 import { isRemoteOrigin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 
@@ -19,7 +20,7 @@ export function sessionCommands(
   return tabs.map((t, i) => {
     const dot = dotOf(t);
     const n = needsOf(t);
-    const machine = isRemoteOrigin(t.origin) ? t.origin : null;
+    const machine = isRemoteOrigin(t.origin) ? machineName(t.origin) : null;
     return {
       id: `switch-${t.sessionId}`,
       title: t.title,

@@ -252,25 +252,6 @@ if wait_for '"id":"e2e-gate2-nos"'; then
   fi
 else bad "目标不存在场景 5s 内无应答"; fi
 
-# ── 场景 N+2：`@ccm_sid_expect` 已设但 `@ccm_sid` 未设 ⇒ **照样拒绝** ───────────
-# 这条不在判定表里（表是纯判定，不认识 tmux option 名），但它是本门最容易被放宽的一处：
-# 「通道 A 声明了意图」不等于「通道 B 确认了事实」，而破坏性动作只认事实。
-fresh_tmux
-"$TMUX_BIN" new-session -d -s expectonly
-ready '=expectonly:'
-"$TMUX_BIN" set-option -t '=expectonly:' @ccm_sid_expect deadbeef >/dev/null 2>&1 || true
-send_text e2e-gate2-exp "$(handle_of expectonly)" "printf %s CCMGATE_EXPECT"
-if wait_for '"id":"e2e-gate2-exp"'; then
-  R="$(reply_of e2e-gate2-exp)"
-  settle '=expectonly:'
-  P="$($TMUX_BIN capture-pane -p -t '=expectonly:' 2>/dev/null || true)"
-  if printf '%s' "$R" | grep -qF '"why":"not_managed"' && ! printf '%s' "$P" | grep -q CCMGATE_EXPECT; then
-    ok "只设了 @ccm_sid_expect → 仍拒绝（意图不是事实）"
-  else
-    bad "@ccm_sid_expect 被当成了 @ccm_sid —— 这道门被放宽了：$R"
-  fi
-else bad "_expect 场景 5s 内无应答"; fi
-
 # ── Gate 3（`windows == 1`，**只给破坏性动作**）的真机验收 ───────────
 # 与 Gate 2 的用例表分开：Gate 3 的轴是**窗口数**，不是身份，塞进那张表会让两个轴混在一起。
 echo

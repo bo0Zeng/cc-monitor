@@ -32,7 +32,7 @@ fn each_kind_of_cell_is_checked_by_its_shape_only() {
         Kind::Percent,
         Kind::Minutes,
         Kind::Toggle,
-        Kind::OneOf,
+        Kind::Choice,
         Kind::DaySegments,
     ] {
         assert!(kinds.contains(&k), "{k:?}");
@@ -125,7 +125,7 @@ fn a_bad_form_is_refused_when_the_file_is_read() {
     let mut f = full_form();
     let i = f
         .iter()
-        .position(|c| c.kind == Kind::OneOf)
+        .position(|c| c.kind == Kind::Choice)
         .expect("有一格选项");
     f[i].choices.clear();
     assert!(check_form(&f).is_err());

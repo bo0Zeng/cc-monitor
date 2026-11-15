@@ -13,7 +13,9 @@
 use crate::observe::live::Live;
 use crate::relay::{TapEvent, TapPort};
 use crate::wire::FrameMake as _;
-use crate::wire::{Changed, Frame, Topic};
+#[cfg(test)]
+use crate::wire::Topic;
+use crate::wire::{Changed, Frame};
 use cmd_wire::frame::PlanNeeds;
 use std::sync::{Arc, Mutex};
 
@@ -93,38 +95,86 @@ pub trait TapSource {
     fn next(&mut self) -> impl std::future::Future<Output = Option<Frame>> + Send;
 }
 
-/// 一条流连接最低优先的那一路（写者那一侧拿它）：活卡的发件箱 ＋ 几种 `changed` 推送。只交出**帧**。
-pub struct TapRx {
-    /// 活卡那一头（哪个 hub · 这条连接的号 · 叫醒口）。
-    hub: Arc<TapHub>,
-    id: u64,
-    wake: Arc<tokio::sync::Notify>,
+/// 一条流连接订的东西，只列在这一处：活卡那个 hub ＋ 几条进程级通道 ＋ 小成品怎么现算。
+/// 生产 ＝ [`Sources::process`]（进程级那一份）；判据从 [`Sources::bare`] 起、只填要测的那几格，其余一律不订。
+pub(crate) struct Sources {
+    /// 活卡（生产 ＝ [`hub`]）。
+    pub(crate) hub: Arc<TapHub>,
     /// 轮换的节点通道（[`crate::accounts::quota::nodes`]）：事实变了推 `changed {quota}`；某个会话那一条变了推
-    /// `changed {rotation, key: sid}`；策略目录 · 新会话用哪份变了推 `changed {rotation_strategies}`。`None` ＝ 不订（判据自己接的那一形）。
-    nodes: Option<tokio::sync::broadcast::Receiver<crate::accounts::quota::nodes::Node>>,
+    /// `changed {rotation, key: sid}`；策略目录 · 新会话用哪份变了推 `changed {rotation_strategies}`。`None` ＝ 不订。
+    pub(crate) nodes: Option<tokio::sync::broadcast::Receiver<crate::accounts::quota::nodes::Node>>,
     /// 某个 pb 工作区的计划变了的通道（变了推一帧 `changed {plan, key: 工作区, rev, body: {needs}}`）；`None` ＝ 不订。
-    plan: Option<tokio::sync::broadcast::Receiver<crate::plan::watch::Change>>,
+    pub(crate) plan: Option<tokio::sync::broadcast::Receiver<crate::plan::watch::Change>>,
     /// 这一端的机器表变了的铃（推一帧 `changed {machines}`）；`None` ＝ 不订。
-    machines: Option<tokio::sync::broadcast::Receiver<()>>,
+    pub(crate) machines: Option<tokio::sync::broadcast::Receiver<()>>,
     /// 这一端连的某台远端的状态成品变了的通道（推一帧 `changed {machine, key: 那台, body: 成品}`；
     /// 带着变了的各台那几句 ⇒ 再推一帧 `changed {empty}`）；`None` ＝ 不订。
-    machine: Option<tokio::sync::broadcast::Receiver<crate::control::machine_state::Moved>>,
+    pub(crate) machine:
+        Option<tokio::sync::broadcast::Receiver<crate::control::machine_state::Moved>>,
     /// 正被浏览的某个目录有了动静的通道（推一帧 `changed {files_dir, key: 那个目录}`）；`None` ＝ 不订。
-    dirs: Option<tokio::sync::broadcast::Receiver<String>>,
+    pub(crate) dirs: Option<tokio::sync::broadcast::Receiver<String>>,
     /// 这台会话清单的节点（[`crate::history::list_node`]，只留最新）：响了推一帧 `changed {history_list}`；`None` ＝ 不订。
-    list: Option<tokio::sync::watch::Receiver<u64>>,
-    /// 帧里的小成品怎么现算（生产 ＝ [`crate::wire::topic_hook::body`]；判据自己接的那一形不现算）。
-    bodies: crate::wire::topic_hook::Bodies,
+    pub(crate) list: Option<tokio::sync::watch::Receiver<u64>>,
+    /// 桌面附件草稿那一排变了的通道（[`crate::control::attach_upload::changes`]：推一帧 `changed {attach, key: 草稿号, body: 那一排}`）；`None` ＝ 不订。
+    pub(crate) attach:
+        Option<tokio::sync::broadcast::Receiver<cmd_wire::attachment::AttachDraftShown>>,
+    /// 帧里的小成品怎么现算（生产 ＝ [`crate::wire::topic_hook::body`]；判据那一形不现算）。
+    pub(crate) bodies: crate::wire::topic_hook::Bodies,
+}
+
+impl Sources {
+    /// 进程级那一份：一条连接接上时订一次。
+    pub(crate) fn process() -> Self {
+        Self {
+            hub: hub(),
+            nodes: Some(crate::accounts::quota::nodes::bus().subscribe()),
+            plan: Some(crate::plan::watch::changes().subscribe()),
+            machines: Some(crate::control::machines::changes().subscribe()),
+            machine: Some(crate::control::machine_state::changes().subscribe()),
+            dirs: Some(crate::stream::inbound::files_face::dir_changes()),
+            list: Some(crate::history::list_node::node().subscribe()),
+            attach: Some(crate::control::attach_upload::changes().subscribe()),
+            bodies: crate::wire::topic_hook::body,
+        }
+    }
+
+    /// 只有给的那个 hub，别的一条不订、小成品不现算（判据从这里起，只填要测的那几格）。
+    #[cfg(test)]
+    pub(crate) fn bare(hub: Arc<TapHub>) -> Self {
+        Self {
+            hub,
+            nodes: None,
+            plan: None,
+            machines: None,
+            machine: None,
+            dirs: None,
+            list: None,
+            attach: None,
+            bodies: no_bodies,
+        }
+    }
+}
+
+/// 一条流连接最低优先的那一路（写者那一侧拿它）：活卡的发件箱 ＋ 几种 `changed` 推送。只交出**帧**。
+pub struct TapRx {
+    /// 这条连接订的那几样（整份；通道没了的那一格当场摘成 `None`）。
+    src: Sources,
+    /// 这条连接在活卡上的号 · 叫醒口。
+    id: u64,
+    wake: Arc<tokio::sync::Notify>,
     /// 这条连接看的那一台的时区（attach 带来的）：小成品里的时刻字按它写。
     tz: crate::common::time::Tz,
     out: std::collections::VecDeque<Frame>,
+    /// 这条连接要折好的成品（attach 行 `folded`，桌面壳）⇒ 它发件箱之后那一块活卡板：取到的 `live_card` 折进板、交的是 `live_now`
+    /// （变了的那一处 ＋ 那一处整份）。发件箱满 ⇒ 活卡合成整卡 ⇒ 板交整份，原有那条保证照用。不要 ⇒ `None`，照原样交 `live_card`。
+    board: Option<face_core::live::Board>,
 }
 
 impl TapRx {
     /// 这条连接此刻在看哪几个会话（整份换；与 watcher 那份名单同拍交）。
     pub fn watch_handle(&self) -> LiveWatch {
         LiveWatch {
-            hub: self.hub.clone(),
+            hub: self.src.hub.clone(),
             id: self.id,
         }
     }
@@ -145,19 +195,28 @@ impl LiveWatch {
 
 impl Drop for TapRx {
     fn drop(&mut self) {
-        self.hub.live().leave(self.id);
+        self.src.hub.live().leave(self.id);
     }
 }
 
 impl TapRx {
+    /// 发件箱里取到的一帧 ⇒ 交出去的那一帧：要成品的连接把 `live_card` 折进板，交 `live_now`（板上没变 ⇒ `None`，不交）；别的原样。
+    fn fold(&mut self, f: Frame) -> Option<Frame> {
+        let (Some(board), Frame::LiveCard(card)) = (self.board.as_mut(), &f) else {
+            return Some(f);
+        };
+        board.step(card).map(Frame::LiveNow)
+    }
+
     /// 一帧 `changed`：现算得出小成品的主题换成带体的那一臂（同步：读这台自己的盘，毫秒级；算完才进 `out`，被别的分支抢先也不丢）。
     fn changed(&self, bare: Changed) -> Frame {
-        let c = (self.bodies)(bare.topic(), bare.key(), &self.tz).unwrap_or(bare);
+        let c = (self.src.bodies)(bare.topic(), bare.key(), &self.tz).unwrap_or(bare);
         Frame::changed(c)
     }
 }
 
-/// 不现算小成品（判据自己接的那一形）。
+/// 不现算小成品（[`Sources::bare`] 那一形）。
+#[cfg(test)]
 fn no_bodies(_: Topic, _: Option<&str>, _: &crate::common::time::Tz) -> Option<Changed> {
     None
 }
@@ -169,21 +228,25 @@ impl TapSource for TapRx {
             if let Some(f) = self.out.pop_front() {
                 return Some(f);
             }
-            if let Some(f) = self.hub.live().pull(self.id) {
-                return Some(f);
+            let pulled = self.src.hub.live().pull(self.id);
+            if let Some(f) = pulled {
+                match self.fold(f) {
+                    Some(f) => return Some(f),
+                    None => continue,
+                }
             }
             tokio::select! {
                 () = self.wake.notified() => {}
-                moved = node_moved(&mut self.nodes) => match moved {
+                moved = node_moved(&mut self.src.nodes) => match moved {
                     Some(fs) => {
                         for c in fs {
                             let f = self.changed(c);
                             self.out.push_back(f);
                         }
                     }
-                    None => self.nodes = None,
+                    None => self.src.nodes = None,
                 },
-                moved = item_moved(&mut self.plan) => match moved {
+                moved = item_moved(&mut self.src.plan) => match moved {
                     Some(Some((workspace, rev, needs))) => self.out.push_back(Frame::changed(Changed::Plan {
                         key: workspace,
                         rev: Some(rev),
@@ -191,14 +254,14 @@ impl TapSource for TapRx {
                     })),
                     // 落后丢了几件：可丢的通道，下一次变化或重问就补上。
                     Some(None) => {}
-                    None => self.plan = None,
+                    None => self.src.plan = None,
                 },
-                moved = bell_moved(&mut self.machines) => match moved {
+                moved = bell_moved(&mut self.src.machines) => match moved {
                     // 落后丢了几件也照推一帧（客户端反正整份重问）。
                     Some(()) => self.out.push_back(Frame::changed(Changed::Machines {})),
-                    None => self.machines = None,
+                    None => self.src.machines = None,
                 },
-                moved = item_moved(&mut self.machine) => match moved {
+                moved = item_moved(&mut self.src.machine) => match moved {
                     Some(Some(m)) => {
                         self.out.push_back(Frame::changed(Changed::Machine {
                             key: m.machine,
@@ -213,18 +276,27 @@ impl TapSource for TapRx {
                     Some(None) => self.out.push_back(Frame::changed(Changed::Empty {
                         body: Some(crate::control::machine_state::fleet()),
                     })),
-                    None => self.machine = None,
+                    None => self.src.machine = None,
                 },
-                moved = item_moved(&mut self.dirs) => match moved {
+                moved = item_moved(&mut self.src.dirs) => match moved {
                     Some(Some(dir)) => self.out.push_back(Frame::changed(Changed::FilesDir { key: dir })),
                     // 落后丢了几件：可丢的通道，下一次动静或重问就补上。
                     Some(None) => {}
-                    None => self.dirs = None,
+                    None => self.src.dirs = None,
                 },
-                moved = latest_moved(&mut self.list) => if moved {
+                moved = latest_moved(&mut self.src.list) => if moved {
                     self.out.push_back(Frame::changed(Changed::HistoryList {}));
                 } else {
-                    self.list = None;
+                    self.src.list = None;
+                },
+                moved = item_moved(&mut self.src.attach) => match moved {
+                    Some(Some(shown)) => self.out.push_back(Frame::changed(Changed::Attach {
+                        key: shown.draft.clone(),
+                        body: Some(shown),
+                    })),
+                    // 落后丢了几件：可丢的通道，下一次变化或界面重问 `attach-draft-view` 就补上。
+                    Some(None) => {}
+                    None => self.src.attach = None,
                 }
             }
         }
@@ -233,20 +305,30 @@ impl TapSource for TapRx {
 
 /// 一条流连接接上了 ⇒ 在进程级 hub 的活卡上登记一条连接（两条载体各在「流开始」那一处调一次）。
 /// `tz` ＝ 这条连接看的那一台的时区（帧里小成品的时刻字按它写）；`watch` ＝ attach 行带的名单（没带 ⇒ 全看，等 `stream-watch`）。
-pub fn attach(tz: crate::common::time::Tz, watch: Option<&[String]>) -> TapRx {
-    let mut rx = attach_rx(hub());
+pub fn attach(tz: crate::common::time::Tz, watch: Option<&[String]>, folded: bool) -> TapRx {
+    attach_with(Sources::process(), tz, watch, folded)
+}
+
+/// [`attach`] 的可喂那一半：订什么由调用方整份给（生产 ＝ [`Sources::process`]；判据各造一份）。
+pub(crate) fn attach_with(
+    src: Sources,
+    tz: crate::common::time::Tz,
+    watch: Option<&[String]>,
+    folded: bool,
+) -> TapRx {
+    let (id, wake) = src.hub.live().join();
+    let rx = TapRx {
+        src,
+        id,
+        wake,
+        tz,
+        out: std::collections::VecDeque::new(),
+        board: folded.then(face_core::live::Board::default),
+    };
     if let Some(sids) = watch {
         // 写者还没开始取：名单外的卡还没欠下的那几张当场撤掉，一张都不发。
         rx.watch_handle().watch(sids);
     }
-    rx.nodes = Some(crate::accounts::quota::nodes::bus().subscribe());
-    rx.plan = Some(crate::plan::watch::changes().subscribe());
-    rx.machines = Some(crate::control::machines::changes().subscribe());
-    rx.machine = Some(crate::control::machine_state::changes().subscribe());
-    rx.dirs = Some(crate::stream::inbound::files_face::dir_changes());
-    rx.list = Some(crate::history::list_node::node().subscribe());
-    rx.bodies = crate::wire::topic_hook::body;
-    rx.tz = tz;
     rx
 }
 
@@ -299,25 +381,6 @@ async fn node_moved(
         Ok(n) => Some(n.changed()),
         Err(RecvError::Lagged(_)) => Some(Node::lagged()),
         Err(RecvError::Closed) => None,
-    }
-}
-
-/// [`attach`] 的可喂那一半：活卡由调用方给（判据各造一个 hub）。
-pub(crate) fn attach_rx(hub: Arc<TapHub>) -> TapRx {
-    let (id, wake) = hub.live().join();
-    TapRx {
-        hub,
-        id,
-        wake,
-        out: std::collections::VecDeque::new(),
-        nodes: None,
-        plan: None,
-        machines: None,
-        machine: None,
-        dirs: None,
-        list: None,
-        bodies: no_bodies,
-        tz: crate::common::time::Tz::default(),
     }
 }
 

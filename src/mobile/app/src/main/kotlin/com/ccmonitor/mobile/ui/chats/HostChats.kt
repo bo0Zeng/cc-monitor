@@ -7,7 +7,6 @@ import com.ccmonitor.mobile.core.claude.link.Deploying
 import com.ccmonitor.mobile.core.claude.link.Groups
 import com.ccmonitor.mobile.core.claude.link.HistoryList
 import com.ccmonitor.mobile.core.claude.link.HistoryListPage
-import com.ccmonitor.mobile.core.claude.link.HistorySearch
 import com.ccmonitor.mobile.core.claude.link.ListAsk
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.Toned
@@ -69,6 +68,8 @@ class HostChats(
     val deploy: () -> Unit,
     private val cache: ListCache,
     private val scope: CoroutineScope,
+    /** 这台在核心里那条流的编号（搜内容交核心问一圈时报这一台，`ResidentFeed.handle`）。 */
+    val handle: suspend () -> Long,
 ) {
     private val list = MutableStateFlow<Fetched<HistoryListPage>>(Fetched.Loading)
     private val cached = MutableStateFlow<HistoryListPage?>(null)
@@ -144,18 +145,6 @@ class HostChats(
         return fetched(reply, HistoryList.COMMAND) { page }
     }
 
-    /** 搜这台的会话内容（[Searched]）。 */
-    suspend fun searchContent(q: String): Searched =
-        when (val reply = link.call(HistorySearch.COMMAND, HistorySearch.args(q))) {
-            is Reply.TimedOut, Reply.LinkDown, is Reply.Cancelled -> Searched.Down
-            else ->
-                when (val got = fetched(reply, HistorySearch.COMMAND) { d -> (d as? Map<*, *>)?.let { Searched.Got(d) } }) {
-                    is Fetched.Got -> got.value
-                    is Fetched.Failed -> Searched.Failed(got.problem)
-                    Fetched.Loading -> Searched.Down
-                }
-        }
-
     /** 问这台一条命令、照 [decode] 解回包。 */
     suspend fun <T> call(
         command: String,
@@ -177,19 +166,6 @@ class HostChats(
     companion object {
         const val LIST_DEBOUNCE_MS = 1_000L
     }
-}
-
-/** 一台搜内容的结局：答了（回包原样，交核心合）· 没答（断着 · 无应答）· 答了读不出。 */
-sealed interface Searched {
-    data class Got(
-        val raw: Any?,
-    ) : Searched
-
-    data object Down : Searched
-
-    data class Failed(
-        val problem: Problem,
-    ) : Searched
 }
 
 /** 一台此刻手上的全部：流 · 会话表 · 清单这一问 · 缓存 · 装到哪一步 · 带的筛选。 */
@@ -249,6 +225,8 @@ data class ChatRow(
     /** 它在分叉树里的样子（核心挂好的，[chatsView] 拷进来）。 */
     val nest: Nest = Nest(),
     val canDelete: CanDelete = CanDelete.YES,
+    /** 删除确认的正文（核心照那台的称呼写好的，[chatsView] 拷进来；确认框照摆）。 */
+    val deleteAsk: String = "",
     /** 机器小标签：勾上的不止一台、又不在当前机器上 ⇒ 那台的名字；否则 `null`。 */
     val machineTag: String? = null,
 )
@@ -262,6 +240,8 @@ data class Nest(
     val forks: Int = 0,
     val forksOpen: Boolean = false,
     val orphan: Boolean = false,
+    /** 「分叉 N」那颗的字（核心写好的；没有分叉 ⇒ `null`）。 */
+    val forksText: String? = null,
 )
 
 /** 一台在屏上要画的：行 · 组 · 顶上那一条 · 注解没并上那一句 · 截断 · 还在读。 */
@@ -450,5 +430,6 @@ fun hostChats(
             deploy = { backends.deploy(h.id) },
             cache = cache.list(h.id),
             scope = scope,
+            handle = feed::handle,
         )
     }

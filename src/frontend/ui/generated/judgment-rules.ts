@@ -14,3 +14,7 @@ export const KEYS_NOT_NAMES: readonly string[] = ["<local>"];
 
 /** 本机那台的机器键 —— 契约常量住 `cmd_wire::machine::LOCAL`。 */
 export const LOCAL = "<local>";
+
+import type { SessionDot } from "./SessionDot";
+/** 说在等人的那几颗点 —— 契约常量住 `cmd_wire::frame::SessionDot::WAITING`。 */
+export const WAITING_DOTS: readonly SessionDot[] = ["asks","needs-you"];

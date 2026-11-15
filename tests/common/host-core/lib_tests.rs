@@ -95,7 +95,7 @@ fn atomic_write_json_creates_dirs_and_file_only_for_the_owner() {
     let root = std::env::temp_dir().join(format!("ccm-utils-test-private-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).unwrap();
-    std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o755)).unwrap();
+    test_home::set_dir_mode(&root, 0o755);
     let dst = root.join("a").join("b").join("x.json");
     atomic_write_json(&dst, &serde_json::json!({ "k": 1 })).unwrap();
     atomic_write_json(&dst, &serde_json::json!({ "k": 2 })).unwrap();
@@ -232,5 +232,35 @@ fn a_capped_read_of_bytes_that_are_not_utf8_is_a_read_error() {
     std::fs::write(&f, [0xffu8, 0xfe]).unwrap();
     let e = read_capped(&f, cap(64)).unwrap_err();
     assert_eq!(e.kind(), std::io::ErrorKind::InvalidData);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// 只认普通文件：一个 FIFO 不打开（打开它会卡住等写端）⇒ 当场回 `InvalidInput`，不等。
+/// 要求：「先看是不是普通文件（打开一个 FIFO 会卡住等写端）」（`cap_core::read_capped_regular`，前端整读也经它）。
+/// 红的那一形不让判据跟着卡（不靠墙钟）：判据自己先以读写打开它（Linux 上不等）、塞进比上限多的字节 ⇒
+/// 照旧打开着去读的那一形当场读满上限、回 `TooBig`；只认普通文件的那一形压根不打开、回 `InvalidInput`。
+#[cfg(target_os = "linux")]
+#[test]
+fn a_capped_read_of_a_fifo_is_turned_away_without_opening_it() {
+    use std::io::Write;
+    let d = capped_dir("fifo");
+    let f = d.join("pipe");
+    let st = std::process::Command::new("mkfifo")
+        .arg(&f)
+        .status()
+        .expect("mkfifo");
+    assert!(st.success(), "铺管道");
+    let mut held = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(&f)
+        .expect("读写打开管道");
+    held.write_all(b"xy").expect("塞两个字节");
+    assert_eq!(
+        read_capped_bytes(&f, cap(1)).map_err(|e| e.kind()),
+        Err(std::io::ErrorKind::InvalidInput),
+        "FIFO 被打开读了"
+    );
+    drop(held);
     let _ = std::fs::remove_dir_all(&d);
 }

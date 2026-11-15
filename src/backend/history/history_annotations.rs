@@ -259,14 +259,14 @@ fn lock_for_write(own: &Own, dir: &OwnPath) -> Result<OwnLock, crate::common::sa
 #[derive(Debug, Default, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-#[serde(deny_unknown_fields)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(crate) struct Patch {
     /// 星标。
     #[serde(default)]
     #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
     starred: Option<bool>,
     /// 自定义标题：`null` = 不改；空白串 = 清空（也认蛇形 `custom_title`）。
-    #[serde(default, rename = "customTitle", alias = "custom_title")]
+    #[serde(default, alias = "custom_title")]
     #[cfg_attr(any(test, feature = "ts"), ts(type = "string | null", optional))]
     custom_title: Option<Option<String>>,
     /// 单个那一格：`on` · `off` · `rule`（摘掉、回到规则）。
@@ -274,7 +274,7 @@ pub(crate) struct Patch {
     #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
     hide: Option<HideAsk>,
     /// 无人答时自动答：`{afterMin, say?}`，`afterMin: 0` 摘掉（关）；没给 `say` ⇒ 留着原来那一句、空白 ⇒ 回到缺省；值怎么算数由 `history_annotations::auto_checked` 判。
-    #[serde(default, rename = "autoAnswer")]
+    #[serde(default)]
     #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
     auto_answer: Option<cmd_wire::needs::AutoAnswer>,
     /// 固定。

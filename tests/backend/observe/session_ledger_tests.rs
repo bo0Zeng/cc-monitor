@@ -54,7 +54,6 @@ fn added(sid: &str) -> Ev {
         sid: sid.into(),
         agent_kind: "claude".to_string(),
         background: false,
-        attachable: None,
         cwd: None,
         project_dir: None,
         name: None,
@@ -173,7 +172,6 @@ fn a_removal_waits_for_an_observation_and_asks_for_one() {
         sid: "a".into(),
         agent_kind: "claude".to_string(),
         background: false,
-        attachable: None,
         cwd: None,
         project_dir: None,
         name: None,
@@ -390,7 +388,6 @@ fn status(sid: &str) -> Frame {
             host: None,
         }),
         name_face: crate::history::search_rules::name_face(&Default::default()),
-        waiting_for: None,
         path: None,
     })
 }
@@ -598,11 +595,9 @@ fn a_session_in_a_hosted_terminal_leaves_in_exactly_one_frame_that_says_ended() 
 fn a_reconnectable_announced_as_unattachable_cannot_be_attached() {
     let mut l = SessionLedger::new();
     for (sid, attachable) in [("a", Some(false)), ("b", None)] {
-        let Ev::F(Frame::SessionAdded(mut f)) = added(sid) else {
-            unreachable!()
-        };
-        f.attachable = attachable;
-        l.on_frame(&Frame::SessionAdded(f));
+        let Ev::F(f) = added(sid) else { unreachable!() };
+        l.announced(sid, attachable);
+        l.on_frame(&f);
     }
     let both = [row("$1", "ta", &["a"]), row("$2", "tb", &["b"])].concat();
     l.on_tmux(&both, None);

@@ -1,11 +1,12 @@
 //! 会话内查找判据里经帧面宿主问 `history-find` 的那几条（`faces::history_face::find_at`：常驻索引那一臂 · 不归它管就现扫）：
 //! 观测面是独立的包（`backend-observe`）、够不到帧面 ⇒ 挂在主 crate（经 `cross/observe.rs`）。夹具是**合成的结构**，不含任何真会话正文。
 
+use crate::agents::claudecode::AGENT_KIND;
 use crate::agents::UserTextExt as _;
 use crate::observe::search_query::test_support::{
     bytes_of, find, fixture, resident_reads, uuids, Q,
 };
-use crate::observe::search_query::{scan_session_find, FindPage, FIND_DEFAULT_LIMIT};
+use crate::observe::search_query::{scan_session_find, who_of, FindPage, FIND_DEFAULT_LIMIT};
 
 /// 照登记表那一层问一次 `history-find`（入参经 typed 那一处解，回包过一遍真序列化器）。
 fn find_wire(
@@ -62,6 +63,7 @@ fn gap1_history_find_rides_the_resident_index_and_equals_the_plain_scan() {
                 hits.push(crate::observe::search_query::with_hit_text(
                     h,
                     &Default::default(),
+                    false,
                 ));
                 Ok(())
             },
@@ -144,6 +146,7 @@ fn find_hits_carry_turn_and_time_and_page_by_skip_on_both_arms() {
                 hits.push(crate::observe::search_query::with_hit_text(
                     h,
                     &Default::default(),
+                    false,
                 ));
                 Ok(())
             },
@@ -183,11 +186,30 @@ fn find_hits_carry_turn_and_time_and_page_by_skip_on_both_arms() {
         all["hits"][1].get("tsMs").is_none(),
         "时刻只给后端写字，不上线"
     );
-    assert!(!all["hits"][1]["tsText"].as_str().unwrap().is_empty());
+    let at = |iso: &str| {
+        crate::common::time::hit_text(
+            crate::common::time::parse_iso8601_ms(iso).unwrap(),
+            &Default::default(),
+        )
+    };
+    assert!(
+        all["hits"][1].get("tsText").is_none(),
+        "时刻只写进头一行，不另上线"
+    );
+    assert!(all["hits"][1]["meta"]
+        .as_str()
+        .unwrap()
+        .ends_with(&at("2026-01-01T00:01:00.000Z")));
     assert_eq!(
-        all["hits"][4]["tsText"].as_str(),
-        Some(""),
-        "读不出的时刻 ⇒ 空串"
+        all["hits"][4]["meta"].as_str(),
+        Some(
+            copy_core::copy_text(
+                "sessionFind.hit.metaNoTime",
+                &[("who", &who_of(AGENT_KIND, "user")), ("n", "3")]
+            )
+            .as_str()
+        ),
+        "读不出的时刻 ⇒ 头一行不写时刻"
     );
     let page = ask(2, 2);
     assert_eq!(page, scan(2, 2));
@@ -203,7 +225,7 @@ fn find_hits_carry_turn_and_time_and_page_by_skip_on_both_arms() {
 }
 
 /// ★ 「只搜用户」：`scope: "user"` 的命中 ＝ 流里画成「人说的」那几条里找得到这个词的（同一份夹具两边各算一遍）。
-/// 「流里画成什么」取自流的成品本身（`parse_line` → `record_of` 出的 `Said { who }`，`who.speech()` 有话 ⇒ 人说的：
+/// 「流里画成什么」取自流的成品本身（`parse_line` → `row_of` 出的 `Said { who }`，`who.speech()` 有话 ⇒ 人说的：
 /// 用户气泡 · 斜杠命令 · `!` 命令），不取自查找那一侧的判定函数。系统注入 · 工具结果 · 斜杠命令展开（`isMeta`）·
 /// agent 回报 · 后台通知 · 派给子 agent 的活 · 那一家说的都不算；`include_tools` 在用户范围里当假（用户说的话没有工具输出）。
 /// 常驻索引那一臂（帧面 `history-find`）与现扫那一臂逐字相等。
@@ -230,7 +252,7 @@ fn user_scope_hits_are_what_the_stream_draws_as_said_by_the_person() {
         .filter_map(|l| {
             let rec = crate::agents::claudecode::parse::parse_line(&crate::agents::Line::new(l, 0))
                 .ok()??;
-            let r = crate::agents::claudecode::record_of::record_of(rec, 0)?;
+            let r = crate::agents::claudecode::record_of::row_of(rec, 0)?.0.rec;
             match r.body {
                 crate::agents::record::Body::Said { who, .. } => who
                     .speech()
@@ -261,7 +283,11 @@ fn user_scope_hits_are_what_the_stream_draws_as_said_by_the_person() {
             },
             |h| {
                 got.push(h.uuid.clone());
-                assert_eq!(h.kind, "user", "用户范围里每条都是 user 命中");
+                assert_eq!(
+                    h.who,
+                    who_of(AGENT_KIND, "user"),
+                    "用户范围里每条都是 user 命中"
+                );
                 Ok(())
             },
         )
@@ -346,4 +372,84 @@ fn hits_from_the_frame_carry_the_same_index_row_as_the_plain_scan() {
         "常驻索引那一臂的行号与现扫的不一样"
     );
     let _ = std::fs::remove_dir_all(&home);
+}
+
+/// ★ 命中行头一行 `meta` 由这台写好、界面照抄：谁 · 第几轮 · 时刻（第一句之前不写轮；范围「用户」不写谁）。
+#[test]
+fn find_hits_carry_the_head_line_written_here() {
+    let lines: Vec<String> = vec![
+        r#"{"type":"assistant","uuid":"a0","timestamp":"2026-10-01T00:00:00Z","message":{"role":"assistant","content":[{"type":"text","text":"zqx before"}]}}"#.into(),
+        r#"{"type":"user","uuid":"u1","timestamp":"2026-10-01T00:00:01Z","message":{"role":"user","content":"zqx first"}}"#.into(),
+    ];
+    let data = bytes_of(&lines);
+    let heads = |scope: Option<&str>| {
+        let mut got = Vec::new();
+        scan_session_find(
+            crate::agents::claudecode::AGENT_KIND,
+            &data[..],
+            "zqx",
+            false,
+            scope,
+            FindPage {
+                skip: 0,
+                limit: FIND_DEFAULT_LIMIT,
+            },
+            |h| {
+                let v = serde_json::to_value(crate::observe::search_query::with_hit_text(
+                    h,
+                    &Default::default(),
+                    scope == Some("user"),
+                ))
+                .unwrap();
+                let iso = if h.uuid == "a0" {
+                    "2026-10-01T00:00:00Z"
+                } else {
+                    "2026-10-01T00:00:01Z"
+                };
+                got.push((
+                    v["meta"].as_str().unwrap().to_string(),
+                    crate::common::time::hit_text(
+                        crate::common::time::parse_iso8601_ms(iso).unwrap(),
+                        &Default::default(),
+                    ),
+                ));
+                Ok(())
+            },
+        )
+        .unwrap();
+        got
+    };
+    let t = |k: &str| copy_core::copy_text(k, &[]);
+    let all = heads(None);
+    assert_eq!(
+        all[0].0,
+        copy_core::copy_text(
+            "sessionFind.hit.metaNoTurn",
+            &[
+                ("who", &who_of(AGENT_KIND, "assistant")),
+                ("time", &all[0].1)
+            ]
+        ),
+        "第一句之前：不写轮"
+    );
+    assert_eq!(
+        all[1].0,
+        copy_core::copy_text(
+            "sessionFind.hit.meta",
+            &[
+                ("who", &t("machineForm.field.user")),
+                ("n", "1"),
+                ("time", &all[1].1)
+            ]
+        )
+    );
+    let mine = heads(Some("user"));
+    assert_eq!(
+        mine[0].0,
+        copy_core::copy_text(
+            "sessionFind.hit.metaNoWho",
+            &[("n", "1"), ("time", &mine[0].1)]
+        ),
+        "范围「用户」：不写谁"
+    );
 }

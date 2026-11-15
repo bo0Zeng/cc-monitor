@@ -7,12 +7,12 @@
 //! `watch_from`（JSON 数组）· `ssh`（SSH 够没够着那一台：`true` / `false`，与流通不通分开；SSH 那层跟它走）· `reply`（一问一答的结局，JSON，带 `call` 编号）·
 //! `moved`（分块传走到哪，`transfer.rs`）。
 
+use crate::record::OrUnread;
 use cmd_wire::frame::Frame;
 use cmd_wire::phone::{CallEnd, LinkLine};
 use deploy::machine::{fold, product, Entry, Fact};
 use face_core::book::SessionBook;
 use face_core::live::{Board, LiveCards};
-use face_core::record::OrUnread;
 use resident_client::client::CallError;
 use resident_client::feed::{
     sink, Boxed, Config, Event, Feed, Problem, Progress, State, Transport,
@@ -339,9 +339,9 @@ impl Facts {
         if let Some(req) = base.and_then(|b| PhoneLink::new(b).request(serde_json::json!({})).ok())
         {
             ssh_dial::pool::way_of(snap, &req).put(&mut machine);
-            // 这一条连接用的是不是密码：那一跳的钥匙编号在钥匙表里是密码（判在 `deploy::machine::signed_in`）。
+            // 这一条连接用的是不是密码：那一跳的钥匙编号在钥匙表里是密码（判在 `deploy::machine::mark_signed_in`）。
             let password = req.key_path.as_deref().is_some_and(crate::is_password);
-            deploy::machine::signed_in(&mut machine, password);
+            deploy::machine::mark_signed_in(&mut machine, password);
         }
         let line = match &self.last {
             None | Some(State::Connecting) => LinkLine::Connecting { machine },
@@ -404,8 +404,8 @@ fn fleet_line() -> String {
     serde_json::to_string(&fleet_of(&refs)).unwrap_or_default()
 }
 
-/// 看一台（在当前运行时上起它的循环）。`mine` = 手上这一版的身份（版本门的对照物）。回编号。
-pub fn open(machine: String, mine: Option<String>, tz: Option<String>, on_event: OnEvent) -> i64 {
+/// 看一台（在当前运行时上起它的循环）。`mine` = 手上这一版的身份（版本门的对照物）；`tz` = 看的这一台（这台手机）的时区名。回编号。
+pub fn open(machine: String, mine: Option<String>, tz: String, on_event: OnEvent) -> i64 {
     static NEXT: AtomicI64 = AtomicI64::new(1);
     let id = NEXT.fetch_add(1, Ordering::Relaxed);
     let name = machine.clone();
@@ -456,9 +456,10 @@ pub fn open(machine: String, mine: Option<String>, tz: Option<String>, on_event:
             let got = match &e {
                 Event::State(s) => {
                     let mut out = match s {
-                        State::Connecting => folds.lock().unwrap_or_else(|e| e.into_inner()).reset(
-                            cmd_wire::cells::Words(comms_inward::chan::said::offline(&name)),
-                        ),
+                        State::Connecting => folds
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .reset(cmd_wire::cells::Words(copy_core::offline(&name))),
                         _ => Vec::new(),
                     };
                     out.extend(note(id, |f| f.round(s.clone(), &name)));
@@ -542,7 +543,7 @@ fn args_of(id: i64, cmd: &str, args: &str) -> Result<serde_json::Value, String> 
     })
 }
 
-/// 一问一答：回问答编号；结局经 `reply` 那一种交回（`{call, …}`，[`reply_json`]）。这台不在 ⇒ 0；入参读不动 ⇒ 不发，当场交读不动那一行。
+/// 一问一答：回问答编号；结局经 `reply` 那一种交回（`{call, …}`，同 [`reply_json`] 那一形）。这台不在 ⇒ 0；入参读不动 ⇒ 不发，当场交读不动那一行。
 pub fn call(h: i64, cmd: String, args: &str, within_ms: u64, on_event: OnEvent) -> i64 {
     let Some(f) = feed(h) else { return 0 };
     let id = next_call();
@@ -553,16 +554,161 @@ pub fn call(h: i64, cmd: String, args: &str, within_ms: u64, on_event: OnEvent) 
             return id;
         }
     };
-    let machine = f.machine().to_string();
     tokio::spawn(async move {
-        let deadline = tokio::time::Instant::now() + Duration::from_millis(within_ms.max(1));
-        let got = match f.client_by(deadline).await {
-            Some(c) => c.call_until(&cmd, args, deadline).await,
-            None => Err(CallError::Disconnected),
-        };
-        on_event(h, "reply", reply_json(id, &machine, &cmd, got));
+        let end = ask_on(&f, id, &cmd, args, Duration::from_millis(within_ms.max(1))).await;
+        on_event(h, "reply", serde_json::to_string(&end).unwrap_or_default());
     });
     id
+}
+
+/// 在这一条流上问一句（[`call`] · [`ask_one`] 同这一下）：等它接上至多 `within`（等的那一段也算），再问；没接上 ⇒ 断着。
+async fn ask_on(
+    f: &Feed<PhoneLink>,
+    id: i64,
+    cmd: &str,
+    args: serde_json::Value,
+    within: Duration,
+) -> CallEnd {
+    let deadline = tokio::time::Instant::now() + within;
+    let got = match f.client_by(deadline).await {
+        Some(c) => c.call_until(cmd, args, deadline).await,
+        None => Err(CallError::Disconnected),
+    };
+    end_of(id, f.machine(), cmd, got)
+}
+
+// ═══ 逐台问 ＋ 合 ═══════════════════════════════════════════════════════════════
+
+/// 逐台问的一台：哪一条流（[`open`] 回的编号）· 哪台（出口那一侧的机器 id，合好的每一项照它认）· 给人看的称呼（句子里叫出那台）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Host {
+    pub handle: i64,
+    pub origin: cmd_wire::Machine,
+    pub label: String,
+}
+
+impl Host {
+    /// 称呼照那条流开的时候给的名字（[`open`] 的 `machine`）；不在 ⇒ 机器 id。
+    pub fn of(handle: i64, origin: cmd_wire::Machine) -> Self {
+        let label = feed(handle).map_or_else(|| origin.to_string(), |f| f.machine().to_string());
+        Host {
+            handle,
+            origin,
+            label,
+        }
+    }
+}
+
+/// 问一圈的结局，已逐台判过：各台的称呼 · 答了的那几台（哪台 · 那一份）· 没答上的那几格（句里已叫出那台）。
+struct Round<T, D> {
+    labels: Vec<(cmd_wire::Machine, String)>,
+    answered: Vec<(cmd_wire::Machine, T)>,
+    down: Vec<D>,
+}
+
+/// **各台同问一句、逐台判**（同时问，台序照给的）：每台那一问的结局原样（[`CallEnd`]，没答上的也在）交 `judge`（`face_core` 那一份），
+/// 分成答了的与没答上的。`one` ＝ 问一台那一下（生产上是 [`ask_one`]；判据塞假的）。
+async fn ask_round<F, Fut, T, D>(
+    hosts: Vec<Host>,
+    cmd: &'static str,
+    args: serde_json::Value,
+    one: F,
+    judge: impl Fn(cmd_wire::Machine, &str, CallEnd) -> Result<T, D>,
+) -> Round<T, D>
+where
+    F: Fn(i64, &'static str, serde_json::Value) -> Fut,
+    Fut: std::future::Future<Output = CallEnd> + Send + 'static,
+{
+    let asks: Vec<_> = hosts
+        .into_iter()
+        .map(|h| {
+            let t = tokio::spawn(one(h.handle, cmd, args.clone()));
+            (h, t)
+        })
+        .collect();
+    let mut round = Round {
+        labels: Vec::with_capacity(asks.len()),
+        answered: Vec::new(),
+        down: Vec::new(),
+    };
+    for (h, t) in asks {
+        // 那一问的任务自己崩了 ⇒ 当没问到（这一端没拿到那台的话）。
+        let end = t.await.unwrap_or(CallEnd::Down { call: 0 });
+        round.labels.push((h.origin.clone(), h.label.clone()));
+        match judge(h.origin.clone(), &h.label, end) {
+            Ok(x) => round.answered.push((h.origin, x)),
+            Err(d) => round.down.push(d),
+        }
+    }
+    round
+}
+
+/// **问一台一句**（[`ask_round`] 生产上那一下）：这台不在 · 那条流此刻没连上 ⇒ 当场断着、不发问不等（一圈不为它等期限；
+/// 接上时出口照「换了一条流」再问一圈）；连着 ⇒ 同 [`call`]，发出去还没回的才等到期限。
+pub async fn ask_one(
+    h: i64,
+    cmd: &'static str,
+    args: serde_json::Value,
+    within: Duration,
+) -> CallEnd {
+    match feed(h) {
+        Some(f) if matches!(f.state(), State::Up { .. }) => {
+            ask_on(&f, next_call(), cmd, args, within).await
+        }
+        _ => CallEnd::Down { call: 0 },
+    }
+}
+
+/// **几台的需手动问一圈、合成一份**（`face_core::needs::merge_needs`，本机后端 `sessions-needs-merge` 同一份合法）：
+/// 每台 `sessions-needs` 那一问的结局只经 `face_core::needs::needs_reply` 判（答了 · 没答上那一句，照称呼叫出那台），没答上的进 `down`。
+/// 问一次就是整圈：什么时候再问 · 退避 · 留上一份归出口（ARCHITECTURE §3.9）。
+pub async fn needs_all<F, Fut>(hosts: Vec<Host>, one: F) -> cmd_wire::needs::NeedsMerged
+where
+    F: Fn(i64, &'static str, serde_json::Value) -> Fut,
+    Fut: std::future::Future<Output = CallEnd> + Send + 'static,
+{
+    let r = ask_round(
+        hosts,
+        "sessions-needs",
+        serde_json::json!({}),
+        one,
+        face_core::needs::needs_reply,
+    )
+    .await;
+    // 一圈都问完才合 ⇒ 合的那一刻没有还在读的台。
+    face_core::needs::merge_needs(r.answered, r.down, false, |m| label_of(&r.labels, m))
+}
+
+/// **几台搜内容问一圈、合成一份**（`face_core::search::merge`，本机后端扇出完调的同一份）：每台的结局只经 `search_reply` 判；
+/// 合好的每行删除确认那一句照那台的称呼重写（`face_core::history_asks::delete_ask_named`：手机这一端没有自己的记录，每行都点名）。
+pub async fn search_all<F, Fut>(q: &str, hosts: Vec<Host>, one: F) -> cmd_wire::search::Merged
+where
+    F: Fn(i64, &'static str, serde_json::Value) -> Fut,
+    Fut: std::future::Future<Output = CallEnd> + Send + 'static,
+{
+    let r = ask_round(
+        hosts,
+        "history-search",
+        serde_json::json!({ "query": q }),
+        one,
+        face_core::search::search_reply,
+    )
+    .await;
+    let mut merged = face_core::search::merge(q, r.answered, r.down);
+    for row in &mut merged.sessions {
+        let named = label_of(&r.labels, &row.origin);
+        row.delete_ask =
+            face_core::history_asks::delete_ask_named(Some(&named), row.row.row.can.delete);
+    }
+    merged
+}
+
+/// 那台给人看的称呼（交来的 `label`）；没交 ⇒ 机器 id。
+fn label_of(labels: &[(cmd_wire::Machine, String)], m: &cmd_wire::Machine) -> String {
+    labels
+        .iter()
+        .find(|(o, _)| o == m)
+        .map_or_else(|| m.to_string(), |(_, l)| l.clone())
 }
 
 /// 多一处 / 少一处在看这条会话。名单变了 ⇒ 交那台的名单台（整份）。
@@ -645,20 +791,30 @@ pub fn close(h: i64) {
 }
 
 /// 一问一答的结局 ⇒ 交 Kotlin 的那一行（[`CallEnd`]）。
-/// 成了的回包原样交（Kotlin 由 `cmd-wire` 那一份生成的类解那一次），只有记录那一格先一条一条判认不认得（`face_core::record::mend_records`）。
-/// 事前就拒的那几种（不认 · 形状不同 · 这台做不到 · 在等的太多）经通信层那一份分流器说成一句（`route_call_error`），照失败交。
+/// 成了的回包原样交（Kotlin 由 `cmd-wire` 那一份生成的类解那一次），只有记录那一格先一条一条判认不认得（[`crate::record::mend_records`]）。
+/// 事前就拒的那几种（不认 · 形状不同 · 这台做不到 · 在等的太多）经通信层那一份说成一句（`route_call_error`）、码照 `CallError::code`，照失败交。
 pub fn reply_json(
     id: i64,
     machine: &str,
     cmd: &str,
     got: Result<Option<serde_json::Value>, CallError>,
 ) -> String {
-    use comms_inward::backend_route::{route_call_error, Routed};
+    serde_json::to_string(&end_of(id, machine, cmd, got)).unwrap_or_default()
+}
+
+/// 一问一答的结局 ⇒ [`CallEnd`]（[`reply_json`] 那一行 · [`call`] 交 Kotlin 的 · [`ask_one`] 交合的那一步，同一份）。
+fn end_of(
+    id: i64,
+    machine: &str,
+    cmd: &str,
+    got: Result<Option<serde_json::Value>, CallError>,
+) -> CallEnd {
+    use comms_inward::backend_route::route_call_error;
     let call = id;
-    let end = match got {
+    match got {
         Ok(data) => {
             let mut data = data.unwrap_or(serde_json::Value::Null);
-            face_core::record::mend_records(cmd, &mut data);
+            crate::record::mend_records(cmd, &mut data);
             CallEnd::Ok { call, data }
         }
         Err(CallError::Remote(f)) => CallEnd::Failed {
@@ -678,24 +834,16 @@ pub fn reply_json(
         }
         Err(CallError::Disconnected) => CallEnd::Down { call },
         Err(e) => {
-            let code = match &e {
-                CallError::Unsupported { .. } => "unsupported".to_string(),
-                CallError::Differs { .. } => "differs".to_string(),
-                CallError::Unavailable { code, .. } => code.clone(),
-                _ => "busy".to_string(),
-            };
-            let (Routed::NoChannel(said) | Routed::Refused(said)) =
-                route_call_error(&e, machine, |_code, said| said.to_string());
+            let said = route_call_error(&e, machine, |_code, said| said.to_string());
             CallEnd::Failed {
                 call,
-                code,
+                code: e.code().to_string(),
                 said,
                 detail: e.to_string(),
                 data: None,
             }
         }
-    };
-    serde_json::to_string(&end).unwrap_or_default()
+    }
 }
 
 /// 一问没答成（期限到 · 撤了）的那一句与复制详情：那一句照通道那一份说（`layer_call_error` 分层 ⇒ `chan::said::said`，
@@ -723,6 +871,341 @@ fn branch_held(sids: &BTreeSet<String>) -> Vec<cmd_wire::watch::BranchHeld> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 第 i 台（编号 i）：称呼照给的、机器 id `phone-<字母>`。
+    fn hosts(labels: &[&str]) -> Vec<Host> {
+        labels
+            .iter()
+            .enumerate()
+            .map(|(i, l)| Host {
+                handle: i as i64,
+                origin: cmd_wire::Machine::named(format!("phone-{}", (b'a' + i as u8) as char)),
+                label: l.to_string(),
+            })
+            .collect()
+    }
+
+    /// 假的「问一台」：编号 i 那台答 `ends[i]`（照线上那一形写），并记下问了哪台 · 哪条命令 · 什么入参。
+    #[allow(clippy::type_complexity)]
+    fn fake(
+        ends: Vec<serde_json::Value>,
+    ) -> (
+        impl Fn(i64, &'static str, serde_json::Value) -> std::future::Ready<CallEnd>,
+        Arc<Mutex<Vec<(i64, String, serde_json::Value)>>>,
+    ) {
+        let asked = Arc::new(Mutex::new(Vec::new()));
+        let log = Arc::clone(&asked);
+        let one = move |h: i64, cmd: &'static str, args: serde_json::Value| {
+            log.lock().unwrap().push((h, cmd.to_string(), args));
+            std::future::ready(serde_json::from_value(ends[h as usize].clone()).unwrap())
+        };
+        (one, asked)
+    }
+
+    fn plan(slice: &str, rank: u64) -> serde_json::Value {
+        serde_json::json!({"kind": "plan", "rank": rank, "workspace": "/w", "slice": slice})
+    }
+
+    /// ★ 两台一答一断 ⇒ `needs_all` 回合好的一份：答了那台的项 · 它收了场的那几条（带上是哪台）；断的那台进 `down`、照称呼叫出、不计；
+    /// 每台各问一次 `sessions-needs`。
+    #[tokio::test]
+    async fn needs_all_merges_the_answer_and_puts_the_dead_one_in_down() {
+        use serde_json::json;
+        let a = json!({"items": [plan("a1", 5)],
+            "ended": [{"sid": "s1", "end": {"said": "已有人答过", "stays": false}}]});
+        let (one, asked) = fake(vec![
+            json!({"end": "ok", "call": 1, "data": a}),
+            json!({"end": "down", "call": 2}),
+        ]);
+        let got = needs_all(hosts(&["甲", "乙"]), one).await;
+        let order: Vec<(String, u64)> = got
+            .manual
+            .items
+            .iter()
+            .map(|x| (x.origin.to_string(), face_core::needs::rank_of(&x.item)))
+            .collect();
+        assert_eq!(order, [("phone-a".to_string(), 5)], "{got:?}");
+        assert_eq!(got.manual.total, 1, "断的那台不计");
+        assert_eq!(got.down.len(), 1, "{got:?}");
+        assert_eq!(got.down[0].origin.to_string(), "phone-b");
+        assert_eq!(
+            got.down[0].said,
+            copy_core::offline("乙"),
+            "离线那一句叫出那台"
+        );
+        assert!(
+            !got.asks.sure && !got.manual.sure,
+            "有台断着 ⇒ 两列都说不准"
+        );
+        assert_eq!(got.ended.len(), 1, "{got:?}");
+        assert_eq!(
+            (got.ended[0].origin.to_string(), got.ended[0].sid.as_str()),
+            ("phone-a".to_string(), "s1")
+        );
+        let asked = asked.lock().unwrap().clone();
+        assert_eq!(
+            asked,
+            [
+                (0, "sessions-needs".to_string(), json!({})),
+                (1, "sessions-needs".to_string(), json!({}))
+            ],
+            "每台各问一次"
+        );
+    }
+
+    /// ★ 一圈里有一台的流此刻没连上（开着、还没接上）⇒ 那台当场进 `down`、不发问不等期限：整圈不等它 15 s。
+    #[tokio::test(start_paused = true)]
+    async fn a_machine_known_down_does_not_hold_up_the_round() {
+        let h = open(
+            "断着那台".into(),
+            None,
+            "Asia/Shanghai".into(),
+            Arc::new(|_, _, _| {}),
+        );
+        assert!(!matches!(feed(h).unwrap().state(), State::Up { .. }));
+        let t0 = tokio::time::Instant::now();
+        let got = needs_all(
+            vec![Host::of(h, cmd_wire::Machine::named("m"))],
+            |h, cmd, args| ask_one(h, cmd, args, Duration::from_secs(15)),
+        )
+        .await;
+        let took = t0.elapsed();
+        close(h);
+        assert_eq!(got.down.len(), 1, "{got:?}");
+        assert_eq!(got.down[0].said, copy_core::offline("断着那台"));
+        assert!(took < Duration::from_secs(1), "等了 {took:?}");
+    }
+
+    /// ★ 生产上问一台那一下：这台的流不在 ⇒ 断着（不等、不冒充答了）。
+    #[tokio::test]
+    async fn a_machine_whose_feed_is_gone_answers_as_down() {
+        let end = ask_one(
+            -7,
+            "sessions-needs",
+            serde_json::json!({}),
+            Duration::from_millis(5),
+        )
+        .await;
+        assert!(matches!(end, CallEnd::Down { .. }), "{end:?}");
+        assert_eq!(
+            Host::of(-7, cmd_wire::Machine::named("m")).label,
+            "m",
+            "不在 ⇒ 称呼照机器 id"
+        );
+    }
+
+    /// 需手动问一圈合出的就是 `face_core::needs::merge_needs` 那一份（本机后端 `sessions-needs-merge` 调的同一个）：
+    /// 跨台照 `rank` 排、总数是各台加起来；会外读不出那一行照那台的称呼写好。
+    #[tokio::test]
+    async fn needs_all_is_the_one_shared_merge() {
+        use serde_json::json;
+        let a = json!({"items": [plan("a1", 5), plan("a2", 9)], "ended": []});
+        let b = json!({"items": [plan("b1", 1)], "ended": [], "manualUnreadable": "读不懂"});
+        let (one, _) = fake(vec![
+            json!({"end": "ok", "call": 1, "data": a}),
+            json!({"end": "ok", "call": 2, "data": b}),
+        ]);
+        let got = serde_json::to_value(needs_all(hosts(&["甲", "乙"]), one).await).unwrap();
+        let order: Vec<&str> = got["manual"]["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| x["item"]["slice"].as_str().unwrap())
+            .collect();
+        assert_eq!(order, ["b1", "a1", "a2"], "跨台照 rank：{got}");
+        assert_eq!(got["manual"]["total"], 3, "总数是答了的几台加起来");
+        assert_eq!(
+            got["unreadable"],
+            json!([{"origin": "phone-b", "said": "读不懂",
+                "line": copy_core::copy_text("needs.panel.unreadable", &[("machine", "乙")])}])
+        );
+        let want = face_core::needs::merge_needs(
+            vec![
+                (
+                    cmd_wire::Machine::named("phone-a"),
+                    serde_json::from_value(a).unwrap(),
+                ),
+                (
+                    cmd_wire::Machine::named("phone-b"),
+                    serde_json::from_value(b).unwrap(),
+                ),
+            ],
+            vec![],
+            false,
+            |m| {
+                if m.to_string() == "phone-a" {
+                    "甲".into()
+                } else {
+                    "乙".into()
+                }
+            },
+        );
+        assert_eq!(
+            got,
+            serde_json::to_value(&want).unwrap(),
+            "手机核心合出的不是那一份合并"
+        );
+    }
+
+    /// ★ 各台那一问的结局都进合，没答上那一句只由 `face_core::needs::needs_reply` 写：断着 ⇒ 离线那一句（叫出那台）；
+    /// 期限到 ⇒ 连接层那一句原样；那台答了一个错 ⇒「<那台> · <那一句>」，`backend_differs` 这类句里已叫出那台的码 ⇒ 原样；
+    /// 回包解不开 ⇒ 读不出那台回复那一句 ＋ 详情带命令与原文。都进 `down`、不计；有哪台没答上 ⇒ 数说不准、头那一句不带数。
+    #[tokio::test]
+    async fn machines_that_did_not_answer_go_into_the_merge_named() {
+        use serde_json::json;
+        let ok_a = json!({"end": "ok", "call": 1, "data": {"items": [plan("a1", 5)], "ended": []}});
+        let (one, _) = fake(vec![
+            ok_a.clone(),
+            json!({"end": "ok", "call": 2, "data": {"items": 3}}),
+            json!({"end": "down", "call": 3}),
+            json!({"end": "failed", "call": 4, "code": "io", "said": "记录读取失败", "detail": "原话", "data": null}),
+            json!({"end": "failed", "call": 5, "code": cmd_wire::SHAPE_DIFFERS, "said": "戊 后端版本不同", "detail": "d", "data": null}),
+            json!({"end": "timeout", "call": 6, "said": "己 回复超时", "detail": "d"}),
+        ]);
+        let got = serde_json::to_value(
+            needs_all(hosts(&["甲", "丁", "乙", "丙", "戊", "己"]), one).await,
+        )
+        .unwrap();
+        assert_eq!(got["manual"]["total"], 1, "没答上的不计：{got}");
+        let down = |m: &str| {
+            got["down"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|d| d["origin"] == m)
+                .cloned()
+                .unwrap_or_else(|| panic!("{m} 不在 down：{got}"))
+        };
+        assert_eq!(down("phone-c")["said"], copy_core::offline("乙"));
+        assert_eq!(
+            down("phone-e")["said"],
+            "戊 后端版本不同",
+            "已叫出那台 ⇒ 原样"
+        );
+        assert_eq!(
+            down("phone-d")["said"],
+            copy_core::copy_text(
+                "kit.text.machineSaid",
+                &[("machine", "丙"), ("said", "记录读取失败")]
+            ),
+            "答了一个错 ⇒ 补上是哪台"
+        );
+        assert_eq!(down("phone-d")["detail"], "原话");
+        assert_eq!(
+            down("phone-b")["said"],
+            copy_core::copy_text("peerVersion.said.unreadable", &[("machine", "丁")])
+        );
+        assert!(
+            down("phone-b")["detail"]
+                .as_str()
+                .unwrap()
+                .contains("sessions-needs"),
+            "{got}"
+        );
+        assert_eq!(down("phone-f")["said"], "己 回复超时");
+        assert_eq!(got["manual"]["sure"], false, "有哪台没答上 ⇒ 数说不准");
+        assert_eq!(
+            got["manual"]["head"],
+            copy_core::copy_text("beSession.needs.unknown", &[])
+        );
+        let (one, _) = fake(vec![ok_a]);
+        let all_ok = needs_all(hosts(&["甲"]), one).await;
+        assert!(all_ok.manual.sure, "都答了 ⇒ 说得准：{all_ok:?}");
+        assert_eq!(
+            all_ok.manual.head.0,
+            copy_core::copy_text("beGroups.count.needs", &[("n", "1")])
+        );
+    }
+
+    /// ★ 搜内容问一圈合出的就是 `face_core::search::merge` 那一份：各台真回包的形（金样那一行的整数格）合完原样是整数；
+    /// 解不开 ⇒ 那台进 `down`、别台照合；断着 ⇒ 离线那一句；每行删除确认那一句照那台的称呼点名；每台问的是 `history-search {query}`。
+    #[tokio::test]
+    async fn search_all_is_the_one_shared_merge() {
+        use serde_json::{json, Value};
+        let golden: Value = serde_json::from_str(include_str!(
+            "../../../../tests/__fixtures__/history-search-row.golden.json"
+        ))
+        .unwrap();
+        let line = |sid: &str, at: i64| {
+            let mut r: Value = serde_json::from_str(golden["lines"][0].as_str().unwrap()).unwrap();
+            r["sessionId"] = json!(sid);
+            r["updatedAt"] = json!(at);
+            r["atText"] = json!("09:05");
+            r["spanText"] = json!("09:05–09:05");
+            r["label"] = json!(sid);
+            r["starred"] = json!(true);
+            r["hidden"] = json!(null);
+            r
+        };
+        let a = json!({"sessions": [line("a1", 100)], "unreadable": 1, "skipped": ["Codex"]});
+        let b =
+            json!({"sessions": [line("b1", 1_767_225_600_123)], "unreadable": 0, "skipped": []});
+        let ok = |data: &Value| json!({"end": "ok", "call": 1, "data": data});
+        let (one, asked) = fake(vec![
+            ok(&a),
+            ok(&b),
+            ok(&json!({"sessions": [{"updatedAt": 1.5}], "unreadable": 0, "skipped": []})),
+            json!({"end": "down", "call": 4}),
+        ]);
+        let got =
+            serde_json::to_value(search_all("夹具词", hosts(&["甲", "乙", "丙", "丁"]), one).await)
+                .unwrap();
+        let mut want = face_core::search::merge(
+            "夹具词",
+            vec![
+                (
+                    cmd_wire::Machine::named("phone-a"),
+                    serde_json::from_value(a).unwrap(),
+                ),
+                (
+                    cmd_wire::Machine::named("phone-b"),
+                    serde_json::from_value(b).unwrap(),
+                ),
+            ],
+            vec![
+                cmd_wire::search::SearchDown {
+                    origin: cmd_wire::Machine::named("phone-c"),
+                    said: copy_core::reply_unreadable("丙"),
+                },
+                cmd_wire::search::SearchDown {
+                    origin: cmd_wire::Machine::named("phone-d"),
+                    said: copy_core::offline("丁"),
+                },
+            ],
+        );
+        for row in &mut want.sessions {
+            let named = if row.origin.to_string() == "phone-a" {
+                "甲"
+            } else {
+                "乙"
+            };
+            row.delete_ask =
+                face_core::history_asks::delete_ask_named(Some(named), row.row.row.can.delete);
+        }
+        assert!(
+            want.sessions.iter().all(|r| !r.delete_ask.0.is_empty()),
+            "夹具每行都得有删除确认那一句"
+        );
+        assert_eq!(
+            got,
+            serde_json::to_value(&want).unwrap(),
+            "手机核心合出的不是那一份合并"
+        );
+        assert_eq!(got["sessions"][0]["sessionId"], "b1");
+        assert!(
+            got["sessions"][0]["updatedAt"].is_i64()
+                && got["sessions"][0]["face"]["order"].is_u64(),
+            "{got}"
+        );
+        assert!(
+            asked
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|(_, c, a)| c == "history-search" && *a == json!({"query": "夹具词"})),
+            "{asked:?}"
+        );
+    }
 
     /// ★ 报名单时每条在看的会话都要主线外清单（不交 ⇒ 那台一帧 `session_branch` 都不发，Esc 回退框只剩冷读那一半）：每条一格、手上什么都没有。
     #[test]
@@ -811,13 +1294,13 @@ mod tests {
             cmd: "history-search".into(),
             said: copy_core::backend_differs("box"),
         }));
-        assert_eq!(differs["code"], "differs");
+        assert_eq!(differs["code"], cmd_wire::SHAPE_DIFFERS);
         assert_eq!(differs["said"], copy_core::backend_differs("box"));
         let old = j(Err(CallError::Unsupported {
             cmd: "x".into(),
             offered: vec![],
         }));
-        assert_eq!(old["code"], "unsupported");
+        assert_eq!(old["code"], cmd_wire::UNKNOWN_COMMAND);
         assert_eq!(old["said"], copy_core::backend_old("box"));
     }
 
@@ -1216,7 +1699,7 @@ mod tests {
         let rel = "tests/__fixtures__/mobile-state-line.golden.json";
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..");
         let want = std::fs::read_to_string(root.join(rel)).unwrap_or_default();
-        let fresh = root.join(".build/golden").join(rel);
+        let fresh = guard_core::addr::fresh_golden(&root, rel);
         if text != want {
             let _ = std::fs::create_dir_all(fresh.parent().unwrap());
             let _ = std::fs::write(&fresh, &text);

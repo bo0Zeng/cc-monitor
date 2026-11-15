@@ -2,8 +2,8 @@
 //! 另有盘上一份账号库的造法（清单 · 照跨三处金样那一格造号目录与凭据）。本包的判据与上层判据经 `test-support` 共用。
 
 use super::{AccountRow, AccountsList, Badge, ListMeta, ScannedAccount};
+use crate::agents::claudecode::LOGIN;
 use crate::common::cells::Words;
-use acct_core::CREDENTIALS_NAME;
 use std::path::{Path, PathBuf};
 
 /// 判据用的一份空临时目录（`tag` 各条判据各取各的）。
@@ -52,14 +52,14 @@ pub fn golden_library(tag: &str, case: &serde_json::Value) -> (PathBuf, PathBuf)
             if exists {
                 std::fs::create_dir_all(&dir).unwrap();
                 if ready {
-                    std::fs::write(dir.join(CREDENTIALS_NAME), "{}").unwrap();
+                    std::fs::write(dir.join(LOGIN.creds_file), "{}").unwrap();
                 }
             } else if ready {
                 row["authKind"] = serde_json::json!("api-key");
             }
             row["configDir"] = serde_json::json!(dir.to_string_lossy());
         } else if ready {
-            std::fs::write(shared.join(CREDENTIALS_NAME), "{}").unwrap();
+            std::fs::write(shared.join(LOGIN.creds_file), "{}").unwrap();
         }
         rows.push(row);
     }
@@ -95,6 +95,8 @@ pub fn row_with(name: &str, f: impl FnOnce(&mut ScannedAccount)) -> AccountRow {
         auth_ready: true,
         selectable: true,
         color: Some(0),
+        agent: None,
+        unknown_agent: None,
     };
     f(&mut a);
     a.selectable =
@@ -112,8 +114,12 @@ pub fn row_with(name: &str, f: impl FnOnce(&mut ScannedAccount)) -> AccountRow {
             warn: false,
         },
         slots: Vec::new(),
+        quota: Vec::new(),
         unselectable: None,
+        mcp_logins: None,
         login: false,
+        sign_out: false,
+        status: false,
         new_session,
     }
 }
@@ -141,10 +147,8 @@ pub fn unreadable(error: &str) -> AccountsList {
 fn meta(enabled: bool, effective_default: Option<String>, error: Option<String>) -> ListMeta {
     ListMeta {
         enabled,
-        accts_dir: "/h/accts".to_string(),
         manifest_path: "/h/accts/accounts.json".to_string(),
         updated_at: None,
-        shared_store: None,
         count: 0,
         error,
         unsupported: None,

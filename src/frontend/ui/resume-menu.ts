@@ -5,14 +5,15 @@
  * 「运行于」（在 tmux 里 / 不用 tmux）；最底下「在此目录新建会话」。点单选只挪勾、菜单不关、什么都不起；
  * 起由宿主按勾着的那一组做（历史页旁边的主按钮；标签页没有主按钮 ⇒ 最上面多一行「恢复」）。
  *
- * 只排版：有哪几个号、能不能选号（那一家有没有账号这一维）由那台的事实给；号名与 `5h N%` 是那台 `accounts-list` 那一行写好的
- * （`label` · `slots` 第一格），这里不判；选了之后怎么起（问那台判号、起会话）由宿主做。
+ * 只排版：有哪几个号、能不能选号（那一家有没有账号这一维）由那台的事实给；号是哪一家的、进不进选号表（`newSession`）·
+ * 号名与 `5h N%` 都是那台 `accounts-list` 照这条会话那一家写好的（`label` · `slots` 第一格），这里不判；选了之后怎么起（问那台判号、起会话）由宿主做。
  */
 import { copyText } from "./copy-table";
-import { fetchAccounts } from "./account-reads";
-import { selectableAccounts } from "./accounts";
+import { button, setDisabled } from "./kit/button";
+import { fetchAccountsOf } from "./account-reads";
 import { accountAvatarEl } from "./account-color";
 import type { Machine } from "./ipc/origin";
+import type { AccountsState } from "./accounts";
 import type { Launch } from "./generated/Launch";
 import type { AccountAsk } from "./generated/AccountAsk";
 import { chosenAccount } from "./launch-account";
@@ -20,6 +21,13 @@ import type { MenuItem } from "./kit/menu";
 import type { IconName } from "./kit/icon";
 
 const NEW_IN_DIR_ICON: IconName = "plus";
+
+/** 认不出是哪一家的那一行（那台判成 `no`、不带 `agent`）的［恢复］：没有那一家可问号、可起 ⇒ 一颗灰着的按钮照摆那台写好的那一句（历史页内容头 · 独立查看窗同一颗）。 */
+export function resumeOff(why: string | null): HTMLButtonElement {
+  const b = button({ label: copyText("history.row.resume"), kind: "primary" });
+  setDisabled(b, why);
+  return b;
+}
 
 /** 勾着的那一组：`run` = 放在哪（`null` ＝ 照这台的设置）· `account` = 点名的号（缺 = 跟随上次的号）· `useBase` = 基座（不隔离）。 */
 export interface ResumePick {
@@ -37,7 +45,10 @@ export interface ResumeAccount {
   last: boolean;
 }
 
-/** 账号组的事实：`list` 那台可选的号 · `none` 这一家没有账号这一维（灰着一行说）· `off` 那台没开多账号 / 读不到（这一组不出）。 */
+/**
+ * 账号组的事实：`list` 那台这一家可选的号 ＋ 基座（这一家一个号也没有 ⇒ 只剩基座）· `none` 这一家没有账号这一维（灰着一行说）·
+ * `off` 那台没开多账号 / 读不到（这一组不出）。
+ */
 export type ResumeAccounts = { kind: "list"; items: ResumeAccount[]; /** 号在哪一台（头像照那台账号库的号色画）；缺 ⇒ 本机。 */ origin?: Machine } | { kind: "none"; agentName: string } | { kind: "off" };
 
 export interface ResumeMenuSpec {
@@ -66,7 +77,7 @@ export function pickAsk(p: ResumePick): { account?: AccountAsk; run?: Launch } {
 
 /** 勾着的号叫什么；跟随 ⇒ 上次的号（知道的话）；这一家没有账号这一维 ⇒ 那一家的名字。 */
 function pickedAccountLabel(accounts: ResumeAccounts, p: ResumePick): string | null {
-  if (p.useBase) return copyText("resumeMenu.account.base");
+  if (p.useBase) return copyText("sessionOpen.account.useBase");
   if (p.account !== undefined) return p.account;
   if (accounts.kind === "none") return accounts.agentName;
   if (accounts.kind !== "list") return null;
@@ -94,28 +105,26 @@ export function resumeHint(accounts: ResumeAccounts, p: ResumePick, machineRun?:
 }
 
 /**
- * 那台的号 ⇒ 账号组（`agentHasAccounts` 是那一行的事实：这一家有没有账号这一维）。
- * 可选的号一个也没有 / 那台没开多账号 ⇒ `off`；号名与 `5h N%` 都照那台 `accounts-list` 那一行。
- * `_agent` 没有读者了（那一行已按那一家对好额度账），调用方那三处去掉它之前先留着。
+ * 那台的号 ⇒ 账号组：照这条会话的那一家（`agent`）问那台（新会话框同一问）；`hasAccounts` 是那一行的事实（这一家有没有账号这一维）。
+ * 列那台说进选号表（`newSession`：号是不是这一家的只在那台判）、又选得了的那几行，最后是基座；那台没开多账号 / 读不到 ⇒ `off`；
+ * 开了、这一家一个也没有 ⇒ 只剩基座（不拿别家的号顶）。号名与 `5h N%` 都照那台那一行（那一行已按那一家对好额度账）。
  */
 export async function resumeAccounts(
   origin: Machine,
-  _agent: string,
-  facts: { hasAccounts: boolean; agentName: string; last?: string },
+  facts: { agent: string; hasAccounts: boolean; agentName: string; last?: string },
 ): Promise<ResumeAccounts> {
   if (!facts.hasAccounts) return { kind: "none", agentName: facts.agentName };
-  let rows: ReturnType<typeof selectableAccounts>;
+  let rows: AccountsState["accounts"];
   try {
-    const state = await fetchAccounts(origin);
-    if (!state.available) return { kind: "off" };
-    rows = selectableAccounts(state);
+    const state = await fetchAccountsOf(origin, facts.agent);
+    if (!state.available || !state.meta?.enabled) return { kind: "off" };
+    rows = state.accounts.filter((a) => a.newSession && a.selectable);
   } catch {
     return { kind: "off" };
   }
-  if (rows.length === 0) return { kind: "off" };
   // 号名与号旁那一格都是那台那一行写好的（`label` · `slots` 第一格）；基座落在哪份登录说不准，不带格。
   const items: ResumeAccount[] = rows.map((a) => ({ name: a.name, label: a.label ?? a.name, quota: a.slots?.[0]?.text ?? null, last: a.name === facts.last }));
-  items.push({ name: null, label: copyText("resumeMenu.account.base"), quota: null, last: false });
+  items.push({ name: null, label: copyText("sessionOpen.account.useBase"), quota: null, last: false });
   return { kind: "list", items, origin };
 }
 

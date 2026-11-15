@@ -5,6 +5,7 @@
 
 use crate::assets::hub_wire::{SkillApplied, SkillApplyReq, SkillPlanReq, SkillSourceFile};
 use crate::assets::mcp_sync::Facts;
+use crate::assets::skill_install::Roots;
 use crate::common::door::{self, Door, Refused};
 use crate::common::said::IntoNote as _;
 use copy_core::copy_text;
@@ -79,24 +80,26 @@ fn stopped_said(doing: Doing, at: &str, why: &str, done: &[String]) -> String {
     }
 }
 
-/// `skill-install-apply {name, source, target, take, overwrite}`：`source` = 来源那台 `skill-read` 的 `files`（原样），
-/// `target` = 看差异时这台回的那几份原文（CAS 期望）。
+/// `skill-install-apply {name, source, target, take, overwrite, agent?}`：`source` = 来源那台 `skill-read` 的 `files`（原样），
+/// `target` = 看差异时这台回的那几份原文（CAS 期望）。`roots` = 认家的注册表 ＋ 用户级根的覆盖（生产 [`Roots::HERE`]；
+/// 判据交替身家 · 临时目录）。装到的 · 记下的都是请求里那一家的。
 pub(crate) fn answer_install(
     d: &dyn Door,
     facts: &dyn Facts,
-    root: Option<&std::path::Path>,
+    roots: Roots<'_>,
     record: Record,
     req: &SkillApplyReq,
 ) -> Result<SkillApplied, crate::common::said::Said> {
     let plan = crate::assets::skill_install::answer_plan_with(
         facts,
-        root,
+        roots,
         &SkillPlanReq {
             name: req.name.clone(),
             source: req.source.clone(),
             project: req.project.clone(),
             take: req.take.clone(),
             overwrite: req.overwrite.clone(),
+            agent: req.agent.clone(),
         },
     )?;
     let source: std::collections::BTreeMap<&str, &SkillSourceFile> =
@@ -159,6 +162,7 @@ pub(crate) fn answer_install(
             name: req.name.clone(),
             files,
             project: req.project.clone(),
+            agent: req.agent.clone(),
         };
         record(&rec).err().map(|f| {
             copy_text(

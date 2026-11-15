@@ -1,7 +1,7 @@
 {
   "name": "cc-monitor",
   "private": true,
-  "version": "5.1.4",
+  "version": "5.1.5",
   "description": "cc-monitor — Claude Code 的开发工作台：会话显示与答批准 + 本机/远端会话管理 + 多账号与轮换 + skill 接入面（Tauri 2 + TypeScript，Windows / Linux）",
   "license": "MIT",
   "author": "cc-monitor contributors",
@@ -20,7 +20,7 @@
     "coverage": "vitest run --coverage",
     "coverage:floors": "vitest run --coverage && node tests/scripts/assert-coverage-floors.mjs",
     "test": "vitest run",
-    "gen:types": "(cd src/frontend/shell && cargo test --workspace --lib export_bindings) && (cd src/backend && cargo test --lib export_bindings) && node tests/scripts/gen-kotlin-wire.mjs",
+    "gen:types": "bash tests/scripts/generated-drift.sh --write",
     "check:types": "npm run gen:types && tsc --noEmit && bash tests/scripts/generated-drift.sh",
     "test:tmux-target": "bash tests/e2e/tmux-target-acceptance.sh",
     "test:ccm-cli": "bash tests/e2e/ccm-cli.test.sh",

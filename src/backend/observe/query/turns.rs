@@ -2,7 +2,6 @@
 
 use super::locate;
 use super::{jlen, Pager};
-use std::path::Path;
 
 /// `history-turns` 的入参。
 #[derive(Debug, Clone, Default, serde::Deserialize)]
@@ -51,12 +50,14 @@ pub struct HistoryTurns {
 /// `history-turns` 的一页，上限是参数。来源同 [`super::index::index_page`]。每一轮先按看的那一台的钟写好再算字节；
 /// 还没收尾的最后一轮只在最后一页、交 `dress` 补字（补完超了这一页 ⇒ 挪到下一页）。
 pub fn turns_page(
-    home: &Path,
+    home: impl crate::agents::IntoHomes,
     req: HistoryTurnsReq,
     tz: &crate::common::time::Tz,
     cap: usize,
     dress: &dyn Fn(&mut crate::observe::recognize::turns::TurnRow),
 ) -> Result<HistoryTurns, String> {
+    let home_v = crate::agents::IntoHomes::into_homes(home);
+    let home: &[crate::agents::AgentHome] = &home_v;
     let path = req.path.as_str();
     let to = req.to;
     let fixed = jlen(&HistoryTurns {
@@ -70,9 +71,10 @@ pub fn turns_page(
     let mut costs: Vec<usize> = Vec::new();
     let mut next = None;
     let mut take =
-        |row: &crate::observe::recognize::turns::TurnRow, next: &mut Option<u64>| -> bool {
+        |row: &crate::observe::recognize::turns::TurnRow, n: u64, next: &mut Option<u64>| -> bool {
             let mut t = row.clone();
             t.stamp(tz);
+            t.tip(n);
             let c = jlen(&t) + 1;
             if !pager.admit(c) {
                 *next = Some(t.at);
@@ -92,8 +94,9 @@ pub fn turns_page(
         }
         None => (map.turns.partition_point(|t| t.at < asked), asked),
     };
-    for t in &map.turns[start..] {
-        if to.is_some_and(|to| t.at >= to) || !take(t, &mut next) {
+    // 第几轮照扫描图里的位置数（1 起；同 `turn_at`：回退掉的那几句不算一轮）。
+    for (i, t) in map.turns.iter().enumerate().skip(start) {
+        if to.is_some_and(|to| t.at >= to) || !take(t, i as u64 + 1, &mut next) {
             break;
         }
     }

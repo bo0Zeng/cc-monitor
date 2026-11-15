@@ -58,7 +58,6 @@ pub enum Shell {
     /// POSIX sh（bash / zsh 都 source 得了；fish 不行）。
     Posix,
     /// PowerShell（5.1 与 7 同一种写法）。
-    #[serde(rename = "powershell")]
     PowerShell,
 }
 
@@ -255,7 +254,7 @@ const GET_ALIAS_SCRIPT: &str = "Get-Alias | ForEach-Object { $_.Name + [char]9 +
 /// 起一次 5.1 的 `-NoProfile -NonInteractive -Command <固定脚本>`（这条 argv 与不弹窗那一格住 `platform::shell`）。
 /// `-NoProfile`：问的是**自带**那一份（用户 profile 里另加 / 删的别名不算）。这台没有 PowerShell ⇒ `Err`（说问不到）。
 fn ask_get_alias() -> PsAliases {
-    let cmd = crate::platform::shell::powershell_on(super::PsHost::Desktop, GET_ALIAS_SCRIPT)
+    let cmd = crate::platform::shell::powershell_on(super::PsHost::Powershell, GET_ALIAS_SCRIPT)
         .ok_or_else(|| copy_text("rsShellDialect.ps.noPowerShellHere", &[]))?;
     let out = cmd.run(GET_ALIAS_WITHIN).map_err(|e| e.to_string())?;
     if !out.status.success() {
@@ -330,20 +329,19 @@ if [ -n "${BASH_VERSION:-}" ]; then complete -C __ccm_hosted_complete {{NAMES}};
 /// 值只住契约 crate（monitor 的数据位置页按它列出）。
 const POSIX_ALIAS_FILE_REL: &str = relay_route_core::POSIX_ALIASES_REL;
 
-impl Posix {
-    /// 一个参数要不要加引号：只由「安全字符」组成的原样放，其余一律 POSIX 单引号
-    /// （实现只有一份：`shell_quote_core::posix_quote`）。
-    fn word(w: &str) -> String {
-        let safe = !w.is_empty()
-            && w.chars().all(|c| {
-                c.is_ascii_alphanumeric()
-                    || matches!(c, '_' | '-' | '.' | '/' | ':' | '@' | '%' | '+' | '=' | ',')
-            });
-        if safe {
-            w.to_string()
-        } else {
-            shell_quote_core::posix_quote(w)
-        }
+/// 一个 POSIX 词要不要加引号，**全仓只此一处判**：只由「安全字符」（`[A-Za-z0-9_./:@%+=,-]`）组成的原样放，
+/// 空的与别的一律 POSIX 单引号（引号器只有一份：`shell_quote_core::posix_quote`）。
+/// 别名文件那几行 · 待办复制那一行（`footprint/chores/gather.rs`）· 交出去的 `ccm …` 那一行（`control/launch_render/ccm_invocation.rs`）· `--ccm-print` 与 exec 前那一行（`control/ccm/plan.rs`）· 探针 `self=`（`control/ccm/mod.rs`）都经它。
+pub fn posix_word(w: &str) -> String {
+    let safe = !w.is_empty()
+        && w.chars().all(|c| {
+            c.is_ascii_alphanumeric()
+                || matches!(c, '_' | '-' | '.' | '/' | ':' | '@' | '%' | '+' | '=' | ',')
+        });
+    if safe {
+        w.to_string()
+    } else {
+        shell_quote_core::posix_quote(w)
     }
 }
 
@@ -375,8 +373,8 @@ impl ShellDialect for Posix {
         POSIX_ALIAS_FILE_REL
     }
 
-    /// 🔴 认的是**相对路径**，不是整行：`src/shared/ccm-aliases.sh` 里那一行写的是 `$HOME/.cc-monitor/…`
-    /// （**没展开**），人自己手写的那一行可能是展开后的绝对路径 ⇒ 按整行比会漏认。
+    /// 🔴 认的是**相对路径**，不是整行：装进去的那一行（模板 `src/shared/ccm-aliases.sh` 由 Rust 填好）写的是
+    /// `$HOME/.cc-monitor/…`（**没展开**），人自己手写的那一行可能是展开后的绝对路径 ⇒ 按整行比会漏认。
     fn sources_our_file(&self, text: &str) -> bool {
         text.contains(POSIX_ALIAS_FILE_REL)
     }
@@ -398,7 +396,7 @@ impl ShellDialect for Posix {
         let mut out = format!("{name}{POSIX_FN_HEAD}{word}");
         for w in left {
             out.push(' ');
-            out.push_str(&Self::word(w));
+            out.push_str(&posix_word(w));
         }
         if rest == RestTo::Agent {
             out.push_str(POSIX_ARGS);
@@ -407,7 +405,7 @@ impl ShellDialect for Posix {
             out.push_str(" --");
             for w in right {
                 out.push(' ');
-                out.push_str(&Self::word(w));
+                out.push_str(&posix_word(w));
             }
         }
         if rest == RestTo::Ccm {
@@ -421,20 +419,20 @@ impl ShellDialect for Posix {
     fn render_hosted_completion(&self, c: Call, names: &[String], w: HostedWords) -> String {
         let join = |ws: &[&str], sep: &str| {
             ws.iter()
-                .map(|x| Self::word(x))
+                .map(|x| posix_word(x))
                 .collect::<Vec<_>>()
                 .join(sep)
         };
         POSIX_HOSTED_COMPLETION
             .replace("{{FIRST}}", &join(w.first, " "))
             .replace("{{NAMED}}", &join(w.takes_name, "|"))
-            .replace("{{CCM}}", &Self::word(c.word))
+            .replace("{{CCM}}", &posix_word(c.word))
             .replace("{{LIST}}", &join(w.list, " "))
             .replace(
                 "{{NAMES}}",
                 &names
                     .iter()
-                    .map(|n| Self::word(n))
+                    .map(|n| posix_word(n))
                     .collect::<Vec<_>>()
                     .join(" "),
             )
@@ -579,8 +577,8 @@ impl ShellDialect for PowerShell {
             .unwrap_or_else(|| home.join("Documents"));
         let mut out = Vec::new();
         for (dir, always, host) in [
-            ("WindowsPowerShell", true, super::PsHost::Desktop),
-            ("PowerShell", false, super::PsHost::Core),
+            ("WindowsPowerShell", true, super::PsHost::Powershell),
+            ("PowerShell", false, super::PsHost::Pwsh),
         ] {
             let d = docs.join(dir);
             let listed = if always {

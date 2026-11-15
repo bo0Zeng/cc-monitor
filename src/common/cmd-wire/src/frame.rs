@@ -2,7 +2,7 @@
 //!
 //! 一帧一行 JSON，`kind` 是标签、写在最前，其余格平铺；每种帧一个具名结构（变体名就是 `kind` 的驼峰写法）。
 //! 记录那一格（`line.record`）是类型参数 `R`：后端用 [`Record`]；原文照转的一端用 `Box<RawValue>`（不建树）；
-//! 手机用 `face_core::record::OrUnread`（解不开的那一条成认不出那一条，整帧不失败）。
+//! 手机核心用 `record::OrUnread`（解不开的那一条成认不出那一条，整帧不失败）。
 //! TS 名带 `Wire` 前缀的那几样（只进形状指纹，不导出）：界面另有壳给的同名形状。
 //! 体格 `Probe.cell` · `Reply.data` · `Changed.body` 仍是 JSON 值（各自的形状在那条命令 / 那一格的生成类型里）。
 
@@ -32,7 +32,6 @@ pub enum Frame<R = Record> {
     SessionsReplayed(SessionsReplayed),
     SessionFileGone(SessionFileGone),
     SessionFileReread(SessionFileReread),
-    Transfer(Transfer),
     FilesBatch(FilesBatch),
     Probe(Probe),
     LiveCard(LiveCard),
@@ -41,6 +40,12 @@ pub enum Frame<R = Record> {
     TerminalScreen(TerminalScreen),
     TerminalFollowEnd(TerminalFollowEnd),
     Relayed(Relayed),
+    /// 本机那一台会话簿里变了的那几条（只给 attach 行要了成品的连接，紧跟折进它的那一帧；别台的走 [`Relayed::Seats`]）。
+    SessionSeats(SessionSeats),
+    /// 本机那一台活卡板上变了的那一处（只给要了成品的连接，顶替 `live_card`；别台的走 [`Relayed::Live`]）。
+    LiveNow(LiveNow),
+    /// 这条连接上一条会话的未读变了（只给这一条连接；每条连接各数各的）。
+    SessionUnread(SessionUnread),
 }
 
 /// `line` 帧的 `kind`（[`decode`] 认它走直解那一路）。
@@ -57,7 +62,7 @@ pub fn decode<'a, R: Deserialize<'a>>(line: &'a str) -> serde_json::Result<Frame
     }
 }
 
-/// 帧表里 `line` 那一行按它算：记录那一格不进帧的指纹（记录认不认得一条一条判：手机的 `face_core::record::OrUnread` · 界面认不出那张卡）。
+/// 帧表里 `line` 那一行按它算：记录那一格不进帧的指纹（记录认不认得一条一条判：手机核心的 `record::OrUnread` · 界面认不出那张卡）。
 #[cfg(any(test, feature = "ts"))]
 #[derive(ts_rs::TS)]
 #[ts(type = "unknown", export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))]
@@ -94,7 +99,6 @@ pub fn gated_tys() -> Vec<(&'static str, crate::fingerprint::Ty)> {
         SessionsReplayed => "sessions_replayed",
         SessionFileGone => "session_file_gone",
         SessionFileReread => "session_file_reread",
-        Transfer => "transfer",
         FilesBatch => "files_batch",
         Probe => "probe",
         LiveCard => "live_card",
@@ -103,6 +107,9 @@ pub fn gated_tys() -> Vec<(&'static str, crate::fingerprint::Ty)> {
         TerminalScreen => "terminal_screen",
         TerminalFollowEnd => "terminal_follow_end",
         Relayed => "relayed",
+        SessionSeats => "session_seats",
+        LiveNow => "live_now",
+        SessionUnread => "session_unread",
     }
 }
 
@@ -236,10 +243,6 @@ pub struct SessionAdded {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<bool>"))]
     pub background: bool,
-    /// **E73（additive）：attach 进去对人有没有意义。** `false` = 别给 attach / ↗ / 「杀死空 tmux」这几个动作；**省略 = `true`**。
-    #[serde(skip)]
-    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
-    pub attachable: Option<bool>,
     /// pidfile 记的 `cwd`：进程起在哪个目录（客户端认「我刚起的那条起来了」用）。
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
@@ -304,10 +307,6 @@ pub struct SessionStatus {
     /// 叫这条会话什么（同 `session_added` 那两格；改了名、来了标题 / 第一句也发这一帧）。
     #[serde(flatten)]
     pub name_face: NameFace,
-    /// 在等什么（pidfile 里的 `waitingFor`）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub waiting_for: Option<String>,
     /// 这条会话的记录路径（同 `session_added` 那一格）：宣告之后才定下来 · 换了一份 ⇒ 带上最新的；没变 ⇒ 不上线。
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
@@ -490,6 +489,13 @@ pub enum Changed {
         #[cfg_attr(any(test, feature = "ts"), ts(optional))]
         body: Option<crate::queue::QueueList>,
     },
+    /// 桌面一条草稿那一排附件（`key` ＝ 草稿号；体 ＝ 本机后端写好的那一排，同 `attach-draft-view` 的回包）。
+    Attach {
+        key: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        body: Option<crate::attachment::AttachDraftShown>,
+    },
 }
 
 /// `changed {plan}` 的体：这个工作区此刻要你看的数（没认可的、不含 agent 问人那一种，同 `plan-read` 的 `needCount`）。
@@ -532,6 +538,7 @@ impl Changed {
             Changed::HistoryList {} => Topic::HistoryList,
             Changed::Groups {} => Topic::Groups,
             Changed::SessionQueue { .. } => Topic::SessionQueue,
+            Changed::Attach { .. } => Topic::Attach,
         }
     }
 
@@ -546,74 +553,9 @@ impl Changed {
             | Changed::Login { key, .. }
             | Changed::Machine { key, .. }
             | Changed::SessionHidden { key, .. }
-            | Changed::SessionQueue { key, .. } => Some(key),
+            | Changed::SessionQueue { key, .. }
+            | Changed::Attach { key, .. } => Some(key),
             _ => None,
-        }
-    }
-
-    /// 同一个主题 · 同一个 `key`、不带 `rev` 与体的那一臂（断线之后补报「这一样变过」、发端只知道变了的那几帧：客户端重问）。
-    /// 主题带 `key` 而没给 ⇒ `None`。
-    pub fn bare(topic: Topic, key: Option<String>) -> Option<Changed> {
-        Some(match topic {
-            Topic::Accounts => Changed::Accounts {},
-            Topic::Profiles => Changed::Profiles {},
-            Topic::Quota => Changed::Quota { body: None },
-            Topic::Rotation => Changed::Rotation { key: key? },
-            Topic::RotationStrategies => Changed::RotationStrategies { body: None },
-            Topic::Plan => Changed::Plan {
-                key: key?,
-                rev: None,
-                body: None,
-            },
-            Topic::Tasks => Changed::Tasks {
-                key: key?,
-                body: None,
-            },
-            Topic::Needs => Changed::Needs { key },
-            Topic::Login => Changed::Login {
-                key: key?,
-                body: None,
-            },
-            Topic::Machines => Changed::Machines {},
-            Topic::Machine => Changed::Machine {
-                key: key?,
-                body: None,
-            },
-            Topic::Empty => Changed::Empty { body: None },
-            Topic::SessionHidden => Changed::SessionHidden {
-                key: key?,
-                body: None,
-            },
-            Topic::FilesDir => Changed::FilesDir { key: key? },
-            Topic::HistoryList => Changed::HistoryList {},
-            Topic::Groups => Changed::Groups {},
-            Topic::SessionQueue => Changed::SessionQueue {
-                key: key?,
-                body: None,
-            },
-        })
-    }
-
-    /// 体序列化后超了 `cap` 字节 ⇒ 去掉体（客户端重问）。
-    pub fn cap_body(&mut self, cap: usize) {
-        fn cap_one<B: Serialize>(b: &mut Option<B>, cap: usize) {
-            if b.as_ref()
-                .is_some_and(|v| serde_json::to_vec(v).map_or(true, |t| t.len() > cap))
-            {
-                *b = None;
-            }
-        }
-        match self {
-            Changed::Quota { body } => cap_one(body, cap),
-            Changed::RotationStrategies { body } => cap_one(body, cap),
-            Changed::Plan { body, .. } => cap_one(body, cap),
-            Changed::Tasks { body, .. } => cap_one(body, cap),
-            Changed::Login { body, .. } => cap_one(body, cap),
-            Changed::Machine { body, .. } => cap_one(body, cap),
-            Changed::Empty { body } => cap_one(body, cap),
-            Changed::SessionHidden { body, .. } => cap_one(body, cap),
-            Changed::SessionQueue { body, .. } => cap_one(body, cap),
-            _ => {}
         }
     }
 }
@@ -657,25 +599,6 @@ pub struct SessionFileReread {
     pub lines: u64,
     /// 给人看的那一句（照 `why` 写好，两端照摆）。
     pub said: Words,
-}
-
-/// **一趟传输此刻的样子**（`transfer-start` 之后才出现）。每一帧都是一整份快照；带 `end` 的那一帧是这一趟的最后一帧。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct Transfer {
-    /// 传输单 id。
-    pub id: String,
-    /// 已传字节。
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-    pub got: u64,
-    /// 总字节。
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-    pub total: u64,
-    /// 只在最后一帧：这一趟怎么收场的。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub end: Option<TransferEnd>,
 }
 
 /// **一组（同一台上的复制 · 删除 · 改权限，两台之间的复制）此刻做到哪了**。每一帧都是一整份快照；结局在那一问的应答里。
@@ -744,6 +667,7 @@ pub struct SessionRuns {
 }
 
 /// 运行表分成的三组（[`SessionRuns::groups`]）：在跑的全列 · 最近结束的至多几个 · 其余（连状态不明的）。
+/// 三组只列第一层（主运行派的，或派它的那个已不在表里的）；更深的挂在上一层的 [`RunInfo::kids`] 底下。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -909,6 +833,13 @@ pub enum Relayed {
     Gap { machine: String },
     /// 那台这一条连接断了（下一条从它的 hello 起）。
     Ended { machine: String },
+    /// 本机后端照那台的会话簿折好的（`control/feeds.rs`）：紧跟在折进它的那一行后面；新连上来的流在那台 hello 之后收一格整本。
+    Seats {
+        machine: String,
+        seats: SessionSeats,
+    },
+    /// 本机后端照那台的活卡板折好的一处（顶替那台流上原样的 `live_card` 那一行）。
+    Live { machine: String, live: LiveNow },
 }
 
 impl Relayed {
@@ -917,9 +848,127 @@ impl Relayed {
         match self {
             Relayed::Line { machine, .. }
             | Relayed::Gap { machine }
-            | Relayed::Ended { machine } => machine,
+            | Relayed::Ended { machine }
+            | Relayed::Seats { machine, .. }
+            | Relayed::Live { machine, .. } => machine,
         }
     }
+}
+
+/// **这条连接上一条会话的未读**：这条连接没在看它的时候，那台扇出来的该建卡的行有几条，写好的字（只经 [`SessionUnread::counted`]）。
+/// 那台后端按连接数（进它的在看名单清零、出名单从 0 起数）；只给这一条连接，挤丢了照「要重新对齐」，重报那一份里带此刻的。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(deny_unknown_fields)]
+pub struct SessionUnread {
+    pub sid: String,
+    /// 写好的字（超 99 写「99+」）；缺 ⇒ 没有未读（不显示）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<String>"))]
+    pub said: Option<Words>,
+}
+
+impl SessionUnread {
+    /// **未读数 ⇒ 写好的字**（全仓唯一的写法）：0 ⇒ 不给；超 99 ⇒「99+」。
+    pub fn counted(sid: &str, n: u64) -> SessionUnread {
+        /// 写成数的上限：超过它写「{上限}+」。
+        const UNREAD_CAP: u64 = 99;
+        let said = match n {
+            0 => None,
+            n if n > UNREAD_CAP => Some(Words(format!("{UNREAD_CAP}+"))),
+            n => Some(Words(n.to_string())),
+        };
+        SessionUnread {
+            sid: sid.to_string(),
+            said,
+        }
+    }
+}
+
+/// **一台会话簿里变了的那几条此刻的整条**（[`Relayed::Seats`] · 本机那一台 [`Frame::SessionSeats`] 的体）：桌面壳只照它换手上那一份、照它重放，不折。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(deny_unknown_fields)]
+pub struct SessionSeats {
+    /// 变了的那几条（`whole` ⇒ 那一本里的全部）。
+    pub seats: Vec<SessionSeat>,
+    /// 那台在这一条连接上说过活会话清单报完了。
+    pub listed: bool,
+    /// 整本：照它换掉手上那台的整份（不在里面的就是不在了）。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<bool>"))]
+    pub whole: bool,
+}
+
+/// 一条会话在那一本里此刻的整条。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(deny_unknown_fields)]
+pub struct SessionSeat {
+    pub sid: String,
+    /// 缺 ⇒ 那一本里不再有它。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub seat: Option<Seat>,
+    /// 这条连接上它的未读（同 [`SessionUnread::said`]）；缺 ⇒ 没有。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<String>"))]
+    pub unread: Option<Words>,
+}
+
+/// 活着（宣告那一帧，之后的状态换上脸 · 标题 · 路径；连同最新的运行表）或走了（那台答的去向）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(tag = "at", rename_all = "snake_case", deny_unknown_fields)]
+pub enum Seat {
+    Live {
+        meta: SessionAdded,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        runs: Option<SessionRuns>,
+    },
+    Left {
+        left: SessionLeft,
+    },
+}
+
+impl SessionSeat {
+    /// 照簿里那几格拼一条（全仓只经这里）：活的在前；都没有 ⇒ 不在了（未读照带）。
+    pub fn of(
+        sid: &str,
+        live: Option<&SessionAdded>,
+        left: Option<&SessionLeft>,
+        runs: Option<&SessionRuns>,
+        unread: Option<&Words>,
+    ) -> SessionSeat {
+        let seat = match (live, left) {
+            (Some(meta), _) => Some(Seat::Live {
+                meta: meta.clone(),
+                runs: runs.cloned(),
+            }),
+            (None, Some(left)) => Some(Seat::Left { left: left.clone() }),
+            (None, None) => None,
+        };
+        SessionSeat {
+            sid: sid.to_string(),
+            seat,
+            unread: unread.cloned(),
+        }
+    }
+}
+
+/// **一台活卡板上变了的那一处**（[`Relayed::Live`] · 本机那一台 [`Frame::LiveNow`] 的体）：怎么变的 ＋ 那一处此刻整份（订阅丢过格时交整份，壳不折）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(deny_unknown_fields)]
+pub struct LiveNow {
+    pub change: crate::live::LiveChange,
+    pub whole: crate::live::LiveCards,
 }
 
 // ───────────────────────────── 帧里的零件 ─────────────────────────────
@@ -1025,6 +1074,9 @@ pub enum Life {
 #[serde(rename_all = "kebab-case")]
 pub enum SessionDot {
     Running,
+    /// 待答请求：在等人、挂着的那一条界面答得了（会话事实 `needs.ask` 在）。同 `needs-you` 都是在等人，只是能在这里答。
+    Asks,
+    /// 需手动：在等人、界面答不了（`needs.ask` 为空，那一句在 `manualText`）；状态一句还没算出来那一下也照它。
     NeedsYou,
     Background,
     Idle,
@@ -1032,6 +1084,16 @@ pub enum SessionDot {
     Ended,
     Gone,
     Unknown,
+}
+
+impl SessionDot {
+    /// 说在等人的那几颗：待答请求（界面答得了）与需手动（答不了）。界面照它现生成的 `WAITING_DOTS`（`generated/judgment-rules.ts`）查，不另写一份。
+    pub const WAITING: [SessionDot; 2] = [SessionDot::Asks, SessionDot::NeedsYou];
+
+    /// 这颗点说在等人（在 [`Self::WAITING`] 里）。Rust 这一侧照它判。
+    pub fn waits_for_human(self) -> bool {
+        Self::WAITING.contains(&self)
+    }
 }
 
 /// 这条会话此刻能做什么（界面照 `can` 灰不灰、照 `why` 写跳过的理由，不自己判）。
@@ -1046,7 +1108,8 @@ pub struct SessionCan {
     /// 拉前：把它住的那个外部终端窗口拉到前面（tab 行尾 ↗ · 右键 · 会话头 · 快捷键）。活着 · 读记录中 · 程序退了 tmux 会话还在 ⇒ 能，
     /// 宿主是哪种都一样（本机会话与远端会话同一条：远端的窗口是看的这台上开着 ssh 的那个终端）；看的这一端的壳拉不拉得了窗由那一端自己判，不写在这里。
     pub front: Allow,
-    /// 在终端里打开：另开一个终端窗口接进它住的那个终端（tmux 会话 · 托管终端）。不在宿主里 · 已结束 · pidfile 说接不进 ⇒ 不能。
+    /// 在终端里打开：另开一个终端窗口接进它住的那个终端（tmux 会话 · 托管终端）。不在宿主里 · 住哪说不清（终端名单里没有挂着它的那一行）·
+    /// 已结束 · pidfile 说接不进 ⇒ 不能。
     pub attach: Allow,
     /// 看它的终端：在看的这一端开它的终端页（桌面底部抽屉 · 手机终端屏），见 [`CanView`]。
     pub view: CanView,
@@ -1107,7 +1170,7 @@ pub enum CanView {
     No { why: Words },
 }
 
-/// 在这一端开哪个终端：`attach` 接进它住的那个终端（`terminal` ＝ `terminals-list` 里那一行的句柄；判不出 ⇒ 缺，交了由那台认）·
+/// 在这一端开哪个终端：`attach` 接进它住的那个终端（`terminal` ＝ `terminals-list` 里那一行的句柄；容器不带句柄 ⇒ 缺）·
 /// `resume` 它的终端已经不在：先恢复再开。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -1271,6 +1334,9 @@ pub enum Topic {
     /// 这台某条会话的输入队动了（`key` ＝ sid；`body` ＝ 整份名单，同 `session-queue-read` 的回包）：投进 · 撤 · 送进 · 标未送达，
     /// 哪一端投的都算。各端只照这一份画队，不各自记；超了上限不带体 ⇒ 重问 `session-queue-read`。
     SessionQueue,
+    /// 桌面一条草稿那一排附件变了（`key` ＝ 草稿号；`body` ＝ 本机后端写好的那一排，同 `attach-draft-view` 的回包）：
+    /// 界面只照这一份画 chip；超了上限不带体 ⇒ 重问 `attach-draft-view`。
+    Attach,
 }
 
 /// [`Frame::SessionFileReread`] 的「为什么从头重读」。线上两个字面量。
@@ -1283,27 +1349,6 @@ pub enum RereadWhy {
     Truncated,
     /// 没变短，但游标之前那一截被原地改写过（末尾指纹对不上）。
     Rewritten,
-}
-
-/// 一趟传输怎么收场的（[`Frame::Transfer`] 的 `end`）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-#[serde(tag = "state", rename_all = "snake_case")]
-pub enum TransferEnd {
-    /// 传完了。上传那一路带 `sha256`（整份本机文件的摘要，窗口提交 `files-commit-upload` 时原样交回当 `expect`）；下载那一路没有（不上线）。
-    Done {
-        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-        bytes: u64,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-        sha256: Option<String>,
-    },
-    /// 失败：交出去的那一形（码 · 那一句 · 复制详情）。上传那一路的暂存件**留着**给续传；下载那一路住本机暂存区的 `.part` 删了。
-    /// 码：调用方按它换路的那几形（今天只有 `sftp_home_mismatch`），别的是一般的失败（兜底码）；没写详情 ⇒ 空串。
-    Failed(crate::failed::Failed),
-    /// 撤了（`transfer-stop` / 本机流断了）。上传那一路的暂存件已删；下载那一路住本机暂存区的 `.part` 留着（续传时接着写，传完经 `land` 上位）。
-    Cancelled,
 }
 
 /// 一条终端订阅为什么停了（[`Frame::TerminalFollowEnd`] 的 `why`）。
@@ -1393,10 +1438,6 @@ pub struct RunInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
     pub active_ms: Option<u64>,
-    /// 收场：说它收场的那一条（后端算时长用，不上线）。
-    #[serde(skip)]
-    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
-    pub ended_ms: Option<u64>,
     /// 为什么是这个结局（在跑 ⇒ 不上线）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
@@ -1405,10 +1446,6 @@ pub struct RunInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub error: Option<String>,
-    /// 它调了几次工具（它自己的记录里数的；后端写字用，不上线）。
-    #[serde(skip)]
-    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
-    pub calls: u32,
     /// 派出那一方没等它、接着做自己的事（后台派出；否则不上线）。
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<bool>"))]
@@ -1429,6 +1466,18 @@ pub struct RunInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub needs: Option<crate::needs::Needs>,
+    /// 它直接派出、还在表里的那几个（按开始的先后）：agent 页照它挂在它底下；没派过 ⇒ 不上线。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<Vec<String>>"))]
+    pub kids: Vec<String>,
+    /// 收着时那一行写的（「下面 n 个 · m 个在跑」，数它底下整棵）；没派过 ⇒ 不上线。出帧那一下写，出口照抄。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub kids_text: Option<Words>,
+    /// 页一打开它底下开着没有：第一层开，第二层起收；下层有事也不变。开合之后归界面、不记住（页关了再开回这一格）。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<bool>"))]
+    pub kids_open: bool,
 }
 
 /// 子运行的五态。收场的三态以派出那一方说的为准（子记录自己写出终局也算，先到先算）。

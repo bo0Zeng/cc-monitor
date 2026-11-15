@@ -17,7 +17,7 @@
 //!       forward 每接进一条连接一行 {"accepted":n}
 //! ```
 //!
-//! ack 把「断开」与「连上了但远端还没说话」分开；ack 带 `v` 与 `uses`，对面据 `uses` 当场认出这一份不认哪种用法。
+//! ack 把「断开」与「连上了但远端还没说话」分开；只带读的那一侧要的那几格（契约 `cmd_wire::dial::DialAck`）。
 //!
 //! # 边界
 //!
@@ -47,7 +47,6 @@ use tokio::io::AsyncWriteExt;
 
 pub use copy_core::said::Said;
 
-pub mod config_text;
 pub mod connect;
 pub mod env;
 pub mod known_hosts;
@@ -85,12 +84,75 @@ pub fn malformed(detail: &str) -> String {
     copy_core::said::malformed_said(detail)
 }
 
-/// 线上那几样（ack 的协议版本与用法表 · 地址 · 阶段 · ack · 没开成 · 收全的结果）住契约（`cmd_wire::dial`），读它的那一侧同一份。
+/// 线上那几样（地址 · 阶段 · ack · 收全的结果）住契约（`cmd_wire::dial`），读它的那一侧同一份。
 /// 拨号请求那几样（[`DialRequest`] · [`JumpHop`] · [`Use`] · [`PtyOpts`] · [`CaptureOpts`] · [`ForwardSpec`]）也住那里：界面 · 手机交的就是那一份。
 pub use cmd_wire::dial::{
-    CaptureOpts, Captured, DialAck, DialFail, DialRequest, Endpoint, ForwardSpec, JumpHop, PtyOpts,
-    Stage, StageRow, Use, ACK_V, USES,
+    CaptureOpts, Captured, DialAck, DialRequest, Endpoint, ForwardSpec, JumpHop, PtyOpts, Stage,
+    StageRow, Use,
 };
+
+/// 没开成：线上就是一行 `ok:false` 的 ack（[`failed_ack`]），进程内的调用方直接拿这一份。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DialFail {
+    /// 那一句（只带原因词，不带下层原话）。
+    pub said: String,
+    /// 复制详情（时刻 · 机器 · 命令 · 下层原话）。
+    pub detail: Option<String>,
+    /// 握手时看到的 host key 指纹（失败时也尽量带上）。
+    pub fingerprint: Option<String>,
+    /// 原因码；说不清 ⇒ `None`。
+    pub reason: Option<Why>,
+    /// 目标那一台握手时给的 host key 类型（没握到那一步 ⇒ `None`）。
+    pub key_type: Option<String>,
+    /// 「钥匙变了」时库里同类型那一把的指纹（没有 ⇒ 空串；没因钥匙被拒 ⇒ `None`）。
+    pub expected_fingerprint: Option<String>,
+}
+
+/// 没够着那一台的那几个原因码（解析 · 拨不通 · 到期限一步都没动 · 跳板那一台断了）。
+pub fn unreached(why: Option<Why>) -> bool {
+    matches!(
+        why,
+        Some(Why::Resolve | Why::Unreachable | Why::Timeout | Why::Jump)
+    )
+}
+
+/// 开成了那一行 ack：看到的指纹。
+pub fn opened_ack(fingerprint: Option<String>) -> DialAck {
+    DialAck {
+        ok: true,
+        said: None,
+        detail: None,
+        fingerprint,
+        key_type: None,
+        expected_fingerprint: None,
+        unreached: false,
+    }
+}
+
+/// 没开成的那一份写成线上那一行。
+pub fn failed_ack(f: DialFail) -> DialAck {
+    DialAck {
+        ok: false,
+        said: Some(f.said),
+        detail: f.detail,
+        fingerprint: f.fingerprint,
+        key_type: f.key_type,
+        expected_fingerprint: f.expected_fingerprint,
+        unreached: unreached(f.reason),
+    }
+}
+
+/// 竞速顺序：请求给了地址就用给的，没给就只有 `host:port`。
+pub fn race_order(req: &DialRequest) -> Vec<Endpoint> {
+    if req.endpoints.is_empty() {
+        vec![Endpoint {
+            host: req.host.clone(),
+            port: req.port,
+        }]
+    } else {
+        req.endpoints.clone()
+    }
+}
 
 /// 没开成：那一句 ＋ 下层原话（进 `detail`，按宿主的 [`env::Facts`] 写成复制详情）＋ 看到的指纹。
 pub fn fail(why: Said, fingerprint: Option<String>) -> DialFail {

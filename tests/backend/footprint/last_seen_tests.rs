@@ -77,7 +77,6 @@ fn report() -> serde_json::Value {
     let mut c = Chore::new("ccm", ChoreKind::Must, ChoreAction::CopyCommand);
     c.go = Some(crate::footprint::data::UndoAt::page("ext"));
     serde_json::to_value(crate::footprint::data::DataReport {
-        home: "/home/u".into(),
         changed_files: vec![],
         counts: crate::footprint::chores::counts(std::slice::from_ref(&c)),
         todo: vec![c],
@@ -136,12 +135,13 @@ fn 记下再读回_带记下的时刻_没记过的那一样是空() {
     assert_eq!(other, json!({"accounts": null, "data": null}));
 }
 
-/// 账号清单读回的是缓存 ⇒ 每号每一格额度写成「… · 上次所知」（那台写，界面照摆）；没有格的号照旧没有。
+/// 账号清单读回的是缓存 ⇒ 每号紧凑那一格与额度几行每行末一格写成「… · 上次所知」（那台写，界面照摆）；没有格的号照旧没有。
 #[test]
 fn 读回的账号清单_额度格标上次所知() {
     let d = Dir::new("stale");
     let mut v = accounts_list();
     v["accounts"][0]["slots"] = json!([{"slot": "5h", "text": "5h 62% ↻18:30", "tone": "plain"}]);
+    v["accounts"][0]["quota"] = json!([[{"text": "5h", "tone": "plain"}, {"text": "62%", "tone": "plain"}, {"text": "↻18:30", "tone": "plain"}], [{"text": "7d", "tone": "plain"}, {"text": "41%", "tone": "plain"}]]);
     v["accounts"][1]["slots"] = json!([]);
     write_at(
         &d.own(),
@@ -159,6 +159,12 @@ fn 读回的账号清单_额度格标上次所知() {
         ))
     );
     assert_eq!(rows[1]["slots"], json!([]));
+    // 额度几行：每行末一格跟上「上次所知」，别的格照旧。
+    let stale = |c: &str| json!(copy_core::copy_text("beQuota.cell.stale", &[("cell", c)]));
+    assert_eq!(rows[0]["quota"][0][2]["text"], stale("↻18:30"));
+    assert_eq!(rows[0]["quota"][0][1]["text"], json!("62%"));
+    assert_eq!(rows[0]["quota"][1][1]["text"], stale("41%"));
+    assert!(rows[1].get("quota").is_none(), "没有行的号照旧没有");
 }
 
 #[test]
@@ -190,10 +196,7 @@ fn 文件不在或读不懂_照没记过算_写的时候整份重来() {
 fn 入参闭集_种类只认两样_值要是对象_太大的不收() {
     let d = Dir::new("args");
     let code = |a: serde_json::Value| {
-        write_at(&d.own(), &a, 1)
-            .unwrap_err()
-            .code_or_fallback()
-            .to_string()
+        cmd_wire::failed::Failed::code_or_fallback(write_at(&d.own(), &a, 1).unwrap_err().code)
     };
     assert_eq!(
         code(json!({"origin": "devbox", "kind": "ext", "value": {}})),
@@ -289,14 +292,13 @@ fn 删机器时清掉那台_两样都读不到_别的台不动_没记过的那�
 fn 每一样按回包类型收_形状不对的不收() {
     let d = Dir::new("shape-in");
     let code = |kind: &str, v: serde_json::Value| {
-        write_at(
+        let e = write_at(
             &d.own(),
             &json!({"origin": "devbox", "kind": kind, "value": v}),
             1,
         )
-        .unwrap_err()
-        .code_or_fallback()
-        .to_string()
+        .unwrap_err();
+        cmd_wire::failed::Failed::code_or_fallback(e.code)
     };
     let mut extra = report();
     extra["extra"] = json!(1);
@@ -304,7 +306,7 @@ fn 每一样按回包类型收_形状不对的不收() {
     missing.as_object_mut().unwrap().remove("own");
     let mut wrong = report();
     wrong["todo"][0]["kind"] = json!("maybe");
-    for v in [json!({"home": "/h"}), extra, missing, wrong] {
+    for v in [json!({"tmux": true}), extra, missing, wrong] {
         assert_eq!(code("data", v), "bad_args");
     }
     let mut extra = accounts_list();

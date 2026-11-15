@@ -404,3 +404,42 @@ fn log_file_info_carries_the_paths_shown_under_the_home() {
     assert_eq!(bare.backend_stderr[0].shown, bare.backend_stderr[0].path);
     let _ = std::fs::remove_dir_all(&home);
 }
+
+/// 当前那一份日志开着、被追加写着（滚动写者就是这样一直握着它）：设置页报的大小是文件本身的，不是目录项里的。
+/// Windows 上目录项里记的大小在开着被写的文件上不跟着变（停在 0），照目录项读就把一份有字的日志报成 0 字节；
+/// 别的平台目录项跟着变，这一条只当回归检查。
+#[test]
+fn the_size_of_a_log_held_open_for_writing_is_the_files_own() {
+    use std::io::Write as _;
+    let root = std::env::temp_dir().join(format!("p33-logging-open-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let (_layer, reload_handle) = reload::Layer::new(EnvFilter::new("info"));
+    let state = LoggingState {
+        cfg: RwLock::new(DiagnosticsConfig::default()),
+        reload_handle,
+        log_dir: monitor_log_dir(&root),
+        monitor_data_dir: root.clone(),
+        own: None,
+        _guard: Mutex::new(None),
+    };
+    let today = monitor_log_dir(&root).join(format!("monitor.2026-11-12.{LOG_FILE_SUFFIX}"));
+    std::fs::create_dir_all(today.parent().unwrap()).unwrap();
+    let mut held = std::fs::OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(&today)
+        .unwrap();
+    for _ in 0..5 {
+        held.write_all(&[b'a'; 1000]).unwrap();
+    }
+    let info = state.file_info(None);
+    let want = Some(copy_core::size_text(5000));
+    assert_eq!(
+        info.current_file.as_deref(),
+        Some(today.to_string_lossy().as_ref())
+    );
+    assert_eq!(info.current_size_text, want, "当前那一份的大小");
+    assert_eq!(info.all_files[0].size_text, want, "列表里那一行的大小");
+    drop(held);
+    let _ = std::fs::remove_dir_all(&root);
+}

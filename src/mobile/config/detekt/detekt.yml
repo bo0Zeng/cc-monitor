@@ -33,3 +33,8 @@ exit:
     active: true
   ExitCopyBranch:
     active: true
+# 机器怎么称呼只照 machineNames：不拿 label 兜机器 id（`HostNameRuleSetProvider`）。
+hostname:
+  active: true
+  MachineNameFallback:
+    active: true

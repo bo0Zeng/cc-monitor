@@ -50,49 +50,29 @@ function isSymbolChar(ch: string): boolean {
   );
 }
 
-/** 顶栏按钮的 class 全集 —— **从源码派生**，不是手写清单。 */
-function triggerClasses(main: string): string[] {
-  // 顶栏入口搬进标签页栏顶之后经 `headButton("<class>", "<图标>", …)` 建。
-  return [...main.matchAll(/headButton\("([a-z-]*trigger)"/g)].map((m) => m[1]);
-}
+/** 栏顶那一排按钮都经 `tab-bar-head.ts` 的 `iconButton(…)` 建（入口清单 `global-dests.ts` 每一项给一个图标名）。 */
+const HEAD_SRC = "src/frontend/ui/tab-bar-head.ts";
 
 describe("F09 顶栏图标不依赖字体", () => {
-  it("每个 -trigger 按钮都不许用字符当图标", () => {
-    const main = read("src/frontend/ui/main.ts");
-    const classes = triggerClasses(main);
-
-    // 抽取器自检：抽不到就整条空转。
-    nonEmpty(classes);
-
-    // 人群 = 每个 trigger 变量名对应的 `.textContent = "…"` 赋值。
-    const offenders: string[] = [];
-    for (const m of main.matchAll(/(\w+)\.textContent = "([^"]*)"/g)) {
-      const [, varName, value] = m;
-      if (!/Trigger$|icon$/i.test(varName)) continue;
-      const stripped = [...value].filter((c) => !isSymbolChar(c) && c.trim() !== "").join("");
-      if (stripped === "" && [...value].some(isSymbolChar)) {
-        offenders.push(`${varName}.textContent = ${JSON.stringify(value)}`);
-      }
-    }
+  it("栏顶那一排不许用字符当图标：建按钮那一处不写 `textContent`", () => {
+    const src = read(HEAD_SRC);
+    // 抽取器自检：建按钮那一处在。
+    expect(src, "`iconButton` 不在了 —— 下面整条空转").toContain("private iconButton(");
+    const offenders = [...src.matchAll(/\.textContent = "([^"]*)"/g)].map((m) => m[1]).filter((v) => [...v].some(isSymbolChar));
     expect(
       offenders,
-      "顶栏按钮又用字符当图标了：\n  " +
-        offenders.join("\n  ") +
-        "\n\n那些字符在缺字体的系统上会变成豆腐块 —— 实测报告：\n" +
-        "「右上角那些不显示 emoji，反而显示一些奇怪的东西，根本不知道是什么」。\n" +
-        "⚠ 换成另一个符号只是换一个赌注（`⚙◷▦∑` 靠正文字体、`🗺🗂` 靠 emoji 字体，两类都会缺）。\n" +
-        "⇒ 正确做法：挂 `kit/icon.ts` 的 `icon(…)`（Phosphor 线形 SVG）。",
+      "顶栏按钮又用字符当图标了 —— 那些字符在缺字体的系统上会变成豆腐块（实测：「右上角那些不显示 emoji，反而显示一些奇怪的东西」）。" +
+        "⇒ 挂 `kit/icon.ts` 的 `icon(…)`（Phosphor 线形 SVG）。",
     ).toEqual([]);
   });
 
-  it("每个 -trigger 按钮都挂了一个图标件（正向，不只是禁字符）", () => {
-    const main = read("src/frontend/ui/main.ts");
-    const classes = triggerClasses(main);
-    // 每个入口的第二个实参是图标名；`headButton` 自己把它挂成 `icon(…)`。
-    const missing = classes.filter((c) => !new RegExp(`headButton\\("${c}", "\\w+"`).test(main));
-    expect(missing, "这些顶栏按钮没给图标名（`kit/icon.ts` 的 `icon(…)`）").toEqual([]);
-    const body = /const headButton = [\s\S]*?\n {2}\};/.exec(main)?.[0] ?? "";
-    expect(body.includes("b.appendChild(icon(name))"), "`headButton` 不再挂 `icon(…)` 了").toBe(true);
+  it("栏顶那一排每一颗都挂了一个图标件（正向，不只是禁字符）", () => {
+    const src = read(HEAD_SRC);
+    const body = /private iconButton\([\s\S]*?\n {2}\}/.exec(src)?.[0] ?? "";
+    expect(body.includes("b.appendChild(icon(name))"), "`iconButton` 不再挂 `icon(…)` 了").toBe(true);
+    const dests = read("src/frontend/ui/global-dests.ts");
+    const entries = [...dests.matchAll(/\{ id: "([a-z-]+)", icon: "(\w+)"/g)];
+    nonEmpty(entries);
+    expect(entries.length, "入口清单里有一项没给图标名").toBe((dests.match(/\{ id: "/g) ?? []).length);
   });
-
 });

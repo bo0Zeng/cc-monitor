@@ -42,23 +42,27 @@ pub(crate) fn last_words(text: &str) -> String {
     kept[kept.len().saturating_sub(WORDS_LINES)..].join("\n")
 }
 
-/// 起在终端里的那一句：tmux 会话一套、托管终端一套（托管那几句不提 tmux）。宿主只在这一处判。
-fn missed_in(dur: &str, name: &str, host: TerminalHost, screen: &Screen) -> String {
+/// 起在终端里的那一句（一行）＋ 画面末几行（有才给）：tmux 会话一套、托管终端一套（托管那几句不提 tmux）。宿主只在这一处判。
+fn missed_in(
+    dur: &str,
+    name: &str,
+    host: TerminalHost,
+    screen: &Screen,
+) -> (String, Option<String>) {
     use copy_core::copy_text;
     use TerminalHost::{Managed, Tmux};
     let words = match screen {
-        Screen::There { text, .. } => last_words(text),
-        Screen::Gone | Screen::Unread(_) => String::new(),
+        Screen::There { text, .. } => Some(last_words(text)).filter(|w| !w.is_empty()),
+        Screen::Gone | Screen::Unread(_) => None,
     };
-    let w = words.as_str();
-    match (host, screen) {
-        (Tmux, Screen::There { .. }) if w.is_empty() => copy_text(
+    let said = match (host, screen) {
+        (Tmux, Screen::There { .. }) if words.is_none() => copy_text(
             "beSessionArrive.missed.emptyScreen",
             &[("dur", dur), ("name", name)],
         ),
         (Tmux, Screen::There { .. }) => copy_text(
             "beSessionArrive.missed.words",
-            &[("dur", dur), ("name", name), ("words", w)],
+            &[("dur", dur), ("name", name)],
         ),
         (Tmux, Screen::Gone) => copy_text(
             "beSessionArrive.missed.gone",
@@ -68,13 +72,13 @@ fn missed_in(dur: &str, name: &str, host: TerminalHost, screen: &Screen) -> Stri
             "beSessionArrive.missed.noScreen",
             &[("dur", dur), ("name", name), ("why", why.as_str())],
         ),
-        (Managed, Screen::There { .. }) if w.is_empty() => copy_text(
+        (Managed, Screen::There { .. }) if words.is_none() => copy_text(
             "beSessionArrive.managedMissed.emptyScreen",
             &[("dur", dur), ("name", name)],
         ),
         (Managed, Screen::There { .. }) => copy_text(
             "beSessionArrive.managedMissed.words",
-            &[("dur", dur), ("name", name), ("words", w)],
+            &[("dur", dur), ("name", name)],
         ),
         (Managed, Screen::Gone) => copy_text(
             "beSessionArrive.managedMissed.gone",
@@ -84,30 +88,34 @@ fn missed_in(dur: &str, name: &str, host: TerminalHost, screen: &Screen) -> Stri
             "beSessionArrive.managedMissed.noScreen",
             &[("dur", dur), ("name", name), ("why", why.as_str())],
         ),
-    }
+    };
+    (said, words)
 }
 
-/// 没见到那一句（第一行标题）＋ 那个终端的句柄（还在才有）。`waited_ms` 是实际等了多久；
+/// 没见到：标题 · 那一句 · 画面末几行 ＋ 那个终端的句柄（还在才有），三格分开交、出口照格摆。`waited_ms` 是实际等了多久；
 /// `at` ＝ 起在的那个终端（名字 ＋ 宿主）与它此刻的样子，开窗起的 ⇒ `None`。
 pub(crate) fn missed(waited_ms: u64, at: Option<(&str, TerminalHost, Screen)>) -> ArriveEnd {
     use copy_core::copy_text;
     let dur = copy_core::short_duration(waited_ms);
-    let (body, terminal) = match at {
+    let (said, words, terminal) = match at {
         Some((name, host, screen)) => {
-            let body = missed_in(&dur, name, host, &screen);
+            let (said, words) = missed_in(&dur, name, host, &screen);
             let terminal = match screen {
                 Screen::There { terminal, .. } => Some(terminal),
                 Screen::Gone | Screen::Unread(_) => None,
             };
-            (body, terminal)
+            (said, words, terminal)
         }
         None => (
             copy_text("beSessionArrive.missed.inWindow", &[("dur", &dur)]),
             None,
+            None,
         ),
     };
     ArriveEnd::Missed {
-        said: format!("{}\n{body}", copy_text("beSessionArrive.missed.title", &[])),
+        title: copy_text("beSessionArrive.missed.title", &[]),
+        said,
+        words,
         terminal,
     }
 }

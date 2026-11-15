@@ -6,8 +6,9 @@
  * - 存的是「会话头上那几颗、按顺序」；不在表里 ＝ 只在「⋯」里。没存过 ＝ 默认（[`DEFAULT_HEAD_BUTTONS`]，默认值只在这一处）。
  * - 认不出的 id（删了的项：`display` …）读时跳过、不报错，不迁移；重复的只留第一个。
  *
- * 读写盘（`config.json` 的 `sessionHead.buttons`）在 `session-head.ts`；编辑浮层在 `session-head-edit.ts`。
+ * 读写盘（`config.json` 的 `sessionHead.buttons`）在 `session-head.ts`；编辑浮层在 `session-head-edit.ts`；排 · 勾 · 挪 · 拖的纯函数住 `button-row.ts`。
  */
+import { sanitizeRow } from "./button-row";
 
 /** 一颗能放到会话头上的按钮。 */
 export type HeadButtonId = "cwd" | "front" | "terminal" | "popOut" | "find" | "account" | "pin" | "group" | "resume" | "close";
@@ -18,49 +19,9 @@ export const HEAD_BUTTONS: readonly HeadButtonId[] = ["front", "terminal", "find
 /** 默认那一排：拉前 · 看它的终端（照 5.1.1 各自一颗）与「在会话里找」（其余都在「⋯」里，用户可自己摆上来）。 */
 export const DEFAULT_HEAD_BUTTONS: readonly HeadButtonId[] = ["front", "terminal", "find"];
 
-const KNOWN = new Set<string>(HEAD_BUTTONS);
-
-/** 盘上那一格 ⇒ 会话头上那几颗（按顺序）；不是数组 ⇒ `null`（＝ 没设过，用默认）。 */
+/** 盘上那一格 ⇒ 会话头上那几颗（按顺序）；不是数组 ⇒ `null`（＝ 没设过，用默认）。排 · 勾 · 挪 · 拖住 `button-row.ts`（与栏顶那一排共用）。 */
 export function sanitizeHeadButtons(raw: unknown): HeadButtonId[] | null {
-  if (!Array.isArray(raw)) return null;
-  const out: HeadButtonId[] = [];
-  for (const x of raw) if (typeof x === "string" && KNOWN.has(x) && !out.includes(x as HeadButtonId)) out.push(x as HeadButtonId);
-  return out;
-}
-
-/** 编辑浮层的清单：上段 ＝ 会话头上的（按顺序，勾着）；下段 ＝ 只在「⋯」里的（按全集顺序）。 */
-export function headEditRows(on: readonly HeadButtonId[]): { id: HeadButtonId; on: boolean }[] {
-  return [...on.map((id) => ({ id, on: true })), ...HEAD_BUTTONS.filter((id) => !on.includes(id)).map((id) => ({ id, on: false }))];
-}
-
-/** 勾 / 不勾：勾上 ＝ 放到会话头末尾；取消 ＝ 只留在「⋯」。 */
-export function toggleHeadButton(on: readonly HeadButtonId[], id: HeadButtonId): HeadButtonId[] {
-  return on.includes(id) ? on.filter((x) => x !== id) : [...on, id];
-}
-
-/** Alt+↑ / Alt+↓：会话头上的那一颗挪一格（到头了不动；只在「⋯」里的那几行没有顺序可挪）。 */
-export function nudgeHeadButton(on: readonly HeadButtonId[], id: HeadButtonId, delta: -1 | 1): HeadButtonId[] {
-  const i = on.indexOf(id);
-  const j = i + delta;
-  if (i < 0 || j < 0 || j >= on.length) return [...on];
-  const out = [...on];
-  [out[i], out[j]] = [out[j], out[i]];
-  return out;
-}
-
-/**
- * 拖一行到清单里第 `at` 格（插入线在第 `at` 行之前；`at` ＝ 行数 ⇒ 末尾）。落在上段（会话头上那几颗之间或紧跟其后）⇒ 放到会话头那个位置
- * （没勾的拖上来 ＝ 勾上）；落在下段 ⇒ 只在「⋯」里（下段没有顺序）。
- */
-export function dropHeadButton(on: readonly HeadButtonId[], id: HeadButtonId, at: number): HeadButtonId[] {
-  const rows = headEditRows(on).map((r) => r.id);
-  const from = rows.indexOf(id);
-  if (from < 0) return [...on];
-  // 先拿掉被拖的那一行，插入位置跟着左移。
-  const rest = on.filter((x) => x !== id);
-  const target = at > from ? at - 1 : at;
-  if (target > rest.length) return rest;
-  return [...rest.slice(0, target), id, ...rest.slice(target)];
+  return sanitizeRow(raw, HEAD_BUTTONS);
 }
 
 /**

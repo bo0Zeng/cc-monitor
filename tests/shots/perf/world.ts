@@ -126,6 +126,11 @@ interface PerfRecipe {
   table: number[];
   /** 长会话最后几轮收尾只一句话（页地址 `shortTail`）；缺 ⇒ 每轮都带表格与代码块。 */
   shortTail?: number;
+  /**
+   * 最长那条（轮数表头一格）的正文改由 `backend/make-big.mjs` 流式写成约这么多 MB（页地址 `big`）：几十万行的一份过了一个串的上限，
+   * 不在内存里拼（伺服那份 `disks.ts` 照它造）。缺 ⇒ 照性能世界那一种轮造。
+   */
+  big?: number;
 }
 
 /** 照配方出世界；`lines` ⇒ 连记录正文一起造（伺服那份），否则会话只有名单（页里那份）。 */
@@ -137,7 +142,8 @@ function build(r: PerfRecipe, lines: boolean): World {
     const origin = origins[k % origins.length];
     const cwd = `/home/user/work/w${k}t${turns}-perf`;
     const heavy = turns >= 200;
-    return session(n, origin, cwd, lines ? convo(n, cwd, turns, heavy, heavy ? (r.shortTail ?? 0) : 0) : null, { activity: k % 3 === 0 ? "working" : "idle" });
+    const made = lines && !(k === 0 && r.big);
+    return session(n, origin, cwd, made ? convo(n, cwd, turns, heavy, heavy ? (r.shortTail ?? 0) : 0) : null, { activity: k % 3 === 0 ? "working" : "idle" });
   });
   // 读整份会话的那几问（真后端读几 MB 的记录文件、远端还隔一跳）：照本机常见的量级给一个延迟 ——
   // 快速连切时「切走之后才回来」的那几问才演得出来（不给延迟，假后端当场答，旧切换的活全在切走之前干完了）。
@@ -161,7 +167,8 @@ function mainExtras(w: World, lines: boolean): void {
   });
   const longest = w.sessions[0];
   longest.tasks = Array.from({ length: 30 }, (_, k) => ({ id: String(k + 1), subject: `改 packages/mod-${k} 的分页`, status: k < 20 ? "completed" : k < 22 ? "in_progress" : "pending", blocks: [], blockedBy: [] }));
-  if (!lines) return;
+  // 最长那条由 make-big 写（`big`）⇒ 不挂子 agent。
+  if (!lines || !longest.convo) return;
   // 一串子 agent：前三个还在跑（后台派的，当场回「已起」），其余做完了（前台派的，那次调用拿到结果）。
   const c = longest.convo!;
   for (let k = 0; k < 12; k++) {
@@ -178,6 +185,8 @@ function mainExtras(w: World, lines: boolean): void {
 function pageWorld(r: PerfRecipe): World {
   const shortTail = pageParam("shortTail");
   if (shortTail > 0) r.shortTail = shortTail;
+  const big = pageParam("big");
+  if (big > 0) r.big = big;
   const w = build(r, false);
   w.diskFrom = JSON.stringify(r);
   return w;
@@ -199,6 +208,7 @@ export function perfMainWorld(table: readonly number[] = PERF_TURNS): World {
 /**
  * 用户报「主窗口卡渲染」的那一种规模（10-10）：一条会话 11.5 万行上下（真会话那份记录文件 349 MB），其余同性能世界那一屋子。
  * 内容照性能世界的那几种行（人话 · 思考 · 工具 · 子 agent · 带表格与代码块的结论），只取规模。最长那条的轮数缺省 9600，页地址的 `turns` 可改。
+ * 30 万行那一形（11-13 用户报卡死的那份 990 MB / 28.9 万行）：`turns=20860&big=990`，最长那条由 make-big 写（每轮约 14.4 行）。
  */
 export const hugeTurns = (turns: number): number[] => [turns, ...PERF_TURNS.slice(1)];
 

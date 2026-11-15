@@ -43,7 +43,10 @@ pub struct HistoryHead {
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
 pub struct HistoryRow {
-    pub agent: crate::AgentKind,
+    /// 哪一家的（线上的 kind）；认不出是哪一家的 ⇒ 缺（小牌说那一句，恢复那一项是 `no`）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub agent: Option<crate::AgentKind>,
     pub session_id: String,
     pub project_path: String,
     pub project_name: String,
@@ -76,6 +79,8 @@ pub struct HistoryRow {
     /// 那台此刻对这一行的说法（活着的照它的进程状态文件判在干什么；判不了活 ⇒ 状态不明）。
     pub face: crate::frame::SessionFace,
     pub can: Can,
+    /// 菜单里归档那一项（后端 `history/listing.rs::archive_item` 照那一家的归档面写）；那一家不归档 ⇒ `null`（不出那一项）。
+    pub archive: Option<RowArchive>,
     /// 行上那一家的小牌（对用户的叫法）；默认那一家 ⇒ `null`。
     pub agent_tag: Option<Words>,
     /// 被筛掉、只为挂住分叉子会话才带上的父会话（界面淡显）。
@@ -96,6 +101,18 @@ pub struct HistoryRow {
     pub delete_ask: Words,
 }
 
+/// 一行的归档那一项：此刻是不是已归档（点了发哪一条）· 菜单上那一项的字 · 没成那一句。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RowArchive {
+    /// 已归档 ⇒ 点了取消归档；没归档 ⇒ 点了归档。
+    pub archived: bool,
+    pub label: Words,
+    pub failed: Words,
+}
+
 /// 按项目看时的一组。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -103,20 +120,22 @@ pub struct HistoryRow {
 #[serde(rename_all = "camelCase")]
 pub struct HistoryGroup {
     pub key: String,
-    pub agent: crate::AgentKind,
+    /// 哪一家的；认不出是哪一家的 ⇒ 缺。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub agent: Option<crate::AgentKind>,
     pub project_name: String,
     pub project_path: String,
     pub project_dir: String,
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub count: u64,
+    /// 组头那一格「会话 N」（后端照 `count` 写好，界面照抄）。
+    #[serde(default)]
+    pub count_text: String,
     /// 有在跑的 ⇒ `true`；有答不了的 ⇒ `null`；都没在跑 ⇒ `false`。
     pub has_live: Option<bool>,
     pub starred: bool,
-    /// 最近动静（后端排先后用，不上线）。
-    #[serde(skip)]
-    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
-    pub last_activity: i64,
-    /// `last_activity` 写好的字（同行尾那一格的写法）；读不了的那一组 ⇒ `null`。
+    /// 组里最近一次动静写好的字（同行尾那一格的写法）；读不了的那一组 ⇒ `null`。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "string | null"))]
     pub at_text: Option<Words>,
     /// 几台的组并成一列时按它（大的在前）。
@@ -187,7 +206,7 @@ impl Listing {
     }
 }
 
-/// 读不了的一个记录目录。
+/// 读不了的一个记录目录（带扫它时手里那一根是哪一家的：几家树下有同名目录也认得出是哪一个）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -200,6 +219,7 @@ impl Listing {
 )]
 #[serde(rename_all = "camelCase")]
 pub struct FailedDir {
+    pub agent: crate::AgentKind,
     pub project_dir: String,
     pub error: String,
 }
@@ -217,7 +237,10 @@ pub struct FailedDir {
 )]
 #[serde(rename_all = "camelCase")]
 pub struct RawRow {
-    pub agent: crate::AgentKind,
+    /// 哪一家的（照记录文件落在哪棵树下认）；认不出是哪一家的 ⇒ 缺。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub agent: Option<crate::AgentKind>,
     pub session_id: String,
     pub project_path: String,
     pub project_name: String,
@@ -232,6 +255,14 @@ pub struct RawRow {
     pub jsonl_path: String,
     /// 这台判的这条会话的一生（判不了：合成历史没有 pidfile ⇒ 说不清）。
     pub life: crate::frame::Life,
+    /// 这台判的它住在哪（活着、这台名单里挂着它才有）；缺 ⇒ 不知道。看的那一台照它造这一行的脸（不另判）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub housed: Option<crate::frame::SessionContainer>,
+    /// 这台判的：这条会话挂着的那一条此刻在界面里答得了（登记表里最早挂上的那一条，后端 `wire::answerable`）。
+    /// 看的那一台照它造这一行的脸（在等人 ⇒ 待答请求），不查自己的登记表（远端那台的请求只挂在那台）。缺 ⇒ 不是。
+    #[serde(default)]
+    pub asks: bool,
     pub message_count_approx: u32,
     pub is_bg: bool,
     pub starred: bool,
@@ -256,14 +287,18 @@ pub struct RawRow {
     pub last_account: Option<String>,
 }
 
-/// `history-list` 每行（与全文搜索每个会话）的「这一行能做什么」（[`can_of`] 的成品）：闭集的词与两个开关。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// `history-list` 每行（与全文搜索每个会话）的「这一行能做什么」（[`can_of`] 的成品）：闭集的词 · 两个开关 · 恢复不给时那一句。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Can {
-    /// `yes` 能恢复 · `switch` 在跑（切过去）· `bg` 分身会话（恢复主会话）。
+    /// `yes` 能恢复 · `switch` 在跑（切过去）· `bg` 分身会话（恢复主会话）· `no` 认不出是哪一家的（不能恢复）。
     pub resume: CanResume,
+    /// 恢复那一项不给时为什么（`bg` · `no` 那一句，后端写好、界面照摆）；给 ⇒ 缺。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub resume_why: Option<Words>,
     /// 恢复时能不能选号。
     pub accounts: bool,
     /// 能不能从某一轮分叉。
@@ -272,7 +307,7 @@ pub struct Can {
     pub delete: CanDelete,
 }
 
-/// [`Can::resume`] 的三个词。
+/// [`Can::resume`] 的四个词。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
@@ -281,6 +316,8 @@ pub enum CanResume {
     Yes,
     Switch,
     Bg,
+    /// 认不出是哪一家的：没有那一家可起，不能恢复。
+    No,
 }
 
 /// [`Can::delete`] 的三个词。
@@ -298,29 +335,22 @@ pub enum CanDelete {
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(rename_all = "camelCase")]
 pub struct Entry {
     #[serde(default)]
     pub starred: bool,
-    #[serde(default, rename = "customTitle", alias = "custom_title")]
+    #[serde(default, alias = "custom_title")]
     pub custom_title: Option<String>,
     /// 单个那一格：`on` 隐藏 · `off` 不隐藏 · 缺 ＝ 照规则。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub hide: Option<Hide>,
     /// 没人答的提问等几分钟替人答一句（判定住后端 `control::asks`）；缺 ＝ 关。
-    #[serde(
-        default,
-        rename = "autoAnswer",
-        skip_serializing_if = "Option::is_none"
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub auto_answer: Option<crate::needs::AutoAnswer>,
     /// 终端没了时换的模型 / 权限档，下次恢复照它起（只由那两条换的命令写）；缺 ＝ 没记。
-    #[serde(
-        default,
-        rename = "resumeWith",
-        skip_serializing_if = "Option::is_none"
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub resume_with: Option<ResumeWith>,
     /// 这条会话在哪几组（组 id；那一组的名字等抄在这一台注解文件 `groups` 那一节，每台只记自己有组员的那几组）。一条会话可在几组；空 ＝ 不在组里。
@@ -331,7 +361,7 @@ pub struct Entry {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<bool>"))]
     pub pinned: bool,
-    #[serde(default, rename = "updatedAt", alias = "updated_at")]
+    #[serde(default, alias = "updated_at")]
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub updated_at: i64,
 }

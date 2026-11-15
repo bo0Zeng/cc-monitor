@@ -4,4 +4,8 @@ import type { WirePath } from "./WirePath";
 /**
  * `files-size` 的回包（不跟链接、不进别的文件系统）。
  */
-export type SizeReply = { path: WirePath, bytes: number, files: number, dirs: number, links: number, other: number, skipped_mounts: number, unreadable_dirs: number, };
+export type SizeReply = { path: WirePath, bytes: number, 
+/**
+ * `bytes` 写好的字（同 [`LsEntry::size_text`]）。
+ */
+size_text: string, files: number, dirs: number, links: number, other: number, skipped_mounts: number, unreadable_dirs: number, };

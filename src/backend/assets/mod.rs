@@ -42,30 +42,17 @@ pub mod cc_bus_install;
 // 设置「扩展」页的后端：跨机器一张表 · 从一台卸（装那一件的枢纽住 `hub`）。
 pub mod ext;
 pub mod hub;
-// 枢纽问各台的那 8 条内层命令（typed）：每条 `impl Command`（线上名只写这一处），本体在本包各处。
+// 枢纽问各台的那 9 条内层命令（typed）：每条 `impl Command`（线上名只写这一处），本体在本包各处。
 pub mod hub_inner;
-// 枢纽问各台的那 8 条内层命令的线上形（两台后端之间）。
+// 枢纽问各台的那 9 条内层命令的线上形（两台后端之间）。
 pub mod hub_wire;
 pub mod mcp_edit;
 pub(crate) mod mcp_sync_flow;
+// 插件装删：照那一家的插件那一格在这台跑装 · 删 · 列（扩展页卸载 · 枢纽 `plugin-install` 被写那台）。
+pub mod plugin_exec;
 // 公钥推进那台的 `authorized_keys`（`pubkey-push` 本机那一跳 · `authorized-keys-add` 被写那台）。
 pub mod pubkey;
 pub(crate) mod skill_flow;
-
-/// 资产面那一家（[`crate::agents::asset_kind`]）的资产面。
-fn asset_face() -> Option<crate::agents::AssetFace> {
-    crate::agents::asset_face(crate::agents::asset_kind()?)
-}
-
-/// 资产面那一家项目级 MCP 配置的文件名（`AssetFace.project_mcp_file`）。没有资产面那一家 ⇒ 空串（落点拼不出、照实拒）。
-pub(crate) fn project_mcp_file() -> &'static str {
-    asset_face().map_or("", |f| f.project_mcp_file)
-}
-
-/// 资产面那一家 MCP 配置里装 server 表的顶层键（`AssetFace.servers_key`）。没有资产面那一家 ⇒ 空串。
-pub(crate) fn mcp_servers_key() -> &'static str {
-    asset_face().map_or("", |f| f.servers_key)
-}
 
 pub mod asset_catalog; // 资产目录：帧面 `assets-catalog` / `assets-catalog-merge`（后端自有状态 `~/.cc-monitor/assets-catalog.json`，经 `Own`；一个用户文件都不写）
 pub mod asset_sync; // 资产目录的自动同步：帧面 `assets-sync`（本机常驻后端沿池里那条 SSH 拉 / 并 / 推；写口由 inbound 递进来）

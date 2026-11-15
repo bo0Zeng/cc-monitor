@@ -61,6 +61,7 @@ fn there(rows: Vec<RawRow>) -> Listing {
     Listing {
         rows,
         failed: vec![cmd_wire::listing::FailedDir {
+            agent: crate::agents::default_kind().into(),
             project_dir: "-bad".into(),
             error: "读不了".into(),
         }],
@@ -133,7 +134,7 @@ impl Remote for Peer {
         Box::pin(async move {
             self.run(dial, command, stdin)
                 .await
-                .map_err(|_| Said::new("resident_absent", "该机后端未在运行".to_string()))
+                .map_err(|_| Said::new("resident_absent", "该机器的后端未在运行".to_string()))
         })
     }
 }
@@ -265,9 +266,9 @@ async fn it_asks_the_resident_and_an_absent_one_fails_plainly() {
 async fn what_is_held_reads_without_asking_and_remembers_a_failed_sync() {
     let mut peer = Peer::new(vec![row("s1", "一", 30)]);
     let (copies, t) = (Copies::default(), table("devbox"));
-    assert!(matches!(kept_in(&copies, "devbox"), Kept::Unread));
+    assert!(matches!(copies.kept_seen("devbox").0, Kept::Unread));
     ask(&peer, &copies, &t, true).await.unwrap();
-    let Kept::Got(l) = kept_in(&copies, "devbox") else {
+    let Kept::Got(l) = copies.kept_seen("devbox").0 else {
         panic!("问成了却读不到手上那份")
     };
     assert_eq!(sids(&l), ["s1"]);
@@ -282,7 +283,7 @@ async fn what_is_held_reads_without_asking_and_remembers_a_failed_sync() {
         listing,
         why,
         at_ms,
-    } = kept_in(&copies, "devbox")
+    } = copies.kept_seen("devbox").0
     else {
         panic!("同步没成：手上那份要照出、标明是旧的")
     };
@@ -305,11 +306,14 @@ async fn what_is_held_reads_without_asking_and_remembers_a_failed_sync() {
     )
     .await
     .unwrap_err();
-    assert!(matches!(kept_in(&fresh_copies, "devbox"), Kept::Failed(_)));
+    assert!(matches!(
+        fresh_copies.kept_seen("devbox").0,
+        Kept::Failed(_)
+    ));
     peer.absent = false;
     ask(&peer, &copies, &t, true).await.unwrap();
     assert!(
-        matches!(kept_in(&copies, "devbox"), Kept::Got(_)),
+        matches!(copies.kept_seen("devbox").0, Kept::Got(_)),
         "再问成了那一句没清掉"
     );
 }
@@ -365,7 +369,7 @@ async fn the_copy_lands_on_disk_and_a_restarted_backend_asks_with_it() {
     assert!(file.is_file(), "同步成了却没落盘：{}", file.display());
 
     let after = disk_copies(own.clone());
-    let Kept::Got(l) = kept_in(&after, "devbox") else {
+    let Kept::Got(l) = after.kept_seen("devbox").0 else {
         panic!("重启之后读不到盘上那份")
     };
     assert_eq!(sids(&l), ["s1", "s2"]);
@@ -379,7 +383,7 @@ async fn the_copy_lands_on_disk_and_a_restarted_backend_asks_with_it() {
 
     std::fs::write(&file, b"{\"version\":1,\"hand\":").unwrap();
     let broken = disk_copies(own);
-    assert!(matches!(kept_in(&broken, "devbox"), Kept::Unread));
+    assert!(matches!(broken.kept_seen("devbox").0, Kept::Unread));
     ask(&peer, &broken, &t, true).await.unwrap();
     let (_, stdin) = peer.asked.lock().unwrap().last().cloned().unwrap();
     assert!(
@@ -388,4 +392,123 @@ async fn the_copy_lands_on_disk_and_a_restarted_backend_asks_with_it() {
     );
     assert_eq!(peer.last()["whole"], true);
     let _ = std::fs::remove_dir_all(&tmp);
+}
+
+/// 副本表那一半（[`Copies`]：不问那台、不碰文件系统）的判据：落盘那一形装得回 · 读不懂当没有 · 一台一个文件名。
+mod copies {
+    use super::*;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    fn row(sid: &str) -> RawRow {
+        serde_json::from_value(serde_json::json!({
+            "agent": "claude", "sessionId": sid, "projectPath": "/w/a", "projectName": "a",
+            "aiTitle": sid, "firstUserExcerpt": "", "title": sid,
+            "startedAt": 1, "updatedAt": 1, "jsonlPath": format!("/r/{sid}.jsonl"),
+            "life": {"is": "ended"}, "messageCountApprox": 3, "isBg": false,
+            "starred": false, "customTitle": null, "projectDir": "-w-a", "group": "claude:/w/a",
+        }))
+        .expect("一行")
+    }
+
+    /// 整份的一答（记号 `h1`）。
+    fn whole(sids: &[&str]) -> Patch<ListingHead, RawRow> {
+        serde_json::from_value(serde_json::json!({
+            "held": "h1", "same": false, "whole": true,
+            "order": sids,
+            "up": sids.iter().map(|s| (s.to_string(), serde_json::to_value(row(s)).unwrap())).collect::<serde_json::Map<_, _>>(),
+            "head": null,
+        }))
+        .expect("一答")
+    }
+
+    /// 内存里的落盘处（几张副本表共用一个 ＝ 同一个目录）。
+    #[derive(Clone, Default)]
+    struct Mem(Arc<Mutex<HashMap<String, Vec<u8>>>>);
+
+    impl Shelf for Mem {
+        fn load(&self, machine: &str) -> Option<Vec<u8>> {
+            self.0.lock().unwrap().get(machine).cloned()
+        }
+        fn store(&self, machine: &str, body: &[u8]) {
+            self.0.lock().unwrap().insert(machine.into(), body.to_vec());
+        }
+    }
+
+    fn sids(l: &Listing) -> Vec<String> {
+        l.rows.iter().map(|r| r.session_id.clone()).collect()
+    }
+
+    /// ★ 同步成了整份写进落盘处；换一张空副本表读同一个落盘处 ⇒ 手上那份 · 记号 · 落下的那一刻都回来了。
+    #[test]
+    fn a_new_table_on_the_same_shelf_gets_the_copy_back() {
+        let shelf = Mem::default();
+        let a = Copies::on(shelf.clone());
+        a.took("devbox", whole(&["s1", "s2"]), 1234);
+        let b = Copies::on(shelf.clone());
+        match b.to_ask("devbox", true) {
+            Ask::With(Some(h)) => assert_eq!(h.0, "h1"),
+            other => panic!("重来之后没带落盘那份的记号：{other:?}"),
+        }
+        b.missed("devbox", "够不着".into());
+        let Kept::Stale { listing, at_ms, .. } = b.kept_seen("devbox").0 else {
+            panic!("同步没成：落盘那份要照出、标明是旧的")
+        };
+        assert_eq!(sids(&listing), ["s1", "s2"]);
+        assert_eq!(at_ms, 1234, "落下的那一刻要跟着落盘");
+    }
+
+    /// ★ 读不懂 · 版本对不上 ⇒ 当没有（不迁移）；没有落盘处 ⇒ 只在内存。
+    #[test]
+    fn an_unreadable_or_other_version_copy_counts_as_none() {
+        let shelf = Mem::default();
+        Copies::on(shelf.clone()).took("devbox", whole(&["s1"]), 1);
+        let body = shelf.load("devbox").unwrap();
+        let mut v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(v["version"], VERSION, "落盘那一形顶层带 version");
+        v["version"] = (VERSION + 1).into();
+        shelf.store("devbox", &serde_json::to_vec(&v).unwrap());
+        assert!(matches!(
+            Copies::on(shelf.clone()).kept_seen("devbox").0,
+            Kept::Unread
+        ));
+        shelf.store("devbox", b"{");
+        assert!(matches!(
+            Copies::on(shelf.clone()).to_ask("devbox", false),
+            Ask::With(None)
+        ));
+        let mem = Copies::default();
+        mem.took("devbox", whole(&["s1"]), 1);
+        assert!(matches!(mem.to_ask("devbox", false), Ask::Held(_)));
+    }
+
+    /// 文件名：一台一个、拼不出路径（`/` · `..` · 打头的 `.` 都写成 `%XX`）。
+    #[test]
+    fn a_machine_name_never_becomes_a_path() {
+        assert_eq!(file_stem("devbox-2_a"), "devbox-2_a");
+        assert_eq!(file_stem("../x"), "%2E%2E%2Fx");
+        assert_eq!(file_stem("a.b"), "a%2Eb");
+        assert_ne!(file_stem("a.b"), file_stem("a_b"));
+        assert_eq!(file_stem(""), "%");
+    }
+}
+
+/// 副本的代号：从没换过 ⇒ 没有；每换一次（问成了 · 问不成记下那一句）就严格变大；代号与交出去的那一份同一把锁里读。
+/// 界面照它认同一台哪一包新（几问回包先后不定，旧的那一包到了不盖新的）。
+#[tokio::test]
+async fn the_copy_seen_mark_grows_with_every_change() {
+    let peer = Peer::new(vec![row("s1", "一", 30)]);
+    let (copies, t) = (Copies::default(), table("devbox"));
+    assert!(matches!(copies.kept_seen("devbox"), (Kept::Unread, None)));
+    ask(&peer, &copies, &t, false).await.expect("头一次");
+    let (k, a) = copies.kept_seen("devbox");
+    assert!(matches!(k, Kept::Got(_)), "{k:?}");
+    let a = a.expect("换过一次就有代号");
+    ask(&peer, &copies, &t, true).await.expect("再问一次");
+    let b = copies.kept_seen("devbox").1.unwrap();
+    assert!(b > a, "问成了一次代号没变大：{a} → {b}");
+    copies.missed("devbox", "断了".into());
+    let (k, c) = copies.kept_seen("devbox");
+    assert!(matches!(k, Kept::Stale { .. }), "{k:?}");
+    assert!(c.unwrap() > b, "问不成记下那一句，代号没变大");
 }

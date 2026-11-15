@@ -40,6 +40,19 @@ pub enum Decide {
     KeepBoth,
 }
 
+/// 同名那一问的一种答：答法 · 整组按钮那一句（`跳过同名`）· 逐项那一格的字（`跳过`）。字由核心写好（`batch_core::choices`），手机抽屉与文件窗口冲突框照摆。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct ClashChoice {
+    pub decide: Decide,
+    pub label: String,
+    pub pick: String,
+}
+
 /// 一项的结局。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]

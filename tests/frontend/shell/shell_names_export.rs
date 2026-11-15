@@ -3,7 +3,6 @@
 //! 值取 Rust 常量本身，界面 import 生成物，不另写一份字面量。`npm run gen:types`（= `cargo test --lib export_bindings`）重写它；
 //! 门禁 `generated` 格（`generated-drift.sh`）盖住「改了常量不重跑生成」。
 
-use crate::data_paths::LOGS_DIR_LABEL;
 use crate::event_replay::{CHANGED_KIND, PROBE_PROGRESS_KIND, TERMINAL_SCREEN_KIND};
 use crate::ui_contract::events::{FRONTEND_READY, LOCAL_BACKEND, UI_ERROR};
 
@@ -29,11 +28,6 @@ const NAMES: &[(&str, &str, &str)] = &[
         "TERMINAL_SCREEN_KIND",
         TERMINAL_SCREEN_KIND,
         "终端订阅的画面流（`event_replay.rs::TERMINAL_SCREEN_KIND`）；后面跟 `/<票>`。",
-    ),
-    (
-        "LOGS_DIR_LABEL",
-        LOGS_DIR_LABEL,
-        "数据路径里日志目录那一行的名字（`data_paths.rs::LOGS_DIR_LABEL`）。",
     ),
     (
         "FRONTEND_READY",

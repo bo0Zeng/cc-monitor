@@ -45,7 +45,7 @@ class HostBackends(
     private val byHost = ConcurrentHashMap<String, ResidentFeed>()
     private val feedsFlow = MutableStateFlow<Map<String, ResidentFeed>>(emptyMap())
 
-    /** 此刻起着的那几条（按台；跨会话的需手动板对每一条各问一份，不为它另连）。 */
+    /** 此刻起着的那几条（按台；跨会话的需手动板交核心对这几条问一圈，不为它另连）。 */
     val feeds: StateFlow<Map<String, ResidentFeed>> = feedsFlow.asStateFlow()
 
     private val fleetFlow = MutableStateFlow<FleetLines?>(null)

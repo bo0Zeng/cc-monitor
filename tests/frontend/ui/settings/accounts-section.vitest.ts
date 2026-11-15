@@ -1,5 +1,5 @@
 /**
- * 机器页「账号」栏的判据：表（一号一行 · 默认 · 5h / 7d · 按量）· 切机器只认最后一趟 · 删号确认框（删默认号时「之后新会话默认 X」
+ * 机器页「账号」栏的判据：表（一号一行 · 默认 · 收到几窗列几行）· 切机器只认最后一趟 · 删号确认框（删默认号时「之后新会话默认 X」
  * 是那台答的、带 force）· 各态（没连上过 · 离线画上次的 · 这台不支持多账号 · 没启用）· 打开时核一次（有对不上才出警告条）·
  * 表下没有指路框 · 开不了终端窗口 ⇒「在 tmux 里登录」· 命令名取自别名清单的分组 · key 的纪律（源码扫描）。
  *
@@ -10,6 +10,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { REPO_ROOT } from "../../../test-support/repo-root";
 import type { Account, AccountsState } from "../../../../src/frontend/ui/accounts";
+import type { QuotaCell } from "../../../../src/frontend/ui/generated/QuotaCell";
 
 const fetchAccounts = vi.fn();
 const readQuota = vi.fn();
@@ -25,13 +26,17 @@ const accountsRepair = vi.fn();
 const accountsAdd = vi.fn();
 const writeApikeyKey = vi.fn();
 const openLoginDrawer = vi.fn();
+const openFileWindow = vi.fn();
+const loginOut = vi.fn();
+const loginStatus = vi.fn();
 
 vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
+vi.mock("../../../../src/frontend/ui/file-window", () => ({ openFileWindow: (...a: unknown[]) => openFileWindow(...a) }));
 vi.mock("@tauri-apps/api/event", () => ({ emit: (...a: unknown[]) => emit(...a), listen: vi.fn() }));
 vi.mock("../../../../src/frontend/ui/account-reads", () => ({
   fetchAccounts: (...a: unknown[]) => fetchAccounts(...a),
   launchAgentId: () => "claude",
-  accountsAgentProfile: () => ({ displayName: "Claude Code", models: ["sonnet", "opus"] }),
+  accountsAgentProfile: () => ({ agent: "claude", models: ["sonnet", "opus"] }),
 }));
 vi.mock("../../../../src/frontend/ui/quota-reads", () => ({ readQuota: (...a: unknown[]) => readQuota(...a) }));
 vi.mock("../../../../src/frontend/ui/profiles-reads", () => ({ readProfiles: (...a: unknown[]) => readProfiles(...a) }));
@@ -66,9 +71,10 @@ vi.mock("../../../../src/frontend/ui/account-ops", async (orig) => ({
   accountsAdd: (...a: unknown[]) => accountsAdd(...a),
 }));
 vi.mock("../../../../src/frontend/ui/login-drawer", () => ({ openLoginDrawer: (...a: unknown[]) => openLoginDrawer(...a) }));
+vi.mock("../../../../src/frontend/ui/login-reads", () => ({ loginOut: (...a: unknown[]) => loginOut(...a), loginStatus: (...a: unknown[]) => loginStatus(...a) }));
 vi.mock("../../../../src/frontend/ui/apikey-reads", () => ({ writeApikeyKey: (...a: unknown[]) => writeApikeyKey(...a) }));
 
-import { AccountsSection } from "../../../../src/frontend/ui/settings/accounts-section";
+import { AccountsSection, focusAccount } from "../../../../src/frontend/ui/settings/accounts-section";
 import { SETTINGS_GO_EVENT } from "../../../../src/frontend/ui/settings/events";
 import { __resetMachineContextForTests, setCurrentMachine } from "../../../../src/frontend/ui/machine-context";
 import { LOCAL } from "../../../../src/frontend/ui/ipc/origin";
@@ -96,16 +102,16 @@ function state(p: Partial<AccountsState> = {}): AccountsState {
     notice: null,
     meta: META,
     accounts: [
-      acct({ name: "work", label: "后端·work", email: "work@example.com", isDefault: true, kindLine: "line-work", slots: [cell("后端·5h ✕ ↻13:00", "fail"), cell("后端·7d 78%")] }),
-      acct({ name: "personal", email: "me@example.com", kindLine: "line-personal", slots: [cell("后端·5h 63% ↻13:00"), cell("后端·7d 41%")] }),
-      acct({ name: "api", authKind: "api-key", email: "", keyMasked: "••••••••a1b2", endpointHost: "HOST-BY-BACKEND", kindLine: "line-api", slots: [cell("后端·按量")] }),
+      acct({ name: "work", label: "后端·work", email: "work@example.com", isDefault: true, kindLine: "line-work", quota: [[cell("后端·被拒至 13:00", "fail")], [cell("后端·5h"), cell("100%", "fail"), cell("↻13:00"), cell("+1h")], [cell("后端·7d"), cell("78%")]] }),
+      acct({ name: "personal", email: "me@example.com", kindLine: "line-personal", quota: [[cell("后端·5h"), cell("63%"), cell("↻13:00")], [cell("后端·7d"), cell("41%")], [cell("后端·7d opus"), cell("12%")]] }),
+      acct({ name: "api", authKind: "api-key", email: "", keyMasked: "••••••••a1b2", endpointHost: "HOST-BY-BACKEND", kindLine: "line-api" }),
     ],
     ...p,
   };
 }
 /** 那一行里写好的一格额度（字与语气都是那台后端写的，界面照摆）。 */
-function cell(text: string, tone: "plain" | "warn" | "fail" = "plain"): NonNullable<Account["slots"]>[number] {
-  return { slot: "5h", text, tone };
+function cell(text: string, tone: "plain" | "warn" | "fail" = "plain"): QuotaCell {
+  return { text, tone };
 }
 
 let confirmed: ConfirmSpec[] = [];
@@ -133,7 +139,8 @@ beforeEach(() => {
   setCurrentMachine("devbox");
   confirmed = [];
   answer = true;
-  for (const m of [fetchAccounts, readQuota, accountsVerify, accountsRemove, accountsSetDefault, readProfiles, readMachines, emit, setModelForAccount, accountsInit, accountsRepair, accountsAdd, writeApikeyKey, openLoginDrawer]) m.mockReset();
+  for (const m of [fetchAccounts, readQuota, accountsVerify, accountsRemove, accountsSetDefault, readProfiles, readMachines, emit, setModelForAccount, accountsInit, accountsRepair, accountsAdd, writeApikeyKey, openLoginDrawer, openFileWindow]) m.mockReset();
+  openFileWindow.mockResolvedValue(true);
   const change = (p: object = {}) => ({ applied: true, steps: ["一步"], notes: [], backup: null, account: null, aliasNames: ["teamcc", "teamcct"], keyMasked: null, keyProblem: null, aliases: [], ...p });
   accountsInit.mockResolvedValue(change());
   accountsRepair.mockResolvedValue(change());
@@ -157,7 +164,7 @@ beforeEach(() => {
 });
 
 describe("账号表", () => {
-  it("表头说是哪台、新会话默认谁；一号一行，号名照那一行的 label，默认号带「默认」，用量两列照那一行写好的格", async () => {
+  it("表头说是哪台、新会话默认谁；一号一行，号名照那一行的 label，默认号带「默认」，额度照那一行写好的几行（收到几窗列几行）", async () => {
     const el = await mount();
     expect(el.querySelector(".acct-head-title")!.textContent).toBe(copyText("acctPage.head.title", { machine: "devbox" }));
     expect(el.querySelector(".acct-head-sub")!.textContent).toBe(copyText("acctPage.head.default", { name: "work" }));
@@ -165,27 +172,36 @@ describe("账号表", () => {
     const nameLine = (n: string) => rowOf(el, n).querySelector(".acct-row-name")!.textContent;
     expect(nameLine("work")).toBe(`后端·work${copyText("resumeSelect.option.defaultBare")}`);
     expect(nameLine("personal")).toBe("personal");
-    const slots = (name: string) => [...rowOf(el, name).querySelectorAll<HTMLElement>(".acct-row-slot")];
-    expect(slots("work").map((c) => c.textContent)).toEqual(["后端·5h ✕ ↻13:00", "后端·7d 78%"]);
-    expect(slots("personal").map((c) => c.textContent)).toEqual(["后端·5h 63% ↻13:00", "后端·7d 41%"]);
-    expect(slots("api").map((c) => c.textContent)).toEqual(["后端·按量", ""]);
+    // 收到几窗列几行：每行一条，格照那台写好的先后摆（不再固定 5h / 7d 两列）。
+    const lines = (name: string) => [...rowOf(el, name).querySelectorAll<HTMLElement>(".acct-row-quota-line")].map((l) => [...l.children].map((c) => c.textContent));
+    expect(lines("work")).toEqual([["后端·被拒至 13:00"], ["后端·5h", "100%", "↻13:00", "+1h"], ["后端·7d", "78%"]]);
+    expect(lines("personal")).toEqual([["后端·5h", "63%", "↻13:00"], ["后端·7d", "41%"], ["后端·7d opus", "12%"]]);
+    expect(lines("api")).toEqual([]);
+    expect(rowOf(el, "work").querySelector(".acct-row-slot"), "没有固定的语义位列").toBeNull();
     expect(rowOf(el, "work").querySelector(".acct-row-kind")!.textContent).toBe("line-work");
     expect(readQuota, "额度格在那一行里，不另问额度账").not.toHaveBeenCalled();
   });
 
   it("★ 每格的语气照那一行写好的 tone：fail ⇒ 红 · warn ⇒ 黄 · plain ⇒ 不标", async () => {
-    fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", slots: [cell("T5", "warn"), cell("T7", "fail")] }), acct({ name: "team", slots: [cell("P5")] })] }));
+    fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", quota: [[cell("K"), cell("T5", "warn"), cell("T7", "fail"), cell("P")]] })] }));
     const el = await mount();
-    const [c5, c7] = rowOf(el, "work").querySelectorAll<HTMLElement>(".acct-row-slot");
+    const [k, c5, c7, p] = rowOf(el, "work").querySelectorAll<HTMLElement>(".acct-row-quota-line > *");
     expect([c5.textContent, c5.dataset.shade]).toEqual(["T5", "warn"]);
     expect([c7.textContent, c7.dataset.shade]).toEqual(["T7", "refused"]);
-    expect(rowOf(el, "team").querySelector<HTMLElement>(".acct-row-slot")!.dataset.shade).toBeUndefined();
+    expect([k.dataset.shade, p.dataset.shade]).toEqual([undefined, undefined]);
   });
 
   it("★ 选不了的那一句（那台写好的 unselectable）挂在号名后面", async () => {
     fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "api", authKind: "api-key", selectable: false, unselectable: "后端·没配 key" })] }));
     const el = await mount();
     expect(rowOf(el, "api").querySelector(".acct-row-name")!.textContent).toBe("api后端·没配 key");
+  });
+
+  it("★ MCP 登录不同步的那一句（那台写好的 mcpLogins）照摆在号名那一行；缺 ⇒ 不出", async () => {
+    fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "f", mcpLogins: "后端·不同步" }), acct({ name: "c" })] }));
+    const el = await mount();
+    expect(rowOf(el, "f").querySelector(".acct-row-name")!.textContent).toBe("f后端·不同步");
+    expect(rowOf(el, "c").querySelector(".acct-row-name")!.textContent).toBe("c");
   });
 
   it("非默认号那一行有［设为默认］，点了问那台 accounts-set-default 并说「新会话默认 X」", async () => {
@@ -238,6 +254,22 @@ describe("账号表", () => {
     (rowOf(el3, "work").querySelector(".acct-row") as HTMLElement).click();
     await settle();
     expect([...rowOf(el3, "work").querySelectorAll(".acct-detail-mono")].map((e) => e.textContent)).toContain("SHOWN-BY-BACKEND");
+  });
+
+  it("★ 账号目录那一颗：本机远端同一句「在文件窗口里打开」，点了文件窗口开进那台那个目录", async () => {
+    for (const origin of [LOCAL, "devbox"]) {
+      setCurrentMachine(origin);
+      fetchAccounts.mockResolvedValue(state({ origin }));
+      openFileWindow.mockClear();
+      const el = await mount();
+      (rowOf(el, "work").querySelector(".acct-row") as HTMLElement).click();
+      await settle();
+      const b = buttonNamed(rowOf(el, "work"), copyText("data.item.reveal"));
+      expect(b, `${origin}：少了看目录那一颗`).toBeTruthy();
+      b.click();
+      await settle();
+      expect(openFileWindow.mock.calls).toEqual([[origin, { dir: "/h/.cc-monitor/accounts/z" }]]);
+    }
   });
 
   it("默认模型是下拉：第一项「{家} 默认」＋ 那一家认得的模型；盘上存的不在里面 ⇒ 多列它一项；选中即存（键是这台 ＋ 这个号）", async () => {
@@ -390,19 +422,43 @@ describe("各态", () => {
 });
 
 describe("登录与指路", () => {
-  it("★ 需登录那一行［登录…］·「⋯ 重新登录…」都开登录抽屉（目标照这一行拼：那一家 ＋ 号名）；「⋯」里没有在终端里登录（只在抽屉里）", async () => {
-    fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", isDefault: true }), acct({ name: "team", loggedIn: false, authReady: false, selectable: false })] }));
+  it("★ 需登录那一行［登录…］·「⋯ 重新登录…」都开登录抽屉（目标只交号名，家由后端照号表认：别家的号也不交请求那一家）；「⋯」里没有在终端里登录（只在抽屉里）", async () => {
+    fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", isDefault: true }), acct({ name: "team", agent: "codex", loggedIn: false, authReady: false, selectable: false })] }));
     const el = await mount();
     const go = rowOf(el, "team").querySelector<HTMLButtonElement>('[data-action="acct-login"]')!;
     expect(go.textContent).toBe(copyText("newSession.account.login"));
     expect(rowOf(el, "work").querySelector('[data-action="acct-login"]'), "已登录的那一行没有").toBeNull();
     go.click();
-    expect(openLoginDrawer).toHaveBeenLastCalledWith(expect.objectContaining({ origin: "devbox", target: { kind: "account", agent: "claude", account: "team" } }));
+    expect(openLoginDrawer).toHaveBeenLastCalledWith(expect.objectContaining({ origin: "devbox", target: { kind: "account", account: "team" } }));
     buttonNamed(rowOf(el, "work"), copyText("acctPage.row.more", { name: "work" })).click();
     const items = [...document.querySelectorAll<HTMLElement>("[role=menuitem]")];
     expect(items.some((m) => m.textContent?.includes(copyText("login.act.terminal"))), "终端那条路只在抽屉里").toBe(false);
     items.find((m) => m.textContent?.includes(copyText("acctPage.menu.relogin")))!.click();
-    expect(openLoginDrawer).toHaveBeenLastCalledWith(expect.objectContaining({ origin: "devbox", target: { kind: "account", agent: "claude", account: "work" } }));
+    expect(openLoginDrawer).toHaveBeenLastCalledWith(expect.objectContaining({ origin: "devbox", target: { kind: "account", account: "work" } }));
+  });
+
+  it("★「⋯」里［退出登录］·［登录状态］只照那一行的 signOut · status 给；点了交 login-out · login-status（只交号名），照摆后端写好的那一句", async () => {
+    fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", isDefault: true, signOut: true, status: true }), acct({ name: "team" })] }));
+    loginOut.mockResolvedValue("后端·work 已退出登录");
+    loginStatus.mockResolvedValue("后端·work 已登录");
+    const el = await mount();
+    const menu = (name: string): HTMLElement[] => {
+      buttonNamed(rowOf(el, name), copyText("acctPage.row.more", { name })).click();
+      return [...document.querySelectorAll<HTMLElement>("[role=menuitem]")];
+    };
+    const has = (items: HTMLElement[], key: "acctPage.menu.signOut" | "acctPage.menu.status") => items.find((m) => m.textContent?.includes(copyText(key)));
+    const team = menu("team");
+    expect(has(team, "acctPage.menu.signOut"), "那一行没给 ⇒ 没有").toBeUndefined();
+    expect(has(team, "acctPage.menu.status")).toBeUndefined();
+    document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    has(menu("work"), "acctPage.menu.status")!.click();
+    await settle();
+    expect(loginStatus).toHaveBeenLastCalledWith("devbox", "work");
+    expect(vi.mocked(toast), "照摆后端那一句").toHaveBeenLastCalledWith("后端·work 已登录", "", { level: "info" });
+    has(menu("work"), "acctPage.menu.signOut")!.click();
+    await settle();
+    expect(loginOut).toHaveBeenLastCalledWith("devbox", "work");
+    expect(vi.mocked(toast)).toHaveBeenLastCalledWith("后端·work 已退出登录", "", { level: "info" });
   });
 
   it("表下没有指路框（默认轮换与规则在同一台的「轮换」栏里管），只剩「共用 MCP」那一行", async () => {
@@ -476,7 +532,7 @@ describe("动作", () => {
     buttonNamed(el, copyText("acctNew.form.createLogin")).click();
     await settle();
     expect(accountsAdd).toHaveBeenLastCalledWith("devbox", { name: "team", kind: "subscription" });
-    expect(openLoginDrawer).toHaveBeenLastCalledWith(expect.objectContaining({ origin: "devbox", target: { kind: "account", agent: "claude", account: "team" } }));
+    expect(openLoginDrawer).toHaveBeenLastCalledWith(expect.objectContaining({ origin: "devbox", target: { kind: "account", account: "team" } }));
     expect(el.querySelector(".acct-new")).toBeNull();
   });
 
@@ -557,5 +613,29 @@ describe("key 的纪律（源码扫描：账号栏 ＋ 新建表单）", () => {
   it("KH2C1：前端不从 configDir 推账号 id（那条规则只在 Rust）", () => {
     for (const needle of ['split("/")', "split('/')", "basename(", 'lastIndexOf("/")']) expect(code.includes(needle), needle).toBe(false);
     expect(/writeApikeyKey\(origin,\s*dir,\s*k\b/.test(code), "写 key 那一条没把这个号的 configDir 一起交出去").toBe(true);
+  });
+});
+
+describe("带号锚点进来（需手动清单里「认不出是哪一家的号」点进来）", () => {
+  const rows = (): Account[] => [acct({ name: "z1", unknownAgent: "zeta" } as Partial<Account>), acct({ name: "work", agent: "alpha" })];
+
+  it("号单还没画就给了锚点 ⇒ 画完落到那个号那一行、高亮", async () => {
+    fetchAccounts.mockResolvedValue(state({ accounts: rows() }));
+    expect(focusAccount("account:zeta:z1")).toBe(true);
+    const el = await mount();
+    expect(rowOf(el, "z1").classList.contains("settings-highlight")).toBe(true);
+    expect(rowOf(el, "work").classList.contains("settings-highlight")).toBe(false);
+  });
+
+  it("不是 account: 开头的锚点不归账号栏", () => {
+    expect(focusAccount("rule:x")).toBe(false);
+    expect(focusAccount(undefined)).toBe(false);
+  });
+
+  it("锚点里的家对不上（号表里写的是 zeta）⇒ 不落到同名那一行", async () => {
+    fetchAccounts.mockResolvedValue(state({ accounts: rows() }));
+    expect(focusAccount("account:alpha:z1")).toBe(true);
+    const el = await mount();
+    expect(el.querySelector(".settings-highlight")).toBeNull();
   });
 });

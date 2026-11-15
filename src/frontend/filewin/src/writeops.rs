@@ -6,7 +6,8 @@
 //!
 //! 下面第一节讲的是「经池子那四条 SFTP 命令调下去」—— **那是上一版**。窗口成了独立进程、
 //! 后端写面（`files-mkdir` / `files-delete` / `files-rename` / `files-chmod`，F1 落的）上线之后，
-//! [`apply_remote_coded`] 改成经 [`super::source::ask`] 说那四条命令：`root` ＝ 那一行所在的目录，
+//! 新建目录 · 改名经 [`apply_remote_coded`] 一件一条，删除 · 改权限经 [`apply_all`] 一组一条
+//! （照 `batch_core::delete_plan` · `chmod_plan` 出请求）：`root` ＝ 那一行所在的目录，
 //! `rel` ＝ 名字（后端路径解析按段判 `rel`）。
 //! ⚠ 下面讲池子那几节的每一句都当成**历史**读（`guard_write`、车道预算、池里那条连接）。
 //!
@@ -45,9 +46,9 @@
 //! ⚠ `confirm` 回来的那一摞由 `ops.iter().filter(|o| allowed.contains(o))` 过一遍 ⇒ **它没法凭空塞进一件调用方没交给它的操作**：
 //! 回值只起「准不准」的作用，不起「做什么」的作用。
 //!
-//! ## 为什么 ③ 是**串行**的（与上传那一路刻意不同形）
+//! ## 为什么 ③ 是**串行**的
 //!
-//! 上传那一路（[`super::transfer::run_drop`]）并行是因为传输走的是那 **4 条车道**，串行只用得到 1 条。
+//! 搬字节那一路的并发归本机后端（[`super::transfer`]），不在窗口。
 //! 而这四条命令走的是 `with_sftp`，吃的是**通道预算**（`SESSION_CHANNEL_CAP`）——
 //! 一次并发起 N 件小写操作，会把那句「2 格永远留给浏览」吃掉，
 //! 而换来的只是几个 packet 的延迟。⇒ **串行，并把理由写在这儿**。
@@ -83,7 +84,7 @@
 //! - ✅~~多选只有删除~~：多选也给「权限」（一个框、一个八进制数、出 N 件、一次问完）。
 //! - ✅~~有损名一律不许写~~：带着原始字节（`Listed::raw_name`）的有损名能改名 · 删除 · 改权限（相对段发原始字节）；
 //! 进有损名目录 · 复制 / 编辑 / 算大小有损名也做了（窗口发路径改走 `source::RemotePath`，
-//!   写面的根在有损目录里发字节 —— [`apply_remote_coded`] 的 `root_raw`）；下载有损名经那台后端按字节读回（`lossy_pull`）。
+//!   写面的根在有损目录里发字节 —— [`apply_remote_coded`] 的 `root_raw`）；下载有损名照原始字节搬（`transfer-copy`）。
 //! - 🔴**新建空文件：后端那一半有了，窗口这一半刻意没接。**
 //!   后端文件管理写面今天有 `files-create`（`O_EXCL` 新建，不给 `content` 就是空文件，
 //!   过路径解析；`src/doc/IPC-PROTOCOL.md` §10 那一节），另有
@@ -102,16 +103,6 @@ use std::sync::{Arc, Mutex};
 use super::source::{child_of, parent_dir, remote_basename, Line, Origin};
 
 use super::source::Listed;
-
-/// 行上那颗「改名」。**唯一住址** —— 判据按同一个常量去找它画出来的字。
-pub static RENAME_LABEL: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| copy_text("rsFilewinWriteops.label.rename", &[]));
-/// 行上那颗「删除」。
-pub static DELETE_LABEL: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| copy_text("rsFilewinWriteops.label.delete", &[]));
-/// 行上那颗「权限」。
-pub static CHMOD_LABEL: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| copy_text("rsFilewinWriteops.label.chmod", &[]));
 
 /// 这一行能不能被**写**（改名 / 删除 / 改权限）。**唯一住址** ——
 /// 列表画不画那三颗按钮（[`super::rows`]）与状态机接不接那一跳
@@ -196,6 +187,31 @@ impl WriteOp {
         match self {
             WriteOp::Delete { .. } => true,
             WriteOp::Chmod { .. } | WriteOp::Mkdir { .. } | WriteOp::Rename { .. } => false,
+        }
+    }
+}
+
+/// 一件一条命令的写操作：新建目录 · 改名 —— [`apply_remote_coded`] 只收这两样。
+///
+/// 删除 · 改权限**不在这里**：哪怕只一项也是一组，照 `batch_core::delete_plan` · `chmod_plan`
+/// 出请求（[`apply_all`]，批量那一路与手机用的同一份），不另拼。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SingleOp {
+    /// 同 [`WriteOp::Mkdir`]。
+    Mkdir { dir: String, name: String },
+    /// 同 [`WriteOp::Rename`]。
+    Rename {
+        from: String,
+        name: String,
+        raw: Option<Vec<u8>>,
+    },
+}
+
+impl From<SingleOp> for WriteOp {
+    fn from(op: SingleOp) -> Self {
+        match op {
+            SingleOp::Mkdir { dir, name } => WriteOp::Mkdir { dir, name },
+            SingleOp::Rename { from, name, raw } => WriteOp::Rename { from, name, raw },
         }
     }
 }
@@ -286,19 +302,20 @@ fn rel_wire(shown: &str, raw: Option<&[u8]>) -> cmd_wire::files::WirePath {
     }
 }
 
-/// 真做一件 —— 经通道说后端写面那四条命令（`files-mkdir` / `-delete` / `-rename` / `-chmod`）。
+/// 真做一件 —— 经通道说后端写面那两条一件一条的命令（`files-mkdir` / `files-rename`）。
+/// 删除 · 改权限不经这里（[`SingleOp`] 收不进它们）：一组一条，走 [`apply_all`]。
 ///
-/// 后端写面按「一个根 ＋ 一段相对名」收参。删 · 改权限的对象是当前目录的直接子项 ⇒ 「上一级 ＋ 尾段」；
-/// 新建 · 改名的名字原样交那台、带 `single: true`（合不合法、是不是一段由那台按它的平台判，不合 ⇒ 码 `bad_name`）。
+/// 后端写面按「一个根 ＋ 一段相对名」收参；名字原样交那台、带 `single: true`
+/// （合不合法、是不是一段由那台按它的平台判，不合 ⇒ 码 `bad_name`）。改名的 `from` 是当前目录的直接子项 ⇒ 「上一级 ＋ 尾段」。
 /// 根：窗口的当前目录不是合法 UTF-8 时（`root_raw = Some`）由调用方给字节（写操作的对象恒是当前目录的直接子项，
 /// 根就是当前目录）；`None` ⇒ 按显示串发。
 ///
-/// 交回**最后一趟的应答**（改权限的 `before` 撤销要用）与对端的码（就地改名 / 新建据 `exists` 在那一格下面说「已存在」）。
+/// 交回落点与对端的码（就地改名 / 新建据 `exists` 在那一格下面说「已存在」）。
 /// ⚠ 回来的 `Err` **原样**带出去（后端那句拒绝经 [`comms_inward::chan::said::said`] 翻成人话），由 [`WriteBoard::ui`] 画到窗口上。
 pub async fn apply_remote_coded(
     line: &Line,
     origin: &Origin,
-    op: &WriteOp,
+    op: &SingleOp,
     root_raw: Option<&[u8]>,
 ) -> Result<Applied, super::source::Failed> {
     use super::source::ask_typed;
@@ -308,55 +325,26 @@ pub async fn apply_remote_coded(
         Some(r) => w::WirePath(r.to_vec()),
         None => w::WirePath::from(shown.as_str()),
     };
-    let t = budget_for(op);
-    match op {
-        WriteOp::Mkdir { dir, name } => {
+    let reply = match op {
+        SingleOp::Mkdir { dir, name } => {
             let req = w::FilesMkdirReq {
                 root: root(dir.clone()),
                 rel: w::WirePath::from(name.as_str()),
                 single: Some(true),
             };
-            ask_typed(line, origin, &req, t).await.map(Applied::Path)
+            ask_typed(line, origin, &req, WRITE_BUDGET).await
         }
-        // 目录 ⇒ `recursive: true`（连同里面全部内容，后端逐条目过路径解析、按段删）；文件 ⇒ 不带（射程同此前）。
-        // 一组一项（`files-delete` 收一组）。
-        WriteOp::Delete { path, is_dir, raw } => {
-            let req = w::FilesDeleteReq {
-                root: root(parent_dir(path)),
-                items: vec![w::DeleteItem {
-                    rel: rel_wire(remote_basename(path), raw.as_deref()),
-                    recursive: is_dir.then_some(true),
-                    expect: None,
-                }],
-                ticket: None,
-            };
-            super::source::ask_one(line, origin, &req, t)
-                .await
-                .map(Applied::Deleted)
-        }
-        WriteOp::Rename { from, name, raw } => {
+        SingleOp::Rename { from, name, raw } => {
             let req = w::FilesRenameReq {
                 root: root(parent_dir(from)),
                 from: rel_wire(remote_basename(from), raw.as_deref()),
                 to: w::WirePath::from(name.as_str()),
                 single: Some(true),
             };
-            ask_typed(line, origin, &req, t).await.map(Applied::Path)
+            ask_typed(line, origin, &req, WRITE_BUDGET).await
         }
-        WriteOp::Chmod { path, mode, raw } => {
-            let req = w::FilesChmodReq {
-                root: root(parent_dir(path)),
-                items: vec![w::ChmodItem {
-                    rel: rel_wire(remote_basename(path), raw.as_deref()),
-                }],
-                mode: mode.clone(),
-                ticket: None,
-            };
-            super::source::ask_one(line, origin, &req, t)
-                .await
-                .map(Applied::Chmod)
-        }
-    }
+    };
+    reply.map(Applied::Path)
 }
 
 /// 真做准做的那一摞：删除 · 改权限按同一个根（同一个权限位）收成一组一条命令（带票：做到一半断了带同一张票再问，
@@ -387,9 +375,21 @@ pub async fn apply_all(
             WriteOp::Chmod { path, mode, .. } => {
                 (batch_core::Verb::Chmod, parent_dir(path), mode.clone())
             }
-            _ => {
-                let r = apply_remote_coded(line, origin, &op, root_raw).await;
-                out.push((op, r));
+            WriteOp::Mkdir { dir, name } => {
+                let one = SingleOp::Mkdir {
+                    dir: dir.clone(),
+                    name: name.clone(),
+                };
+                out.push((op, apply_remote_coded(line, origin, &one, root_raw).await));
+                continue;
+            }
+            WriteOp::Rename { from, name, raw } => {
+                let one = SingleOp::Rename {
+                    from: from.clone(),
+                    name: name.clone(),
+                    raw: raw.clone(),
+                };
+                out.push((op, apply_remote_coded(line, origin, &one, root_raw).await));
                 continue;
             }
         };
@@ -399,60 +399,35 @@ pub async fn apply_all(
         }
     }
     for ((verb, at, mode), group) in groups {
-        let names: Vec<String> = group
+        // 每一件 ⇒ (相对段, 名字, 是不是整棵删)。
+        let items: Vec<(w::WirePath, String, bool)> = group
             .iter()
-            .map(|op| match op {
-                WriteOp::Delete { path, .. } | WriteOp::Chmod { path, .. } => {
-                    remote_basename(path).to_string()
-                }
-                _ => String::new(),
+            .filter_map(|op| match op {
+                WriteOp::Delete { path, raw, is_dir } => Some((
+                    rel_wire(remote_basename(path), raw.as_deref()),
+                    remote_basename(path).to_string(),
+                    *is_dir,
+                )),
+                WriteOp::Chmod { path, raw, .. } => Some((
+                    rel_wire(remote_basename(path), raw.as_deref()),
+                    remote_basename(path).to_string(),
+                    false,
+                )),
+                _ => None,
             })
             .collect();
-        let rel = |op: &WriteOp| match op {
-            WriteOp::Delete { path, raw, .. } | WriteOp::Chmod { path, raw, .. } => {
-                rel_wire(remote_basename(path), raw.as_deref())
-            }
-            _ => w::WirePath(Vec::new()),
-        };
-        let (cmd, args, tree) = match verb {
-            batch_core::Verb::Delete => {
-                let req = w::FilesDeleteReq {
-                    root: root(at),
-                    items: group
-                        .iter()
-                        .map(|op| w::DeleteItem {
-                            rel: rel(op),
-                            recursive: matches!(op, WriteOp::Delete { is_dir: true, .. })
-                                .then_some(true),
-                            expect: None,
-                        })
-                        .collect(),
-                    ticket: None,
-                };
-                let tree = req.items.iter().any(|i| i.recursive == Some(true));
-                ("files-delete", serde_json::to_value(&req), tree)
-            }
+        let tree = items.iter().any(|(_, _, dir)| *dir);
+        let plan = match verb {
+            batch_core::Verb::Delete => batch_core::delete_plan(root(at), &items, machine),
             _ => {
-                let req = w::FilesChmodReq {
-                    root: root(at),
-                    items: group
-                        .iter()
-                        .map(|op| w::ChmodItem { rel: rel(op) })
-                        .collect(),
-                    mode,
-                    ticket: None,
-                };
-                ("files-chmod", serde_json::to_value(&req), false)
+                let rows: Vec<(w::WirePath, String)> = items
+                    .into_iter()
+                    .map(|(rel, name, _)| (rel, name))
+                    .collect();
+                batch_core::chmod_plan(root(at), &rows, &mode, machine)
             }
         };
-        let board = super::batch::BatchBoard::new(batch_core::Plan {
-            verb,
-            cmd,
-            args: args.unwrap_or_default(),
-            names,
-            into: None,
-            machine: machine.to_string(),
-        });
+        let board = super::batch::BatchBoard::new(plan);
         if tree {
             progress.add(
                 super::progress::Trip::Batch {
@@ -502,15 +477,7 @@ fn only_one(
     }
 }
 
-/// 这一件的往返上限：删目录（整棵树）放宽到 [`TREE_BUDGET`]，其余照旧 [`WRITE_BUDGET`]。
-pub fn budget_for(op: &WriteOp) -> std::time::Duration {
-    match op {
-        WriteOp::Delete { is_dir: true, .. } => TREE_BUDGET,
-        _ => WRITE_BUDGET,
-    }
-}
-
-/// 删一整棵树的往返上限。后端那一趟在阻塞档（开跑之后打不断），上限十万条、
+/// 走一整棵树的那一趟（解压 · 算大小借它）的往返上限。后端那一趟在阻塞档（开跑之后打不断），上限十万条、
 /// 每条两次路径解析 ⇒ 给它比单件写宽一档的等待；**这个数只管「窗口等多久」**，不管后端跑多久。
 pub const TREE_BUDGET: std::time::Duration = std::time::Duration::from_secs(120);
 
@@ -559,7 +526,7 @@ pub enum PromptKind {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum InlineGo {
     /// 新建目录 · 改名：写面那一件。
-    Op(WriteOp),
+    Op(SingleOp),
     /// 新建空文件（`files-create`，名字是那一格里敲的）。
     Create,
 }
@@ -659,31 +626,13 @@ impl WritePrompt {
         match &self.kind {
             // 就地那一格没有标题（画在列表那一行里）。
             PromptKind::Mkdir | PromptKind::Rename { .. } | PromptKind::NewFile => String::new(),
-            PromptKind::Chmod { targets } if targets.len() > 1 => copy_text(
-                "rsFilewinSelect.label.chmodMany",
-                &[("n", &(targets.len()).to_string())],
-            ),
-            PromptKind::Chmod { .. } => copy_text(
-                "rsFilewinWriteops.heading.chmodOne",
-                &[("name", &self.src_name.to_string())],
-            ),
-        }
-    }
-
-    /// 框里那几个字变成**恰好一件**真操作（批量改权限那一形请走 [`Self::to_ops`]）。
-    ///
-    /// # Errors
-    ///
-    /// 回的是**一句给用户的话**（调用方据此出声，且把框留着）——
-    /// 静默收掉的话，用户点了确认什么都没发生，与成功长得一模一样。
-    pub fn to_op(&self) -> Result<WriteOp, String> {
-        let mut ops = self.to_ops()?;
-        match ops.len() {
-            1 => Ok(ops.remove(0)),
-            n => Err(copy_text(
-                "rsFilewinWriteops.toOp.notOne",
-                &[("n", &n.to_string())],
-            )),
+            PromptKind::Chmod { targets } => batch_core::chmod_title(&match targets.as_slice() {
+                [_] => vec![self.src_name.clone()],
+                many => many
+                    .iter()
+                    .map(|t| remote_basename(&t.path).to_string())
+                    .collect(),
+            }),
         }
     }
 
@@ -691,31 +640,21 @@ impl WritePrompt {
     ///
     /// # Errors
     ///
-    /// 同 [`Self::to_op`]：一句给用户的话，框留着。
+    /// 回的是**一句给用户的话**（调用方据此出声，且把框留着）——
+    /// 静默收掉的话，用户点了确认什么都没发生，与成功长得一模一样。
     pub fn to_ops(&self) -> Result<Vec<WriteOp>, String> {
         let t = self.text.trim();
         match &self.kind {
             // 新建空文件不是写面那一件（`files-create`）：走 [`Self::to_inline`]。
             PromptKind::NewFile => Err(copy_text("rsFilewinWriteops.toOp.notOne", &[("n", "0")])),
-            PromptKind::Mkdir => Ok(vec![WriteOp::Mkdir {
-                dir: self.dir.clone(),
-                name: clean_name(t),
-            }]),
-            PromptKind::Rename { from, raw } => {
-                let name = clean_name(t);
-                // ⚠ 有损名：显示串相等不等于名字没变（旧名的真字节不是这几个字）⇒ 只对无损名判「就是原名」。
-                if remote_basename(from) == name && raw.is_none() {
-                    return Err(copy_text(
-                        "rsFilewinWriteops.toOps.sameName",
-                        &[("name", &name.to_string())],
-                    ));
-                }
-                Ok(vec![WriteOp::Rename {
-                    from: from.clone(),
-                    name,
-                    raw: raw.clone(),
-                }])
-            }
+            PromptKind::Mkdir | PromptKind::Rename { .. } => match self.to_inline()? {
+                Some(InlineGo::Op(one)) => Ok(vec![one.into()]),
+                // 这两样里回 `None` 的只有「改名改成原名」。
+                _ => Err(copy_text(
+                    "rsFilewinWriteops.toOps.sameName",
+                    &[("name", &clean_name(t))],
+                )),
+            },
             PromptKind::Chmod { targets } => {
                 if targets.is_empty() {
                     return Err(copy_text("rsFilewinWriteops.toOps.nothingToChmod", &[]));
@@ -791,18 +730,27 @@ impl WritePrompt {
     ///
     /// # Errors
     ///
-    /// 一句给用户的话（挂在那一格下面，那一格留着）。
+    /// 今天不回：名字原样交那台判，窗口不拒（`Err` 那一臂是调用方那一格「下面说一句、留着」的口）。
     pub fn to_inline(&self) -> Result<Option<InlineGo>, String> {
-        match &self.kind {
-            PromptKind::NewFile => Ok(Some(InlineGo::Create)),
-            PromptKind::Rename { from, raw } => {
-                if remote_basename(from) == clean_name(&self.text) && raw.is_none() {
-                    return Ok(None);
-                }
-                self.to_op().map(|o| Some(InlineGo::Op(o)))
+        let name = clean_name(&self.text);
+        Ok(match &self.kind {
+            PromptKind::NewFile => Some(InlineGo::Create),
+            PromptKind::Mkdir => Some(InlineGo::Op(SingleOp::Mkdir {
+                dir: self.dir.clone(),
+                name,
+            })),
+            // ⚠ 有损名：显示串相等不等于名字没变（旧名的真字节不是这几个字）⇒ 只对无损名判「就是原名」。
+            PromptKind::Rename { from, raw } if remote_basename(from) == name && raw.is_none() => {
+                None
             }
-            _ => self.to_op().map(|o| Some(InlineGo::Op(o))),
-        }
+            PromptKind::Rename { from, raw } => Some(InlineGo::Op(SingleOp::Rename {
+                from: from.clone(),
+                name,
+                raw: raw.clone(),
+            })),
+            // 改权限是框、不是就地那一格（[`Self::is_inline`] 为假）：就地没有要做的那一件。
+            PromptKind::Chmod { .. } => None,
+        })
     }
 
     /// 点了第 `i` 格（「—」⇒ 勾上；勾 ⇔ 不勾）⇒ 九格都定了的话「数字写法」那一栏跟着写成三位数，有「—」就空着。
@@ -903,27 +851,11 @@ pub struct ModeReadout {
 /// - 有一项没读到 ⇒ 「读不到现在的权限」，不预填 —— **不猜**：预填一个猜出来的值而用户直接点确认 = 静默改坏权限；
 /// - 空摞 ⇒ 同「读不到」（框本身会被 [`WritePrompt::to_ops`] 拒，不会走到这里）。
 pub fn mode_readout(modes: &[Option<u32>]) -> ModeReadout {
-    let unreadable = || ModeReadout {
-        line: copy_text("rsFilewinWriteops.mode.unreadable", &[]),
-        prefill: None,
-        modes: modes.to_vec(),
-    };
-    let Some(all) = modes.iter().copied().collect::<Option<Vec<u32>>>() else {
-        return unreadable();
-    };
-    let Some(&m) = all.first() else {
-        return unreadable();
-    };
-    if all.iter().any(|x| *x != m) {
-        return ModeReadout {
-            line: copy_text("rsFilewinWriteops.mode.mixed", &[]),
-            prefill: None,
-            modes: modes.to_vec(),
-        };
-    }
+    // 那一行与预填照 `batch_core::mode_line`（手机那一框同一份）；九格要的逐项现值留在这里。
+    let batch_core::ModeLine { line, prefill } = batch_core::mode_line(modes);
     ModeReadout {
-        line: copy_text("rsFilewinWriteops.mode.now", &[("mode", &format!("{m:o}"))]),
-        prefill: Some(format!("{m:o}")),
+        line,
+        prefill,
         modes: modes.to_vec(),
     }
 }
@@ -1028,7 +960,7 @@ pub fn apply_prefill(p: &mut WritePrompt, r: &ModeReadout) {
 
 /// 一摞写操作在窗口上的样子。**跨线程共享**（UI 线程画，tokio 那条写）。
 ///
-/// 形状照 [`super::transfer::DropBoard`] 办，含那只「敲窗口的手」——
+/// 形状照 [`super::batch::BatchBoard`] 办，含那只「敲窗口的手」——
 /// egui 只在有事发生时才画下一帧，不敲一下结果要等用户动鼠标才出现
 /// （「卡住了」与「真的没在跑」在屏幕上分不开）。
 #[derive(Clone, Default)]

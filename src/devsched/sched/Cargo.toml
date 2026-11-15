@@ -1,0 +1,19 @@
+[package]
+name = "devsched-sched"
+description = "开发调度的调度端：命令行 devsched 与库"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "devsched_sched"
+
+[[bin]]
+name = "devsched"
+path = "src/main.rs"
+
+[dependencies]
+devsched-wire.workspace = true
+devsched-policy.workspace = true
+libc.workspace = true
+regex.workspace = true

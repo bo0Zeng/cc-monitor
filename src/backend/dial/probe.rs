@@ -155,6 +155,8 @@ struct GapCount {
     code: String,
     count: usize,
     said: String,
+    /// 全表里那一行（那一句 · 不可用几项），界面照抄。
+    row: String,
 }
 
 /// `machine`：那一句里怎么称呼那台（表单里的名字）。
@@ -182,10 +184,17 @@ fn hello_facts(hello: &Value, machine: &str) -> HelloFacts {
         gaps: cant.len(),
         by_code: by_code
             .iter()
-            .map(|(code, cmds)| GapCount {
-                said: copy_core::unavailable(code, machine),
-                code: code.clone(),
-                count: cmds.len(),
+            .map(|(code, cmds)| {
+                let said = copy_core::unavailable(code, machine);
+                GapCount {
+                    row: copy_core::copy_text(
+                        "machineCard.test.gapRow",
+                        &[("reason", &said), ("n", &cmds.len().to_string())],
+                    ),
+                    said,
+                    code: code.clone(),
+                    count: cmds.len(),
+                }
             })
             .collect(),
     }
@@ -503,7 +512,8 @@ async fn run(req: &ProbeReq, dial: Arc<dyn Dial>, cells: &Cells<'_>) -> Result<P
         Config {
             machine: name.clone(),
             mine: Some(crate::common::id::BUILD_ID.to_string()),
-            tz: None,
+            // 测试连接这一趟只看接不接得上、读那几段结局，流上的帧与回包一个都不上屏 ⇒ 钟面按哪个时区写都不进人眼，照 `UTC` 明说。
+            tz: "UTC".to_string(),
             handshake: HANDSHAKE,
         },
         Some(Arc::new(link)),

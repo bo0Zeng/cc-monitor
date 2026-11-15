@@ -7,6 +7,7 @@
 //! | [`dragging_never_shows_empty_space_and_a_small_side_stays_centred`] | 拖不出空白；比画面小的方向居中 | 期望手写 |
 //! | [`keys_on_the_page_and_ctrl_keys_left_to_the_window`] | ← → + − 0 各做各的；带 Ctrl 的不认（整窗缩放） | 期望手写 |
 //! | [`an_image_offers_view_and_not_edit_and_a_text_the_other_way`] | 右键菜单那张表：图 ⇒「查看」无「编辑」；文本反过来；svg 照旧「编辑」 | 期望手写 |
+//! | [`the_page_lists_rows_with_a_view_gate_and_a_whole_name`] | 看图页挑行：带查看门且名字无损才列 | 门由合成后端那张小表给 |
 //! | [`enter_and_double_click_open_a_view_tab_and_again_switch_to_it`] | 回车 / 真双击一张图 ⇒ 同一栏开一个查看页；再开同一张 ⇒ 切过去；双击文本 ⇒ 编辑页 | 指针事件合成，命中按画出来的那一行 |
 //! | [`left_and_right_walk_the_images_of_that_folder_and_stop_at_the_ends`] | 同目录只翻图（文本跳过）、到头不绕回；标签名跟着换 | 期望手写 |
 //! | [`the_page_draws_the_picture_and_shares_one_decode_with_the_preview`] | 预览先摆出这张图，再开查看页：线上从头读只一趟、两处同一张贴图；头条 · 状态栏的字真画出来 | 实得是合成后端那本账；字从这一帧读回 |
@@ -16,7 +17,6 @@
 use super::*;
 use crate::copy::testing::{rects_of, text_in_frame, PaintedText};
 use crate::find::testing::{window_on, wire_up, Declared, FakeBackend, Wired};
-use crate::select::ActionFace;
 use crate::shell::FileWindow;
 use crate::workspace::Workspace;
 
@@ -118,9 +118,10 @@ fn shot(path: &str, size: u64) -> Shot {
 
 #[test]
 fn an_image_offers_view_and_not_edit_and_a_text_the_other_way() {
-    use crate::select::{actions_for, Action};
+    use crate::find::testing::{can_do, menu_for};
+    use crate::select::Action;
     let img = listed("logo.png", 1000);
-    let a = actions_for(&[&img]);
+    let a = can_do(&[&img]);
     assert_eq!(
         a.first(),
         Some(&Action::View),
@@ -128,18 +129,45 @@ fn an_image_offers_view_and_not_edit_and_a_text_the_other_way() {
     );
     assert!(!a.contains(&Action::Edit), "图片还给「编辑」：{a:?}");
     let txt = listed("notes.txt", 1000);
-    let a = actions_for(&[&txt]);
+    let a = can_do(&[&txt]);
     assert!(
         a.contains(&Action::Edit) && !a.contains(&Action::View),
         "{a:?}"
     );
     let svg = listed("icon.svg", 1000);
-    let a = actions_for(&[&svg]);
+    let a = can_do(&[&svg]);
     assert!(
         a.contains(&Action::Edit) && !a.contains(&Action::View),
         "svg 不照旧当文本：{a:?}"
     );
-    assert_eq!(Action::View.label(1), VIEW_LABEL.as_str());
+    assert_eq!(
+        menu_for(&[&img], None).act(Action::View).unwrap().text,
+        VIEW_LABEL.as_str()
+    );
+}
+
+/// 看图页逐行挑能看的那几张：带查看门、名字无损 ⇒ 列；带门、名字有损 ⇒ 不列；没门（文本 · 文件夹）⇒ 不列。
+#[test]
+fn the_page_lists_rows_with_a_view_gate_and_a_whole_name() {
+    let img = listed("logo.png", 1000);
+    assert!(
+        img.gates.as_ref().is_some_and(|g| g.view.is_some()),
+        "夹具那一行没带查看门 —— 下面那几比在空转"
+    );
+    assert!(viewable(&img), "带门、名字无损的图没列");
+    let mut lossy = crate::find::testing::gated_raw(Listed::plain(crate::source::Row {
+        name: "\u{FFFD}.png".into(),
+        path: "/d/\u{FFFD}.png".into(),
+        is_dir: false,
+        size: 1000,
+        lossy_name: true,
+    }));
+    lossy.gates = img.gates.clone();
+    assert!(!viewable(&lossy), "名字有损的那一行列进了看图页");
+    assert!(
+        !viewable(&listed("notes.txt", 1000)),
+        "没查看门的文本列进了看图页"
+    );
 }
 
 fn png(w: u32, h: u32) -> Vec<u8> {
@@ -311,7 +339,14 @@ async fn enter_and_double_click_open_a_view_tab_and_again_switch_to_it() {
         );
     }
     d.frame(&mut ws, vec![key(egui::Key::Enter, egui::Modifiers::NONE)]);
-    d.frame(&mut ws, Vec::new());
+    // 回车那一下照本机后端那份成品判：成品还没回来 ⇒ 记着，回来那一帧再做。
+    for _ in guard_core::wall::rounds() {
+        d.frame(&mut ws, Vec::new());
+        if ws.tabs_on(0) == 2 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+    }
     assert_eq!(ws.tabs_on(0), 2, "回车没开出查看页");
     assert!(ws.tab(0, 1).view_tab && !ws.tab(0, 0).view_tab);
     assert_eq!(Workspace::tab_title(ws.tab(0, 1)), "a.png");
@@ -405,7 +440,7 @@ async fn the_page_draws_the_picture_and_shares_one_decode_with_the_preview() {
     let (pv_tex, pv_size) = shown.expect("预览没摆出这张图");
     assert_eq!(pv_size, [1600, 1000], "预览写的不是原图多大");
     // 预览头上点「查看」（同一个执行口）。
-    ws.pane_on_mut(0).perform(crate::select::Action::View, None);
+    crate::find::testing::perform_now_async(ws.pane_on_mut(0), crate::select::Action::View).await;
     let painted = d.until_ready(&mut ws).await;
     assert_eq!(
         chunk_reads(&wired, true),

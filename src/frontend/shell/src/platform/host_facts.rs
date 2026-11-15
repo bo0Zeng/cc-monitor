@@ -10,7 +10,7 @@ use serde::Serialize;
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct HostFacts {
-    /// 系统：`linux` · `macos` · `windows`（别的原样）。根元素 `data-host-os` 与「这台电脑」那一行的系统名用它。
+    /// 系统：`linux` · `macos` · `windows`（别的原样）。只给根元素 `data-host-os` 用（机器页那一行的系统名照本机那台的机器成品）。
     pub os: String,
     /// ↗「切到对应终端窗口」在这台上是不是真的：Windows 走 Win32（`EnumWindows` · `SetForegroundWindow`）；Linux 的 X11 会话走 EWMH，
     /// Wayland 会话照常显示、点了由壳照实说「这个桌面上切不了」并给［在 cc-monitor 里打开］（结局族 `desktop-wont-switch`）；

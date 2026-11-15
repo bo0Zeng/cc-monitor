@@ -34,9 +34,6 @@
     "tests/backend/control/deploy_plan_tests.rs": [
       { "text": "本机", "use": "输入" }
     ],
-    "tests/backend/faces/session_send_tests.rs": [
-      { "text": "继续", "use": "输入" }
-    ],
     "tests/backend/plan/book_tests.rs": [
       { "text": "超时", "use": "输入" }
     ],
@@ -78,18 +75,12 @@
     "tests/frontend/filewin/editor_tests.rs": [
       { "text": "原话", "use": "输入" }
     ],
-    "tests/frontend/filewin/progress_tests.rs": [
-      { "text": "已取消", "use": "回显" }
-    ],
     "tests/frontend/filewin/select_tests.rs": [
       { "text": "回车", "use": "用例名" },
       { "text": "多选", "use": "用例名" }
     ],
     "tests/frontend/filewin/size_tests.rs": [
       { "text": "原话", "use": "输入" }
-    ],
-    "tests/frontend/filewin/source_tests.rs": [
-      { "text": "上一级", "use": "非文案" }
     ],
     "tests/common/guard-core/rules/capability_registry_tests.rs": [
       { "text": "最小化", "use": "非文案" },
@@ -183,9 +174,6 @@
     "tests/frontend/ui/new-session.vitest.ts": [
       { "text": "原话", "use": "输入" }
     ],
-    "tests/frontend/ui/settings/backend-section.vitest.ts": [
-      { "text": "本机", "use": "输入" }
-    ],
     "tests/frontend/ui/settings/config-page.vitest.ts": [
       { "text": "本机", "use": "输入" }
     ],
@@ -227,8 +215,7 @@
     "tests/frontend/ui/settings/router.vitest.ts": [
       { "text": "机器", "use": "输入" },
       { "text": "未命名机器", "use": "输入" },
-      { "text": "应用", "use": "输入" },
-      { "text": "不存在", "use": "输入" }
+      { "text": "应用", "use": "输入" }
     ],
     "tests/frontend/ui/settings/settings-skeleton.vitest.ts": [
       { "text": "本机", "use": "输入" }
@@ -255,7 +242,7 @@
       { "text": "用量", "use": "输入" }
     ],
     "tests/frontend/ui/views/history-page.vitest.ts": [
-      { "text": "不指定账号 · ~/.claude", "use": "回显" }
+      { "text": "不指定账号", "use": "回显" }
     ],
     "tests/frontend/ui/views/session-viewer-user-inputs.vitest.ts": [
       { "text": "重试", "use": "输入" },
@@ -269,10 +256,6 @@
     ],
     "tests/shots/fake/history.ts": [
       { "text": "重试", "use": "输入" }
-    ],
-    "tests/shots/fake/machine.ts": [
-      { "text": "日志", "use": "回显" },
-      { "text": "本机", "use": "输入" }
     ],
     "tests/test-support/session-viewer-rig.ts": [
       { "text": "加载失败", "use": "词义" }

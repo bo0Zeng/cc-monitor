@@ -285,10 +285,15 @@ fn a_child_id_is_found_under_its_parent_and_mapped_to_the_parent_sid() {
     assert_eq!(find(&root, "nope"), None);
     assert_eq!(find(&root, "../abc123"), None);
     assert_eq!(
-        crate::agents::child_parent_sid(&root, "def456").as_deref(),
+        crate::agents::local_homes()[0]
+            .child_parent_sid(&root, "def456")
+            .as_deref(),
         Some("s-parent")
     );
-    assert_eq!(crate::agents::child_parent_sid(&root, "nope"), None);
+    assert_eq!(
+        crate::agents::local_homes()[0].child_parent_sid(&root, "nope"),
+        None
+    );
     let _ = std::fs::remove_dir_all(&root);
 }
 

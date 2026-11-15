@@ -9,6 +9,6 @@ export type PlanCellSaid = {
  */
 trail: string | null, 
 /**
- * 它是一块的根节点 ⇒ 那一句（插它的「编号 标题」）；不是 ⇒ `null`。
+ * 根格 ⇒ 整句「块根那句 · 负责人名字 · 阶段」（没有负责人 · 阶段那一段不写）；不是根格 ⇒ `null`。
  */
 blockRoot: string | null, };

@@ -16,14 +16,18 @@ fn req(sid: &str, text: &str) -> Say {
     }
 }
 
-/// 不带附件那一句原样送。
+/// 不带附件那一句原样送（没有单独粘的那几段）。
 fn say_with(
     say: &Say,
     waiting: &dyn Fn(&str) -> bool,
     send: &dyn Fn(&TerminalInputReq) -> Result<Sent, Said>,
     resume: &dyn Fn(&Say) -> Option<Reopened>,
 ) -> Result<Delivery, Said> {
-    say_typed(say, &plain(&say.text), waiting, send, resume)
+    let send = |r: &TerminalInputReq, pastes: &[String]| {
+        assert!(pastes.is_empty(), "不带附件那一句粘了东西：{pastes:?}");
+        send(r)
+    };
+    say_typed(say, &plain(&say.text), waiting, &send, resume)
 }
 
 const SID: &str = "11111111-2222-3333-4444-555555555555";
@@ -47,7 +51,6 @@ fn at(landed: Landed, session: Option<&str>) -> Reopened {
     Ok(Opened {
         landed,
         session: session.map(str::to_string),
-        host: session.map(|_| crate::wire::TerminalHost::Tmux),
         at: None,
         line: None,
         sid: Some(SID.into()),
@@ -131,7 +134,11 @@ fn a_session_whose_terminal_is_gone_is_resumed_with_the_line() {
 #[test]
 fn a_resume_that_does_not_happen_says_why_and_delivers_nothing() {
     let cases = [
-        (Some(not("already_live")), Undeliverable::Elsewhere),
+        (Some(not("already_live")), Undeliverable::Unseen),
+        (
+            Some(at(Landed::Running, Some("p-cc"))),
+            Undeliverable::Unseen,
+        ),
         (Some(not("place_unavailable")), Undeliverable::NotResumed),
         (Some(not("start_failed")), Undeliverable::NotResumed),
         (None, Undeliverable::Refused(refused(Refused::NotKnown))),
@@ -146,6 +153,57 @@ fn a_resume_that_does_not_happen_says_why_and_delivers_nothing() {
         .unwrap();
         assert_eq!(got, Delivery::No(want));
     }
+}
+
+/// ★ 每一种送不进各说一句、写清哪一步没成：非空 · 不是缺键的占位 · 互不相同；送字被拒的照送字那一侧写好的那一句，附件的点名编号。
+/// 按变体穷举：`kind_of` 是一个不带通配的 match，加一个变体这里就编不过，逼着补一个样本。
+#[test]
+fn every_undeliverable_says_which_step_failed() {
+    const KINDS: usize = 5;
+    fn kind_of(u: &Undeliverable) -> usize {
+        match u {
+            Undeliverable::Refused(_) => 0,
+            Undeliverable::AttachmentGone(_) => 1,
+            Undeliverable::NotResumed => 2,
+            Undeliverable::Unseen => 3,
+            Undeliverable::NotRewound(_) => 4,
+        }
+    }
+    let not_yours = refused(Refused::NotYours);
+    let samples = [
+        Undeliverable::Refused(not_yours.clone()),
+        Undeliverable::AttachmentGone(vec!["1027-1200-a3f2".into(), "1027-1201-b4e3".into()]),
+        Undeliverable::NotResumed,
+        Undeliverable::Unseen,
+        Undeliverable::NotRewound("回退菜单对不上".into()),
+    ];
+    let mut kinds: Vec<usize> = samples.iter().map(kind_of).collect();
+    kinds.sort_unstable();
+    assert_eq!(
+        kinds,
+        (0..KINDS).collect::<Vec<_>>(),
+        "每个变体恰好一个样本"
+    );
+    let said: Vec<String> = samples.iter().map(Undeliverable::said).collect();
+    for (u, s) in samples.iter().zip(&said) {
+        assert!(!s.trim().is_empty(), "{u:?} 一个字都没说");
+        assert!(!s.contains('〔'), "{u:?} 用的键不在文案表里：{s}");
+    }
+    let mut uniq = said.clone();
+    uniq.sort();
+    uniq.dedup();
+    assert_eq!(uniq.len(), said.len(), "两种送不进说成了同一句：{said:?}");
+    assert_eq!(
+        Some(said[0].clone()),
+        not_yours.said.clone(),
+        "送字被拒照送字那一侧那一句"
+    );
+    assert!(
+        said[1].contains("1027-1200-a3f2") && said[1].contains("1027-1201-b4e3"),
+        "附件那一句没点名编号：{}",
+        said[1]
+    );
+    assert_eq!(said[4], "回退菜单对不上");
 }
 
 /// ★ 别的被拒（别的前端的 · 不归我们管 · 多个）不恢复，原样回。
@@ -196,15 +254,15 @@ fn a_line_with_attachments_types_what_the_agent_adapter_wrote() {
         typed.text,
         "截图在这\n@.ccm-attach/1023-1529-7c01/login.css"
     );
-    let sent = RefCell::new(Vec::<TerminalInputReq>::new());
-    let send = |t: &TerminalInputReq| {
-        sent.borrow_mut().push(t.clone());
+    let sent = RefCell::new(Vec::<(TerminalInputReq, Vec<String>)>::new());
+    let send = |t: &TerminalInputReq, pastes: &[String]| {
+        sent.borrow_mut().push((t.clone(), pastes.to_vec()));
         Ok(sent_as(SentResult::Delivered))
     };
     let got = say_typed(&r, &typed, &|_| false, &send, &no_resume).unwrap();
     assert_eq!(got, Delivery::In { resumed: false });
-    let s = &sent.borrow()[0];
-    assert_eq!(s.pastes, [abs]);
+    let (s, pastes) = &sent.borrow()[0];
+    assert_eq!(pastes, &[abs]);
     assert_eq!(s.text.as_deref(), Some(typed.text.as_str()));
     let _ = std::fs::remove_dir_all(&cwd);
 }

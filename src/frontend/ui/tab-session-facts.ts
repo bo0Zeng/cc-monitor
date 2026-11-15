@@ -38,8 +38,9 @@ export function applyFacts(tab: Tab, f: SessionFacts): FactsChange {
   tab.forkedLine = forkedLine;
 
   const files = [...tab.touchedFiles];
-  const touchedFiles = files.length !== f.touchedFiles.length || files.some((p, i) => p !== f.touchedFiles[i]);
+  const touchedFiles = files.length !== f.touchedFiles.length || files.some((p, i) => p !== f.touchedFiles[i]) || tab.touchedText !== (f.touchedText ?? null);
   tab.touchedFiles = new Set(f.touchedFiles);
+  tab.touchedText = f.touchedText ?? null;
 
   const usage = JSON.stringify(tab.usage) !== JSON.stringify(f.usage);
   tab.usage = f.usage;

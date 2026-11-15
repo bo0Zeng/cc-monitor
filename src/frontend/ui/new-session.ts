@@ -24,8 +24,7 @@ import { commands } from "./ipc/commands";
 import { isLocalOrigin, LOCAL, type Machine } from "./ipc/origin";
 import { machineName, offlineSaid } from "./control-said";
 import { DEFAULT_AGENT, agentHasAccounts, defaultLauncherOf } from "./agent-profile";
-import { fetchAccounts } from "./account-reads";
-import type { Account } from "./accounts";
+import { fetchAccountsOf } from "./account-reads";
 import { accountAvatarEl } from "./account-color";
 import { readPrefs } from "./machine-prefs";
 import { chosenAccount, type AccountAsk } from "./launch-account";
@@ -34,6 +33,7 @@ import { openLoginDrawer } from "./login-drawer";
 import { askDir, askFacts, type OpenFacts } from "./new-session-reads";
 import type { AccountUnavailable } from "./generated/AccountUnavailable";
 import type { NewOpen } from "./generated/NewOpen";
+import type { AgentPick } from "./generated/AgentPick";
 import type { ForkSlot } from "./generated/ForkSlot";
 import type { Launch } from "./generated/Launch";
 import { namesOf, readMachines } from "./machine-feed";
@@ -62,8 +62,8 @@ export interface NewSessionSpec {
   prompt?: string;
   /** 预选哪一家（历史条目的那一家；缺 ⇒ 默认那一家）。 */
   agent?: string;
-  /** 分叉：源会话 · 从哪条消息处 · 源会话的标题（框顶那一句）。 */
-  fork?: { sid: string; uuid: string; title: string };
+  /** 分叉：源会话 · 从哪条消息处（框顶那一句由那台写好，`ForkFacts.fromText`）。 */
+  fork?: { sid: string; uuid: string };
   /** 开在「一组」页：存好的那一组的名字（`null` ＝ 新建一组）；缺 ⇒ 单个页。 */
   set?: string | null;
   /**
@@ -115,16 +115,10 @@ interface AccountOpt {
 /** 那台的号（那台说进选号表的那几个：`newSession`）；那台没开多账号 / 读不出 ⇒ `null`（这一行不出）。 */
 async function listAccounts(origin: Machine, agent: string): Promise<AccountOpt[] | null> {
   if (!agentHasAccounts(agent)) return null;
-  let list: Account[];
-  let def: string | null;
-  try {
-    const st = await fetchAccounts(origin);
-    if (!st.available) return null;
-    def = st.meta?.effectiveDefault ?? null;
-    list = st.accounts.filter((a) => a.newSession === true);
-  } catch {
-    return null;
-  }
+  const st = await fetchAccountsOf(origin, agent);
+  if (!st.available) return null;
+  const def = st.meta?.effectiveDefault ?? null;
+  const list = st.accounts.filter((a) => a.newSession === true);
   if (list.length === 0) return null;
   const opts = list.map((a) => ({
     name: a.name,
@@ -195,18 +189,6 @@ function row(label: string, control: HTMLElement, boxed = true): { root: HTMLEle
   return { root, cell, note, setNote };
 }
 
-/** 那台说不行的码 ⇒ 落在那一格下的那一句（句子在文案表，那台的原话兜底）。 */
-function fieldSaid(code: string, said: string, machine: string): string {
-  switch (code) {
-    case "no_dir":
-      return copyText("launch.dir.missing", { machine });
-    case "tmux_taken":
-      return copyText("launch.tmux.taken");
-    default:
-      return said;
-  }
-}
-
 const ACCOUNT_FOLLOW = "\u0000follow";
 
 type Row = ReturnType<typeof row>;
@@ -221,14 +203,14 @@ function textInput(aria: string): HTMLInputElement {
   return i;
 }
 
-/** 分叉那一形框顶那一块：自哪个会话 ＋ 一句说明；`fromLine` 等那台报出轮次后改写。 */
-function forkBox(title: string): { box: HTMLElement; fromLine: HTMLElement } {
+/** 分叉那一形框顶那一块：自哪个会话 ＋ 一句说明；`fromLine` 等那台答了照抄它写好的那一句（答之前空着）。 */
+function forkBox(): { box: HTMLElement; fromLine: HTMLElement } {
   const box = el("div");
   box.className = s.nsFork;
   box.appendChild(icon("fork"));
   const text = el("div");
   text.className = s.nsForkText;
-  const fromLine = el("div", "", copyText("newSession.fork.fromBare", { title }));
+  const fromLine = el("div");
   fromLine.className = s.nsForkFrom;
   const forkNote = el("div", "", copyText("newSession.fork.note"));
   forkNote.className = s.nsForkNote;
@@ -401,7 +383,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   if (paged) form.appendChild(tabs.el);
 
   if (fork) {
-    const { box, fromLine } = forkBox(fork.title);
+    const { box, fromLine } = forkBox();
     form.appendChild(box);
     forkLine = fromLine;
   }
@@ -495,6 +477,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     onChange: (v) => {
       agent = v;
       paintAgent();
+      paintModel();
       void configuredCommand(origin, agent).then((c) => (cmdInput.value = c));
       void paintAccounts().then(() => handle.refresh());
     },
@@ -502,6 +485,36 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   const agentRow = row(copyText("beProfile.slot.agent"), agentSel.el, false);
   agentRow.root.hidden = true;
   single.appendChild(agentRow.root);
+
+  // 模型（那一家 `models` 非空才出；第一项「跟随」＝ 不交，那台照这个号的偏好 / 那一家自己的默认）·
+  // 推理档（选的那个模型 `efforts` 非空才出，预选 `defaultEffort`）。字与先后都照那台的成品，不写死档名、不排序。
+  const MODEL_FOLLOW = "";
+  const modelSel = select({ label: copyText("session.model.title"), options: [], onChange: () => paintEffort() });
+  const modelRow = row(copyText("session.model.title"), modelSel.el, false);
+  modelRow.root.hidden = true;
+  single.appendChild(modelRow.root);
+  const effortSel = select({ label: copyText("session.effort.title"), options: [] });
+  const effortRow = row(copyText("session.effort.title"), effortSel.el, false);
+  effortRow.root.hidden = true;
+  single.appendChild(effortRow.root);
+  const modelsOf = (): AgentPick[] => facts?.agents.find((a) => a.kind === agent)?.models ?? [];
+  const chosenModel = (): AgentPick | null => (modelRow.root.hidden ? null : (modelsOf().find((m) => m.value === modelSel.value()) ?? null));
+  const paintEffort = (): void => {
+    const efforts = chosenModel()?.efforts ?? [];
+    effortRow.root.hidden = efforts.length === 0;
+    if (efforts.length === 0) return;
+    const def = chosenModel()?.defaultEffort;
+    effortSel.setOptions(
+      efforts.map((e) => ({ value: e.value, label: e.text })),
+      efforts.some((e) => e.value === def) ? def : efforts[0].value,
+    );
+  };
+  const paintModel = (): void => {
+    const models = modelsOf();
+    modelRow.root.hidden = models.length === 0 || ask !== null;
+    modelSel.setOptions([{ value: MODEL_FOLLOW, label: copyText("mobAccounts.model.follow") }, ...models.map((m) => ({ value: m.value, label: m.text }))], MODEL_FOLLOW);
+    paintEffort();
+  };
 
   // 账号
   const accountSel = select({
@@ -669,7 +682,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   const loginBtn = (account: string): HTMLButtonElement => {
     const login = button({ label: copyText("newSession.account.login"), kind: "ghost", size: "compact" });
     login.addEventListener("click", () => {
-      openLoginDrawer({ origin, target: { kind: "account", agent, account }, onDone: () => void paintAccounts() });
+      openLoginDrawer({ origin, target: { kind: "account", account }, onDone: () => void paintAccounts() });
     });
     return login;
   };
@@ -731,8 +744,12 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     cmdInput.placeholder = copyText("newSession.command.placeholder", { launcher: safeLauncher(agent) });
   };
 
+  let acctSeq = 0;
   const paintAccounts = async (): Promise<void> => {
-    accounts = await listAccounts(origin, agent);
+    const my = ++acctSeq;
+    const got = await listAccounts(origin, agent);
+    if (my !== acctSeq) return; // 换了家 / 换了台：晚到的那一份不盖新的
+    accounts = got;
     accountRow.root.hidden = accounts === null || ask !== null;
     if (accounts === null) return;
     const opts: SelectOption[] = [];
@@ -753,27 +770,26 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
       const d = await askDir(origin, cwd, fork?.sid ?? null);
       if (seq !== dirSeq) return;
       tmuxInput.placeholder = d.tmuxName ?? "";
-      if (d.exists) cwdRow.setNote("");
-      else cwdRow.setNote(copyText("launch.dir.missing", { machine: machineName(origin) }), "warn");
+      if (d.said === null) cwdRow.setNote("");
+      else cwdRow.setNote(d.said, "warn");
     } catch {
       // 问不到不挡（点［新建］时那台照样判）。
     }
   };
 
-  /** 分叉照源会话预填：那一家 · 轮次 · 目录 · 终端（那台说得出的才填）。 */
-  const applyForkFacts = (title: string, ff: NonNullable<OpenFacts["fork"]>): void => {
+  /** 分叉照源会话预填：那一家 · 框顶那一句（那台写好的）· 目录 · 终端（那台说得出的才填）。 */
+  const applyForkFacts = (ff: NonNullable<OpenFacts["fork"]>): void => {
     agent = ff.agent || agent;
-    if (forkLine && ff.turn !== null) {
-      forkLine.textContent = copyText("newSession.fork.from", { title, n: ff.turn, time: ff.startText ?? "" });
-    }
+    if (forkLine) forkLine.textContent = ff.fromText;
     if (cwdInput.value === "" && ff.launch.cwd.kind === "known") cwdInput.value = ff.launch.cwd.value;
   };
 
   /** 那台答了能起什么：分叉照源会话预填；否则默认那一家起不了 ⇒ 换成那台能起的第一家。目录空着 ⇒ 最近用过的第一个。 */
   const applyFacts = (f: OpenFacts): void => {
     if (fork && f.fork) {
-      applyForkFacts(fork.title, f.fork);
+      applyForkFacts(f.fork);
     } else {
+      if (forkLine) forkLine.textContent = copyText("newSession.fork.unread");
       const kinds = f.agents.map((a) => a.kind);
       if (!kinds.includes(agent) && kinds.length > 0 && !kinds.includes(DEFAULT_AGENT)) agent = kinds[0];
     }
@@ -795,6 +811,8 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
       facts = await askFacts(origin, fork ? { sid: fork.sid, uuid: fork.uuid } : null);
     } catch (e) {
       factsFailed = copyText("newSession.facts.failed", { machine: machineName(origin), why: String(e) });
+      // 分叉框顶那一句要那台答了才有 ⇒ 问不到就照实说这边没读到，不空着。
+      if (forkLine) forkLine.textContent = copyText("newSession.fork.unread");
       paintTop();
       handle.refresh();
       return;
@@ -802,6 +820,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     applyFacts(facts);
     cmdInput.value = await configuredCommand(origin, agent);
     paintAgent();
+    paintModel();
     paintPlace();
     await paintAccounts();
     void checkDir();
@@ -820,6 +839,11 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     if (fork) what.fork = { sid: fork.sid, uuid: fork.uuid };
     if (place() !== "window" && !fromAlias.say && promptInput.value.trim() !== "") what.prompt = promptInput.value;
     if (!aliasRow.root.hidden && aliasSel.value() !== "") what.alias = aliasSel.value();
+    const model = chosenModel();
+    if (model) {
+      what.model = model.value;
+      if (!effortRow.root.hidden) what.effort = effortSel.value();
+    }
     // 新会话用的那份不写（新会话本来就用它）；挑了别的（含「不轮换」）⇒ 起之前写成那一份。
     const rot = rotRow.root.hidden ? forNew : rotSel.value();
     if (rot !== forNew) what.rotation = { strategy: rot === "" ? null : rot };
@@ -859,7 +883,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     return showFailure(res);
   };
 
-  /** 号选不了：那一格下是那台那一句 ＋［改用 {替代}］（有替代才给）＋［登录…］。 */
+  /** 号选不了：那一格下是那台那一句 ＋［改用 {替代}］（有替代才给）＋［登录…］（那台说给才给）。 */
   const showAccountUnavailable = (u: AccountUnavailable, said: string): void => {
     const acts: HTMLElement[] = [];
     if (u.alternative) {
@@ -872,7 +896,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
       });
       acts.push(use);
     }
-    acts.push(loginBtn(u.requested));
+    if (u.login) acts.push(loginBtn(u.requested));
     accountRow.setNote(said, "error", acts);
   };
 
@@ -902,7 +926,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     const slot = fieldRow(res.field, { cwd: cwdRow, tmuxName: tmuxRow, command: cmdRow, agent: agentRow, place: placeRow, account: accountRow });
     if (slot && !slot.root.hidden) {
       revealMore(slot);
-      slot.setNote(fieldSaid(res.code, res.said, machine), "error");
+      slot.setNote(res.said, "error");
       return false;
     }
     return { said: res.said, detail: res.detail };

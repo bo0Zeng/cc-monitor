@@ -3,4 +3,8 @@
 /**
  * `backendGaps` 的一项：这台说做不到的一类（码）· 这一类几项 · 那一句。
  */
-export type GapCount = { code: string, count: number, said: string, };
+export type GapCount = { code: string, count: number, said: string, 
+/**
+ * 全表里那一行（那一句 · 不可用几项），界面照抄。
+ */
+row: string, };

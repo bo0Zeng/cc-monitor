@@ -22,7 +22,7 @@ fn row(
         tool_id,
         tool_name: format!("{tool_id} 的名字"),
         tier,
-        path_declared: path,
+        path_declared: std::borrow::Cow::Borrowed(path),
         state,
     }
 }
@@ -83,32 +83,35 @@ fn 改过你的文件只算装口放的且今天在的且不在自己家里的()
 
 #[test]
 fn 要装只报确实缺的_查不动的不算缺_缺了起不了会话的才进角标() {
-    let got = needs_install(&report(vec![
-        row(
-            "claude-cli",
-            EnvTier::UserInstallsWePrompt,
-            "claude",
-            SurfaceState::Absent,
-        ),
-        row(
-            "tmux",
-            EnvTier::UserInstallsWePrompt,
-            "tmux",
-            SurfaceState::Absent,
-        ),
-        row(
-            "login-shell",
-            EnvTier::UserInstallsWePrompt,
-            "bash",
-            SurfaceState::Undetermined,
-        ),
-        row(
-            "mcp-server",
-            EnvTier::UserInstallsWePrompt,
-            "$MCP_COMMAND",
-            present(),
-        ),
-    ]));
+    let got = needs_install(
+        &report(vec![
+            row(
+                "claude-cli",
+                EnvTier::UserInstallsWePrompt,
+                "claude",
+                SurfaceState::Absent,
+            ),
+            row(
+                "tmux",
+                EnvTier::UserInstallsWePrompt,
+                "tmux",
+                SurfaceState::Absent,
+            ),
+            row(
+                "login-shell",
+                EnvTier::UserInstallsWePrompt,
+                "bash",
+                SurfaceState::Undetermined,
+            ),
+            row(
+                "mcp-server",
+                EnvTier::UserInstallsWePrompt,
+                "$MCP_COMMAND",
+                present(),
+            ),
+        ]),
+        crate::agents::REGISTRY,
+    );
     let ids: Vec<&str> = got.iter().map(|n| n.id).collect();
     assert_eq!(
         ids,
@@ -146,15 +149,7 @@ fn 成品五格_tmux_原样带_各类件数照各件算() {
         keys.sort();
         assert_eq!(
             keys,
-            vec![
-                "changedFiles",
-                "counts",
-                "home",
-                "own",
-                "rank",
-                "tmux",
-                "todo"
-            ]
+            vec!["changedFiles", "counts", "own", "rank", "tmux", "todo"]
         );
         assert_eq!(got["tmux"], json!(tmux), "查不动不许说成没有");
         assert_eq!(
@@ -276,9 +271,167 @@ fn 自己家里的每一样一行_文件给大小_目录不给_不在的照实�
         keys.sort();
         assert_eq!(
             keys,
-            vec!["class", "dir", "exists", "id", "path", "size_text", "what"]
+            vec![
+                "abs",
+                "absent_said",
+                "class",
+                "dir",
+                "exists",
+                "id",
+                "label",
+                "path",
+                "size_text",
+                "what"
+            ]
         );
     }
+}
+
+/// 显示名与绝对路径由后端写好：显示名是家里 `.cc-monitor/` 底下那一段（目录带尾 `/`）；
+/// 绝对路径照那台家目录的分隔符拼（Windows 家 ⇒ 全反斜杠，不混 `/`）。
+#[test]
+fn 每一行带显示名与照那台分隔符拼好的绝对路径() {
+    let rows = own_rows(std::path::Path::new(r"C:\Users\x"));
+    let by = |id: &str| rows.iter().find(|r| r["id"] == json!(id)).cloned().unwrap();
+    assert_eq!(by("profiles")["label"], json!("profiles.toml"));
+    assert_eq!(
+        by("profiles")["abs"],
+        json!(r"C:\Users\x\.cc-monitor\profiles.toml")
+    );
+    assert_eq!(by("accounts")["label"], json!("accounts/"));
+    assert_eq!(
+        by("accounts")["abs"],
+        json!(r"C:\Users\x\.cc-monitor\accounts")
+    );
+    for r in &rows {
+        let abs = r["abs"].as_str().unwrap();
+        assert!(abs.starts_with(r"C:\Users\x\.cc-monitor\"), "{abs}");
+        assert!(!abs.contains('/'), "Windows 家拼出混合分隔符：{abs}");
+        assert!(!r["label"].as_str().unwrap().starts_with('~'), "{r}");
+    }
+    let posix = own_rows(std::path::Path::new("/home/u"));
+    let p = posix.iter().find(|r| r["id"] == json!("profiles")).unwrap();
+    assert_eq!(p["abs"], json!("/home/u/.cc-monitor/profiles.toml"));
+}
+
+/// 不在盘上的那一样带后端写好的那一句（界面照抄，不按 `exists` 自己取字）；在的那一样这一格是 `null`。
+#[test]
+fn 不在盘上的那一样带写好的原因句_在的不带() {
+    let h = Home::new("absent");
+    let own = h.0.join(".cc-monitor");
+    std::fs::create_dir_all(&own).unwrap();
+    std::fs::write(own.join("profiles.toml"), b"x").unwrap();
+    let rows = own_rows(&h.0);
+    let by = |id: &str| rows.iter().find(|r| r["id"] == json!(id)).cloned().unwrap();
+    assert_eq!(by("profiles")["absent_said"], Value::Null);
+    let bin = by("bin");
+    assert_eq!(bin["exists"], json!(false));
+    assert_eq!(
+        bin["absent_said"],
+        json!(copy_core::copy_text("data.item.notCreated", &[])),
+        "不在盘上的那一行要带后端写好的那一句"
+    );
+}
+
+/// 本机那一问（monitor 交了自己的事实）多出 monitor 数据目录里界面自己那几份 ＋ 网页引擎那一行；远端那一问（没有 `client`）一行都不多。
+/// 期望逐条手写（名字 · 落点 · 是不是目录），不从被测函数派生。
+#[test]
+fn 本机那一问多出界面自己那几份_远端那一问没有() {
+    let h = Home::new("monitor-rows");
+    let data = h.0.join(".cc-monitor");
+    std::fs::create_dir_all(data.join("logs").join("backend")).unwrap();
+    std::fs::write(data.join("config.json"), b"{}").unwrap();
+    let web = h.0.join("web").join("EBWebView");
+    let got: Vec<(String, String, bool, bool)> =
+        super::monitor_rows(&h.0, &data, Some(web.as_path()))
+            .iter()
+            .map(|r| serde_json::to_value(r).unwrap())
+            .map(|r| {
+                (
+                    r["id"].as_str().unwrap().to_string(),
+                    r["path"].as_str().unwrap().to_string(),
+                    r["dir"].as_bool().unwrap(),
+                    r["exists"].as_bool().unwrap(),
+                )
+            })
+            .collect();
+    let row = |id: &str, p: &str, dir: bool, ex: bool| (id.to_string(), p.to_string(), dir, ex);
+    assert_eq!(
+        got,
+        vec![
+            row("config", "~/.cc-monitor/config.json", false, true),
+            row("autoLaunch", "~/.cc-monitor/auto-launch.json", false, false),
+            row(
+                "filewinView",
+                "~/.cc-monitor/filewin-view.json",
+                false,
+                false
+            ),
+            row("psAwait", "~/.cc-monitor/ps-await", true, false),
+            row("psRegistry", "~/.cc-monitor/ps-registry", true, false),
+            row("logs", "~/.cc-monitor/logs", true, true),
+            row("backendLogs", "~/.cc-monitor/logs/backend", true, true),
+            row("webview", "~/web/EBWebView", true, false),
+        ]
+    );
+    // 每一行都带写好的那一句（契约里的 id 都认得，没有一行落到「未识别」）。
+    for r in super::monitor_rows(&h.0, &data, None) {
+        assert_ne!(
+            r.what,
+            copy_core::copy_text("dataPage.own.unknownItem", &[("id", &r.id)]),
+            "{}",
+            r.id
+        );
+    }
+    // 那一问带不带 monitor 的事实：带 ⇒ 自家那几样之后接界面自己那几份（网页引擎那一行照它交的落点）；不带（远端那一问）⇒ 只有自家那几样。
+    let ids = |rows: Vec<OwnItem>| {
+        rows.into_iter()
+            .map(|r| r.id.into_owned())
+            .collect::<Vec<_>>()
+    };
+    let own_ids = ids(super::own_rows(&h.0));
+    assert_eq!(ids(super::rows_for(&h.0, Some(&data), None)), own_ids);
+    let client = crate::footprint::FootprintClient {
+        home: h.0.display().to_string(),
+        path: None,
+        webview: Some(web.display().to_string()),
+    };
+    let local = ids(super::rows_for(&h.0, Some(&data), Some(&client)));
+    assert_eq!(&local[..own_ids.len()], &own_ids[..]);
+    assert_eq!(
+        &local[own_ids.len()..],
+        &[
+            "config",
+            "autoLaunch",
+            "filewinView",
+            "psAwait",
+            "psRegistry",
+            "logs",
+            "backendLogs",
+            "webview"
+        ]
+    );
+}
+
+/// 界面自己那几份的说明里不说内部词（`sid` / `HWND`）。带正控。
+#[test]
+fn 界面自己那几份的说明不说内部词() {
+    let hits = |s: &str| {
+        let low = s.to_lowercase();
+        low.split(|c: char| !c.is_ascii_alphanumeric())
+            .any(|w| w == "sid" || w == "hwnd")
+    };
+    assert!(
+        hits("cc 集成的 sid → 终端 HWND 持久绑定"),
+        "正控没逮到 —— 尺子瞎了"
+    );
+    let h = Home::new("r1");
+    let bad: Vec<String> = super::monitor_rows(&h.0, &h.0.join(".cc-monitor"), Some(&h.0))
+        .into_iter()
+        .filter(|r| hits(&r.what))
+        .map(|r| format!("{}：{}", r.id, r.what))
+        .collect();
+    assert_eq!(bad, Vec::<String>::new());
 }
 
 /// 〔家里的都进这一份，判据两向，异源〕契约 crate 里 `~/.cc-monitor/` 下的每一个相对路径常量 == 这一份覆盖的路径
@@ -384,13 +537,23 @@ fn 自己家里每一样的类与_invariants_那张表一致() {
         }
     }
     let h = Home::new("invariants");
-    let rows = own_rows(&h.0);
+    // 自家那几样 ＋ 本机那一问里界面自己那几份（网页引擎那一行不住数据目录、不在那张表里）。
+    let client = crate::footprint::FootprintClient {
+        home: h.0.display().to_string(),
+        path: None,
+        webview: None,
+    };
+    let rows: Vec<Value> = super::rows_for(&h.0, Some(&h.0.join(".cc-monitor")), Some(&client))
+        .iter()
+        .map(|r| serde_json::to_value(r).unwrap())
+        .collect();
     assert!(
         rows.len() >= 10,
         "自家那几样只有 {} 样 —— 下面的逐样比是空真",
         rows.len()
     );
     let mut off = Vec::new();
+    let mut names = std::collections::BTreeSet::new();
     for r in &rows {
         let tail = r["path"]
             .as_str()
@@ -406,11 +569,19 @@ fn 自己家里每一样的类与_invariants_那张表一致() {
             Some(&want) if want == got => {}
             want => off.push(format!("{name}：成品说 {got}，§2.1 说 {want:?}")),
         }
+        names.insert(name);
     }
     assert_eq!(
         off,
         Vec::<String>::new(),
-        "自家那几样与 §2.1 那张表对不上 ⇒ 新加一样要同拍 `OWN_HOME_ENTRIES` 与 §2.1 那张表"
+        "数据位置那几行与 §2.1 那张表对不上 ⇒ 新加一样要同拍 `OWN_HOME_ENTRIES` / `MONITOR_DATA_ENTRIES` 与 §2.1 那张表"
+    );
+    // 两向：那张表里的每一样都有一行。
+    let unlisted: Vec<&String> = table.keys().filter(|k| !names.contains(*k)).collect();
+    assert_eq!(
+        unlisted,
+        Vec::<&String>::new(),
+        "§2.1 那张表列着、数据位置里却没有这一行"
     );
 }
 
@@ -439,4 +610,147 @@ fn 用户级_path_那一段算改过你的_撤回在机器设置配置栏() {
         json!({"page": "machine", "tab": "config"}),
         "撤回在机器设置「配置」栏的用户级 PATH 开关"
     );
+}
+
+/// cc-monitor 改过的项目级 MCP 配置（装记录 `touched` 那一格）：一份一行接在足迹那几行后面，路径是那份的绝对路径；没有 ⇒ 不多。
+#[test]
+fn 改过的项目_mcp_配置一份一行_接在足迹那几行后面() {
+    let base = report(vec![row(
+        "ccm",
+        EnvTier::AppInstalls,
+        "~/.bashrc",
+        present(),
+    )]);
+    let none = with_touched(shape(&base, vec![], None, vec![]), &Default::default());
+    assert_eq!(none.changed_files.len(), 1, "正控：足迹那一行");
+    let t = |names: &[&str]| crate::assets::skill_ledger::Touched {
+        before: None,
+        after: "0000000000000001".into(),
+        names: names.iter().map(|n| n.to_string()).collect(),
+        installed: Default::default(),
+    };
+    let touched = [
+        ("/p/a/.mcp.json".to_string(), t(&["x"])),
+        ("/p/b/.mcp.json".to_string(), t(&["y", "z"])),
+    ]
+    .into_iter()
+    .collect();
+    let got = with_touched(shape(&base, vec![], None, vec![]), &touched);
+    let paths: Vec<&str> = got.changed_files.iter().map(|c| &*c.path).collect();
+    assert_eq!(paths, ["~/.bashrc", "/p/a/.mcp.json", "/p/b/.mcp.json"]);
+    // 撤回在那一行上（帧命令 `mcp-project-revert {file: path}`）：项目 MCP 那几行带，足迹那一行不带、线上也不出那一格。
+    let wire = serde_json::to_value(&got).unwrap();
+    let rows = wire["changedFiles"].as_array().unwrap();
+    assert_eq!(rows[0].get("revert"), None, "{wire}");
+    assert_eq!(rows[1]["revert"], json!(true));
+    assert_eq!(rows[2]["revert"], json!(true));
+}
+
+/// 落盘声明表里故意不在「文件与数据」那一页列的：`(声明的落点, 为什么)`。
+const NOT_LISTED: &[(&str, &str)] = &[(
+    "<account-config-dir>/<credentials-file>",
+    "住每个号自己的配置目录（落点随号）· 不在 cc-monitor 的家里 · 号由账号页管",
+)];
+
+/// 落盘声明表（`relay_route_core` 的 `OWN_FILES`，只在那个 crate 的测试档里有）每一行的落点：读那份源码原文，
+/// 照 `OWN_FILES` 列的名字找各自的 `Decl` 声明，取第一个参数（字面量，或 `&str` 常量 ⇒ 再取那个常量的字面量）。
+fn declared_rels(src: &str) -> Vec<String> {
+    // 常量写成字面量，或由布局宏给（`pub const X: &str = x_rel!();` ⇒ 到 `macro_rules! x_rel` 里取那一个字面量）。
+    let first_lit = |s: &str| -> Option<String> {
+        let q = s.find('"')? + 1;
+        Some(s[q..q + s[q..].find('"')?].to_string())
+    };
+    let lit_of = |name: &str| -> Option<String> {
+        let head = format!("pub const {name}: &str = ");
+        let rhs = &src[src.find(&head)? + head.len()..];
+        if rhs.starts_with('"') {
+            return first_lit(rhs);
+        }
+        let mac = rhs.split("!()").next()?.trim();
+        first_lit(&src[src.find(&format!("macro_rules! {mac} {{"))?..])
+    };
+    let start = src
+        .find("const OWN_FILES: &[Row] = &[")
+        .expect("声明表 `OWN_FILES` 不在了 —— 改了名就来改这条");
+    let body = &src[start..start + src[start..].find("];").unwrap()];
+    body.lines()
+        .filter_map(|l| l.trim().strip_suffix(".row,"))
+        .map(|name| {
+            let at = src
+                .find(&format!("pub const {name}: Decl<"))
+                .unwrap_or_else(|| panic!("{name}：找不到它的 Decl 声明"));
+            let rest = &src[at..];
+            // 头一个构造口（`::json(` · `::foreign(` 里先出现的那个，免得跨到下一份声明）。
+            let open = ["::json(", "::foreign("]
+                .iter()
+                .filter_map(|k| rest.find(k).map(|i| i + k.len()))
+                .min();
+            let open = open.unwrap_or_else(|| panic!("{name}：认不出 Decl 的写法"));
+            let arg = rest[open..rest[open..].find(',').unwrap() + open].trim();
+            match arg.strip_prefix('"') {
+                Some(q) => q.trim_end_matches('"').to_string(),
+                None => {
+                    lit_of(arg).unwrap_or_else(|| panic!("{name}：落点常量 {arg} 取不到字面量"))
+                }
+            }
+        })
+        .collect()
+}
+
+/// ★★ 「文件与数据」那一页列全落盘声明表（`relay_route_core` 的 `OWN_FILES`）：每一份声明要么在本机那一问的行里
+/// （自家那几样 ＋ 界面自己那几样；同名，或落在列着的那个目录底下），要么在 [`NOT_LISTED`] 里写明为什么。
+/// 名单里的每一行都得真在声明表里、又真没被列（死名单红）。
+#[test]
+fn 每一份落盘声明都在本机那一问的行里_或写明为什么不列() {
+    const HOME: &str = ".cc-monitor/";
+    let own_files = declared_rels(include_str!(
+        "../../../src/common/relay-route-core/src/lib.rs"
+    ));
+    let h = Home::new("declared");
+    let client = crate::footprint::FootprintClient {
+        home: h.0.display().to_string(),
+        path: None,
+        webview: None,
+    };
+    let listed: Vec<String> = super::rows_for(&h.0, Some(&h.0.join(".cc-monitor")), Some(&client))
+        .iter()
+        .map(|r| {
+            let tail = r.path.trim_start_matches("~/").trim_start_matches(HOME);
+            if r.dir {
+                format!("{tail}/")
+            } else {
+                tail.to_string()
+            }
+        })
+        .collect();
+    let covered = |rel: &str| {
+        rel.strip_prefix(HOME).is_some_and(|tail| {
+            listed
+                .iter()
+                .any(|n| n == tail || (n.ends_with('/') && tail.starts_with(n.as_str())))
+        })
+    };
+    assert!(
+        own_files.len() >= 20 && own_files.iter().all(|r| !r.is_empty()),
+        "声明表只抽出 {} 份：抽取器坏了，下面的比较是空真",
+        own_files.len()
+    );
+    let missing: Vec<&str> = own_files
+        .iter()
+        .map(String::as_str)
+        .filter(|rel| !covered(rel) && !NOT_LISTED.iter().any(|(n, _)| n == rel))
+        .collect();
+    assert_eq!(
+        missing,
+        Vec::<&str>::new(),
+        "这几份声明了却不在「文件与数据」那一页 ⇒ 列进 `OWN_HOME_ENTRIES` 或 `MONITOR_DATA_ENTRIES`，或写进 NOT_LISTED 并写明为什么"
+    );
+    for (rel, why) in NOT_LISTED {
+        assert!(!why.is_empty(), "{rel}：名单里没写为什么");
+        assert!(
+            own_files.iter().any(|r| r == rel),
+            "{rel}：名单里这一行不在声明表里（死名单）"
+        );
+        assert!(!covered(rel), "{rel}：已经列着了，名单里这一行是死的");
+    }
 }

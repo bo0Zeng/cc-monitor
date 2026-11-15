@@ -33,6 +33,7 @@ const ONE: { [K in Kind]: unknown } = {
   runs: { sid: "s", runs: [], ended: [] },
   branch: { sid: "s", off: [], runs: [] },
   watch: { sid: "s", path: "/p/s.jsonl", seq: 0 },
+  unread: { sid: "s", said: "1" },
 };
 const FRAMES = Object.entries(ONE).map(([k, v]) => ({ [k]: v }));
 const quiet = new Proxy({}, { get: () => () => {} });

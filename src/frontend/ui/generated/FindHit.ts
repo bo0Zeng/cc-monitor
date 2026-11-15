@@ -13,10 +13,6 @@ uuid: string,
  */
 line: number, 
 /**
- * `user` · `assistant` · `report`（agent 回报）· `tool`。
- */
-kind: string, 
-/**
  * 片段三段（同全局搜索的 `Hit`）。
  */
 before: string, matched: string, after: string, 
@@ -25,9 +21,9 @@ before: string, matched: string, after: string,
  */
 turn: number, 
 /**
- * `tsMs` 按看的那一台的时区写好（今天 `HH:MM` · 昨天 · 更早带日期；读不出 ⇒ 空串）：出口那一下添（[`with_hit_text`]）。
+ * 命中行头一行（谁 · 第几轮 · 时刻，按问的范围写好）：出口那一下添（[`with_hit_text`]），界面照抄。
  */
-tsText: string, 
+meta: string, 
 /**
  * 它收在哪次工具调用的那一块里（调用 id；工具结果流里不自己成卡）；落在自己那张卡上 ⇒ 缺。
  */

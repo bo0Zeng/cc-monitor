@@ -5,7 +5,7 @@
 //!   [`Face`] 的写方法只收它，不收 `&Path` ⇒ 没过路径解析的路径递不进来。
 //! - unix 上每个写动词都是 `*at` 一族、相对那个已开的目录句柄：判过之后半路哪一层被换成链接，动的仍是判过的那一层。
 //!   Windows 那一臂仍按路径字符串动手（这一形在 Windows 上没闭合、没在真 Windows 上跑过）。
-//! - [`Face`] 只有分派那一层造（`wire/spec.rs::with_face`：按档装处理器的 `prepare`〔帧面 · CLI 面〕与资产域那扇门都经它；另有帧面给传输台的那一份），
+//! - [`Face`] 只有分派那一层造（`wire/spec.rs::with_face`：按档装处理器的 `prepare`〔帧面 · CLI 面〕与资产域那扇门都经它；另有帧面给两台之间复制 `transfer-copy` 的那一份），
 //!   按命令表声明的那一族（typed 的 `Facing` 那一档，只有文件管理写的那一族用）递给处理函数；别的命令拿不到这个值，也就写不出来。
 //! - 写方法是文件管理面的动词闭集：`O_EXCL` 新建 · 就地覆盖写 · 建目录 · 改名（含不覆盖改名两形）·
 //!   删文件 · 删空目录 · 改权限 · 建链接 · 落盘目录；外加暂存区那一层（后端自家目录，`own_dir`）。打开文件一律不跟链接（`O_NOFOLLOW`），做进方法里。
@@ -130,7 +130,7 @@ fn by_path(how: Open) -> std::fs::OpenOptions {
     o
 }
 
-/// 文件管理面的写句柄（零大小）。造只经 [`Face::issue`]；克隆只给已经拿着它的那一处（传输台把它带进起跑的那趟任务）。
+/// 文件管理面的写句柄（零大小）。造只经 [`Face::issue`]；克隆只给已经拿着它的那一处（两台之间复制把它带进本机那一端与远端那一端）。
 #[derive(Clone, Debug)]
 pub struct Face(());
 
@@ -559,7 +559,59 @@ mod at {
         ok(unsafe { libc::unlinkat(dir.as_raw_fd(), n.as_ptr(), flags) })
     }
 
-    /// 改权限，不跟链接（那一格此刻是链接 ⇒ 失败）。
+    /// 改权限，不跟链接（那一格此刻是链接 ⇒ 失败，回 EOPNOTSUPP，指着的那一份不动）。
+    /// Linux 上「不跟链接」自己做（同 musl）：`O_PATH | O_NOFOLLOW` 开那一格本身 ⇒ 看它是不是链接 ⇒ 对 `/proc/self/fd/<N>` 改；
+    /// 不交给 `fchmodat` 的 `AT_SYMLINK_NOFOLLOW`（glibc 2.32 以前带这个标志一律回 EOPNOTSUPP）。
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "文件管理面的写：相对已开目录句柄改权限，只由 `Face` 的写方法调"
+    )]
+    pub(super) fn chmod(dir: &OwnedFd, name: &OsStr, mode: u32) -> io::Result<()> {
+        let n = c(name)?;
+        // SAFETY：`n` 以 NUL 结尾、活过这一次调用；回的描述符归这里的 `OwnedFd`。
+        let fd = unsafe {
+            libc::openat(
+                dir.as_raw_fd(),
+                n.as_ptr(),
+                libc::O_PATH | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+            )
+        };
+        if fd < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        // SAFETY：刚开出来的、只归这里。
+        let cell = unsafe { OwnedFd::from_raw_fd(fd) };
+        // SAFETY：`st` 由内核填满；`cell` 活过这一次调用。
+        let mut st: libc::stat = unsafe { std::mem::zeroed() };
+        ok(unsafe { libc::fstat(cell.as_raw_fd(), &mut st) })?;
+        if st.st_mode & libc::S_IFMT == libc::S_IFLNK {
+            return Err(io::Error::from_raw_os_error(libc::EOPNOTSUPP));
+        }
+        chmod_held(&cell, mode, "/proc/self/fd/")
+    }
+
+    /// 对开着的那一格（`cell`，不是链接）经 `<fds><N>` 改权限（`fds` 在生产里是 `/proc/self/fd/`；判据换成一个不在的目录造没挂 /proc 的那一形）。
+    /// 那一格开着，`<fds><N>` 还说不在 ⇒ 是 /proc 没挂（容器 · chroot），照实回「不支持」（EOPNOTSUPP，同 glibc 与 musl），
+    /// 不把 ENOENT 原样交上去说成「路径不存在」。
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "文件管理面的写：改已开着的那一格的权限，只由 `at::chmod` 调"
+    )]
+    pub(super) fn chmod_held(cell: &OwnedFd, mode: u32, fds: &str) -> io::Result<()> {
+        let held = c(OsStr::new(&format!("{fds}{}", cell.as_raw_fd())))?;
+        // SAFETY：`held` 以 NUL 结尾；它指的是 `cell` 开着的那一格（不是链接），`cell` 活过这一次调用。
+        match ok(unsafe { libc::chmod(held.as_ptr(), mode as libc::mode_t) }) {
+            Err(e) if e.raw_os_error() == Some(libc::ENOENT) => {
+                Err(io::Error::from_raw_os_error(libc::EOPNOTSUPP))
+            }
+            r => r,
+        }
+    }
+
+    /// 改权限，不跟链接（那一格此刻是链接 ⇒ 失败）。没有 `O_PATH` 的 unix 交给系统的 `AT_SYMLINK_NOFOLLOW`。
+    #[cfg(not(any(target_os = "linux", target_os = "android")))]
     #[expect(
         clippy::disallowed_methods,
         reason = "文件管理面的写：相对已开目录句柄改权限，只由 `Face` 的写方法调"

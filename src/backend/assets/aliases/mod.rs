@@ -221,12 +221,23 @@ fn rev_of(text: Option<&str>) -> Option<String> {
     text.map(|t| format!("{}-{:016x}", t.len(), cmd_wire::fnv::fnv1a64(t.as_bytes())))
 }
 
-/// 这台的账号表（具名号）。没有账号库 / 读不了 ⇒ 空（账号页自己会说读不了）。
-fn account_table(home: &str) -> Vec<String> {
+/// 这台的账号表里各号的名字（设置页列号用；[`account_owners`] 那一份）。
+fn account_table(home: impl AsRef<std::path::Path>) -> Vec<String> {
+    account_owners(home).into_iter().map(|o| o.name).collect()
+}
+
+/// 这台的账号表（具名号，各带它那一家：别名照那一家起）。没有账号库 / 读不了 ⇒ 空（账号页自己会说读不了）。
+fn account_owners(
+    home: impl AsRef<std::path::Path>,
+) -> Vec<crate::accounts::manage::aliases::AliasOwner> {
     crate::accounts::manage::mcp_share_exec::manifest_in(home)
         .ok()
         .flatten()
-        .map(|m| m.managed().map(|a| a.name.clone()).collect())
+        .map(|m| {
+            m.managed()
+                .map(crate::accounts::manage::aliases::AliasOwner::of)
+                .collect()
+        })
         .unwrap_or_default()
 }
 
@@ -241,10 +252,20 @@ pub(crate) fn here_shell() -> Shell {
 
 /// **合并后的清单**：用户那份（`text`；不在 ⇒ 一段都没有）＋ 内置那几段（照这台的账号表现算，`accounts::with_builtins`）。
 /// 读清单的每一处（[`load`] · ccm 那一趟 `profile::read_at`）都经这里。
-pub(crate) fn book_in(home: &str, text: Option<&str>) -> profile::Book {
+pub(crate) fn book_in(home: impl AsRef<std::path::Path>, text: Option<&str>) -> profile::Book {
+    book_in_among(crate::agents::REGISTRY, home, text)
+}
+
+/// [`book_in`] 照给定注册表起内置那几段（足迹那一趟交下来的那一份）。
+pub(crate) fn book_in_among(
+    registry: &[crate::agents::Adapter],
+    home: impl AsRef<std::path::Path>,
+    text: Option<&str>,
+) -> profile::Book {
     accounts::with_builtins(
+        registry,
         text.map(profile::parse_book).unwrap_or_default(),
-        &account_table(home),
+        &account_owners(home),
         builtin_tmux(),
         &same_name_here,
     )
@@ -360,11 +381,22 @@ pub struct Store {
 
 /// 读配置文件，合上内置那几段（[`book_in`]；不在 ⇒ 只有内置的）。
 pub fn load(d: &dyn Door) -> Result<Store, String> {
+    load_among(crate::agents::REGISTRY, d)
+}
+
+/// [`load`] 照给定注册表合内置那几段（[`book_in_among`]）。
+pub fn load_among(registry: &[crate::agents::Adapter], d: &dyn Door) -> Result<Store, String> {
     let home = door::home(d)?;
-    let path = profile::path_in(&home);
+    let path = profiles_file(&home)?;
     let text = read_profiles(d, &home, &path)?;
-    let book = book_in(&home, text.as_deref());
+    let book = book_in_among(registry, &home, text.as_deref());
     Ok(Store { home, text, book })
+}
+
+/// 经文件管理面读写配置文件时那份的路径（[`profile::path_in`] 那一种拼法）：收的家已是字（门那一跳怎么转成字归门管），
+/// 拼上的一段也是字，这里不再丢字节。
+pub fn profiles_file(home: &str) -> Result<String, String> {
+    profile::path_in(home).map(|p| p.display().to_string())
 }
 
 fn read_profiles(d: &dyn Door, home: &str, path: &str) -> Result<Option<String>, String> {
@@ -414,7 +446,7 @@ pub struct Regenerated {
 /// **照合并后的清单重生成别名文件与链接**（建号 / 删号那一刻 · 后端起来那一次）：用户的配置文件一个字节不写。
 pub fn regenerate_via(d: &dyn Door) -> Result<Regenerated, RegenErr> {
     let store = load(d).map_err(RegenErr::Failed)?;
-    let path = profile::path_in(&store.home);
+    let path = profiles_file(&store.home).map_err(RegenErr::Failed)?;
     if store.book.file_problem().is_some() {
         return Err(RegenErr::Unparsed {
             path,
@@ -457,7 +489,7 @@ fn write_profiles(
     was: Option<&str>,
     text: &str,
 ) -> Result<bool, WriteErr> {
-    let path = profile::path_in(home);
+    let path = profiles_file(home).map_err(WriteErr::Refused)?;
     let mut moved = false;
     let done = write_ours(d, home, relay_route_core::PROFILES_REL, &mut |now| {
         if now != was {
@@ -567,7 +599,17 @@ pub fn read_via(
     shell: Shell,
     extra_rc: Option<&str>,
 ) -> Result<AliasListing, String> {
-    let store = load(d)?;
+    read_via_among(crate::agents::REGISTRY, d, shell, extra_rc)
+}
+
+/// [`read_via`] 照给定注册表合清单（足迹那一趟交下来的那一份）。
+pub fn read_via_among(
+    registry: &[crate::agents::Adapter],
+    d: &dyn Door,
+    shell: Shell,
+    extra_rc: Option<&str>,
+) -> Result<AliasListing, String> {
+    let store = load_among(registry, d)?;
     let home = store.home.clone();
     let extra = extra_rc.map(|raw| block::fence(&home, raw)).transpose()?;
     let names: Vec<String> = store.book.profiles.iter().map(|p| p.name.clone()).collect();

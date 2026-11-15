@@ -212,7 +212,7 @@ pub(crate) fn demand_tmux_shim(why: &str) -> String {
 ///
 /// # 沙箱：`HOME` 与 `CLAUDE_CONFIG_DIR` 都要设
 ///
-/// backend 的 `resolve_agent_home()` 是
+/// backend 的 `agents::local_homes()` 解那一家的家是
 /// `$CLAUDE_CONFIG_DIR` 优先、`$HOME/.claude` 兜底。
 /// 只设 `HOME` 的话跑起来一切正常，隔离却是假的。
 ///
@@ -1048,85 +1048,6 @@ fn the_two_resolution_paths_still_agree_on_the_order() {
     }
 }
 
-/// ★★ **防空转**：两个生产落点**真的走了**那份共用的 `ETXTBSY` 分类。
-///
-/// # 它买的是哪一格
-///
-/// `local_backend` 那四条判据全长在**纯函数**上（判别 / 重试 / 上限 / 两句话）——
-/// 实现只要不接到调用点就是死代码，而那四格照样绿。这一格钉的是**两个落点各自的
-/// 函数体里真的走了那一份**，而且**没有各自留一条裸 `spawn()` 直接放弃的路**。
-///
-/// 切函数体那一步**复用本文件的 `body_of`，
-/// 不抄第三份切法**：本文件 `block_of` 的头注逐字写着「两种切法迟早在同一段代码上
-/// 给出两个答案」。反向自检因此是**两层**：`body_of` 自带的「窗口有界 + 非空」，
-/// 加下面那条**锚点自检**（取到的体里必须有它自己那句独有的话）——
-/// 少了任一层，取不到体时下面几条都会在一段不相干的文本上恒真地绿。
-/// 两层都与排版无关（按字节数量的地板 rustfmt 一压行就假红），见 `body_of` 头注。
-///
-/// # ⚠ 射程：只到这两处
-///
-/// `backend::observe::local_query::run_query`
-/// 那处起进程的落点**刻意不在分母里**：它 exec 的是
-/// `resolve_beside_this_exe` 找到的本机后端，**不是我们刚写出来的那个文件**
-/// （`extract_embedded_to` 的产物它够不着）⇒ 那条路上不存在这个竞态的必要条件。
-/// monitor 侧起进程只经 `spawn_managed`（`src/frontend/clippy.toml` 起进程那一组挡别处的 `Command::new`）——
-/// 本条只管其中的 **2** 处。
-#[test]
-fn both_production_spawn_paths_go_through_the_shared_etxtbsy_verdict() {
-    // 🔴 **两个变量刻意不同名**：同名的话后一个遮掉前一个，`spawn_detached` 就会去
-    //    `local_backend.rs` 里找、当场「一处都找不到」。
-    //    ⇒ 前者按它头注的自述叫 `host_side`（宿主知识那一半），后者叫 `backend_side`。
-    let host_side = guard_core::production_code(include_str!(
-        "../../../src/frontend/shell/src/local_backend_host.rs"
-    ));
-    let backend_side = guard_core::production_code(include_str!(
-        "../../../src/frontend/shell/src/local_backend.rs"
-    ));
-    for (who, prod, head, anchor) in [
-        (
-            "local_backend.rs::supervise_with_stdio",
-            &backend_side,
-            "pub fn supervise_with_stdio(",
-            "SuperviseEvent::GaveUp",
-        ),
-        (
-            "local_backend_host.rs::spawn_detached",
-            &host_side,
-            "fn spawn_detached(\n    bin: &std::path::Path,\n    extra_env: &[(String, String)],",
-            // 锚点从 `process_group(0)` 换成 `Lifetime::Detached`：
-            // 那句平台原语搬进唯一出口了，这一处留下的是**它声明的策略**。
-            // 锚点的职责没变 —— 证明「切出来的体真的是这一段」。
-            "Lifetime::Detached",
-        ),
-    ] {
-        let body = body_of(prod, head);
-        // 反向自检②：`body_of` 那条只保证「窗口有界且非空」，这条保证**切到的是那一段**。
-        assert!(
-            body.contains(anchor),
-            "{who}：切出来的体里没有它自己那句 `{anchor}` —— 切到别处去了，下面几条在空转"
-        );
-        assert!(
-            body.contains("spawn_with_etxtbsy_retry("),
-            "{who}：这个落点没走那份共用分类 ——\n\
-                 「这台机器上它就是起不来」与「这一刻恰好撞上了一个会自己过去的竞态」\n\
-                 又装回同一个值、同一句话、同一个结局里了（本条防的正是这个）"
-        );
-        assert!(
-            body.contains("TransientBusy"),
-            "{who}：没有「会自己过去的竞态」那一支 —— 认得出，可结局仍然只有一个"
-        );
-        assert!(
-            body.contains("Broken"),
-            "{who}：没有「这台机器上它就是起不来」那一支"
-        );
-        assert!(
-            !body.contains("cmd.spawn()"),
-            "{who}：还留着一条裸 `cmd.spawn()` 的放弃路 —— 两条并存迟早分叉，\n\
-                 而分叉的那一天，用户在哪条路上会看到哪句话没人说得准"
-        );
-    }
-}
-
 /// 套接字是**按家算出来的**：同一个家恒等，不同的家不同；住家里那个只给本人的 `run/` 目录（宿主与后端同一个函数）。
 #[test]
 fn the_socket_follows_the_home() {
@@ -1204,7 +1125,7 @@ fn a_stranger_on_our_port_is_refused_out_loud_not_silently_reused() {
 /// `#[ignore = "…"]` —— 那样的起真后端的测试，本条与那条姊妹判据谁也够不着。
 /// ⇒ 正题在本文件下面那条
 /// [`every_test_that_starts_the_real_backend_demands_a_private_tmux`]：
-/// 它的人群按「**那个二进制哪来的**」派生，**两个文件一起扫**，不看任何属性。
+/// 它的人群按「**那个二进制哪来的**」派生，**四个文件一起扫**，不看任何属性。
 /// **本条留着**，它守的是一格更窄但仍然真的性质（`#[ignore]` 那一族的形状回归），
 /// 别把它读成「起真后端这件事有人守了」—— 守它的是下面那条。
 #[test]
@@ -1329,15 +1250,18 @@ fn the_one_shim_gate_really_fails_closed() {
 /// # 人群怎么派生的 —— 按「**那个二进制哪来的**」，不按「怎么标记的」
 ///
 /// 一条测试会不会装全局 hook，取决于**它起的是不是那个真 backend**。
-/// ⇒ 判准取**二进制的来历**，三条（默认拒绝，出现任何一条就进人群）：
+/// ⇒ 判准取**二进制的来历**，五条（默认拒绝，出现任何一条就进人群）：
 ///
 /// | 来历 | 长什么样 |
 /// |---|---|
-/// | 内嵌那份 | 源码里出现 `embedded-backends` |
+/// | 内嵌那份 | 代码里出现字面量 `"embedded-backends"`（带引号） |
 /// | e2e 传进来的那份 | 源码里出现 `CCM_E2E_BACKEND` |
 /// | 共享 e2e 沙箱 | 源码里出现 `E2eSandbox::demand` |
+/// | 壳那份本机流读数（`tests/evidence/local-lines.py`） | 代码里出现字面量 `"CF1_BACKEND"` |
+/// | 壳那份 sftp 回环读数（`tests/evidence/sftp-loopback.py`） | 代码里出现字面量 `"SR1B_LOOPBACK"` |
 ///
-/// **两个文件一起扫**：`local_backend_host_tests.rs` 与 `local_backend_tests.rs`。
+/// **四个文件一起扫**：`local_backend_host_tests.rs` · `local_backend_tests.rs` ·
+/// `deploy_tests.rs` · `local_lines_tests.rs`。`#[tokio::test(..)]` 那一行切块时也当边界。
 ///
 /// # 要求：fail-closed 地要一个私有 tmux **并且真的用上它** —— 两种合法形态
 ///
@@ -1355,7 +1279,8 @@ fn the_one_shim_gate_really_fails_closed() {
 ///       只登记，不给 ㈠ 再加一层文本钉。
 ///    ㈡ 本体里有一行**同时**含 `"PATH"` 与 `"{<绑定名>}:`（**第三道锁**：挂进 `PATH` 最前面）
 ///       —— 注意开头那个**双引号**：插值必须是那个格式串的**串首**，不只是「冒号左边」；
-///    ㈢ `PATH` 作为 env 键在本体里**恰好被写一次**（**同一张 `envs` 里后写的赢**）。
+///    ㈢ `PATH` 作为 env 键在本体里**恰好被写一次**（**同一张 `envs` 里后写的赢**；
+///       壳那两份不走 `envs`、直接 `Command::env("PATH", ..)`，那一形也算一次写）。
 /// ② 委托给 `E2eSandbox::demand()` —— 而**转发者自己被本条单独钉住**（见下面第 ③ 段），
 ///    ㈠㈡㈢ 三格都钉，不然「委托」就是一张空头支票。
 ///    ⚠ 委托方**自己本体里 `PATH` 要写 0 次**（㈢ 在这条腿上的取值）：`PATH` 全由
@@ -1374,8 +1299,9 @@ fn the_one_shim_gate_really_fails_closed() {
 /// 1. **人群是「起真后端」，不是「起任何进程」。** 用**自造脚本**喂 `supervise()`
 ///    的那几条（`a_child_that_floods_stdout_and_exits_is_still_detected_as_dead` 等）
 ///    **刻意不在人群里**：它们起的东西不装 tmux hook。判准是「后果」不是「动作」。
-/// 2. **扫描面是这两个文件。** 别处新写一条起真后端的测试，本条看不见。
-///    `CCM_E2E_BACKEND` 与 `E2eSandbox` 今天只在这两个文件里；`embedded-backends` 还出现在
+/// 2. **扫描面是这四个文件。** 别处新写一条起真后端的测试，本条看不见。
+///    `CCM_E2E_BACKEND` 与 `E2eSandbox` 今天只在头两个文件里，`CF1_BACKEND` · `SR1B_LOOPBACK`
+///    只在壳那两份与它们的读数脚本里；`embedded-backends` 还出现在
 ///    别的源文件里（构建脚本 · 登记表数据 · 文档注释 / 报错文案），那几处没有起真后端的测试。
 ///    扫描面外**没有守**。
 /// 3. **守卫自己要排除掉。** 判准是「本体里出现 `include_str!` 这个宏」——
@@ -1390,16 +1316,16 @@ fn the_one_shim_gate_really_fails_closed() {
 ///    ㈠㈡㈢ 三格判的都是**源码文本的形状** ——「某一行长什么样」与「某个东西在本体里出现几次」——
 ///    它们**不追这个值的去向**。⇒ 量过的几形逮不到的，逐形登记在第 6 条。
 ///    ㈡ 钉的是写法，写法与解析结果之间那一跳靠 `PATH` 的语义（最前面那个目录赢）。
-/// 5. 🔴 **第四种来历逮不到**。
-///    形状：一条**普通 `#[test]`**（无 `#[ignore]`、无 `cfg`）、**就在这两个文件里**、
+/// 5. 🔴 **第六种来历逮不到**。
+///    形状：一条**普通 `#[test]`**（无 `#[ignore]`、无 `cfg`）、**就在这四个文件里**、
 ///    真调 `local_backend::supervise_with_stdio(..)` 起后端，只把二进制来历换成
-///    **第四种**取法（例如一个新环境变量）⇒ 三条来历字面量一条都不出现
+///    **第六种**取法（例如一个新环境变量）⇒ 五条来历字面量一条都不出现
 ///    ⇒ 它不进人群，本条与两条姊妹守卫**全不出声**。
 ///    ⚠ 它也**不会被别的网接住**：起进程那一组 clippy 名单只管**生产段**，测试段整段放开，
 ///    而这样一条测试调的又正是生产侧那个合法的落点 ⇒ clippy 照样绿。
 ///
 ///    **为什么不换成「按调用派生」的判准**（`调了 supervise* / spawn_detached
-///    且没 fail-closed 地要 shim`）—— 在同一个扫描面上量过：
+///    且没 fail-closed 地要 shim`）—— 量于扫描面还只有头两个文件的时候（壳那两份加进来之前）：
 ///
 ///    | 判准 | 人群 | 真阳 | 假阳 | 真阳率 |
 ///    |---|---|---|---|---|
@@ -1419,21 +1345,21 @@ fn the_one_shim_gate_really_fails_closed() {
 ///    而且候选判准**还净漏 2 条今天已经管住的**：两条 `e2e_*` 委托给 `E2eSandbox`，
 ///    自己不直接调 `supervise*` ⇒ 候选覆盖 4 条，现判准覆盖 6 条。
 ///    ⇒ **选：留现判准，把这一形逐形登记在此**。这一形没有机器守着，
-///    靠的是代码评审 + 本段这条登记。加第四种取二进制的方式，
+///    靠的是代码评审 + 本段这条登记。加新一种取二进制的方式，
 ///    **把它加进下面 `PROVENANCE` 那张表**，那是本条唯一的入口。
 /// 6. 🔴 **㈡㈢ 判的是文本形状，不追值的去向**（逐形登记，不加钉）。
-///    分母 = 本条扫描面那两个文件：
+///    分母 = 本条扫描面那四个文件（落点七个：走「自己要」的六条测试 ＋ 转发者一处）：
 ///
 ///    | # | 逮不到什么 | 为什么 | 今天有几处 |
 ///    |---|---|---|---|
-///    | 6a | 那张 `envs` 写得完全对，却**根本没被交给起进程那一跳**（换成另一个 vec / `clone()` 被丢掉） | ㈡㈢ 只读源码文本，**不做数据流** | **0**（五个落点都真把那张表传进 `supervise*`） |
+///    | 6a | 那张 `envs` 写得完全对，却**根本没被交给起进程那一跳**（换成另一个 vec / `clone()` 被丢掉） | ㈡㈢ 只读源码文本，**不做数据流** | **0**（走 `envs` 的五个落点都真把那张表传进 `supervise*`；壳那两份不走 `envs`，`.env("PATH", ..)` 直接写在起进程那一串上） |
 ///    | 6b | 绑定名**被重新绑**：`let shim = var(SHIM).expect(..); … let shim = <别的东西>;` | 绑定名从「要 shim 那一行」现取，**只取第一处**，后面再绑一次它看不见 | **0** |
-///    | 6c | `PATH` 由本体**调的另一个函数**追加（helper / builder），或写在转发者那 **20 行窗口之外** | ㈢ 数的是**本体**（转发者是 `demand()` 起 20 行）里的处数 | **0**（今天五处全是本体里的字面写法） |
+///    | 6c | `PATH` 由本体**调的另一个函数**追加（helper / builder），或写在转发者那 **20 行窗口之外** | ㈢ 数的是**本体**（转发者是 `demand()` 起 20 行）里的处数 | **0**（今天七处全是本体里的字面写法） |
 ///    | 6d | ㈢ 的「写」口径是**正向数写位形状**（`"PATH"` 后面紧跟一个方法调用）⇒ 键名**拼出来**的（`concat!("PA","TH")` / `format!("PAT{}", "H")` 这类）数不到 | 按字面串数，不是按语义数 | **0** |
 ///    | 6e | 反方向的**假红**：把 `let old = var("PATH")…;` 提到上一行、写 `format!("{shim}:{old}")` ⇒ 那一行没有 `"PATH"` ⇒ ㈡ 判不合规 | ㈡ 要求 `"PATH"` 与插值**同一行** | **0**。⚠ 这一形是**看得见的**（红了就会去读诊断），与假绿不是一种代价 |
 ///    | 6f | 委托腿上，第二条 `PATH` 被写进 **`E2eSandbox::envs()` 或别的 helper**，而不是测试本体 | ㈢ 在委托腿上数的是**测试本体**（要 0 次）；helper 不是测试块，不进人群 | **0**（`envs()` 逐字 `vec![self.shim_path.clone()]`） |
-///    | 6g | **shim 那条绑定本身是个复合串**：`let shim = format!("/usr/bin:{}", var(SHIM).expect(..));` ⇒ ㈡㈢ 两格全绿，而后端实得 `PATH = /usr/bin:<shim>:<真PATH>`，真 `/usr/bin/tmux` 先被解析到 | ㈡ 只看**绑定名**出现在串首，**不看那个名字里装的是什么** | **0**（五个落点的绑定行右手边全部以 `std::env::var("CCM_E2E_TMUX_SHIM_BIN")` 打头） |
-///    | 6h | 写位形状不是「`"PATH"` 后紧跟方法调用」的写法。枚举过四种 —— ㈠ `(format!("PATH"), v)` · ㈡ `("PATH", v)` 这种 `&str` 元组 · ㈢ `cmd.env("PATH", v)` · ㈣ `map.insert("PATH", v)` | 正向数只认那一种形状，只少算（假绿）、不多算 | **0**。㈡ 过不了 `envs: Vec<(String, String)>` 的类型；㈢㈣ 根本不走 `envs` 这条路（属 6a）；只有 ㈠ 是「类型过得了、也真进 `envs`」的 |
+///    | 6g | **shim 那条绑定本身是个复合串**：`let shim = format!("/usr/bin:{}", var(SHIM).expect(..));` ⇒ ㈡㈢ 两格全绿，而后端实得 `PATH = /usr/bin:<shim>:<真PATH>`，真 `/usr/bin/tmux` 先被解析到 | ㈡ 只看**绑定名**出现在串首，**不看那个名字里装的是什么** | **0**（七个落点的绑定行右手边全部直接是 `demand_tmux_shim(..)` 那一个调用） |
+///    | 6h | 写位形状不是「`"PATH"` 后紧跟方法调用」的写法。枚举过四种 —— ㈠ `(format!("PATH"), v)` · ㈡ `("PATH", v)` 这种 `&str` 元组 · ㈢ `cmd.env("PATH", v)` · ㈣ `map.insert("PATH", v)` | 正向数认两种形状：「`"PATH"` 后紧跟方法调用」与「`"PATH"` 前面紧挨 `.env(`」；别的只少算（假绿）、不多算 | **0**。㈡ 过不了 `envs: Vec<(String, String)>` 的类型；㈢ 今天算一次写（壳那两份就是这一形）；㈣ 不走 `envs` 这条路（属 6a）；㈠ 是「类型过得了、也真进 `envs`」的 |
 ///    | 6i | **先把键名绑到一个名字上**：`const KEY: &str = "PATH"; … (KEY.to_string(), <真 PATH>)` ⇒ 正向数看的是**字面量**，而 `"PATH"` 后面跟着的是 `;` ⇒ 一处都数不到 | 正向数认的是「字面量与转换**相邻**」；绑一次名，转换就落在名字上了 | **0**。只登记、不加钉 —— 这一族是构造性的 |
 ///
 ///    ⚠ 分母是「一个键落进 `envs` 的所有走法」，那个数给不出 ⇒ 这里只写「**枚举过的这几种**」。
@@ -1537,7 +1463,21 @@ fn every_test_that_starts_the_real_backend_demands_a_private_tmux() {
     const GATE: &str = "demand_tmux_shim(";
     const DELEGATE: &str = "E2eSandbox::demand";
     // 真后端的三种来历。**默认拒绝**：出现任何一条就进人群。
-    const PROVENANCE: [&str; 3] = ["embedded-backends", "CCM_E2E_BACKEND", DELEGATE];
+    // ⚠ 内嵌目录与壳那两份的两个变量认的是**带引号的字面量**（代码里取二进制那一处的写法）：
+    //   `deploy_tests.rs` 有一条读发版流水线的判据，报文里写着 `embedded-backends` 这个目录名，
+    //   它不起进程；不带引号就会把它算进人群（假红）。
+    const PROVENANCE: [&str; 5] = [
+        "\"embedded-backends\"",
+        "CCM_E2E_BACKEND",
+        DELEGATE,
+        "\"CF1_BACKEND\"",
+        "\"SR1B_LOOPBACK\"",
+    ];
+    // 切块的边界：`guard_core::test_attr_chunks` 只认 `#[test]` 一形，而壳那份 `sr1b_…`
+    // 是 `#[tokio::test(..)]`。不当边界的话它并进前一条读源码的判据块，被「守卫排除」一起滤掉。
+    // ⇒ 切块之前把以它打头的那一行换成 `#[test]`（一行换一行，行位不变）。
+    const ASYNC_TEST_ATTR: &str = concat!("#[tokio::te", "st");
+    const TEST_ATTR: &str = concat!("#[te", "st]");
     // 两条合法的腿。**取常量比字面量**：下面的反空真③要按腿数人，
     // 而按字面量数就会在改一个字的时候静默数成 0（那正是「人群缩水」那一族）。
     const LEG_SELF_SERVED: &str = "自己要 + 自己挂";
@@ -1604,7 +1544,7 @@ fn every_test_that_starts_the_real_backend_demands_a_private_tmux() {
     // ⚠ 第一格的标签也跟着改成 `_tests.rs` —— 下面那张「必须在人群里」的名单是
     // `文件.rs::符号` 形的**住址**，而 `structural_scan::every_symbol_address_in_the_sources_still_resolves`
     // 会逐条核它指的符号今天住哪儿。
-    let files: [(&str, &str); 2] = [
+    let files: [(&str, &str); 4] = [
         (
             "local_backend_host_tests.rs",
             include_str!("local_backend_host_tests.rs"),
@@ -1613,6 +1553,8 @@ fn every_test_that_starts_the_real_backend_demands_a_private_tmux() {
             "local_backend_tests.rs",
             include_str!("local_backend_tests.rs"),
         ),
+        ("deploy_tests.rs", include_str!("deploy_tests.rs")),
+        ("local_lines_tests.rs", include_str!("local_lines_tests.rs")),
     ];
 
     // ── 🔴🔴 剥法按**整份文件**跑，切块在**剥完之后**做 ──
@@ -1651,7 +1593,16 @@ fn every_test_that_starts_the_real_backend_demands_a_private_tmux() {
     //   RHS 不以语料变量打头，`stripped` 就不进集合。语义与 `map().collect()` 逐字等同。
     let mut stripped: Vec<(&str, String)> = Vec::new();
     for (who, src) in files {
-        stripped.push((who, guard_core::strip_comment_lines(src)));
+        let mut cut: Vec<&str> = Vec::new();
+        let plain = guard_core::strip_comment_lines(src);
+        for l in plain.lines() {
+            cut.push(if l.trim_start().starts_with(ASYNC_TEST_ATTR) {
+                TEST_ATTR
+            } else {
+                l
+            });
+        }
+        stripped.push((who, cut.join("\n")));
     }
     // ⚠ 判人群要看**代码**，不能看文档注释 —— 本条的头注里就写着那三条来历字面量。
     //   （注释里写着 `#[ignore]` 与 `CCM_E2E_BACKEND` 的守卫，看注释就会把自己算进人群。）
@@ -1763,7 +1714,8 @@ fn every_test_that_starts_the_real_backend_demands_a_private_tmux() {
     //   类型封死的是**类型**，不是「字面量与转换的相邻关系」。「写位」只枚举到这几种，
     //   一个键最终落进 `envs` 的所有走法给不出分母。这一形登记为 `6i`。
     //   量过的写位形里正向数数不到的：`("PATH", v)` 这种 `&str` 元组**类型过不了**；
-    //   `cmd.env("PATH", v)` 与 `map.insert("PATH", v)` **不走 `envs` 这条路**（属 6a 那一族）；
+    //   `map.insert("PATH", v)` **不走 `envs` 这条路**（属 6a 那一族）；
+    //   `cmd.env("PATH", v)` 也不走 `envs`，但壳那两份就这么起后端 ⇒ 下面另认它一形（`CMD_ENV_KEY`）；
     //   `(format!("PATH"), v)` 类型过得了、也真进 `envs`，登记进 `6h`。
     //   ⇒ ㈢ 量到的假绿面：`6d`（键名拼出来）＋ `6h` 的那一格 ＋ `6i`（先把字面量绑到名字上）。
     //   量过的 8 种纯读写法上，正向数把纯读误判成写 0/8，减法 6/8。
@@ -1780,10 +1732,17 @@ fn every_test_that_starts_the_real_backend_demands_a_private_tmux() {
     //   · 走「自己要 + 自己挂」的 ⇒ **恰好 1**（那一条就是它自己写的 shim 那条）；
     //   · 走「委托」的 ⇒ **恰好 0** —— `PATH` 全由 `E2eSandbox::demand()` 一处代办
     //     （`envs()` 逐字 `vec![self.shim_path.clone()]`），委托方**自己再写一条就是覆盖**。
+    // ⚠ 写位还有第二形：壳那两份（`sr1b_…` · `a_real_backend_feeds_…`）不走 `envs`，
+    //   直接 `Command::new(..).env("PATH", ..)` 起后端 ⇒ `"PATH"` 前面（隔着空白）紧挨 `.env(`
+    //   也算一次写。`.env_remove(` 不算（前面那一格是 `.env_remove(`，不等于 `.env(`）。
+    const CMD_ENV_KEY: &str = ".env(";
     let path_writes = |code: &str| -> usize {
         let norm = code.replace("String::from(\"PATH\")", "\"PATH\".to_string()");
         norm.match_indices("\"PATH\"")
-            .filter(|&(i, m)| norm[i + m.len()..].chars().find(|c| !c.is_whitespace()) == Some('.'))
+            .filter(|&(i, m)| {
+                norm[i + m.len()..].chars().find(|c| !c.is_whitespace()) == Some('.')
+                    || norm[..i].trim_end().ends_with(CMD_ENV_KEY)
+            })
             .count()
     };
     // 报文只贴**证据**，不替读者下结论（一条判据的报文说假话，比它红错更坏）。
@@ -1835,7 +1794,10 @@ fn every_test_that_starts_the_real_backend_demands_a_private_tmux() {
             }
             let name = code
                 .lines()
-                .find_map(|l| l.trim().strip_prefix("fn "))
+                .find_map(|l| {
+                    let t = l.trim();
+                    t.strip_prefix("async ").unwrap_or(t).strip_prefix("fn ")
+                })
                 .and_then(|r| r.split_once('('))
                 .map(|(n, _)| n.to_string())
                 .unwrap_or_else(|| "<读不出名字>".to_string());
@@ -1897,7 +1859,7 @@ fn every_test_that_starts_the_real_backend_demands_a_private_tmux() {
     // ── 反空真①：抽取器真的切出了东西 ────────────────────────────────
     assert!(
         total_chunks >= 40,
-        "两个文件一共只切出 {total_chunks} 个测试块 —— 切法坏了，下面整条在空转"
+        "四个文件一共只切出 {total_chunks} 个测试块 —— 切法坏了，下面整条在空转"
     );
     // ── 反空真②：人群非空，而且**该在里面的那几条真在里面** ───────────
     //    〔判据规范 7：先证「够得到」（地板），再问有没有违例；否则「零违例」是空真。〕
@@ -1913,6 +1875,9 @@ fn every_test_that_starts_the_real_backend_demands_a_private_tmux() {
         // `local_backend_tests.rs` 里起真后端验本机 tmux 帧进 monitor 账本的那条随那本账删了。
         "local_backend_tests.rs::the_local_backend_host_really_registers_an_inbound_client",
         "local_backend_tests.rs::e2e_the_supervisor_restarts_a_real_backend_after_it_is_killed",
+        // 壳那两份：二进制由读数脚本经环境变量交进来，`Command::env` 直接起。
+        "deploy_tests.rs::sr1b_loopback_deploy_and_transfer_through_the_resident_backend",
+        "local_lines_tests.rs::a_real_backend_feeds_local_lines_through_the_production_read_loop",
     ] {
         assert!(
             names.contains(&must),
@@ -2347,14 +2312,11 @@ fn the_host_never_writes_the_resident_dir_and_carries_no_key() {
         "{\"attach\":true,\"tz\":\"Asia/Shanghai\"}\n",
         "看的这一台的时区跟在旁边一格（后端按 `cmd_wire::attach::AttachLine` 读 `tz`）"
     );
-    // 本机换装只认同一版（`hello_verdict`）⇒ 不带这一版、不问新旧；名单照本机名单台此刻那份带上。
+    // 本机换装只认同一版（`hello_verdict`）⇒ 不带这一版、不问新旧；名单照本机名单台此刻那份带上；要本机后端折好的成品（壳不折）。
     guard_core::find_pinned(&host, "let tz = crate::inbound_client::viewer_tz();")
         .expect("本机常驻那条 attach 行的时区不是请求信封那同一个");
-    guard_core::find_pinned(
-        &host,
-        "attach_line(tz.as_deref(), None, Some(watch.clone()))",
-    )
-    .expect("本机常驻那条 attach 行带了这一版 / 没带名单");
+    guard_core::find_pinned(&host, "folded_attach_line(tz.as_deref(), watch.clone())")
+        .expect("本机常驻那条 attach 行带了这一版 / 没带名单 / 没要折好的成品");
     for w in ["token", "LISTEN_TOKEN"] {
         assert!(
             !guard_core::contains_word(&host, w),
@@ -2813,12 +2775,8 @@ fn e2e_children_of_the_resident_backend_carry_none_of_its_own_env() {
             log.display(),
             shim
         );
-        std::fs::write(wrap.join("tmux"), script).expect("写记账的 tmux");
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(wrap.join("tmux"), std::fs::Permissions::from_mode(0o755))
-                .expect("chmod");
-        }
+        // 马上被起 ⇒ 经 `write_exe` 写（本进程写的写端会漏进别的判据线程 fork 出来的子进程 ⇒ ETXTBSY）。
+        test_home::write_exe(&wrap.join("tmux"), &script);
         let mut env = sb.envs();
         for (k, v) in env.iter_mut() {
             if k == "PATH" {
@@ -3033,18 +2991,14 @@ fn the_stop_run_gives_up_at_its_deadline() {
     let dir = std::env::temp_dir().join(format!("lbh-stop-deadline-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("建临时目录");
     let fake = dir.join("ccm");
-    std::fs::write(
+    // 马上被起 ⇒ 经 `write_exe` 写（理由同上）。
+    test_home::write_exe(
         &fake,
-        format!(
+        &format!(
             "#!/bin/sh\nexec sleep {}\n",
             2 * guard_core::wall::CEILING_SECS
         ),
-    )
-    .expect("写替身");
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).expect("chmod");
-    }
+    );
     let t0 = std::time::Instant::now();
     let got = run_resident_stop_within(&fake, std::time::Duration::from_millis(300));
     let took = t0.elapsed();
@@ -3529,7 +3483,7 @@ fn hx1_the_monitor_home_dir_is_born_private_and_an_existing_one_is_left_alone() 
     assert_eq!(mode(&fresh), 0o700);
     let old = base.join("old");
     std::fs::create_dir_all(&old).expect("预置");
-    std::fs::set_permissions(&old, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    test_home::set_dir_mode(&old, 0o755);
     crate::platform::fs::ensure_private_dir(&old).expect("已在");
     assert_eq!(mode(&old), 0o755, "已在的那一层被改了权限");
     std::fs::remove_dir_all(&base).ok();
@@ -4226,14 +4180,11 @@ fn stopping_with_no_handle_still_stops_whoever_listens_in_our_home() {
     let args = dir.join("args");
     let fake = dir.join("ccm");
     let script = format!(
-        "#!/bin/sh\nprintf '%s ' \"$@\" > '{}'\necho '{{\"stopped\":\"graceful\",\"pid\":4242}}'\n",
+        "#!/bin/sh\nprintf '%s ' \"$@\" > '{}'\necho '{{\"stopped\":\"graceful\",\"pid\":4242,\"said\":\"替身·收尾停了\"}}'\n",
         args.display()
     );
-    std::fs::write(&fake, script).expect("写替身");
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).expect("chmod");
-    }
+    // 马上被起 ⇒ 经 `write_exe` 写（理由同上）。
+    test_home::write_exe(&fake, &script);
     let asked = std::sync::atomic::AtomicU32::new(0);
     let bin = || {
         asked.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -4255,8 +4206,8 @@ fn stopping_with_no_handle_still_stops_whoever_listens_in_our_home() {
     let argv = std::fs::read_to_string(&args).unwrap_or_default();
     let _ = std::fs::remove_dir_all(&dir);
     assert_eq!(
-        (got.stopped, got.pid),
-        (StopWord::Graceful, Some(4242)),
+        (got.stopped, got.pid, got.said.as_str()),
+        (StopWord::Graceful, Some(4242), "替身·收尾停了"),
         "口上占着上一版时「停」谎报了「没在跑」"
     );
     assert_eq!(asked.load(std::sync::atomic::Ordering::SeqCst), 1);
@@ -4280,4 +4231,78 @@ fn stopping_with_no_handle_still_stops_whoever_listens_in_our_home() {
             "`stop_listener_on` 里没有 `{needle}`：{on}"
         );
     }
+}
+
+/// 本机那一格的点 · 语气 · 词 · 句就是同一张字表（`copy_core::machine::local`）那一格：壳只交关系与原因，自己不挑。
+#[test]
+fn every_local_backend_case_is_the_shared_machine_table_cell() {
+    use crate::ui_contract::LocalBackend as L;
+    use copy_core::machine::{local, Local, LocalLook};
+    let _g = crate::inbound_client::local_origin_test_lock();
+    let machine = copy_core::local_machine();
+    let look = |l: &L| match l {
+        L::Up => None,
+        L::Starting {
+            dot,
+            tone,
+            word,
+            said,
+        }
+        | L::Down {
+            dot,
+            tone,
+            word,
+            said,
+            ..
+        }
+        | L::Older {
+            dot,
+            tone,
+            word,
+            said,
+            ..
+        }
+        | L::Newer {
+            dot,
+            tone,
+            word,
+            said,
+            ..
+        } => Some(LocalLook {
+            dot: *dot,
+            tone: *tone,
+            word: word.clone(),
+            said: said.clone(),
+        }),
+    };
+    let at = |foreign: Option<&str>| {
+        super::note_local_foreign(foreign.and_then(|b| foreign_in(b, false)));
+        let got = super::local_backend(false, Some("p8c-mine"));
+        super::note_local_foreign(None);
+        got
+    };
+    super::note_local_failed(None);
+    super::note_local_starting(true);
+    let starting = super::local_backend(false, Some("p8c-mine"));
+    super::note_local_starting(false);
+    for (got, want) in [
+        (starting, Local::Starting),
+        (at(Some("p7a-old")), Local::Older),
+        (at(Some("p9a-new")), Local::Newer),
+        (at(None), Local::Down { failed: None }),
+    ] {
+        assert_eq!(look(&got), Some(local(want, &machine)), "{want:?}：{got:?}");
+    }
+    super::note_local_failed(Some("起不来的那一句"));
+    let down = at(None);
+    super::note_local_failed(None);
+    assert_eq!(
+        look(&down),
+        Some(local(
+            Local::Down {
+                failed: Some("起不来的那一句")
+            },
+            &machine
+        ))
+    );
 }

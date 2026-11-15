@@ -3,7 +3,7 @@
  * `history-search`），合成一份再答（`updatedAt` 倒序、稳定；命中数 · 读不动的份数相加；不覆盖的那几家去重；远端的行带那台的名字；
  * 没答上的那几台进 `down`）。本机那一台没答上 ⇒ 整次失败（本机是必答的那一台）。规则与扇出都只住 Rust，这里只交怎么搜。
  *
- * - 选项只下发后端认的：`include_tools` 只在真时给、`scope` 只给 `user` / `assistant` / `report`、`after_ms` 只给正数；`limit` 原样。
+ * - 选项只下发后端认的：`include_tools` 只在真时给、`scope` 只给 `user` / `assistant` / `report`、`within_days` 只给正数（那台照自己的钟换成时刻）；`limit` 原样。
  * - typed 帧命令（`callTyped`）：入参 · 回包的类型从 Rust 生成，形状由握手时的指纹核过，这里不再逐格解。
  */
 import { budgetWithin, callTyped } from "../ipc/chan-caller";
@@ -27,7 +27,8 @@ export interface FullTextQuery {
   query: string;
   includeTools: boolean;
   scope: string | null;
-  afterMs: number | null;
+  /** 只要最近几天的（那台照自己的钟换成时刻）。 */
+  withinDays: number | null;
   limit: number | null;
   /** 只比会话标题与第一句（「按项目」那一路的搜索，后端搜全部会话）。 */
   titles?: boolean;
@@ -49,7 +50,7 @@ export function searchArgs(q: FullTextQuery): HistorySearchReq {
   if (q.limit !== null) req.limit = q.limit;
   if (q.includeTools) req.include_tools = true;
   if (q.scope === "user" || q.scope === "assistant" || q.scope === "report") req.scope = q.scope;
-  if (q.afterMs !== null && q.afterMs > 0) req.after_ms = q.afterMs;
+  if (q.withinDays !== null && q.withinDays > 0) req.within_days = q.withinDays;
   if (q.titles) req.titles = true;
   return req;
 }

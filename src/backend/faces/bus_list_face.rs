@@ -1,11 +1,10 @@
-//! 帧面 `bus-list` 的宿主：名单的行是这台的收件箱（`control::cc_bus_wire::bus_list`），
+//! 帧面 `bus-list` 的宿主：名单的行是这台的收件箱（`control::cc_bus::wire::bus_list`），
 //! 每条会话叫它什么 · 此刻有没有谁持着它问观测层那一处（control 不许引用 observe，接线就住这一层）。
 
+use crate::control::cc_bus::wire::{bus_list, BusList, BusReadErr};
 use crate::control::cc_bus::Seen;
-use crate::control::cc_bus_wire::{bus_list, BusList, BusReadErr};
-use std::path::Path;
 
-/// `bus-list`：各收件箱 ＋ 叫它什么 · 在不在 ＋ 待读多少。入参 · 回包 · 码住控制面（`control::cc_bus_wire`）；
+/// `bus-list`：各收件箱 ＋ 叫它什么 · 在不在 ＋ 待读多少。入参 · 回包 · 码住控制面（`control::cc_bus::wire`）；
 /// 命令标记与处理器住这里：在不在问观测层那一处，控制面不引用观测面，而命令的 `Handle` 只能跟标记类型同包。
 pub struct BusListCmd;
 impl crate::wire::typed::Command for BusListCmd {
@@ -19,11 +18,13 @@ impl crate::wire::typed::Command for BusListCmd {
 /// 一条会话叫它什么 · 此刻有没有谁持着它（判活只这一处：`observe::accounts_query::session_holders`）。
 /// 叫什么带上这台注解里改过的名（`annotations`）。这台找不到它的记录 ⇒ 两格都判不了。
 pub(crate) fn seen_at(
-    home: &Path,
+    home: impl crate::agents::IntoHomes,
     sid: &str,
     annotations: &crate::history::history_annotations::Table,
 ) -> Seen {
-    match crate::agents::find_session(home, sid) {
+    let home_v = crate::agents::IntoHomes::into_homes(home);
+    let home: &[crate::agents::AgentHome] = &home_v;
+    match crate::agents::find_session_in(home, sid) {
         Ok(at) => Seen {
             title: Some(crate::history::listing::session_title_of(
                 &at.file,
@@ -45,7 +46,7 @@ impl crate::wire::typed::Handle for BusListCmd {
         _req: crate::wire::typed::NoArgs,
         _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> Result<BusList, BusReadErr> {
-        let home = crate::history::listing::agent_home();
+        let home = crate::agents::local_homes();
         let annotations = match crate::history::history_annotations::load() {
             crate::history::history_annotations::Loaded::Read(t) => t,
             _ => Default::default(),

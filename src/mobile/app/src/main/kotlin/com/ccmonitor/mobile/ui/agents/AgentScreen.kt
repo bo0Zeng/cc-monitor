@@ -37,6 +37,7 @@ import com.ccmonitor.mobile.core.wire.gen.RunInfo
 import com.ccmonitor.mobile.core.wire.gen.RunLine
 import com.ccmonitor.mobile.core.wire.gen.RunState
 import com.ccmonitor.mobile.link.HostBackends
+import com.ccmonitor.mobile.ssh.machineName
 import com.ccmonitor.mobile.ui.chat.ProcessActions
 import com.ccmonitor.mobile.ui.chat.ProcessRow
 import com.ccmonitor.mobile.ui.chat.needs.ChatNeeds
@@ -188,7 +189,7 @@ private fun Transcript(
 @Composable
 private fun rememberMachine(hostId: String): String? {
     val hosts = koinInject<HostRepository>()
-    val got by produceState<String?>(null, hostId) { value = runCatching { hosts.get(hostId) }.getOrNull()?.label ?: hostId }
+    val got by produceState<String?>(null, hostId) { value = hosts.machineName(hostId) }
     return got
 }
 

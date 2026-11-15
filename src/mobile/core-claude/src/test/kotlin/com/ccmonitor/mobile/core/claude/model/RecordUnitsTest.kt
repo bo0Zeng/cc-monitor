@@ -136,7 +136,8 @@ class RecordUnitsTest {
         assertEquals(RenderUnit.SlashCommand("u-said-slash", "/review", "x", "u-said-slash"), units("said-slash").single())
         assertTrue(units("said-bash-input").single() is RenderUnit.BashInput)
         assertEquals("o", (units("said-bash-output").single() as RenderUnit.BashOutput).stdout)
-        assertTrue(units("said-compact-summary").single() is RenderUnit.CompactSummary)
+        val compact = units("said-compact-summary").single() as RenderUnit.CompactSummary
+        assertEquals("收着时那一行照抄核心写好的 titleText", "上下文已压缩 · 摘要 70 字 · 01:31", compact.title)
         assertTrue(units("said-interrupt").single() is RenderUnit.Interrupt)
     }
 

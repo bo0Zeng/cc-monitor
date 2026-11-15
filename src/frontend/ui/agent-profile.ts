@@ -4,7 +4,7 @@
  * 取值链：
  *
  * ```text
- * src/backend/agents/<名>/resume.rs（注册表 `Adapter.launch`）   ← 唯一的值源
+ * src/backend/agents/<名>/resume.rs（注册表 `Adapter.launch`）   ← 唯一的值源（家名：注册表行头 `Adapter.display_name`）
  *   └─（cargo test --lib export_bindings ＝ npm run gen:types）→
  *      src/frontend/ui/generated/agent-profile-table.ts         ← 生成物，不许手改
  *        └─（本文件）→ lookupAgentProfile / listAgents / speakerNameOf / displayNameOf
@@ -24,6 +24,8 @@
 import {
   AGENT_PROFILE_TABLE,
   DEFAULT_AGENT,
+  FAMILY_SAID,
+  FAMILY_UNSAID,
   type AgentProfileRow,
 } from "./generated/agent-profile-table";
 import { copyText } from "./copy-table";
@@ -129,9 +131,10 @@ export function speakerNameOf(agent: string | null): string | null {
   return got.known ? got.facts.speakerName : null;
 }
 
-/** 这一家的产品全称（「{名} 会话还不能选账号」这类话里用）。认不出 ⇒ `null`。 */
-export function displayNameOf(agent: string | null): string | null {
-  if (agent === null) return null;
-  const got = lookupAgentProfile(agent);
-  return got.known ? got.facts.displayName : null;
+/**
+ * 这一家对人的叫法（「{名} 会话还不能选账号」这类话里用）：照抄后端那张家名表（注册表每一家的行头，没有起会话面的家也在）。
+ * 表里没有的家（别的版本那台报上来的）⇒ 后端给的那一句照实的（[`FAMILY_UNSAID`]），不露 kind、不另拼。
+ */
+export function displayNameOf(agent: string, said: Readonly<Record<string, string>> = FAMILY_SAID): string {
+  return Object.prototype.hasOwnProperty.call(said, agent) ? said[agent] : FAMILY_UNSAID;
 }

@@ -173,10 +173,11 @@ sealed interface RenderUnit {
         val fold: TextFold? = null,
     ) : Worded
 
-    /** `/compact` 续接摘要，默认折叠（超长，点开看全文）。 */
+    /** `/compact` 续接摘要，默认折叠（超长，点开看全文）；[title] 是收着时那一行，核心写好的（字数 · 钟面），照抄。 */
     data class CompactSummary(
         override val key: String,
         override val text: String,
+        val title: String?,
         override val sourceUuid: String?,
     ) : Worded
 

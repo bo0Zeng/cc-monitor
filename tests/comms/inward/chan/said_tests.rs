@@ -6,9 +6,9 @@
 //! | 「发没发出去」一定说出来：没发出 ≠ 拿不准；发了与拿不准对人是同一件事 | [`whether_it_was_sent_is_always_said`] |
 //! | 对端拒了：它那一句原样；没写 ⇒「后端拒绝 · 原因不明」 | [`a_refusal_says_the_peer_sentence_or_that_it_is_unreadable`] |
 //! | 全产品一份：`rsChanSaid.*` 只在本文件取；调它的恰是那四处（壳交主界面 · 文件窗口 · `CallError` 的 `Display` · 手机核心一问没答成那一行） | [`the_channel_sentence_lives_in_one_file_with_four_callers`] |
-//! | 离线那一句称呼那台；`link.machine.offline` 在三端产品源码里只在本文件取，原先各出口各取的那 12 把键一处都不剩 | [`the_offline_sentence_names_the_machine`] · [`the_offline_sentence_is_taken_in_one_place`] |
+//! | 离线那一句（`copy_core::offline`）：`link.machine.offline` 在三端产品源码里只在 `copy-core/src/peer.rs` 取，原先各出口各取的那 12 把键一处都不剩 | [`the_offline_sentence_is_taken_in_one_place`] |
 
-use super::{machine, offline, said};
+use super::{machine, said};
 use crate::chan::wire::{Body, CallError, HopFault, HopId, OursFault, PeerFault, Reach};
 use crate::origin::Origin;
 use std::collections::BTreeSet;
@@ -26,6 +26,7 @@ fn arm(e: &CallError) -> String {
                 HopFault::Unreachable => "unreachable",
                 HopFault::Dropped => "dropped",
                 HopFault::Overrun => "overrun",
+                HopFault::Full => "full",
             };
             format!("hop/{r}/{w}")
         }
@@ -50,7 +51,12 @@ fn arm(e: &CallError) -> String {
 fn cases() -> Vec<(CallError, bool)> {
     let mut out = Vec::new();
     for reach in [Reach::NotSent, Reach::Sent, Reach::Unknown] {
-        for why in [HopFault::Unreachable, HopFault::Dropped, HopFault::Overrun] {
+        for why in [
+            HopFault::Unreachable,
+            HopFault::Dropped,
+            HopFault::Overrun,
+            HopFault::Full,
+        ] {
             let e = CallError::Hop {
                 at: HopId {
                     idx: 1,
@@ -59,8 +65,10 @@ fn cases() -> Vec<(CallError, bool)> {
                 reach,
                 why,
             };
-            // 期限早已过、一个字节都没发：与是哪台无关。
-            out.push((e, !(reach == Reach::NotSent && why == HopFault::Overrun)));
+            // 期限早已过、一个字节都没发 · 本侧在等的满了：与是哪台无关。
+            let about_us =
+                (reach == Reach::NotSent && why == HopFault::Overrun) || why == HopFault::Full;
+            out.push((e, !about_us));
         }
     }
     out.push((
@@ -97,6 +105,7 @@ const NOT_ON_SCREEN: &[&str] = &[
     "Unreachable",
     "Dropped",
     "Overrun",
+    "Full",
     "Unsupported",
     "Refused",
     "Cancelled",
@@ -112,9 +121,9 @@ const NOT_ON_SCREEN: &[&str] = &[
 fn every_failure_has_a_plain_sentence_on_both_kinds_of_machine() {
     let all = cases();
     let got: BTreeSet<String> = all.iter().map(|(e, _)| arm(e)).collect();
-    // 两向：样本覆盖了每一格（3×3 跳 ＋ 2 对端 ＋ 3×2 本侧），也没有重复格。
+    // 两向：样本覆盖了每一格（3×4 跳 ＋ 2 对端 ＋ 3×2 本侧），也没有重复格。
     assert_eq!(got.len(), all.len(), "样本里有重复的格：{got:?}");
-    assert_eq!(got.len(), 9 + 2 + 6, "样本没覆盖全部格：{got:?}");
+    assert_eq!(got.len(), 12 + 2 + 6, "样本没覆盖全部格：{got:?}");
     let remote = Origin::named("devbox");
     let local = Origin::local();
     for (e, names) in &all {
@@ -139,6 +148,33 @@ fn every_failure_has_a_plain_sentence_on_both_kinds_of_machine() {
     assert_eq!(machine(&remote), "devbox");
 }
 
+/// 本侧在等的满了（`Full`）：没发出那一形说「待处理命令已达上限」；`Full` 恒没发出，发了 / 拿不准的 `Full` 是内部不变量破了，说程序出错那一句。
+#[test]
+fn a_full_table_has_its_own_sentence_and_a_sent_full_is_our_bug() {
+    let full = |reach| CallError::Hop {
+        at: HopId {
+            idx: 1,
+            tag: "write",
+        },
+        reach,
+        why: HopFault::Full,
+    };
+    for origin in [Origin::named("devbox"), Origin::local()] {
+        assert_eq!(
+            said(&full(Reach::NotSent), &origin),
+            copy_core::copy_text("rsBackendRoute.layer.tooMany", &[]),
+            "@ {origin}"
+        );
+        for reach in [Reach::Sent, Reach::Unknown] {
+            assert_eq!(
+                said(&full(reach), &origin),
+                copy_core::copy_text("rsShellCmd.self.crashed", &[]),
+                "{reach:?} @ {origin}"
+            );
+        }
+    }
+}
+
 /// 写面那几条据此决定要不要再点一次：没发出 ＝ 这一下没生效；发了 / 拿不准 ＝ 对面可能已经做了。
 #[test]
 fn whether_it_was_sent_is_always_said() {
@@ -151,7 +187,12 @@ fn whether_it_was_sent_is_always_said() {
         why,
     };
     for origin in [Origin::named("devbox"), Origin::local()] {
-        for why in [HopFault::Unreachable, HopFault::Dropped, HopFault::Overrun] {
+        for why in [
+            HopFault::Unreachable,
+            HopFault::Dropped,
+            HopFault::Overrun,
+            HopFault::Full,
+        ] {
             let not_sent = said(&hop(Reach::NotSent, why), &origin);
             let unknown = said(&hop(Reach::Unknown, why), &origin);
             assert_ne!(
@@ -228,16 +269,6 @@ fn the_channel_sentence_lives_in_one_file_with_four_callers() {
     );
 }
 
-#[test]
-fn the_offline_sentence_names_the_machine() {
-    let s = offline("devbox");
-    assert_eq!(
-        s,
-        copy_core::copy_text("link.machine.offline", &[("machine", "devbox")])
-    );
-    assert!(s.contains("devbox"), "{s}");
-}
-
 /// 「{machine} 离线」原先各出口各取的键。
 const OFFLINE_OLD: [&str; 12] = [
     "events.unseen.droppedTitle",
@@ -294,8 +325,8 @@ fn the_offline_sentence_is_taken_in_one_place() {
     }
     assert_eq!(
         homes,
-        BTreeSet::from(["comms/inward/chan/said.rs".to_string()]),
-        "离线那一句只许在 `chan/said.rs` 取"
+        BTreeSet::from(["common/copy-core/src/peer.rs".to_string()]),
+        "离线那一句只许在 `copy_core::peer` 取"
     );
     assert_eq!(
         old,

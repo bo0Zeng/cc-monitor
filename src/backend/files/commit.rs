@@ -15,7 +15,7 @@
 //! | `true` | 暂存件直接改名上位 | 同一个盘上的改名是原子的：读的人要么看见旧的一整份，要么看见新的一整份 |
 //!
 //! 暂存件的路径由本模块自己拼（`$HOME` ＋ 固定的相对段 ＋ `key`），`key` 只收 [`KEY_LEN`] 位小写十六进制 ⇒ 调用方指不到暂存区之外的文件当「源」。
-//! 落那一下（同盘改名上位 · 跨盘退回复制 ＋ 删 · 盖掉已在的沿用它的权限位）住 `common::staging::land`：传输台的下载落地也调它。
+//! 落那一下（同盘改名上位 · 跨盘退回复制 ＋ 删 · 盖掉已在的沿用它的权限位）住 `common::staging::land`：两台之间复制的下载落地也调它。
 //!
 //! # 买不到的
 //!
@@ -52,11 +52,10 @@ use copy_core::{copy_text, io_reason, Discard, Why};
 use std::path::{Path, PathBuf};
 
 /// 暂存区相对 `$HOME` 的那一段（`common::staging::DIR`；值只住契约 crate `relay_route_core::STAGING_DIR_REL`，monitor 的数据位置页按它列出）；
-/// 往里写的一侧（`ssh-dial/sftp.rs::STAGING_ROOT` · `control/transfer.rs`）在上层，由主 crate 的
-/// `dial_sftp_tests::the_declared_write_root_is_exactly_staging` 直接比。
+/// 往里写的一侧（`ssh-dial/sftp.rs::STAGING_ROOT` · `control/transfer.rs`）在上层，读的是契约里同一个常量。
 pub const STAGING_DIR: &str = crate::common::staging::DIR;
 
-// 暂存件的键长与后缀住 `common/staging.rs`：造键的一侧（传输台，原生那一块）与提交的一侧（这里）各引各的。
+// 暂存件的键长与后缀住 `common/staging.rs`：造键的一侧（两台之间复制的 SFTP 腿，原生那一块）与提交的一侧（这里）各引各的。
 pub use crate::common::staging::{KEY_LEN, PART_SUFFIX};
 
 /// 存盘块的后缀（`<key>.<seq>.chunk`）。与 [`PART_SUFFIX`] 刻意不同名：两种件的消耗方式不同
@@ -104,7 +103,7 @@ pub fn staged_path(home: &Path, key: &str) -> Result<PathBuf, WriteRefusal> {
 
 /// 提交：暂存件 → 目标。成功回 `(落点, 字节数)`。
 ///
-/// 上位之前先对整份摘要：暂存件的 SHA-256 必须等于 `expect_sha256`（传输台一边传一边算、窗口原样交来）。
+/// 上位之前先对整份摘要：暂存件的 SHA-256 必须等于 `expect_sha256`（送块那一侧一边传一边算、原样交来）。
 /// 不等 ⇒ 这份暂存件是坏的（失败后晚到的写在中间留了洞之类）⇒ 删掉它、回 `stale`、目标一个字节不动，调用方从 0 重传。
 /// 怎么落交 [`crate::common::staging::land`]（盖掉已在的沿用它的权限位；`overwrite` 否 ⇒ 不覆盖上位，已在 ⇒ `exists`）。
 /// 核与上位之间仍有窗（暂存区是我们自己的目录，窗里没人该碰它）。
@@ -503,8 +502,13 @@ pub fn commit_upload_at(
         match on {
             OnExists::Ask => return Err(asked(home, &req, &dest, there, tz)),
             OnExists::KeepBoth => {
-                rel = (2..=crate::common::batch_book::MINT_TRIES)
-                    .map(|k| crate::common::batch_book::minted(&rel, k))
+                let name = rel
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .into_owned();
+                rel = (2..=batch_core::MINT_TRIES)
+                    .map(|k| rel.with_file_name(batch_core::minted(&name, k)))
                     .find(|r| clash(r).is_none())
                     .ok_or_else(|| {
                         Said::new(
@@ -585,7 +589,7 @@ fn asked(
                 there,
                 there_size_text: there_size.map(copy_core::size_text),
                 there_mtime_text: moment_text(there_mtime, tz),
-                answers: crate::common::batch_book::answers_of(there == wire::FileKind::Dir, false),
+                answers: batch_core::answers_of(there == wire::FileKind::Dir, false),
             }],
         },
     )

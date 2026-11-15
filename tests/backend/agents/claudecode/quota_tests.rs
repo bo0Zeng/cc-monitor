@@ -1,7 +1,7 @@
 //! Claude 回包头 → 额度快照：读法表的金样（头值全是现编的，形状照 claude 程序的读法）。
 
 use super::*;
-use crate::agents::{QuotaOverage, QuotaReading, QuotaStatus, QuotaWindow};
+use crate::agents::{QuotaOverage, QuotaReading, QuotaStatus, QuotaWindow, REFUSED_BRIEFLY};
 
 const NOW: u64 = 1_800_000_000;
 

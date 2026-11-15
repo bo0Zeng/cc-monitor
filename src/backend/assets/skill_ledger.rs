@@ -7,9 +7,13 @@
 //!
 //! # 文件（`~/.cc-monitor/skill-installs.json`，与资产目录同一个家、同一族写法）
 //!
-//! `{"version":2,"installs":{"<skill 目录绝对路径>":{"name":"demo","files":{"<相对路径>":{"digest":"<16 位十六进制>","created":true}}}}}`
+//! `{"version":3,"installs":{"<skill 目录绝对路径>":{"name":"demo","files":{"<相对路径>":{"digest":"<16 位十六进制>","created":true}}}},
+//!   "mcp":{"<配置文件绝对路径>":{"<server>":"<摘要>"}},"touched":{"<配置文件绝对路径>":{"before":"<改之前的原文>"|null,"after":"<摘要>","names":["<server>"]}}}`
 //!
-//! - 版本照声明表（`relay_route_core::SKILL_LEDGER_FILE`，读写口 `common/own_state.rs` 管）：只读得懂第 2 版。
+//! - 版本照声明表（`relay_route_core::SKILL_LEDGER_FILE`，读写口 `common/own_state.rs` 管）：第 1 版把版本写在 `"v"` 里、第 2 版没有 `touched`，
+//!   读的时候经升级步读成第 3 版；常驻起来时 [`bring_forward`] 写回一次，原文照字节留成 `skill-installs.json.v<N>`。
+//! - `touched`：cc-monitor 改过的项目级 MCP 配置（装 · 推 · 拉 · 卸都记，不管那一条是不是它装的）：头一回改之前的原文（原来没有 ⇒ `null`）·
+//!   最后一次写进去的整份摘要 · 改过哪几条；「改过的用户文件」照它列，撤回照它回到原文（`mcp_sync_flow::revert_project`）。
 //! - **键是目录的绝对路径**：记的是「装时写进了哪几个文件」—— 落点是事实，名字只给人看。
 //! - `digest`：**装时写进去的那一份原文**的摘要（`common::digest::Fnv`，只答相同 / 不同，**不防篡改**）。
 //! - `created`：装之前这个路径不在 ⇒ `true`；装时盖掉了这台原有的一份 ⇒ `false`（卸它回不到装之前那一份 ⇒ 卸时要问）。
@@ -44,9 +48,50 @@ use serde_json::Value;
 pub(crate) const FILE_NAME: &str =
     relay_route_core::file_name_of(relay_route_core::SKILL_LEDGER_REL);
 
-/// 装记录：状态（读不懂不覆盖；更新的格式也算读不懂）。
+/// 装记录：状态（读不懂不覆盖；更新的格式也算读不懂）。第 1 · 2 版经 [`v1_to_v2`] · [`v2_to_v3`] 读成这一版；
+/// 盘上那一份由 [`bring_forward`] 在常驻起来时写回成这一版。
 const DOC: crate::common::own_state::Doc<Ledger> =
-    crate::common::own_state::Doc::of(&relay_route_core::SKILL_LEDGER_FILE);
+    crate::common::upgrade!(relay_route_core::SKILL_LEDGER_FILE, [v1_to_v2, v2_to_v3]);
+
+/// 第 1 版 ⇒ 第 2 版：版本从 `"v"` 挪到顶层 `version`（读写口管），别的格子不变。`"v"` 不是 1 ⇒ 读不懂（不认的格式不覆盖）。
+fn v1_to_v2(mut v: Value) -> Result<Value, crate::common::said::Said> {
+    let Some(o) = v.as_object_mut() else {
+        return Ok(v);
+    };
+    match o.remove("v") {
+        None => Ok(v),
+        Some(n) if n.as_u64() == Some(1) => Ok(v),
+        Some(n) => Err(copy_text(
+            "beSkillLedger.read.otherVersion",
+            &[
+                ("path", relay_route_core::SKILL_LEDGER_REL),
+                ("mine", "1"),
+                ("theirs", &n.to_string()),
+            ],
+        )
+        .into()),
+    }
+}
+
+/// 第 2 版 ⇒ 第 3 版：只多一格 `touched`（缺 ⇒ 空），别的格子不变。
+fn v2_to_v3(v: Value) -> Result<Value, crate::common::said::Said> {
+    Ok(v)
+}
+
+/// 常驻起来那一下调一次（升级只此一处，读口本身不写盘）：盘上是读得懂的旧版 ⇒ 在那一层目录的锁里照升级后的那一份写回成这一版
+/// （原文留 `.v<N>`），回 `true`；已是这一版 · 没有 · 读不懂 · 比下限还老 ⇒ 不动盘，回 `false`。
+pub fn bring_forward(own: &Own) -> Result<bool, crate::common::said::Said> {
+    let lock_dir = own.home_dir()?;
+    let file = own.at_home(DOC.rel)?;
+    if !DOC.behind(file.as_path()) {
+        return Ok(false);
+    }
+    let held = own.lock(&lock_dir)?;
+    match read_at(file.as_path()) {
+        Read::Present(l) => DOC.write(own, &lock_dir, &held, &l).map(|()| true),
+        Read::Absent | Read::Unreadable(_) => Ok(false),
+    }
+}
 /// 一趟 `add` 最多收这么多个文件（与 skill 读 / 装同一个上限，不另起一份）。
 use crate::assets::asset_catalog::SKILL_MAX_FILES as MAX_FILES;
 
@@ -84,6 +129,53 @@ pub(crate) struct Ledger {
     /// 没有一条时不写这一格（旧文件与新文件同形）。
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub mcp: BTreeMap<String, BTreeMap<String, String>>,
+    /// cc-monitor 改过的项目级 MCP 配置：配置文件的绝对路径 → 改之前的原文 · 最后一次写进去的整份摘要 · 改过哪几条
+    /// （「文件与数据 → 改过的用户文件」照它列、撤回照它回到改之前的原文）。没有一份时不写这一格。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub touched: BTreeMap<String, Touched>,
+}
+
+/// cc-monitor 改过的一份项目级 MCP 配置。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Touched {
+    /// 头一回改之前那一份的原文（原来没有那份文件 ⇒ `None`）；再改不换。
+    pub before: Option<String>,
+    /// cc-monitor 最后一次写进去的整份原文的摘要（`common::digest::fnv_digest`）：撤回之前比它，不等 ⇒ 之后被改过。
+    pub after: String,
+    /// 改过（增 · 改 · 删）哪几条服务器。
+    pub names: std::collections::BTreeSet<String>,
+    /// 这一条链头一回改之前，装记录里这份文件已记着的那几条（server 名 → 摘要）：撤回把 `mcp` 那一格放回成它，
+    /// 只摘这一回改动带进来的。没有 ⇒ 不写这一格。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub installed: BTreeMap<String, String>,
+}
+
+/// 记一笔「cc-monitor 改了这份项目级 MCP 配置」：头一回记下改之前的原文，再改只换 `after`、并进名字。回变没变。**纯**。
+/// 链断了（这一回改之前那一份的摘要不等于记账的 `after`：两回之间用户手改过 · 删过）⇒ 另起：留底换成这一回的、名字只留这一回的，
+/// 撤回只回到用户最后看到的那一份、不抹掉他手改的。
+pub(crate) fn touch(
+    ledger: &mut Ledger,
+    file: &str,
+    name: &str,
+    before: Option<&str>,
+    after: &str,
+) -> bool {
+    let installed = ledger.mcp.get(file).cloned().unwrap_or_default();
+    let fresh = || Touched {
+        before: before.map(str::to_string),
+        after: after.to_string(),
+        names: Default::default(),
+        installed: installed.clone(),
+    };
+    let entry = ledger.touched.entry(file.to_string()).or_insert_with(fresh);
+    let was = entry.clone();
+    if before.map(crate::common::digest::fnv_digest).as_deref() != Some(was.after.as_str()) {
+        *entry = fresh();
+    }
+    entry.after = after.to_string();
+    entry.names.insert(name.to_string());
+    *entry != was
 }
 
 /// 一条 MCP 定义的摘要（键序无关：按规范写法算）。装的时候记、卸的时候比。
@@ -128,7 +220,15 @@ pub(crate) fn load_at(path: &Path) -> Result<Ledger, crate::common::said::Said> 
     }
 }
 
-// **全仓唯一的写者**在 [`record_at`] 末尾：经读写口整份原子写（带版本）；那一层目录由它在拿锁之前建。
+/// 这台装记录里 cc-monitor 改过的那几份项目级 MCP 配置（「文件与数据 → 改过的用户文件」读它）：家目录解不出 ⇒ 空；读不懂 ⇒ `ledger_unreadable`。
+pub fn touched_here() -> Result<BTreeMap<String, Touched>, crate::common::said::Said> {
+    match ledger_path() {
+        Some(p) => Ok(load_at(&p)?.touched),
+        None => Ok(BTreeMap::new()),
+    }
+}
+
+// **写者两处**：[`record_at`] 末尾（记一趟），与常驻起来时的 [`bring_forward`]（旧版写回一次）；都经读写口整份原子写（带版本）；那一层目录由它在拿锁之前建。
 //
 // 读—改—写整段在那个目录的跨进程锁里（`platform/lock.rs`，[`record_at`] 开头拿）：两个后端进程同时记装记录时，
 // 后写的整份会盖掉先写的一条 ⇒ 那一趟装的文件从此卸不掉。
@@ -183,17 +283,38 @@ pub enum RecordReq {
         /// 给了 ⇒ 目录按那个项目里的 skill 根算。
         #[serde(default, skip_serializing_if = "Option::is_none")]
         project: Option<String>,
+        /// 哪一家的（缺 = 默认那一家）：目录按那一家的 skill 根算。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        agent: Option<cmd_wire::AgentKind>,
     },
     /// 卸掉 / 已经不在的摘掉：`paths` 不在记录里 ⇒ `bad_args`，一个字节不动；摘到零个 ⇒ 整条记录摘掉。
     Drop { dir: String, paths: Vec<String> },
-    /// MCP 装完记：`file` 配置文件的绝对路径（键）· 装进去的那一条的摘要。
+    /// MCP 装完记：`file` 配置文件的绝对路径（键）· 装进去的那一条的摘要 · 写之前那一份原文（不在 ⇒ `None`）· 写进去的整份摘要。
     McpAdd {
         file: String,
         name: String,
         digest: String,
+        before: Option<String>,
+        after: String,
     },
-    /// MCP 卸掉摘。
-    McpDrop { file: String, name: String },
+    /// MCP 卸掉摘（不是 cc-monitor 装的那一条也记：它改了这份文件）：写之前那一份原文 · 写进去的整份摘要。
+    McpDrop {
+        file: String,
+        name: String,
+        before: Option<String>,
+        after: String,
+    },
+    /// 撤回了那一份（回到改之前的原文）：在锁里核记着的「最后写进去的摘要」还是 `after`（不是 ⇒ `stale`、一个字节不动），
+    /// 摘掉改过那一格、装过那一格放回成头一回改之前的样子（只摘这一回改动带进来的）。
+    McpRevert { file: String, after: String },
+    /// 先记了账、文件却没写上：记着的「最后写进去的摘要」还是 `after`（撤回那一笔：`None` ＝ 已摘掉）⇒ 那两格放回成 `prior`
+    /// （不是 ⇒ `stale`、不动）。
+    McpUndo {
+        file: String,
+        #[serde(default)]
+        after: Option<String>,
+        prior: McpPrior,
+    },
 }
 
 /// 装记录写口的回包。
@@ -206,6 +327,19 @@ pub struct RecordReply {
     pub changed: bool,
     /// 这一条还剩几个文件（MCP：那份配置里还记着几条）。
     pub remaining: usize,
+    /// MCP 那几笔：记之前这份文件的那两格（先记账再写文件，文件写不上时照它放回，[`RecordReq::McpUndo`]）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prior: Option<McpPrior>,
+}
+
+/// 一份项目级 MCP 配置在装记录里的那两格（改过 · 装过），记一笔之前的样子。
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct McpPrior {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub touched: Option<Touched>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mcp: Option<BTreeMap<String, String>>,
 }
 
 /// 装记录的写口（生产 = [`answer_record`]，由 `stream/inbound/` 递进来；装 · 卸那几处不直呼它）。
@@ -269,10 +403,11 @@ pub(crate) fn drop_paths(
     Ok(left)
 }
 
-/// [`answer_record`] 的本体：记录文件路径与 skill 根都可喂（判据拿临时目录喂，不改进程环境）。
+/// [`answer_record`] 的本体：写句柄（记录文件在它的家下）· 认家的注册表与用户级 skill 根都可喂
+/// （生产 `Roots::HERE`；判据拿替身家 · 临时目录喂，不改进程环境）。
 pub(crate) fn record_at(
     own: &Own,
-    skills_root: Option<&Path>,
+    roots: crate::assets::skill_install::Roots<'_>,
     req: &RecordReq,
 ) -> Result<RecordReply, crate::common::said::Said> {
     // 先建那一层目录（在就算了），再拿它的跨进程锁，锁住之后才读。
@@ -301,11 +436,40 @@ pub(crate) fn record_at(
         .lock(&lock_dir)
         .map_err(|e| crate::wire::spec::fail("io_failed", e))?;
     let mut ledger = load_at(path)?;
+    // MCP 那几笔记之前这份文件的那两格（回包带回去：文件写不上时照它放回）。
+    let prior = match req {
+        RecordReq::McpAdd { file, .. }
+        | RecordReq::McpDrop { file, .. }
+        | RecordReq::McpRevert { file, .. } => Some(McpPrior {
+            touched: ledger.touched.get(file).cloned(),
+            mcp: ledger.mcp.get(file).cloned(),
+        }),
+        _ => None,
+    };
     let (dir, name, changed, left) = match req {
+        RecordReq::McpUndo { file, after, prior } => {
+            if ledger.touched.get(file).map(|t| &t.after) != after.as_ref() {
+                return Err(crate::wire::spec::fail(
+                    "stale",
+                    copy_text("beMcpSyncFlow.revert.changedSince", &[]),
+                ));
+            }
+            match &prior.touched {
+                Some(t) => ledger.touched.insert(file.clone(), t.clone()),
+                None => ledger.touched.remove(file),
+            };
+            match &prior.mcp {
+                Some(m) => ledger.mcp.insert(file.clone(), m.clone()),
+                None => ledger.mcp.remove(file),
+            };
+            let left = ledger.mcp.get(file).map_or(0, BTreeMap::len);
+            (file.clone(), String::new(), true, left)
+        }
         RecordReq::Add {
             name,
             files,
             project,
+            agent,
         } => {
             if !crate::assets::skill_install::valid_name(name) {
                 return Err(crate::wire::spec::fail(
@@ -317,33 +481,18 @@ pub(crate) fn record_at(
             }
             check_files(files)?;
             // 目录自己算：与 `skill-install-plan` 答 `dir` 的是同一个根（不收调用方给的路径）。
-            let dir = match project {
-                // 项目级 skill：根由适配层按那个项目算（同 `skill-install-plan` 答 `dir` 的那一处）。
-                Some(p) => {
-                    let p = crate::assets::mcp_edit::project_root(p)?;
-                    crate::agents::asset_kind()
-                        .and_then(|k| crate::agents::skill_root_at(k, Some(Path::new(&p))))
-                        .ok_or(crate::common::said::Said::new(
-                            "io_failed",
-                            copy_text("beSkillLedger.add.noRoot", &[]),
-                        ))?
-                        .join(name)
-                        .display()
-                        .to_string()
-                }
-                None => {
-                    let root = match skills_root {
-                        Some(r) => r.to_path_buf(),
-                        None => crate::agents::asset_kind()
-                            .and_then(crate::agents::skills_root)
-                            .ok_or(crate::common::said::Said::new(
-                                "io_failed",
-                                copy_text("beSkillLedger.add.noRoot", &[]),
-                            ))?,
-                    };
-                    root.join(name).display().to_string()
-                }
-            };
+            let dir = crate::assets::skill_install::skill_root_of(
+                roots,
+                agent.as_deref(),
+                project.as_deref(),
+            )?
+            .ok_or(crate::common::said::Said::new(
+                "io_failed",
+                copy_text("beSkillLedger.add.noRoot", &[]),
+            ))?
+            .join(name)
+            .display()
+            .to_string();
             let changed = add(&mut ledger, &dir, name, files.clone());
             let left = ledger.installs.get(&dir).map_or(0, |i| i.files.len());
             (dir, name.clone(), changed, left)
@@ -357,7 +506,47 @@ pub(crate) fn record_at(
             let left = drop_paths(&mut ledger, dir, paths)?;
             (dir.clone(), name, !paths.is_empty(), left)
         }
-        RecordReq::McpAdd { file, name, .. } | RecordReq::McpDrop { file, name } => {
+        RecordReq::McpRevert { file, after } => {
+            // 出错就整趟返回、不写盘：内存里摘下来的不用放回。
+            let Some(t) = ledger.touched.remove(file) else {
+                return Err(crate::wire::spec::fail(
+                    "not_found",
+                    copy_text("beMcpSyncFlow.revert.notRecorded", &[]),
+                ));
+            };
+            if &t.after != after {
+                return Err(crate::wire::spec::fail(
+                    "stale",
+                    copy_text("beMcpSyncFlow.revert.changedSince", &[]),
+                ));
+            }
+            if t.installed.is_empty() {
+                ledger.mcp.remove(file);
+            } else {
+                ledger.mcp.insert(file.clone(), t.installed);
+            }
+            let left = ledger.mcp.get(file).map_or(0, BTreeMap::len);
+            (file.clone(), String::new(), true, left)
+        }
+        RecordReq::McpAdd {
+            file,
+            name,
+            before,
+            after,
+            ..
+        }
+        | RecordReq::McpDrop {
+            file,
+            name,
+            before,
+            after,
+        } => {
+            if !valid_digest(after) {
+                return Err(crate::wire::spec::fail(
+                    "bad_args",
+                    crate::common::contract::malformed("`after` must be 16 lowercase hex digits"),
+                ));
+            }
             if !Path::new(file).is_absolute() {
                 return Err(crate::wire::spec::fail(
                     "bad_args",
@@ -370,6 +559,8 @@ pub(crate) fn record_at(
                     crate::common::contract::malformed("`name` is empty"),
                 ));
             }
+            // 先记改过那一格：头一回改之前装记录里这份已记着的那几条照改之前的样子留进去（撤回放回成它）。
+            let touched = touch(&mut ledger, file, name, before.as_deref(), after);
             let changed = if let RecordReq::McpAdd { digest, .. } = req {
                 if !valid_digest(digest) {
                     return Err(crate::wire::spec::fail(
@@ -393,7 +584,7 @@ pub(crate) fn record_at(
                 gone
             };
             let left = ledger.mcp.get(file).map_or(0, BTreeMap::len);
-            (file.clone(), name.clone(), changed, left)
+            (file.clone(), name.clone(), changed || touched, left)
         }
     };
     if changed {
@@ -405,12 +596,13 @@ pub(crate) fn record_at(
         name,
         changed,
         remaining: left,
+        prior,
     })
 }
 
 /// 装记录的写口（本进程里记；写句柄只从 `stream/inbound/` 递进来）。
 pub fn answer_record(req: &RecordReq, own: &Own) -> Result<RecordReply, crate::common::said::Said> {
-    record_at(own, None, req)
+    record_at(own, crate::assets::skill_install::Roots::HERE, req)
 }
 
 #[cfg(test)]

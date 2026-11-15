@@ -29,6 +29,19 @@ class NewSessionReadsTest {
     }
 
     @Test
+    fun `session-open 新起：选了模型交 model，选了推理档再交 effort；都没选 ⇒ 两格都不交`() {
+        assertEquals(
+            base + ("what" to what + ("model" to "m-alpha") + ("effort" to "hi")),
+            SessionOpen.newIn(cwd = "~/proj", ticket = "t-1", agent = "claude", prompt = "你好", model = "m-alpha", effort = "hi"),
+        )
+        assertEquals(
+            base + ("what" to what + ("model" to "m-beta")),
+            SessionOpen.newIn(cwd = "~/proj", ticket = "t-1", agent = "claude", prompt = "你好", model = "m-beta"),
+        )
+        assertEquals(base, SessionOpen.newIn(cwd = "~/proj", ticket = "t-1", agent = "claude", prompt = "你好", model = null, effort = null))
+    }
+
+    @Test
     fun `session-open-facts：最近的目录照那台给的序，带写好的时刻字`() {
         val facts =
             SessionOpenFacts.of(
@@ -48,9 +61,9 @@ class NewSessionReadsTest {
     @Test
     fun `session-open-dir：只交目录；在不在 · 显示形照回包`() {
         assertEquals(mapOf("cwd" to "~/x"), SessionOpenDir.args("~/x"))
-        assertEquals(false, SessionOpenDir.of(mapOf("exists" to false, "shown" to "/x", "tmuxName" to null))?.exists)
-        val here = SessionOpenDir.of(mapOf("exists" to true, "shown" to "~/a", "tmuxName" to "x-cc"))
-        assertEquals(true, here?.exists)
+        assertEquals("不在那一句照那台写的", "/x 不存在", SessionOpenDir.of(mapOf("said" to "/x 不存在", "shown" to "/x", "tmuxName" to null))?.said)
+        val here = SessionOpenDir.of(mapOf("said" to null, "shown" to "~/a", "tmuxName" to "x-cc"))
+        assertNull("在 ⇒ 没有那一句", here?.said)
         assertEquals("那台家目录 /home/x、目录 /home/x/a ⇒ 照抄它写的 ~/a", "~/a", here?.shown)
         assertNull(SessionOpenDir.of(mapOf("tmuxName" to null)))
     }
@@ -158,7 +171,7 @@ class NewSessionReadsTest {
 
     @Test
     fun `login-start · finish · cancel：账号那一形的入参；回包照 LoginStarted 解（粘回来的是什么照线上字认）`() {
-        assertEquals(mapOf("kind" to "account", "agent" to "claude", "account" to "team"), Login.start(Login.account("claude", "team")))
+        assertEquals(mapOf("kind" to "account", "account" to "team"), Login.start(Login.account("team")))
         assertEquals(mapOf("job" to "j1", "pasted" to "abc"), Login.finish("j1", "abc"))
         assertEquals(mapOf("job" to "j1"), Login.cancel("j1"))
         val s = Login.started(mapOf("job" to "j1", "url" to "https://example.com/x", "paste" to "redirectUrl", "auto" to false, "opened" to false))!!

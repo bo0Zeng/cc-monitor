@@ -123,3 +123,38 @@ fn a_project_settings_file_that_sets_the_base_url_covers_the_user_one() {
     );
     let _ = std::fs::remove_dir_all(&d);
 }
+
+/// 删记录文件那一形照根表找要删的那一份：会话住在具名号的家里、默认家那一处没有 ⇒ 找到的是号那个家底下那一份；
+/// 不自己取默认家（`resolve_home`）。根表只给号那个家 ⇒ 默认家怎么样都不该被问到。
+#[test]
+fn deleting_a_record_file_finds_it_through_the_root_table_not_the_default_home() {
+    let d = test_home::scratch("delete-root-table");
+    let acct = d.join("acct-b");
+    let sid = "0b6f7a52-1c3e-4c1e-9d55-3f0a2b7c8d91";
+    std::fs::create_dir_all(acct.join("projects/-p")).unwrap();
+    let file = acct.join("projects/-p").join(format!("{sid}.jsonl"));
+    std::fs::write(&file, "{}\n").unwrap();
+    let reg = [crate::agents::claudecode::ADAPTER];
+    let roots = crate::agents::record_roots_among(&reg, &|_| {
+        vec![crate::agents::AccountHome {
+            account: Some("b".to_string()),
+            home: acct.clone(),
+        }]
+    });
+    let got = crate::agents::locate_session_for_delete_among(&reg, &roots, sid)
+        .expect("号那个家里有这一份");
+    assert_eq!(
+        got,
+        Ro::canonicalize(&file).unwrap(),
+        "删的该是会话所在那个号的家底下那一份"
+    );
+    assert!(
+        crate::agents::locate_session_for_delete_among(
+            &reg,
+            &roots,
+            "0b6f7a52-1c3e-4c1e-9d55-000000000000"
+        )
+        .is_err(),
+        "根表上谁都没有 ⇒ 照实拒"
+    );
+}

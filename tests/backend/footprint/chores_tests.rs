@@ -25,8 +25,10 @@ fn base() -> Facts {
         clashes: vec![],
         dead: vec![],
         relay: vec![],
-        hooks: None,
+        hooks: vec![],
         mcp_login: vec![],
+        zero_trust: vec![],
+        outside_library: vec![],
         sshd: None,
         declined: vec![],
     }
@@ -185,15 +187,17 @@ fn 实时显示_没贴可选_贴过过期升成要做_贴好已做() {
 #[test]
 fn cc_bus_收信_没装_cc_bus_先决_windows_不出() {
     let mut f = base();
-    f.hooks = Some(Hooks {
+    f.hooks = vec![Hooks {
+        kind: "claude".into(),
         ccbus: false,
         installed: false,
         path: "/h/.claude/settings.json".into(),
         text: None,
         items: vec![],
-    });
+        trust: None,
+    }];
     let c = chores(&f);
-    assert_eq!(c[0]["id"], json!("cc-bus-hooks"));
+    assert_eq!(c[0]["id"], json!("cc-bus-hooks:claude"));
     assert_eq!(c[0]["state"], json!("blocked"));
     assert_eq!(c[0]["go"], json!({"page": "ext"}));
     f.windows = true;
@@ -246,13 +250,15 @@ fn 同一份文件两件_整份含两件_各自的_diff_按现在的文件算() 
     let mut f = base();
     let text = "{\n  \"model\": \"opus\"\n}\n".to_string();
     f.relay = vec![claude_relay("absent", "/h/s.json", Some(&text), Some("u"))];
-    f.hooks = Some(Hooks {
+    f.hooks = vec![Hooks {
+        kind: "claude".into(),
         ccbus: true,
         installed: false,
         path: "/h/s.json".into(),
         text: Some(text),
         items: vec![(vec!["hooks".into(), "Stop".into()], json!({"hooks": []}))],
-    });
+        trust: None,
+    }];
     let c = chores(&f);
     let whole: Value = serde_json::from_str(c[0]["whole"].as_str().unwrap()).unwrap();
     assert_eq!(whole["env"]["ANTHROPIC_BASE_URL"], json!("u"));
@@ -260,7 +266,7 @@ fn 同一份文件两件_整份含两件_各自的_diff_按现在的文件算() 
     assert_eq!(c[0]["whole"], c[1]["whole"]);
     assert_eq!(
         c[0]["wholeCovers"],
-        json!(["relay:claude-code", "cc-bus-hooks"])
+        json!(["relay:claude-code", "cc-bus-hooks:claude"])
     );
 }
 
@@ -407,16 +413,21 @@ fn 自己配的_mcp_要登录_可选一件_不进角标() {
         McpLogin {
             name: "m-a".into(),
             who: vec!["p".into(), "w".into()],
-            command: "/mcp",
+            kind: "claude",
+            command: "/mcp".into(),
         },
         McpLogin {
             name: "m-b".into(),
             who: vec![],
-            command: "/mcp",
+            kind: "claude",
+            command: "/mcp".into(),
         },
     ];
     let c = chores(&f);
-    assert_eq!(ids(&c), vec!["mcp-login:m-a", "mcp-login:m-b"]);
+    assert_eq!(
+        ids(&c),
+        vec!["mcp-login:claude:m-a", "mcp-login:claude:m-b"]
+    );
     assert!(c.iter().all(|x| x["kind"] == json!("optional")
         && x["action"] == json!("copyCommand")
         && x["copy"] == json!("/mcp")));
@@ -426,7 +437,7 @@ fn 自己配的_mcp_要登录_可选一件_不进角标() {
     );
     assert_eq!(c[0]["loc"], json!("p、w"));
     assert_eq!(badge_of(&f), 0);
-    f.declined = vec!["mcp-login:m-b".into()];
+    f.declined = vec!["mcp-login:claude:m-b".into()];
     assert_eq!(chores(&f)[1]["state"], json!("declined"));
 }
 
@@ -517,19 +528,22 @@ fn 每件带写好的小标签与点色() {
         Some("{}"),
         Some("http://127.0.0.1:1/k/K/claude"),
     )];
-    f.hooks = Some(Hooks {
+    f.hooks = vec![Hooks {
+        kind: "claude".into(),
         ccbus: false,
         installed: false,
         path: "/h/.claude/settings.json".into(),
         text: None,
         items: vec![],
-    });
+        trust: None,
+    }];
     f.mcp_login = vec![McpLogin {
         name: "m".into(),
         who: vec![],
-        command: "/mcp",
+        kind: "claude",
+        command: "/mcp".into(),
     }];
-    f.declined = vec!["mcp-login:m".into()];
+    f.declined = vec!["mcp-login:claude:m".into()];
     let c = chores(&f);
     let of = |id: &str| {
         let x = c.iter().find(|x| x["id"] == json!(id)).unwrap();
@@ -560,12 +574,17 @@ fn 每件带写好的小标签与点色() {
             "muted",
         ),
         (
-            "cc-bus-hooks",
+            "cc-bus-hooks:claude",
             "dataPage.state.blocked",
             "optional",
             "muted",
         ),
-        ("mcp-login:m", "dataPage.kind.optional", "optional", "muted"),
+        (
+            "mcp-login:claude:m",
+            "dataPage.kind.optional",
+            "optional",
+            "muted",
+        ),
     ];
     for (id, key, kind, tone) in want {
         let tag = json!({"text": copy_text(key, &[]), "kind": kind});
@@ -627,4 +646,279 @@ fn hiding_the_key_replaces_only_the_key_segment_of_our_keyed_urls() {
     ] {
         assert_eq!(hide_key(&plain), plain, "不是那一形 ⇒ 原样");
     }
+}
+
+/// 待办里登录 MCP 那一件复制的那一行照那一家的登录那一格拼（服务器名进 argv、要引的引上），不认哪一家；
+/// 那一家没声明登录那一格 ⇒ 不出那一件。替身家：一家声明了、一家没声明。
+#[test]
+fn mcp_登录那一件照那一家的登录格拼_没声明就不出() {
+    use crate::agents::fake;
+    let reg = [
+        fake::family_row("alpha", "CCM_A_DIR", "a", true, || None),
+        crate::agents::Adapter {
+            mcp: Some(fake::MCP_NO_LOGIN),
+            ..fake::family_row("beta", "CCM_B_DIR", "b", false, || None)
+        },
+    ];
+    let logins = super::gather::mcp_login_among(&reg, |kind| {
+        vec![crate::accounts::manage::mcp_share_exec::McpNeed {
+            name: format!("{kind} srv"),
+            scope: "user",
+            login_in: vec![],
+            project: None,
+        }]
+    });
+    let mut f = base();
+    f.mcp_login = logins;
+    let c = chores(&f);
+    let mcp: Vec<(&Value, &Value)> = c
+        .iter()
+        .filter(|x| {
+            x["id"]
+                .as_str()
+                .is_some_and(|s| s.starts_with("mcp-login:"))
+        })
+        .map(|x| (&x["id"], &x["copy"]))
+        .collect();
+    assert_eq!(
+        mcp,
+        vec![(
+            &json!("mcp-login:alpha:alpha srv"),
+            &json!(format!("{} mcp-auth 'alpha srv'", fake::DEFAULT_COMMAND))
+        )],
+        "声明了登录的那一家照它拼、没声明的那一家不出"
+    );
+}
+
+/// 声明了信任的那一家：钩子那一件之后跟一件信任（id 带那一家）；没对上 ⇒ 照那一家并好的整份出改法、复制的就是加的那几行；
+/// 对上 ⇒ 已做；cc-bus 没装 ⇒ 不出（钩子那一件先决）。
+#[test]
+fn 收信钩子的信任_没对上出改法_对上已做_没装不出() {
+    let hooks = |ccbus: bool, trusted: bool| Hooks {
+        kind: "fake".into(),
+        ccbus,
+        installed: true,
+        path: "/h/a/hooks.json".into(),
+        text: Some("{}".into()),
+        items: vec![],
+        trust: Some(HookTrustTodo {
+            path: "/h/a/trust.txt".into(),
+            text: Some("x = 1\n".into()),
+            trusted,
+            whole: Some("x = 1\nk = v\n".into()),
+        }),
+    };
+    let mut f = base();
+    f.hooks = vec![hooks(true, false)];
+    let c = chores(&f);
+    let t = c
+        .iter()
+        .find(|x| x["id"] == json!("cc-bus-trust:fake"))
+        .expect("信任那一件");
+    assert_eq!(t["state"], json!("todo"));
+    assert_eq!(t["file"], json!("/h/a/trust.txt"));
+    assert_eq!(t["copy"], json!("k = v"));
+    assert_eq!(t["whole"], json!("x = 1\nk = v\n"));
+    f.hooks = vec![hooks(true, true)];
+    let c = chores(&f);
+    let t = c
+        .iter()
+        .find(|x| x["id"] == json!("cc-bus-trust:fake"))
+        .unwrap();
+    assert_eq!(t["state"], json!("done"));
+    f.hooks = vec![hooks(false, false)];
+    assert!(chores(&f)
+        .iter()
+        .all(|x| x["id"] != json!("cc-bus-trust:fake")));
+}
+
+/// 几家各一份钩子：合成「整份」的是落在同一份文件的那两件 —— 别家同样有实时显示、钩子已装的那一份不掺进来。
+#[test]
+fn 同一份文件两件_整份只拼那一份文件里的两件() {
+    let mut f = base();
+    let x = "{\n  \"model\": \"x\"\n}\n".to_string();
+    let y = "{\n  \"model\": \"y\"\n}\n".to_string();
+    f.relay = vec![
+        claude_relay("absent", "/h/x.json", Some(&x), Some("u")),
+        claude_relay("absent", "/h/y.json", Some(&y), Some("u")),
+    ];
+    let hooks = |kind: &str, path: &str, text: &str, installed: bool| Hooks {
+        kind: kind.into(),
+        ccbus: true,
+        installed,
+        path: path.into(),
+        text: Some(text.into()),
+        items: vec![(vec!["onStop".into()], json!({ "run": kind }))],
+        trust: None,
+    };
+    f.hooks = vec![
+        hooks("a", "/h/x.json", &x, true),
+        hooks("b", "/h/y.json", &y, false),
+    ];
+    let c = chores(&f);
+    let b = c
+        .iter()
+        .find(|x| x["id"] == json!("cc-bus-hooks:b"))
+        .expect("乙那一件");
+    let whole: Value = serde_json::from_str(b["whole"].as_str().unwrap()).unwrap();
+    assert_eq!(whole["model"], json!("y"), "{whole}");
+    assert_eq!(whole["onStop"], json!([{ "run": "b" }]), "{whole}");
+}
+
+/// 两个替身家各两个号（同 `trust_share_exec_tests` 那一份：`fa` 记 JSON、账号 0 住 `shared/`；`fb` 记行式、账号 0 住 `$HOME`）。
+/// 同步不写账号 0 ⇒ 其余号信任过、账号 0 未记上的目录进待办：每家一件（可选 · 复制片段，diff 只加缺的那一格，整份不下发）；
+/// 账号 0 补齐后那一家不出。
+#[test]
+fn 账号_0_缺的信任每家一件_补齐后不出() {
+    use crate::accounts::manage::model::{Account, Entry, Manifest};
+    use crate::accounts::manage::trust_share_exec::zero_gaps_among;
+    let home = test_home::scratch("zero-trust").canonicalize().unwrap();
+    let h = home.display().to_string();
+    let write = |rel: &str, body: &str| {
+        let p = home.join(rel);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(p, body).unwrap();
+    };
+    let fa = crate::agents::fake::family_row("fa", "CCM_FA_DIR", "fa", true, || None);
+    let fb_face = crate::agents::AccountsFace {
+        identity: &[(
+            "fake.conf",
+            crate::agents::IdentityRoot::Home,
+            crate::agents::IdentityClass::State,
+        )],
+        config_file: "fake.conf",
+        trust: Some(crate::agents::fake::LINE_TRUST_CELLS),
+        ..fa.accounts.expect("替身家有账号面")
+    };
+    let fb = crate::agents::Adapter {
+        accounts: Some(fb_face),
+        ..crate::agents::fake::family_row("fb", "CCM_FB_DIR", "fb", false, || None)
+    };
+    let registry = [fa, fb];
+    write(
+        "shared/fake-config.json",
+        "{\"trusted\": {\"/a0\": true}}\n",
+    );
+    write("fake.conf", "trust /b0\n");
+    write(
+        ".cc-monitor/accounts/a1/fake-config.json",
+        "{\"trusted\": {\"/a0\": true, \"/a1\": true}}\n",
+    );
+    write(
+        ".cc-monitor/accounts/a2/fake-config.json",
+        "{\"trusted\": {\"/a0\": true}}\n",
+    );
+    write(
+        ".cc-monitor/accounts/b1/fake.conf",
+        "trust /b0\ntrust /b1\n",
+    );
+    write(".cc-monitor/accounts/b2/fake.conf", "trust /b0\n");
+    let row = |name: &str, kind: &str| {
+        Entry::Managed(Account {
+            name: name.to_string(),
+            email: String::new(),
+            config_dir: format!("{h}/.cc-monitor/accounts/{name}"),
+            is_default: false,
+            auth_kind: None,
+            color: None,
+            agent: Some(kind.to_string()),
+            extra: Default::default(),
+        })
+    };
+    let m = Manifest {
+        entries: vec![
+            row("a1", "fa"),
+            row("b1", "fb"),
+            row("a2", "fa"),
+            row("b2", "fb"),
+        ],
+        ..Manifest::default()
+    };
+    let todo = |gaps| {
+        chores(&Facts {
+            zero_trust: gaps,
+            ..base()
+        })
+    };
+
+    let items = todo(zero_gaps_among(&h, &registry, &m));
+    let ids: Vec<&str> = items.iter().map(|c| c["id"].as_str().unwrap()).collect();
+    assert_eq!(ids, ["zero-trust:fa", "zero-trust:fb"], "{items:?}");
+    let a = &items[0];
+    assert_eq!(a["kind"], json!("optional"));
+    assert_eq!(a["state"], json!("todo"));
+    assert_eq!(a["action"], json!("copySnippet"));
+    assert_eq!(a["file"], json!(format!("{h}/shared/fake-config.json")));
+    assert_eq!(a["whole"], Value::Null, "账号 0 那一份整份不下发");
+    let added: Vec<&str> = a["diff"]["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|r| r["kind"] == json!("add"))
+        .map(|r| r["text"].as_str().unwrap())
+        .collect();
+    assert!(added.iter().any(|l| l.contains("/a1")), "{added:?}");
+    assert!(
+        !added.iter().any(|l| l.contains("/b1")),
+        "别家的目录进了 fa 那一件：{added:?}"
+    );
+    let b = &items[1];
+    assert_eq!(b["file"], json!(format!("{h}/fake.conf")));
+    assert!(b["copy"].as_str().unwrap().contains("trust /b1"), "{b}");
+
+    write(
+        "shared/fake-config.json",
+        "{\"trusted\": {\"/a0\": true, \"/a1\": true}}\n",
+    );
+    write("fake.conf", "trust /b0\ntrust /b1\n");
+    assert!(
+        todo(zero_gaps_among(&h, &registry, &m)).is_empty(),
+        "补齐了还出"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 清单里号目录指到账号库外的号：一个号一件「需手动」，指着清单那一份、说改回账号库里的目录；没有这样的号不出。
+#[test]
+fn 号目录在账号库外的号一号一件_指着清单() {
+    use crate::accounts::manage::trust_share_exec::OutsideLibrary;
+    let o = |name: &str| OutsideLibrary {
+        name: name.into(),
+        dir: format!("/h/.own-{name}"),
+        manifest: "/h/.cc-monitor/accounts/accounts.json".into(),
+        accts: "/h/.cc-monitor/accounts".into(),
+        in_place: false,
+    };
+    let items = chores(&Facts {
+        outside_library: vec![o("p"), o("q")],
+        ..base()
+    });
+    // 旧的就地号单列那一句（说明那一格换一句，别的同库外那一件）。
+    let in_place = chores(&Facts {
+        outside_library: vec![OutsideLibrary {
+            in_place: true,
+            ..o("p")
+        }],
+        ..base()
+    });
+    assert_eq!(
+        in_place[0]["why"],
+        json!(copy_core::copy_text(
+            "beChore.outsideLibrary.inPlace",
+            &[("path", "/h/.own-p"), ("accts", "/h/.cc-monitor/accounts")]
+        ))
+    );
+    assert_ne!(in_place[0]["why"], items[0]["why"]);
+    let ids: Vec<&str> = items.iter().map(|c| c["id"].as_str().unwrap()).collect();
+    assert_eq!(ids, ["outside-library:p", "outside-library:q"], "{items:?}");
+    let p = &items[0];
+    assert_eq!(p["kind"], json!("optional"));
+    assert_eq!(p["state"], json!("todo"));
+    assert_eq!(p["action"], json!("locate"));
+    assert_eq!(p["file"], json!("/h/.cc-monitor/accounts/accounts.json"));
+    assert_eq!(p["copy"], json!("/h/.cc-monitor/accounts/accounts.json"));
+    assert_eq!(p["steps"].as_array().map(Vec::len), Some(2), "{p}");
+    assert!(chores(&base())
+        .iter()
+        .all(|c| !c["id"].as_str().unwrap().starts_with("outside-library:")));
 }

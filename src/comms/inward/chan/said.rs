@@ -22,6 +22,12 @@ pub fn said(e: &CallError, origin: &Origin) -> String {
     match e {
         CallError::Hop { reach, why, .. } => match (reach, why) {
             (Reach::NotSent, HopFault::Overrun) => copy_text("rsChanSaid.hop.expired", &[]),
+            // 本侧在等的满了：没出本侧，与那台无关（同本层写好的那一句，`backend_route::layer_call_error`）。
+            (Reach::NotSent, HopFault::Full) => copy_text("rsBackendRoute.layer.tooMany", &[]),
+            // `Full` 只在登记那一步拒时出、恒没发出：发了 / 拿不准的 `Full` 是内部不变量破了。
+            (Reach::Sent | Reach::Unknown, HopFault::Full) => {
+                copy_text("rsShellCmd.self.crashed", &[])
+            }
             (Reach::NotSent, HopFault::Unreachable | HopFault::Dropped) if origin.is_local() => {
                 copy_text("rsChanSaid.hop.localDown", &[])
             }
@@ -49,11 +55,6 @@ pub fn said(e: &CallError, origin: &Origin) -> String {
             OursFault::Misuse | OursFault::Broken => copy_text("rsShellCmd.self.crashed", &[]),
         },
     }
-}
-
-/// 那台离线那一句（`machine` 是给人看的称呼）。全产品只这一处取字：连接层交出的离线那一句都从这里来，出口照摆。
-pub fn offline(machine: &str) -> String {
-    copy_text("link.machine.offline", &[("machine", machine)])
 }
 
 /// 机器名空白、`route` 拒了那一句：点名是哪条命令，并逐字给出本机该送什么。

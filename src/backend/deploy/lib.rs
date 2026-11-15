@@ -51,6 +51,92 @@ pub trait Facing: Send + Sync {
     fn list<'a>(&'a self, rel: &'a str) -> Fut<'a, Listed>;
 }
 
+// ═══ 问那台的两条命令与回话的解读（只有部署这一趟跑；戳的界标与读字节那一份住契约 crate）══════════════
+
+/// 问那台机器的 (OS, arch) 那条命令（后端部署那一趟一次性 exec）。
+pub const UNAME_CMD: &str = "uname -s -m";
+
+/// `uname -s -m` 的收全结果 → 键。**纯函数**。
+///
+/// 退出码非 0 / 空 ⇒ 问不出 OS（Windows 默认 shell 没有 `uname` 就是这一形）；只答一段 ⇒ 问不出 arch；
+/// 多于两段 ⇒ 问不出 OS（认不出哪段是什么）。句子只说原因词（无应答 · 应答报错 · 应答无法解析）；
+/// 那台答的原话（stderr 或答的那几段）进 [`Refusal::raw`]、由出错那一端写进复制详情 —— 不照抄进句子：
+/// 真 Win11 上 PowerShell 按控制台代码页（GBK）报错，后端那一跳按 UTF-8 有损解（`ssh-dial/uses.rs`），照抄就是一串乱码。
+pub fn key_from_uname(exit: Option<u32>, stdout: &str, stderr: &str) -> Result<Key, Refusal> {
+    if exit != Some(0) {
+        let said = stderr.trim();
+        let why = if said.is_empty() {
+            copy_text("reason.link.noAnswer", &[])
+        } else if said.contains('\u{FFFD}') {
+            copy_text("rsByteTable.key.unreadable", &[])
+        } else {
+            copy_text("rsByteTable.key.said", &[])
+        };
+        return Err(Refusal::OsUnknown(Said::with_raw(why, said)));
+    }
+    let parts: Vec<&str> = stdout.split_whitespace().collect();
+    match parts.as_slice() {
+        [] => deploy_contract::key_of("", ""),
+        [os] => deploy_contract::key_of(os, ""),
+        [os, arch] => deploy_contract::key_of(os, arch),
+        _ => Err(Refusal::OsUnknown(Said::with_raw(
+            copy_text("rsByteTable.key.unreadable", &[]),
+            stdout.trim(),
+        ))),
+    }
+}
+
+/// 在目标机器上扫身份戳的那一条命令（档 A：目标机器**自己的**只读工具，一次 exec，常数字节回传）。
+///
+/// 正则与 `tests/scripts/re-embed.sh::bytes_id` 同一条（界标之间是 `[[:alnum:]_.-]`，这里要**至少一个字符** ——
+/// 两个界标在 `.rodata` 里挨着就是空串那一形，[`deploy_contract::identity_of_bytes`] 也不收它）。**纯函数**。
+/// `word` 是那个文件在远端 shell 里的**写法**（固定落点常量，自带 `"$HOME"`），不是一条要 quote 的外来路径。
+pub fn stamp_scan_cmd(word: &str, marks: Marks<'_>) -> String {
+    let ere = |s: &str| -> String {
+        s.chars()
+            .map(|c| {
+                if "\\^$.|?*+()[]{}".contains(c) {
+                    format!("\\{c}")
+                } else {
+                    c.to_string()
+                }
+            })
+            .collect()
+    };
+    let pattern = format!("{}[[:alnum:]_.-]+{}", ere(marks.open), ere(marks.close));
+    format!(
+        "LC_ALL=C grep -aoE {} -- {word}",
+        shell_quote_core::posix_quote(&pattern),
+    )
+}
+
+/// 那一条扫描的收全结果 → [`RemoteIdentity`]（落点在、不是 0 字节时才问）。**纯函数**。
+///
+/// `grep` 的退出码：0 = 扫到了 · 1 = 一个都没有 · 其余（2 = 读不了 / 链路断了没给退出码）= 判不了。
+pub fn interpret_stamp_scan(
+    exit: Option<u32>,
+    stdout: &str,
+    stderr: &str,
+    marks: Marks<'_>,
+) -> RemoteIdentity {
+    match exit {
+        Some(0) => RemoteIdentity::of_ids(
+            stdout
+                .lines()
+                .filter_map(|l| l.trim().strip_prefix(marks.open)?.strip_suffix(marks.close))
+                .filter(|id| !id.is_empty())
+                .map(str::to_string)
+                .collect(),
+        ),
+        Some(1) => RemoteIdentity::NoStamp,
+        // 退出码不进这句话（`Some(..)` / `None` 是实现的形状）：没有错误输出时只说「没答完」。
+        _ => RemoteIdentity::Unreadable(match stderr.trim() {
+            "" => copy_text("rsSftp.stamp.unfinished", &[]),
+            said => said.to_string(),
+        }),
+    }
+}
+
 // ═══ 部署判定 ══════════════
 
 /// 表 B：这个 origin 承诺哪几种机器（本机 Windows x86_64 · 本机 Linux x86_64 · 远端 Linux 两个 arch）。
@@ -231,16 +317,8 @@ async fn identity_at(facing: &dyn Facing, rel: &str, word: &str) -> Result<Remot
         TargetBinary::Missing => RemoteIdentity::Missing,
         TargetBinary::Empty => RemoteIdentity::Empty,
         TargetBinary::Present | TargetBinary::Unknown => {
-            match facing
-                .exec(deploy_contract::stamp_scan_cmd(word, MARKS))
-                .await
-            {
-                Ok(r) => deploy_contract::interpret_stamp_scan(
-                    r.exit_code(),
-                    &r.stdout,
-                    &r.stderr,
-                    MARKS,
-                ),
+            match facing.exec(stamp_scan_cmd(word, MARKS)).await {
+                Ok(r) => interpret_stamp_scan(r.exit_code(), &r.stdout, &r.stderr, MARKS),
                 Err(e) => RemoteIdentity::Unreadable(e),
             }
         }
@@ -249,23 +327,20 @@ async fn identity_at(facing: &dyn Facing, rel: &str, word: &str) -> Result<Remot
 
 /// **那台要哪一格字节** —— 部署计划的第 ① 步。
 ///
-/// 问 `uname -s -m`（[`deploy_contract::key_from_uname`]）→ 表 A / 表 B（[`judge`]）→ 这一版带没带那一格（`carried`）。
+/// 问 `uname -s -m`（[`key_from_uname`]）→ 表 A / 表 B（[`judge`]）→ 这一版带没带那一格（`carried`）。
 /// 拒绝点在写第一个字节之前。
 async fn slot_of(facing: &dyn Facing, carried: &[Key], machine: &str) -> Result<Key, Said> {
     let said = |r: Refusal| refused(&r, machine);
-    let got = facing
-        .exec(deploy_contract::UNAME_CMD.to_string())
-        .await
-        .map_err(|e| {
-            Said::new(
-                "unreachable",
-                copy_text(
-                    "rsSftp.deploy.unameFailed",
-                    &[("machine", machine), ("why", &e)],
-                ),
-            )
-        })?;
-    let raw = deploy_contract::key_from_uname(got.exit_code(), &got.stdout, &got.stderr);
+    let got = facing.exec(UNAME_CMD.to_string()).await.map_err(|e| {
+        Said::new(
+            "unreachable",
+            copy_text(
+                "rsSftp.deploy.unameFailed",
+                &[("machine", machine), ("why", &e)],
+            ),
+        )
+    })?;
+    let raw = key_from_uname(got.exit_code(), &got.stdout, &got.stderr);
     let key = judge(Route::Remote, raw).map_err(said)?;
     if !carried.contains(&key) {
         return Err(said(Refusal::NotCarried {
@@ -415,3 +490,7 @@ static TEST_HOME: fn() = test_home::linked;
 )]
 #[path = "../../../tests/backend/deploy/install_tests.rs"]
 mod install_tests;
+
+#[cfg(test)]
+#[path = "../../../tests/backend/deploy/lib_tests.rs"]
+mod lib_tests;

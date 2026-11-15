@@ -600,7 +600,7 @@ pub struct Product {
     /// 判别格：（它所在那一层的最后一段 · 键）—— 这件成品里按哪几格分种类。只认这里登记的：
     /// 同叫 `kind`，`who.speaker.kind` 是判别格、`runs.*.kind` 是普通的值。根上那一层的段是空串。
     pub(crate) tags: &'static [(&'static str, &'static str)],
-    /// 样本：每个可缺的格都填上、每个列表都不空、每种变体各一个。
+    /// 样本：每个可缺的格都填上（互斥的几格各在一份样本里填）、每个列表都不空、每种变体各一个。
     pub(crate) specimens: fn() -> Vec<Specimen>,
 }
 
@@ -614,6 +614,15 @@ pub(crate) fn cells_of(p: &Product) -> (Vec<Cell>, Vec<String>) {
             Err(e) => holes.push(format!("specimen: {e}")),
         }
     }
+    // 两格互斥的（`needs.ask` 与 `needs.manualText` 这一类：一份里只许有一格）各由一份样本填：
+    // 一格缺在这一份、别的样本里有它 ⇒ 那一格目录里没漏，不算洞。
+    let filled = |at: &str| {
+        out.keys().any(|k| {
+            k.strip_prefix(at)
+                .is_some_and(|rest| rest.is_empty() || rest.starts_with(['.', '[']))
+        })
+    };
+    holes.retain(|h| h.strip_suffix(": absent").is_none_or(|at| !filled(at)));
     (hoist(out).into_values().collect(), holes)
 }
 
@@ -692,12 +701,12 @@ pub const PRODUCTS: &[Product] = &[
 mod specimens {
     use super::{node_of, Specimen};
     use crate::agents::record::{Block, Body, Record, ReplyError, TitleBy};
+    use crate::agents::PlanTitleExt as _;
     use crate::agents::{
-        Answer, ApiReason, AskOption, AskQuestion, ChildRunTag, LineDiff, LineDiffKind,
-        LineDiffRow, McpStatus, ResultKind, SaidPart, SessionActivity, Speaker, StepAsk, StepBody,
-        StepResult, TextFold, ToolCard, ToolStep, UserText,
+        Answer, AskOption, AskQuestion, ChildRunTag, LineDiff, LineDiffKind, LineDiffRow,
+        McpStatus, ResultKind, SaidPart, SessionActivity, Speaker, StepAsk, StepBody, StepResult,
+        TextFold, ToolCard, ToolStep, UserText,
     };
-    use crate::agents::{PlanTitleExt as _, SpeakerExt as _};
     use crate::common::cells::Words;
     use crate::observe::recognize::facts::{
         LastSay, LimitFrom, McpTrouble, Needs, NeedsKind, PendingCall, RetryOutcome, RetryRun,
@@ -745,22 +754,21 @@ mod specimens {
                 from: some("f"),
                 name: some("n"),
                 handback: true,
-                body: some("b"),
                 doc: Some(md_core::parse("b")),
             },
             Speaker::PeerSession {
                 from: some("f"),
-                body: some("b"),
                 doc: Some(md_core::parse("b")),
                 title: Some(Words(s("t"))),
             },
             Speaker::Coordinator {
-                body: some("b"),
                 doc: Some(md_core::parse("b")),
             },
             Speaker::AgentTask,
             Speaker::System { body: some("b") },
-            Speaker::compact("ab"),
+            Speaker::CompactSummary {
+                title_text: Some(Words(s("t"))),
+            },
             Speaker::Interrupt,
             Speaker::ToolResult,
         ]
@@ -801,6 +809,7 @@ mod specimens {
             removed: 1,
             stat: Words(s("+1 −1")),
             notice: (!numbered).then(|| Words(s("cells capped"))),
+            show_all_text: Some(Words(s("show all"))),
         }
     }
 
@@ -814,7 +823,6 @@ mod specimens {
             files: Some(1),
             answer: Some(answer),
             exit_code: Some(0),
-            read: true,
             error: Some(Words(s("x"))),
             file: some("/f"),
             patch: Some(diff(true)),
@@ -822,6 +830,7 @@ mod specimens {
             preview: some("p"),
             chars: Some(1),
             kind: Some(ResultKind::Handback),
+            result_text: Some(Words(s("r"))),
         }
     }
 
@@ -843,7 +852,6 @@ mod specimens {
             bytes: 1,
             at: 0,
             n: 0,
-            data: String::new(),
         };
         let mut out: Vec<Record> = vec![
             rec(Body::Said {
@@ -944,9 +952,6 @@ mod specimens {
                 }),
             }),
             rec(Body::Retry {
-                reason: ApiReason::Network,
-                attempt: Some(1),
-                max: Some(3),
                 text: Some(Words(s("r"))),
             }),
             rec(Body::Title {
@@ -986,6 +991,7 @@ mod specimens {
                 let f = SessionFacts {
                     forked_from: some("src"),
                     touched_files: vec![s("/f")],
+                    touched_text: Some(s("t")),
                     usage: Some(UsageFact::new(
                         1,
                         some("m"),
@@ -1018,21 +1024,8 @@ mod specimens {
                         at: some("t"),
                         at_ms: Some(0),
                     }),
-                    needs: Some(Needs {
-                        kind,
-                        tool: some("Bash"),
-                        call: some("c"),
-                        what: some("ls"),
-                        since_ms: Some(1),
-                        text: Words(s("t")),
-                        head: Words(s("h")),
-                        head_code: some("ls"),
-                        tone: crate::common::cells::Tone::Need,
-                        rank: 1,
-                        waited_ms: Some(1),
-                        ask: Some(crate::agents::asks::specimen()),
-                        manual_text: Some(Words(s("m"))),
-                    }),
+                    // 判不出种类的那一份界面答不了（`manualText`），别的答得了（`ask`）：互斥的两格各有一份填。
+                    needs: Some(needs(kind, kind != NeedsKind::Unknown)),
                     handed_back: vec![s("a")],
                     retries: vec![RetryRun {
                         id: s("r"),
@@ -1168,37 +1161,48 @@ mod specimens {
         vec![node_of(&crate::history::groups::specimen())]
     }
 
-    pub(super) fn needs_row() -> Vec<Specimen> {
-        vec![node_of(&crate::observe::accounts_query::NeedsRow {
-            sid: s("s"),
-            label: crate::common::cells::Words("t".into()),
-            face: crate::wire::SessionFace::of(crate::wire::Life::Live {
-                activity: Some(crate::agents::SessionActivity::NeedsYou),
-                host: None,
-            })
-            .housed_in(Some(&crate::wire::SessionContainer::Tmux {
-                terminal: Some(s("t")),
-            })),
-            needs: Needs {
-                kind: NeedsKind::Approve,
+    /// 需手动那一份：先是「答不了」那一态，`answered` ⇒ 经写口配上那一条（`ask` 与 `manualText` 只经两个写口改）。
+    fn needs(kind: NeedsKind, answered: bool) -> Needs {
+        let mut n = Needs::new(
+            cmd_wire::needs::NeedsBase {
+                kind,
                 tool: some("Bash"),
                 call: some("c"),
                 what: some("ls"),
-                since_ms: Some(1),
                 text: Words(s("t")),
                 head: Words(s("h")),
                 head_code: some("ls"),
-                tone: crate::common::cells::Tone::Need,
                 rank: 1,
                 waited_ms: Some(1),
-                ask: Some(crate::agents::asks::specimen()),
-                manual_text: Some(Words(s("m"))),
+                since_ms: Some(1),
             },
+            Words(s("m")),
+        );
+        if answered {
+            n.answer_with(
+                crate::agents::asks::specimen(),
+                Words(s("h")),
+                Some(Words(s("p"))),
+            );
+        }
+        n
+    }
+
+    /// 答得了 · 答不了各一份（`ask` 与 `manualText` 互斥）。
+    pub(super) fn needs_row() -> Vec<Specimen> {
+        [true, false].into_iter().map(needs_row_of).collect()
+    }
+
+    fn needs_row_of(answered: bool) -> Specimen {
+        node_of(&crate::observe::accounts_query::NeedsRow {
+            sid: s("s"),
+            label: crate::common::cells::Words("t".into()),
+            needs: needs(NeedsKind::Approve, answered),
             hidden: crate::history::session_hidden::judge(&crate::history::session_hidden::Facts {
                 hide: Some(crate::history::history_annotations::Hide::On),
                 ..Default::default()
             }),
-        })]
+        })
     }
 
     pub(super) fn index_row() -> Vec<Specimen> {
@@ -1236,7 +1240,6 @@ mod specimens {
             sid: s("s"),
             agent_kind: "agent".to_string(),
             background: true,
-            attachable: Some(true),
             cwd: some("/w"),
             project_dir: some("/w"),
             name: some("n"),
@@ -1293,9 +1296,9 @@ mod specimens {
                             from: 1,
                         }),
                         peek: Some(Words(s("p"))),
+                        asks: false,
                     })),
                     name_face: named(),
-                    waiting_for: some("w"),
                     path: some("p"),
                 }))
             })

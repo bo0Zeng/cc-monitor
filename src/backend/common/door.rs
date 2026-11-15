@@ -81,13 +81,14 @@ fn wp(s: &str) -> wire::WirePath {
     wire::WirePath::from(s)
 }
 
+/// 这台的家目录，写成字（门这一族的根都收字）。说不出 ⇒ 拒；🔴 家名不是 UTF-8 ⇒ 照实拒（`beAssets.door.homeNotUtf8`），
+/// 不按替换符拼出一个不存在的家 —— 经门拿家目录的读者都只在这里判这一回。
 pub fn home(d: &dyn Door) -> Result<String, String> {
     let v = d.home(wire::HomeReq {}).map_err(|e| refused(e).said())?;
-    let p = text_of(&v.path);
-    if p.is_empty() {
+    if v.path.bytes().is_empty() {
         return Err(copy_text("beAssets.door.homeUnknown", &[]));
     }
-    Ok(p)
+    String::from_utf8(v.path.0).map_err(|_| copy_text("beAssets.door.homeNotUtf8", &[]))
 }
 
 pub fn peek(d: &dyn Door, root: &str, rel: &str) -> Result<Peeked, String> {

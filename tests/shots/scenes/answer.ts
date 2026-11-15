@@ -128,10 +128,10 @@ export const ANSWER_SCENES: Scene[] = [
   shot("answer-plan", "答批准 · 批计划（甲4）", "计划原文进等宽块；四项由核心给：自动模式 · 自动接受编辑 · 逐个确认 · 继续规划…", async ({ backend }) => {
     await asked(backend, hook("ExitPlanMode", { plan: PLAN }, { permission_mode: "plan" }));
   }, world("ExitPlanMode", { plan: PLAN }, "permission prompt")),
-  shot("answer-subagent", "答批准 · 子 agent 的请求（甲5）", "后台子 agent 发来的批准：头上标是哪一种 agent；多一项「改到终端里答」排末尾、幽灵样式", async ({ backend }) => {
+  shot("answer-subagent", "答批准 · 子 agent 的请求（甲5）", "后台子 agent 发来的批准挡着终端、框认得出：块里只给核心那两项「允许 · 拒绝」（点了由后端读屏认准终端里那个框才按）", async ({ backend }) => {
     await asked(backend, hook("Bash", { command: "touch fgA.txt", description: "建 fgA.txt" }, { permission_suggestions: SUGGEST.slice(0, 1), agent_id: "a1f0", agent_type: "general-purpose" }));
   }, world("Bash", { command: "touch fgA.txt", description: "建 fgA.txt" }, "permission prompt")),
-  shot("answer-manual", "答批准 · 只能在终端里答（甲6）", "没挂上请求（这条会话不是经答题口起的）：核心写好的那一句 ＋［看终端］", async ({ backend }) => {
+  shot("answer-manual", "答批准 · 只能在终端里答（甲6）", "未挂上请求（这条会话不经答题口起）：只写核心写好的那一句，不给答的按钮", async ({ backend }) => {
     await asked(backend, null, "[data-part=manual]");
   }),
   shot("answer-elsewhere", "答批准 · 别处先答了（甲7）", "终端那边先答了：经真后端答掉那一条，记录里落下那一步的结果、pidfile 改回在跑（照真终端答了之后的样子）⇒ 真后端推 changed {needs}、重读里没了那条请求 ⇒ 块收起，留一行「已在终端答过或已关闭」（稳定态，下一条请求来了 / 切走才没）；头上与过程行照真后端此刻说的", async ({ backend }) => {

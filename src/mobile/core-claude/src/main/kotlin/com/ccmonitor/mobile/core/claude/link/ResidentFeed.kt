@@ -1,6 +1,9 @@
 package com.ccmonitor.mobile.core.claude.link
 
 import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.AttachDo
+import com.ccmonitor.mobile.core.wire.gen.AttachDone
+import com.ccmonitor.mobile.core.wire.gen.AttachShown
 import com.ccmonitor.mobile.core.wire.gen.BatchAnswer
 import com.ccmonitor.mobile.core.wire.gen.BatchKeep
 import com.ccmonitor.mobile.core.wire.gen.BatchLine
@@ -43,7 +46,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * 嵌的 Rust 核心里那一台常驻流的几个口（`Core.resident*`，手写 JNI、走消息）。生产上直通 JNI；JVM 单测给假的。
- * 交回来的事经 [open] 时给的 `events` 回（`state` · `empty` · `book` · `live` · `frame` · `unread` · `watch_from` · `ssh` · `reply` · `moved` · `deploy` · `batch` · `batch_keep` · `batch_local` · `busy`）：
+ * 交回来的事经 [open] 时给的 `events` 回（`state` · `empty` · `book` · `live` · `frame` · `unread` · `watch_from` · `ssh` · `reply` · `moved` · `deploy` · `batch` · `batch_keep` · `batch_local` · `busy` · `attach`）：
  * 每一样的形状是 `cmd-wire` 的 `phone` 那一份（会话簿 · 活卡是共享核心 `face-core` 那一份）—— 生成的类照它解，缺一格就是两端契约对不上，不补默认值。
  */
 interface ResidentCore {
@@ -77,14 +80,6 @@ interface ResidentCore {
         retry: Boolean,
     )
 
-    /** 分块传那一半（文件描述符交给核心）：回问答编号，走到哪经 `moved`、结局经 `reply`；这台不在 ⇒ 0。 */
-    fun stage(
-        handle: Long,
-        fd: Int,
-        name: String,
-        withinMs: Long,
-    ): Long
-
     /** 拉进内存那一半（[path] 是线上 `WirePath` 的 JSON，[cap] 门给的上限）：回问答编号，走到哪经 `moved`、结局经 `reply`；这台不在 ⇒ 0。 */
     fun read(
         handle: Long,
@@ -93,7 +88,7 @@ interface ResidentCore {
         withinMs: Long,
     ): Long
 
-    /** 撤那一趟（[stage] · [read] 回的编号）：在问的那一块当场丢下。 */
+    /** 撤那一趟（[read] 回的编号）：在问的那一块当场丢下。 */
     fun transferStop(id: Long)
 
     /** 起一组（[want] 是 JSON；`{kept}` ⇒ 接回落盘那一份）：回编号，事经 `batch` 那一种交回、落盘那一份经 `batch_keep`；这台不在 · 读不动 ⇒ 0。 */
@@ -109,14 +104,17 @@ interface ResidentCore {
 
     fun batchStop(id: Long)
 
+    /** 输入框上方那一排附件那一口（[op] 是 `AttachDo` 那一行）⇒ `AttachDone` 那一行；那一排每变一次经 `attach` 那一种交回；读不动 ⇒ 空串。 */
+    fun attach(
+        handle: Long,
+        op: String,
+    ): String = ""
+
     /** 文件页那一问（`files-ls` 的原行，JSON 数组）⇒ 核心那一行（[PhoneMenu]）；[handle] 还没开 ⇒ 0（当断着）。 */
     fun pickMenu(
         handle: Long,
         rows: String,
     ): String
-
-    /** 几台搜内容的结果（`[{origin, reply}]`，JSON）⇒ 合好的那一份（[SearchMerge.of]）；读不动 ⇒ 空串。 */
-    fun searchMerge(data: String): String
 
     /** 给那台装 / 更新后端（[slots] = 包里那几格解到的文件，JSON）；结局经 `deploy` 那一种交回，走到哪一步在 `state` 那一行的成品里。那台不在 · 正在装 ⇒ `false`。 */
     fun deploy(
@@ -186,7 +184,7 @@ class ResidentFeed(
     private val changedFlow = MutableSharedFlow<Changed>(extraBufferCapacity = BUFFER, onBufferOverflow = BufferOverflow.DROP_OLDEST)
 
     /** 流上的 `changed` 帧（哪一样变了 · 哪一个）：出口照它重读那一份。 */
-    val changed: SharedFlow<Changed> = changedFlow.asSharedFlow()
+    override val changed: SharedFlow<Changed> = changedFlow.asSharedFlow()
 
     private val lineFlow = MutableSharedFlow<RecordLine>(extraBufferCapacity = LINE_BUFFER)
 
@@ -239,6 +237,12 @@ class ResidentFeed(
         }
     }
 
+    /** 这台在核心里那条流的编号（逐台问一圈交核心时报哪几台用，[NeedsFace.Host]）：还没开 ⇒ 开、等它开好。 */
+    suspend fun handle(): Long {
+        ensure()
+        return opened.await()
+    }
+
     override fun reconnect() {
         ensure()
         scope.launch { core.kick(opened.await(), true) }
@@ -279,7 +283,6 @@ class ResidentFeed(
     /** 结局由核心交：每一块都有期限，最后必回一句 ⇒ 这里不另设整趟的期限（大文件要多久就多久）。 */
     override suspend fun transfer(
         how: Transfer,
-        fd: () -> Int,
         withinMs: Long,
         moved: (Long, Long) -> Unit,
     ): Reply {
@@ -287,7 +290,6 @@ class ResidentFeed(
         val h = withTimeoutOrNull(withinMs) { opened.await() } ?: return Reply.LinkDown
         val id =
             when (how) {
-                is Transfer.Stage -> core.stage(h, fd(), how.name, withinMs)
                 is Transfer.Pull -> core.read(h, Json.line(how.path.wire), how.cap, withinMs)
             }
         if (id == 0L) return Reply.LinkDown
@@ -333,6 +335,17 @@ class ResidentFeed(
 
     override fun batchStop(id: Long) = core.batchStop(id)
 
+    private val attachFlow = MutableSharedFlow<AttachShown>(extraBufferCapacity = BUFFER)
+    override val attaches: SharedFlow<AttachShown> = attachFlow.asSharedFlow()
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    override fun attach(op: AttachDo): AttachDone? {
+        ensure()
+        val h = if (opened.isCompleted) opened.getCompleted() else 0L
+        val line = core.attach(h, Wire.line(op))
+        return Wire.read<AttachDone>(line) ?: null.also { broke("attach", line) }
+    }
+
     @OptIn(ExperimentalCoroutinesApi::class)
     override fun picks(rows: List<Any?>): PhoneMenu? {
         ensure()
@@ -369,12 +382,12 @@ class ResidentFeed(
             "reply" -> onReply(body)
             "moved" -> onMoved(body)
             "deploy" -> onDeployLine(body)
-            "batch", "batch_keep", "batch_local", "busy" -> onWork(kind, body)
+            "batch", "batch_keep", "batch_local", "busy", "attach" -> onWork(kind, body)
             else -> broke(kind, body)
         }
     }
 
-    /** 核心里在走的活那几样：一组走到哪 · 落盘那一份 · 下到本机那一侧要做的 · 有没有活在走。 */
+    /** 核心里在走的活那几样：一组走到哪 · 落盘那一份 · 下到本机那一侧要做的 · 附件那一排 · 有没有活在走。 */
     private suspend fun onWork(
         kind: String,
         body: String,
@@ -383,6 +396,7 @@ class ResidentFeed(
             "batch" -> onBatchLine(body)
             "batch_keep" -> onKeepLine(body)
             "batch_local" -> onLocalLine(body)
+            "attach" -> Wire.read<AttachShown>(body)?.let { attachFlow.emit(it) } ?: broke(kind, body)
             else -> workingFlow.value = body == "true"
         }
     }

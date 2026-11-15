@@ -3,11 +3,11 @@ name = "upstream-url-core"
 version = "0.1.0"
 edition = "2021"
 workspace = "../../frontend/shell"
-description = "上游 base URL 能不能用（形状 · 协议闭集 · 明文只许回环）的唯一一份：后端中转解析 · 上游选择装表 · 写口与界面生成物共用（无 IO、无平台依赖）。"
+description = "上游 base URL 能不能用（形状 · 协议闭集 · 明文只许回环）的唯一一份：后端中转解析 · 上游选择装表 · 写口 · 出网口共用，界面不判（无 IO、无平台依赖）。"
 
 # **零依赖**。同 acct-core / shell-quote-core 的约束：backend 是 Linux-only 的静态 musl 二进制、
 # 且刻意不在 monitor 的 workspace 里；一旦引入平台相关的东西，共享就破了。
-# 选址的理由：用它的有通信层成员 `outward/upstream.rs` · `outward/door.rs`
+# 选址的理由：用它的有中转宿主 `backend-relay`（`relay::base_of` · `shape_said`）· 上游选择装表
 # （不许依赖业务 crate，`creds-core` 是业务 crate）；`relay-route-core` 头注明写「没有上游」。
 # 它**不是**业务 crate：只有协议 · 主机 · 端口 · 路径前缀与「回环」这一个传输安全事实。
 [dependencies]
@@ -15,3 +15,5 @@ description = "上游 base URL 能不能用（形状 · 协议闭集 · 明文�
 [dev-dependencies]
 # 测试档的家一开始就是沙箱（判据碰不到这台用户的真家）。
 test-home = { path = "../test-home" }
+# 金样 `tests/__fixtures__/upstream-url.golden.json` 由本包判据逐条读（两份 lock 里本来就各有它，不引新的第三方包）。
+serde_json = "1"

@@ -10,6 +10,11 @@ use super::*;
 use crate::agents::beat::SAY_CHARS;
 use serde_json::json;
 
+/// [`needs_of`] 交的那一份（何时起等也在它上面：`since_ms`，后端只存这一份）。
+fn shown_of(agent: Option<&str>, pending: &[PendingCall], wait: Option<&PidWait>) -> Option<Needs> {
+    needs_of(agent, pending, wait)
+}
+
 /// 夹具都是记录树那一家的记录。
 fn tree() -> &'static str {
     crate::agents::claudecode::AGENT_KIND
@@ -52,7 +57,7 @@ fn scan_facts<R: std::io::BufRead>(
 ) -> std::io::Result<SessionFacts> {
     let mut lines = crate::observe::lines::Lines::new(r, 0);
     while let Some(row) = lines.next()? {
-        note_line(&mut facts, tree(), row.body(), row.at);
+        note_line(&mut facts, Some(tree()), row.body(), row.at);
     }
     settle_limit(&mut facts, limits, relay);
     Ok(facts)
@@ -121,6 +126,17 @@ fn the_three_facts_follow_the_moved_rules() {
     let f = scan_all(&jsonl(&mixed()));
     assert_eq!(f.forked_from.as_deref(), Some("src-1"));
     assert_eq!(f.touched_files, vec!["/p/n.ipynb", "/p/b.ts", "/p/a.ts"]);
+    // 监控板 peek 那一格「改过的文件 N」由这里跟着写好（界面照抄，不数）。
+    assert_eq!(
+        f.touched_text.as_deref(),
+        Some(
+            copy_core::copy_text(
+                "gridMonitor.renderPeek.filesHead",
+                &[("recentFilesCount", "3")]
+            )
+            .as_str()
+        )
+    );
     assert_eq!(
         f.usage,
         Some(UsageFact::new(
@@ -529,37 +545,41 @@ fn needs_is_decided_from_the_wait_and_the_pending_call() {
     let ask = vec![call("q", "AskUserQuestion", Some("要不要？"))];
     let plan = vec![call("p", "ExitPlanMode", None)];
     // 不在等 ⇒ 没有。
-    assert_eq!(needs_of(tree(), &bash, None), None);
-    // 批准框 ＋ 一步没结果 ⇒ 批准那一步。
+    assert_eq!(needs_of(Some(tree()), &bash, None), None);
+    // 批准框 ＋ 一步没结果 ⇒ 批准那一步，从那台说的那一刻起等（需手动那一份带着它上线：`sinceMs`）。
     assert_eq!(
-        needs_of(tree(), &bash, Some(&wait(Some(W::Permission)))),
+        needs_of(Some(tree()), &bash, Some(&wait(Some(W::Permission)))).map(|n| n.since_ms),
+        Some(Some(42))
+    );
+    assert_eq!(
+        shown_of(Some(tree()), &bash, Some(&wait(Some(W::Permission)))),
         Some(Needs {
             kind: NeedsKind::Approve,
             tool: Some("Bash".into()),
             call: Some("b".into()),
             what: Some("rm -rf build/".into()),
-            since_ms: Some(42),
             text: crate::common::cells::Words(copy_core::copy_text("beSession.needs.approve", &[])),
             head: crate::common::cells::Words(copy_core::copy_text(
                 "needs.bar.approve",
                 &[("tool", "Bash")]
             )),
             head_code: Some("rm -rf build/".into()),
-            tone: crate::common::cells::Tone::Need,
             rank: needs_rank(NeedsKind::Approve, Some(1)),
             waited_ms: Some(1),
-            ask: None,
-            manual_text: None,
+            since_ms: Some(42),
+            reply: cmd_wire::needs::NeedsReply::Manual(crate::common::cells::Words(
+                copy_core::copy_text("beAsk.manual.terminal", &[])
+            )),
         })
     );
     // 批准框里是提问 ⇒ 回答；是计划 ⇒ 批准计划；那台没说是哪种框时同样认这两个工具。
     for w in [Some(W::Permission), None] {
-        let n = needs_of(tree(), &ask, Some(&wait(w))).unwrap();
+        let n = shown_of(Some(tree()), &ask, Some(&wait(w))).unwrap();
         assert_eq!(
             (n.kind, n.what.as_deref()),
             (NeedsKind::Answer, Some("要不要？"))
         );
-        let n = needs_of(tree(), &plan, Some(&wait(w))).unwrap();
+        let n = shown_of(Some(tree()), &plan, Some(&wait(w))).unwrap();
         assert_eq!(
             (n.kind, n.tool.as_deref(), n.call.as_deref(), n.what),
             (NeedsKind::Plan, Some("ExitPlanMode"), Some("p"), None)
@@ -575,11 +595,11 @@ fn needs_is_decided_from_the_wait_and_the_pending_call() {
         (W::Dialog, NeedsKind::Choose, false),
     ];
     for (w, kind, with_call) in kinds {
-        let n = needs_of(tree(), &bash, Some(&wait(Some(w)))).unwrap();
+        let n = shown_of(Some(tree()), &bash, Some(&wait(Some(w)))).unwrap();
         assert_eq!(n.kind, kind, "{w:?}");
         assert_eq!(n.call.is_some(), with_call, "{w:?}");
         // 记录里没有没结果的调用：种类照旧，只是说不出是哪一步。
-        let n = needs_of(tree(), &[], Some(&wait(Some(w)))).unwrap();
+        let n = shown_of(Some(tree()), &[], Some(&wait(Some(w)))).unwrap();
         assert_eq!((n.kind, n.call), (kind, None), "{w:?}");
     }
     // 弹着别的框（选项框 · 联网 · 协作 · 目标）时，底下那个提问 / 计划轮不到：先答的是顶上那个框。
@@ -590,19 +610,27 @@ fn needs_is_decided_from_the_wait_and_the_pending_call() {
         (W::Goal, NeedsKind::Goal),
     ] {
         assert_eq!(
-            needs_of(tree(), &ask, Some(&wait(Some(w)))).unwrap().kind,
+            shown_of(Some(tree()), &ask, Some(&wait(Some(w))))
+                .unwrap()
+                .kind,
             kind,
             "{w:?}"
         );
     }
     // 那台没说在等什么（或说了认不出的词）· 也没有提问 / 计划 ⇒ 判不出（不猜成批准）。
     for pending in [bash.clone(), vec![]] {
-        let n = needs_of(tree(), &pending, Some(&wait(None))).unwrap();
+        let n = shown_of(Some(tree()), &pending, Some(&wait(None))).unwrap();
         assert_eq!(
             (n.kind, n.tool, n.call, n.what),
             (NeedsKind::Unknown, None, None, None)
         );
     }
+    // 认不出这份记录是哪一家的（`None`）⇒ 不问哪一家哪个工具是提问 / 计划：批准框里就是批准那一步，没说是哪种框就判不出。
+    let n = shown_of(None, &ask, Some(&wait(Some(W::Permission)))).unwrap();
+    assert_eq!((n.kind, n.call.as_deref()), (NeedsKind::Approve, Some("q")));
+    let n = shown_of(None, &plan, Some(&wait(None))).unwrap();
+    assert_eq!((n.kind, n.call), (NeedsKind::Unknown, None));
+    assert_eq!(shown_of(None, &ask, None), None);
 }
 
 /// 快路对拍补上新三格：没结果的调用在时，它的结果 · 你发的一句都得过滤器放行；别人的结果照旧拦。
@@ -710,7 +738,7 @@ fn a_step_without_a_result_is_running_only_when_a_live_process_holds_the_session
     settle_pending(&mut f, true);
     assert_eq!(states(&f), [(StepWait::Running, None); 2]);
     f.needs = needs_of(
-        tree(),
+        Some(tree()),
         &f.pending,
         Some(&PidWait {
             waiting_for: Some(crate::agents::WaitOn::Permission),
@@ -1191,7 +1219,7 @@ fn needs_carries_its_words_and_tone() {
         (vec![], None, NeedsKind::Unknown, "beSession.needs.unknown"),
     ];
     for (pending, w, kind, key) in cases {
-        let n = needs_of(tree(), &pending, Some(&wait(w))).unwrap();
+        let n = shown_of(Some(tree()), &pending, Some(&wait(w))).unwrap();
         assert_eq!(n.kind, kind);
         let v = serde_json::to_value(&n).unwrap();
         assert_eq!(v["text"], copy_core::copy_text(key, &[]), "{kind:?}");
@@ -1424,7 +1452,7 @@ fn needs_carry_a_rank_riskier_first() {
     let ranks: Vec<u64> = order
         .into_iter()
         .map(|(p, w, kind)| {
-            let n = needs_of(tree(), &p, Some(&wait(w))).unwrap();
+            let n = shown_of(Some(tree()), &p, Some(&wait(w))).unwrap();
             assert_eq!(n.kind, kind);
             n.rank
         })
@@ -1435,7 +1463,7 @@ fn needs_carry_a_rank_riskier_first() {
     );
 }
 
-/// ★ **「已等多久」在那台算**：起点（`sinceMs`，那台 pidfile 的钟）与读 pidfile 那一刻（同一台的钟）相减，
+/// ★ **「已等多久」在那台算**：起点（那台 pidfile 的 `statusUpdatedAt`，`PidWait.since_ms`）与读 pidfile 那一刻（同一台的钟）相减，
 /// 不拿别的机器的钟减（手机 · 桌面的钟与服务器不同步）；写好的字由时长那一处写（`copy_core::short_duration`，与桌面那个读口 `fmtDur` 对同一份金样）。
 /// 起点缺 ⇒ 两格都缺；起点比读的那一刻还晚（那台的钟往回拨过）⇒ 记 0，不写负数。
 #[test]
@@ -1453,8 +1481,8 @@ fn how_long_it_has_waited_is_measured_on_the_machine_that_wrote_the_start() {
         why_text: None,
     }];
     let at = |since: Option<u64>, read: u64| {
-        let n = needs_of(
-            tree(),
+        let n = shown_of(
+            Some(tree()),
             &bash,
             Some(&PidWait {
                 waiting_for: Some(W::Permission),
@@ -1468,6 +1496,153 @@ fn how_long_it_has_waited_is_measured_on_the_machine_that_wrote_the_start() {
     assert_eq!(at(Some(1_000), 91_000), Some(90_000));
     assert_eq!(at(None, 91_000), None);
     assert_eq!(at(Some(95_000), 91_000), Some(0));
+}
+
+/// 只挂着请求（pidfile 不说在等）⇒ 照它补出的那一份从挂上那一刻起等：起点是挂上的时刻，已等多久照这台此刻减。
+#[test]
+fn a_need_made_from_a_hung_ask_waits_from_when_it_was_hung() {
+    let hung = crate::agents::asks::Asked {
+        ask: crate::agents::asks::specimen(),
+        since_ms: 1_000,
+    };
+    let n = dress_ask_with(None, Some(hung), 4_000).expect("挂着就有");
+    assert_eq!(
+        (n.since_ms, n.waited_ms),
+        (Some(1_000), Some(3_000)),
+        "需手动那一份带的起点就是挂上那一刻（脸上那一句同一个起点）"
+    );
+}
+
+/// ★ 答得了 · 答不了二选一，答得了 ⇒ 选项非空：会话事实交出的每一种 `needs` 都落对那一种——
+/// 刚判出（还没配请求）· 挂着有选项的 · 挡着终端的（一项都不给选）· pidfile 在等却没挂上 · pidfile 没说在等、只挂着请求的。
+/// 每一种逐一断言答不了时交的是哪一句（按键）。
+#[test]
+fn ask_is_null_exactly_when_the_manual_line_is_written() {
+    use crate::agents::asks::{specimen, Asked};
+    use crate::agents::WaitOn as W;
+    let bash = vec![PendingCall {
+        id: "b".into(),
+        name: "Bash".into(),
+        what: Some("ls".into()),
+        at: None,
+        at_ms: None,
+        state: StepWait::Unclear,
+        why: None,
+        text: None,
+        why_text: None,
+    }];
+    let born = || {
+        needs_of(
+            Some(tree()),
+            &bash,
+            Some(&PidWait {
+                waiting_for: Some(W::Permission),
+                since_ms: Some(1_000),
+                read_at_ms: 2_000,
+            }),
+        )
+    };
+    let hung = || Asked {
+        ask: specimen(),
+        since_ms: 1_000,
+    };
+    let blocking = || {
+        let mut a = hung();
+        a.ask.choices.clear();
+        a
+    };
+    let word = |k: &str| Some(crate::common::cells::Words(copy_core::copy_text(k, &[])));
+    let cases: Vec<(&str, Option<Needs>, Option<crate::common::cells::Words>)> = vec![
+        ("刚判出、还没配请求", born(), word("beAsk.manual.terminal")),
+        (
+            "挂着有选项",
+            dress_ask_with(born(), Some(hung()), 4_000),
+            None,
+        ),
+        (
+            "挡着终端的",
+            dress_ask_with(born(), Some(blocking()), 4_000),
+            word("beAsk.manual.inTerminal"),
+        ),
+        (
+            "pidfile 在等却没挂上",
+            dress_ask_with(born(), None, 4_000),
+            word("beAsk.manual.terminal"),
+        ),
+        (
+            "只挂着请求",
+            dress_ask_with(None, Some(hung()), 4_000),
+            None,
+        ),
+        (
+            "只挂着挡着终端的",
+            dress_ask_with(None, Some(blocking()), 4_000),
+            word("beAsk.manual.inTerminal"),
+        ),
+    ];
+    for (name, n, manual) in cases {
+        match (n.expect(name).reply, manual) {
+            (cmd_wire::needs::NeedsReply::Manual(said), Some(want)) => {
+                assert_eq!(said, want, "{name}：那一句")
+            }
+            (cmd_wire::needs::NeedsReply::Ask { ask, .. }, None) => {
+                assert!(!ask.choices.is_empty(), "{name}：答得了 ⇒ 选项非空")
+            }
+            (got, want) => panic!("{name}：该是 {want:?}，交的是 {got:?}"),
+        }
+    }
+}
+
+/// 挂着请求 ⇒ 种类与抬头照那条请求，pidfile 也在等时不例外：pidfile 说等批准、记录里没结果的是 Bash，
+/// 挂着的却是一条提问 ⇒ 配完与只挂着请求那一份说的一样（种类 · 工具 · 主参数 · 字 · 抬头），起点仍是 pidfile 那一个。
+#[test]
+fn a_hung_ask_names_the_kind_and_head_even_when_the_pidfile_waits() {
+    use crate::agents::asks::{specimen, Asked};
+    use crate::agents::WaitOn as W;
+    let bash = vec![PendingCall {
+        id: "b".into(),
+        name: "Bash".into(),
+        what: Some("ls".into()),
+        at: None,
+        at_ms: None,
+        state: StepWait::Unclear,
+        why: None,
+        text: None,
+        why_text: None,
+    }];
+    let born = needs_of(
+        Some(tree()),
+        &bash,
+        Some(&PidWait {
+            waiting_for: Some(W::Permission),
+            since_ms: Some(1_000),
+            read_at_ms: 2_000,
+        }),
+    );
+    assert_eq!(born.as_ref().map(|n| n.kind), Some(NeedsKind::Approve));
+    let hung = || Asked {
+        ask: specimen(),
+        since_ms: 3_000,
+    };
+    let both = dress_ask_with(born, Some(hung()), 4_000).expect("在等");
+    let alone = dress_ask_with(None, Some(hung()), 4_000).expect("挂着就有");
+    let said = |n: &Needs| {
+        (
+            n.kind,
+            n.tool.clone(),
+            n.call.clone(),
+            n.what.clone(),
+            n.text.clone(),
+            n.head.clone(),
+            n.head_code.clone(),
+            match &n.reply {
+                cmd_wire::needs::NeedsReply::Ask { head, .. } => Some(head.clone()),
+                cmd_wire::needs::NeedsReply::Manual(_) => None,
+            },
+        )
+    };
+    assert_eq!(said(&both), said(&alone), "照挂着的那条请求说");
+    assert_eq!(both.since_ms, Some(1_000), "起点仍是 pidfile 那一个");
 }
 
 /// ★ 先答哪个只住 [`needs_rank`]（出口只按 `rank` 排）：危险度那一档在前；同一档等得久的在前；
@@ -1527,15 +1702,13 @@ fn ranked(tier: usize, waited_ms: Option<u64>) -> Needs {
         tool: None,
         call: None,
         what: None,
-        since_ms: None,
         text: crate::common::cells::Words(String::new()),
         head: crate::common::cells::Words(String::new()),
         head_code: None,
-        tone: crate::common::cells::Tone::Need,
         rank: needs_rank(NEEDS_BY_DANGER[tier], waited_ms),
         waited_ms,
-        ask: None,
-        manual_text: None,
+        since_ms: None,
+        reply: cmd_wire::needs::NeedsReply::Manual(crate::common::cells::Words(String::new())),
     }
 }
 
@@ -1544,12 +1717,6 @@ fn waiting_row(sid: &str, tier: usize, waited: Option<u64>) -> cmd_wire::needs::
     cmd_wire::needs::NeedsRow {
         sid: sid.to_string(),
         label: crate::common::cells::Words("t".into()),
-        face: <crate::wire::SessionFace as crate::wire::SessionFaceExt>::of(
-            crate::wire::Life::Live {
-                activity: Some(crate::agents::SessionActivity::NeedsYou),
-                host: None,
-            },
-        ),
         needs: ranked(tier, waited),
         hidden: None,
     }
@@ -1564,7 +1731,7 @@ fn account_item(account: &str) -> cmd_wire::needs::ManualItem {
         fix: cmd_wire::needs::ManualFix {
             command: "login-start".into(),
             args: cmd_wire::needs::LoginStartReq::Account {
-                agent: "claude".into(),
+                agent: None,
                 account: account.into(),
             },
         },
@@ -1751,10 +1918,15 @@ fn needs_merge_orders_across_machines_by_the_one_rule() {
             }
         }
         let got = face_core::needs::merge_needs(machines, vec![], false, |m| m.to_string());
-        let sids: Vec<String> = got.items.iter().map(|x| item_name(&x.item)).collect();
+        let sids: Vec<String> = got
+            .manual
+            .items
+            .iter()
+            .map(|x| item_name(&x.item))
+            .collect();
         assert_eq!(&sids, want, "{name}");
-        assert_eq!(got.total as usize, rows.len(), "{name}");
-        for x in &got.items {
+        assert_eq!(got.manual.total as usize, rows.len(), "{name}");
+        for x in &got.manual.items {
             let (m, ..) = rows.iter().find(|r| r.1 == item_name(&x.item)).unwrap();
             assert_eq!(
                 x.origin.to_string(),
@@ -1786,9 +1958,14 @@ fn needs_merge_orders_across_machines_by_the_one_rule() {
         false,
         |m| m.to_string(),
     );
-    let names: Vec<String> = got.items.iter().map(|x| item_name(&x.item)).collect();
+    let names: Vec<String> = got
+        .manual
+        .items
+        .iter()
+        .map(|x| item_name(&x.item))
+        .collect();
     assert_eq!(names, ["r", "y@A1", "x@-", "@home"]);
-    assert_eq!(got.total, 4);
+    assert_eq!(got.manual.total, 4);
 }
 
 /// 钉条第一行由核心写（`head`：种类 ＋ 工具名，「等批准 · Bash」），等宽那一段也由核心挑（`headCode`：批准 · 回答 · 放行带主参数，
@@ -1814,7 +1991,7 @@ fn needs_carries_the_pinned_bar_headline_written_with_the_tool() {
     };
     let bash = vec![call("b", "Bash", Some("rm -rf build/"))];
     let plan = vec![call("p", "ExitPlanMode", Some("计划正文头一行"))];
-    let n = needs_of(tree(), &bash, Some(&wait(Some(W::Permission)))).unwrap();
+    let n = shown_of(Some(tree()), &bash, Some(&wait(Some(W::Permission)))).unwrap();
     assert_eq!(
         n.head.0,
         copy_core::copy_text("needs.bar.approve", &[("tool", "Bash")])
@@ -1825,10 +2002,10 @@ fn needs_carries_the_pinned_bar_headline_written_with_the_tool() {
         copy_core::copy_text("beSession.needs.approve", &[]),
         "短的那一格照旧"
     );
-    let n = needs_of(tree(), &plan, Some(&wait(Some(W::Permission)))).unwrap();
+    let n = shown_of(Some(tree()), &plan, Some(&wait(Some(W::Permission)))).unwrap();
     assert_eq!(n.head.0, copy_core::copy_text("needs.bar.plan", &[]));
     assert_eq!(n.head_code, None, "计划不带等宽那一段");
-    let n = needs_of(tree(), &bash, Some(&wait(Some(W::Network)))).unwrap();
+    let n = shown_of(Some(tree()), &bash, Some(&wait(Some(W::Network)))).unwrap();
     assert_eq!(n.head.0, copy_core::copy_text("needs.bar.network", &[]));
     assert_eq!(n.head_code.as_deref(), Some("rm -rf build/"));
     for (w, key) in [
@@ -1837,12 +2014,12 @@ fn needs_carries_the_pinned_bar_headline_written_with_the_tool() {
         (Some(W::Dialog), "beSession.needs.choose"),
         (None, "beSession.needs.unknown"),
     ] {
-        let n = needs_of(tree(), &[], Some(&wait(w))).unwrap();
+        let n = shown_of(Some(tree()), &[], Some(&wait(w))).unwrap();
         assert_eq!(n.head.0, copy_core::copy_text(key, &[]), "{w:?}");
         assert_eq!(n.head_code, None, "{w:?}");
     }
     // 批准框但判不出工具名 ⇒ 第一行就是短的那一格。
-    let n = needs_of(tree(), &[], Some(&wait(Some(W::Permission)))).unwrap();
+    let n = shown_of(Some(tree()), &[], Some(&wait(Some(W::Permission)))).unwrap();
     assert_eq!(
         (n.kind, n.head.clone()),
         (NeedsKind::Approve, n.text.clone())
@@ -1907,7 +2084,7 @@ fn the_state_line_follows_the_pidfile_state_and_the_record_facts() {
     use crate::agents::SessionActivity as A;
     let t0: u64 = 1_700_000_000_000;
     let now = t0 + 2 * 60_000;
-    let mut f = SessionFacts {
+    let f = SessionFacts {
         pending: vec![PendingCall {
             id: "c1".into(),
             name: "Bash".into(),
@@ -1926,7 +2103,7 @@ fn the_state_line_follows_the_pidfile_state_and_the_record_facts() {
         }),
         ..Default::default()
     };
-    let w = line_of(Some(A::Working), &f).unwrap();
+    let w = line_of(Some(A::Working), &f, None).unwrap();
     assert_eq!(
         w.text.0,
         copy_core::copy_text("sessionFace.state.running", &[("tool", "Bash")]),
@@ -1943,7 +2120,7 @@ fn the_state_line_follows_the_pidfile_state_and_the_record_facts() {
     assert_eq!(clock.from, t0);
     assert_eq!(w.peek.unwrap().0, "make test");
 
-    let i = line_of(Some(A::Idle), &f).unwrap();
+    let i = line_of(Some(A::Idle), &f, None).unwrap();
     assert_eq!(
         i.text.0,
         copy_core::copy_text("beSession.activity.idle", &[])
@@ -1955,8 +2132,8 @@ fn the_state_line_follows_the_pidfile_state_and_the_record_facts() {
     assert_eq!(i.clock.unwrap().from, t0);
     assert_eq!(i.peek.unwrap().0, "好了");
 
-    f.needs = needs_of(
-        tree(),
+    let w = needs_of(
+        Some(tree()),
         &f.pending,
         Some(&PidWait {
             waiting_for: Some(crate::agents::WaitOn::Permission),
@@ -1964,8 +2141,8 @@ fn the_state_line_follows_the_pidfile_state_and_the_record_facts() {
             read_at_ms: now,
         }),
     );
-    let n = line_of(Some(A::NeedsYou), &f).unwrap();
-    let kind = f.needs.as_ref().unwrap().text.0.clone();
+    let n = line_of(Some(A::NeedsYou), &f, w.as_ref()).unwrap();
+    let kind = w.as_ref().unwrap().text.0.clone();
     assert_eq!(n.text.0, kind, "在等：定格的字是等的种类");
     assert_eq!(
         n.clock.as_ref().unwrap().text.0,
@@ -1975,8 +2152,36 @@ fn the_state_line_follows_the_pidfile_state_and_the_record_facts() {
         )
     );
     assert_eq!(n.clock.unwrap().from, t0);
+    assert!(
+        line_of(Some(A::NeedsYou), &f, None)
+            .unwrap()
+            .clock
+            .is_none(),
+        "没交在等的那一份 ⇒ 不知何时起等，不带会走的"
+    );
 
-    assert!(line_of(None, &f).is_none(), "不活 ⇒ 没有这一句");
+    assert!(line_of(None, &f, w.as_ref()).is_none(), "不活 ⇒ 没有这一句");
+
+    // 需手动那一份说得出是哪一轮在等：带这一次开始等的时刻，与脸上会走的那一句起点同一个来源（出口拿它对脸，对不上 ⇒ 不画上一轮那份）。
+    assert_eq!(w.as_ref().unwrap().since_ms, Some(t0));
+    let unknown = needs_of(
+        Some(tree()),
+        &f.pending,
+        Some(&PidWait {
+            waiting_for: Some(crate::agents::WaitOn::Permission),
+            since_ms: None,
+            read_at_ms: now,
+        }),
+    );
+    assert_eq!(
+        unknown.as_ref().unwrap().since_ms,
+        None,
+        "说不出几时起等 ⇒ 不带，不猜"
+    );
+    assert!(line_of(Some(A::NeedsYou), &f, unknown.as_ref())
+        .unwrap()
+        .clock
+        .is_none());
 }
 
 /// 一条收场通知（框里那几格；记录带 `uuid` 与时刻，翻得成通用记录）。
@@ -2094,4 +2299,32 @@ fn notice_groups_are_bounded() {
     settle_notices(&mut f, &crate::common::time::Tz::default());
     assert_eq!(f.notices.len(), NOTICE_KEEP);
     assert_eq!(f.notices[0].id, "n2", "超了丢最早的");
+}
+
+/// ★ 状态一句交「这一份界面答得了」那一格（脸上的点照它分待答请求 · 需手动）：只看配好的那一份交没交 `ask`，不另判；
+/// 在等人才有，在跑 · 闲着恒为否。
+#[test]
+fn the_state_line_says_asks_only_when_the_dressed_need_carries_an_ask() {
+    use crate::agents::asks::{specimen, Asked};
+    use crate::agents::SessionActivity as A;
+    let f = SessionFacts::default();
+    let hung = |clear: bool| {
+        let mut a = Asked {
+            ask: specimen(),
+            since_ms: 1_000,
+        };
+        if clear {
+            a.ask.choices.clear();
+        }
+        dress_ask_with(None, Some(a), 4_000)
+    };
+    let asks = |a: A, w: Option<Needs>| line_of(Some(a), &f, w.as_ref()).map(|l| l.asks);
+    assert_eq!(asks(A::NeedsYou, hung(false)), Some(true), "挂着有选项");
+    assert_eq!(asks(A::NeedsYou, hung(true)), Some(false), "挡着终端的");
+    assert_eq!(asks(A::NeedsYou, None), Some(false), "没配上请求");
+    assert_eq!(
+        asks(A::Working, hung(false)),
+        Some(false),
+        "一轮在跑、没在等人"
+    );
 }

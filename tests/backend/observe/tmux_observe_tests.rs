@@ -251,19 +251,14 @@ fn no_server_is_tightened_only_when_the_pid_is_really_still_alive() {
 ///
 /// 这里不能直接调 `query_tmux_server()`（它走默认 socket = 用户实况），所以只钉住
 /// 「探测脚本对没有 server 的情形返回全 None」这条语义——用 PATH 前置一个 rc=1 的假 tmux。
+#[cfg(unix)]
 #[test]
 fn tmux_server_query_yields_nothing_without_a_server() {
     let dir = std::env::temp_dir().join(format!("ccm-p3-q-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("mkdir");
     let fake = dir.join("tmux");
-    std::fs::write(&fake, "#!/bin/sh\necho 'error connecting' >&2\nexit 1\n").expect("write");
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perm = std::fs::metadata(&fake).expect("stat").permissions();
-        perm.set_mode(0o755);
-        std::fs::set_permissions(&fake, perm).expect("chmod");
-    }
+    // 经 `PATH` 马上被起 ⇒ 经 `write_exe` 写（理由同下面 `probe_script_propagates_rc_with_fake_tmux`）。
+    test_home::write_exe(&fake, "#!/bin/sh\necho 'error connecting' >&2\nexit 1\n");
     // 跑与生产同一段脚本，只把 PATH 指向假 tmux。
     let script = "if command -v tmux >/dev/null 2>&1; then exec tmux display-message -p '#{pid}\t#{socket_path}' 2>/dev/null; else exit 97; fi";
     let out = std::process::Command::new("/bin/sh")
@@ -541,6 +536,7 @@ fn observation_parts_keep_the_four_states_apart_for_the_ledger() {
 /// 透出。`|| true` 与 `exec` 的差别**在字符串断言里看不出来**——只有真执行才知道 rc
 /// 有没有传出来。（同 `control/ccm/plan.rs::render_container` 那一族的教训：
 /// 门禁只锁字符串形状不锁行为。）
+#[cfg(unix)]
 #[test]
 fn probe_script_propagates_rc_with_fake_tmux() {
     let dir = std::env::temp_dir().join(format!("ccm-p1-probe-{}", std::process::id()));
@@ -556,16 +552,8 @@ fn probe_script_propagates_rc_with_fake_tmux() {
             .expect("spawn /bin/sh");
         classify_tmux_probe(out.status.code(), &String::from_utf8_lossy(&out.stdout))
     };
-    let write_fake = |body: &str| {
-        std::fs::write(&fake, body).expect("write fake tmux");
-        let mut perm = std::fs::metadata(&fake).expect("stat").permissions();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            perm.set_mode(0o755);
-        }
-        std::fs::set_permissions(&fake, perm).expect("chmod");
-    };
+    // 经 `PATH` 马上被起 ⇒ 经 `write_exe` 写（本进程写的写端会漏进别的判据线程 fork 出来的子进程 ⇒ ETXTBSY）。
+    let write_fake = |body: &str| test_home::write_exe(&fake, body);
     let path_with_fake = format!("{}:/usr/bin:/bin", dir.display());
 
     // ① 假 tmux 打印一行会话、rc=0 → Sessions
@@ -623,19 +611,12 @@ fn probe_script_propagates_rc_with_fake_tmux() {
 ///
 /// ⚠ 硬编码 `/tmp` 的后果是**静默失效**：在设了 `TMUX_TMPDIR` 的机器上，
 /// backend 会去监视一个永远不会有动静的目录 —— 与修之前一模一样，且没有任何错误。
+///
+/// 值从参数交进 `tmux_socket_dir_from`，不改进程环境：多线程跑判据时，改了 `TMUX_TMPDIR` 的那段窗口里
+/// 别的判据起的裸 tmux 会跟着去 `/x/y`（不在 ⇒ 退回 `/tmp`、连上缺省那台）。
 #[test]
 fn tmux_socket_dir_follows_tmux_tmpdir() {
-    // ⚠ env 是进程全局的：设完必须还原，否则会污染同进程里别的测试。
-    let saved = std::env::var_os("TMUX_TMPDIR");
-    // SAFETY: 单线程内设/取环境变量；本测试跑完立即还原。
-    unsafe { std::env::set_var("TMUX_TMPDIR", "/x/y") };
-    let d = tmux_socket_dir();
-    unsafe {
-        match &saved {
-            Some(v) => std::env::set_var("TMUX_TMPDIR", v),
-            None => std::env::remove_var("TMUX_TMPDIR"),
-        }
-    }
+    let d = tmux_socket_dir_from(Some("/x/y".into()));
     let s = d.to_string_lossy();
     assert!(
         s.starts_with("/x/y/tmux-"),

@@ -141,15 +141,12 @@ fn wire_word(v: impl serde::Serialize) -> Option<String> {
 
 /// 此刻接着的各台那条常驻流 hello 自报的构建标识（断着的那台 ⇒ 没有）。
 fn remote_builds() -> BTreeMap<String, String> {
-    crate::control::feeds::attached_hellos()
+    crate::control::feeds::hellos_now()
         .into_iter()
-        .filter_map(|f| match f {
-            crate::wire::Frame::Relayed(cmd_wire::frame::Relayed::Line { machine, line }) => {
-                serde_json::from_str::<cmd_wire::frame::Hello>(&line)
-                    .ok()
-                    .map(|h| (machine, h.build_id))
-            }
-            _ => None,
+        .filter_map(|(machine, line)| {
+            serde_json::from_str::<cmd_wire::frame::Hello>(&line)
+                .ok()
+                .map(|h| (machine, h.build_id))
         })
         .collect()
 }
@@ -189,11 +186,7 @@ pub(crate) fn lines_of(
                 builds.get(origin).cloned()
             };
             MachineLine {
-                name: if origin == local {
-                    copy_text("detail.label.local", &[])
-                } else {
-                    origin.clone()
-                },
+                name: copy_core::machine_word(&cmd_wire::Machine::named(origin.as_str())),
                 os: m.os,
                 state: m.state,
                 reason: m.reason,

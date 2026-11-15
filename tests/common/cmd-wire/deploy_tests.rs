@@ -1,5 +1,5 @@
 //! 装 · 卸那两条的线上类型对着金样（`tests/__fixtures__/deploy-install.golden.json`，后端 `deploy_plan_tests` 核真产出的键集 == 它）：
-//! 解得开、照类型写回逐字节同；认不出的动作 · 缺一格都解不开。
+//! 解得开、照类型写回逐字节同；多一格 · 缺那一句都解不开。
 use super::*;
 use crate::Call;
 
@@ -14,15 +14,7 @@ fn golden() -> serde_json::Value {
 fn the_install_reply_decodes_the_golden_and_writes_it_back() {
     let product = golden()["product"].clone();
     let got: Installed = serde_json::from_value(product.clone()).expect("金样解不开");
-    assert_eq!(
-        (
-            got.action,
-            got.build.as_str(),
-            got.os.as_str(),
-            got.said.as_str()
-        ),
-        (ActionTag::Keep, "p0b-placeholder", "Linux", "placeholder")
-    );
+    assert_eq!(got.said, "placeholder");
     assert_eq!(serde_json::to_value(&got).unwrap(), product);
     let with = |k: &str, v: serde_json::Value| {
         let mut x = product.clone();
@@ -31,7 +23,8 @@ fn the_install_reply_decodes_the_golden_and_writes_it_back() {
     };
     let mut missing = product.clone();
     missing.as_object_mut().unwrap().remove("said");
-    for bad in [missing, with("action", serde_json::json!("overwrite"))] {
+    // 没人读的格不上线：带着旧回包那几格（做了哪一样 · 哪一版）⇒ 解不开。
+    for bad in [missing, with("action", serde_json::json!("keep"))] {
         assert!(
             serde_json::from_value::<Installed>(bad.clone()).is_err(),
             "该拒却收了：{bad}"
@@ -43,10 +36,7 @@ fn the_install_reply_decodes_the_golden_and_writes_it_back() {
 fn the_uninstall_reply_decodes_the_golden_and_writes_it_back() {
     let product = golden()["uninstalled"].clone();
     let got: Uninstalled = serde_json::from_value(product.clone()).expect("金样解不开");
-    assert_eq!(
-        (got.removed, got.said.as_str()),
-        (true, "placeholder-uninstall")
-    );
+    assert_eq!(got.said, "placeholder-uninstall");
     assert_eq!(serde_json::to_value(&got).unwrap(), product);
 }
 

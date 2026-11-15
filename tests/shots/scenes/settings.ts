@@ -8,6 +8,7 @@
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import type { Scene } from "./index";
 import type { World } from "../fake/types";
+import type { VerifyReport } from "../../../src/frontend/ui/generated/VerifyReport";
 import { defaultWorld, LOCAL } from "../fake/world";
 import { HOME, putAccounts, putPrefs, putQuota } from "../disk";
 import { ACCOUNTS } from "../fake/ops";
@@ -126,7 +127,7 @@ const page = (id: string, title: string, desc: string, ...route: string[]): Scen
     await go(...route);
   });
 
-/** 账号页：那台的额度账有数（work 被拒 · personal 63% / 41% · api 按量）。`verifyFail` ⇒ 打开时核出一处对不上。 */
+/** 账号页：那台的额度账有数（work 被拒 · personal 58% / 41% 外加一窗 7d opus · api 按量）：额度那一列照那台写好的每号几行，收到几窗列几行。`verifyFail` ⇒ 打开时核出一处对不上。 */
 function acctWorld(verifyFail = false): () => World {
   return () => {
     const w = defaultWorld();
@@ -136,13 +137,16 @@ function acctWorld(verifyFail = false): () => World {
       { name: "seven_day", used: p7 / 100, resetsAt: now + 4 * 86400 },
     ];
     // work 用满被拒 · personal 被拒而没用满 · api 按量（窗口都没有）。
-    putQuota(w.disk[LOCAL], [
+    putQuota(w.disk.devbox!, [
       { account: "work", seenAt: now - 120, status: "rejected", refused: true, limiting: "five_hour", resetsAt: now + 5400, windows: win(100, 78) },
-      { account: "personal", seenAt: now - 120, status: "rejected", refused: true, limiting: "five_hour", resetsAt: now + 5400, windows: win(58, 41) },
+      { account: "personal", seenAt: now - 120, status: "rejected", refused: true, limiting: "five_hour", resetsAt: now + 5400, windows: [...win(58, 41), { name: "seven_day_opus", used: 0.12, resetsAt: now + 4 * 86400 }] },
       { account: "api", seenAt: now - 120, status: "allowed", windows: [] },
     ]);
     if (verifyFail) {
-      w.ops["accounts-verify"] = () => ({ pass: false, fails: 1, checks: [{ level: "fail", account: "personal", text: "登录信息缺失" }] });
+      // 照线上类型 `VerifyReport`：核对条照摆的那一句（`headline`）由那台写好（`accounts/manage/verify.rs::finish`）。
+      const text = "登录信息缺失";
+      const report: VerifyReport = { pass: false, fails: 1, checks: [{ level: "fail", account: "personal", text }], headline: copyText("acctPage.verify.bar", { name: "personal", what: text }) };
+      w.ops["accounts-verify"] = () => report;
     }
     return w;
   };
@@ -520,7 +524,7 @@ export const SETTINGS_SCENES: Scene[] = [
     await byText(PAGE, copyText("diagnostics.file.restart"));
     await waitFor(".settings-restart-bar");
   }),
-  settings("settings-machine-acct", "设置 · 远端 · 账号", "devbox 的「账号」栏：表头 · 一号一行（默认 · 5h · 7d · 按量）· 表下「共用 MCP」一行", async () => {
+  settings("settings-machine-acct", "设置 · 远端 · 账号", "devbox 的「账号」栏：表头 · 一号一行（默认 · 额度照那台写好的几行，收到几窗列几行 · 按量）· 表下「共用 MCP」一行", async () => {
     await go("machine:devbox", "machine:devbox#acct");
   }, acctWorld()),
   settings("settings-acct-detail", "设置 · 账号 · 一行展开", "点 api 那一行：命令 · API key · 默认模型（仅 devbox · api）· 账号目录 · 删除", async () => {
@@ -701,13 +705,17 @@ export const SETTINGS_SCENES: Scene[] = [
     await settle();
     await top(pf(".prof-notes"));
   }, profilesWorld("normal"), 1000),
-  settings("profiles-05-remove", "设置 · 别名 · 05 删一条被别人基于的", "删 cct：三个选择，推荐改成基于 cc；看改前改后", async () => {
+  settings("profiles-05-remove", "设置 · 别名 · 05 删一条被别人基于的", "删用户自己写的根 pcc（labp 基于它）：三个选择、推荐的那一个先选着；看改前改后（cc · cct 是内置的、删了只是还原，没有这一问）", async () => {
     await profilesPage();
-    await click(pf('.prof-trow[data-name="cct"] .cfg-link-danger'));
+    await click(pf('.prof-trow[data-name="pcc"] .cfg-link-danger'));
     await waitFor(pf("[data-role=remove]"));
     await settle();
     await top(pf(".prof-notes"));
-  }, profilesWorld("normal"), 900),
+  }, () => {
+    const w = profilesWorld("normal")();
+    w.disk.devbox.files[PROFILES_FILE] += ["", "[labp]", 'from = "pcc"', 'account = "lab"', ""].join("\n");
+    return w;
+  }, 900),
   settings("profiles-06-edited", "设置 · 别名 · 06 配置文件被手改过", "后端说上次 cc-monitor 写过之后有人改过：清单头一行小字 ＋ 看配置文件", async () => {
     await profilesPage();
     await waitFor(pf("[data-role=edited-elsewhere]"));
@@ -761,9 +769,9 @@ export const SETTINGS_SCENES: Scene[] = [
     await waitFor(pf("[data-role=function-note]"));
     await top(pf("[data-role=tree]"));
   }, profilesWorld("normal"), 860, 1180),
-  settings("profiles-11-empty", "设置 · 别名 · 11 空态", "没有配置文件：首建两条的预览 · 建这两条 · 从空的开始", async () => {
+  settings("profiles-11-empty", "设置 · 别名 · 11 没有配置文件", "没有配置文件：清单只列后端内置的那几条（删不掉、没有［删］那一格）", async () => {
     await profilesPage();
-    await waitFor(pf("[data-role=seed]"));
+    await waitFor(pf(".prof-trow"));
     await top(`${PAGE} .machine-aliases`);
   }, profilesWorld("empty"), 700),
   settings("settings-machine-config-mcp", "设置 · 远端 · 共用 MCP 展开", "devbox「共用 MCP」那一行点开：两边都改的选一版 · 共用的两条 · 停止同步", async () => {

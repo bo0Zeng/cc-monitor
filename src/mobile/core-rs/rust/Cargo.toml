@@ -19,12 +19,14 @@ ssh-dial = { path = "../../../comms/ssh-dial" }
 deploy = { path = "../../../backend/deploy" }
 deploy-contract = { path = "../../../common/deploy-contract" }
 serde_json = "1"
+# 会话屏那一列的形状（`column`：Kotlin 交进来的那一问 · 交回的那一列）照 serde 派生。
+serde = { version = "1", features = ["derive"] }
 copy-core = { path = "../../../common/copy-core" }
 # 连远端常驻后端的客户端那一侧（帧客户端 · 握手 · 退避 · 版本门 · 在看名单）：桌面 monitor 同一份。
 resident-client = { path = "../../../comms/resident-client" }
 # 交 Kotlin 的那几样照两端同一份线上类型写（`cmd_wire::phone`）；回包原样交。
 cmd-wire = { path = "../../../common/cmd-wire" }
-# 记录那一格认不认得、认不出那一条的句子（`face_core::record`：后端适配层同一份）。
+# 认不出那一条的句子（`face_core::record`：后端适配层同一份）· 几台并一列的并法与分叉树（`face_core::column`：本机后端历史页同一份）。
 face-core = { path = "../../../common/face-core" }
 # 分块传的循环（逐块进暂存区 ＋ 整份摘要 · 逐块读回）：桌面文件窗口同一份。
 chunk-core = { path = "../../../common/chunk-core" }
@@ -49,5 +51,9 @@ jni = { version = "0.21", default-features = false }
 test-home = { path = "../../../common/test-home" }
 # 单测里按墙钟等的那一处用兜底的那一个数（`guard_core::wall::CEILING`）。
 guard-core = { path = "../../../common/guard-core" }
+# 会话屏那一列的形状导给 Kotlin（`src/frontend/ui/generated/` ⇒ `gen-kotlin-wire.mjs`）：codegen 只在测试档。
+ts-rs = "12.0.1"
+# 那一列嵌着线上类型（`CanDelete` · `Words`）⇒ 测试档开它的 `ts` 那一格（发布的 .so 不开）。
+cmd-wire = { path = "../../../common/cmd-wire", features = ["ts"] }
 # 期限那几条判据在虚拟钟上走（`start_paused`）。
 tokio = { version = "1", features = ["rt-multi-thread", "io-util", "sync", "time", "macros", "test-util"] }

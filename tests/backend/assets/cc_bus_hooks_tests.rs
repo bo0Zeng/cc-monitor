@@ -13,13 +13,47 @@ fn never(_: &str) -> bool {
     false
 }
 
+/// cc-bus 装进的那一家（这几条形态判据照它那一形写）。
+fn bus_adapter() -> &'static crate::agents::Adapter {
+    crate::assets::skill_install::family_among(crate::agents::REGISTRY, None)
+        .ok()
+        .flatten()
+        .and_then(|k| crate::agents::REGISTRY.iter().find(|a| a.kind == k))
+        .expect("注册表里有 cc-bus 装进的那一家")
+}
+
+/// 照 cc-bus 装进的那一家的足迹面判。
+fn diag(raw: Option<&str>, exists: &dyn Fn(&str) -> bool) -> HooksDiagnosis {
+    diagnose(
+        &bus_adapter().footprint.expect("那一家有足迹面"),
+        raw,
+        exists,
+    )
+}
+
+/// 只问 cc-bus 装进的那一家、它的家是 `agent`。
+fn here(
+    home: Option<&std::path::Path>,
+    agent: &std::path::Path,
+    skills: Option<&std::path::Path>,
+    supported: bool,
+) -> HooksReport {
+    answer_among(
+        std::slice::from_ref(bus_adapter()),
+        home,
+        &|_| agent.to_path_buf(),
+        skills,
+        supported,
+    )
+}
+
 // ===== 核心：用户盘上的**真实**形态不得被误判 =====
 #[test]
 fn real_user_settings_is_installed_not_misreported() {
     // 逐字取自 2026-07-28 的 ~/.claude/settings.json
     let raw = r#"{"hooks":{
           "Stop":[{"hooks":[{"type":"command","command":"\"$HOME/.local/bin/cc-bus\" stop-hook"}]}]}}"#;
-    let d = diagnose(Some(raw), &always);
+    let d = diag(Some(raw), &always);
     assert!(d.stop.is_working(), "实测形态必须判为已装: {:?}", d.stop);
     // 且必须是"显式路径"那一态，不能滑成 PATH 态
     assert!(matches!(d.stop, HookState::InstalledAtPath { .. }));
@@ -30,7 +64,7 @@ fn canonical_snippet_form_is_also_installed() {
     // cc-bus-install.sh 的规范片段（裸命令）同样要认
     let raw = r#"{"hooks":{
           "Stop":[{"hooks":[{"type":"command","command":"cc-bus stop-hook"}]}]}}"#;
-    let d = diagnose(Some(raw), &never); // never：证明裸命令**不查路径存在性**
+    let d = diag(Some(raw), &never); // never：证明裸命令**不查路径存在性**
     assert!(matches!(d.stop, HookState::InstalledViaPath { .. }));
 }
 
@@ -39,7 +73,7 @@ fn canonical_snippet_form_is_also_installed() {
 fn explicit_path_that_does_not_exist_is_the_third_state() {
     let raw = r#"{"hooks":{"Stop":[{"hooks":[{"type":"command",
           "command":"/opt/gone/cc-bus stop-hook"}]}]}}"#;
-    let d = diagnose(Some(raw), &never);
+    let d = diag(Some(raw), &never);
     match &d.stop {
         HookState::PathMissing { path, .. } => assert_eq!(path, "/opt/gone/cc-bus"),
         other => panic!("应为 PathMissing，实得 {other:?}"),
@@ -47,12 +81,78 @@ fn explicit_path_that_does_not_exist_is_the_third_state() {
     assert!(!d.stop.is_working(), "PathMissing 绝不能算能用");
 }
 
+/// 每一态带写好的那一句与色调（界面照抄，不按态取字）：能用 ⇒ `ok`；未装 · 指不到 ⇒ `bad`（`path-missing` 绝不说成已装）；
+/// 看不懂 ⇒ `unknown`（中性，既不说已装也不说未装）。
+#[test]
+fn every_state_carries_its_sentence_and_tone() {
+    let cmd = |c: &str| {
+        format!(
+            r#"{{"hooks":{{"Stop":[{{"hooks":[{{"type":"command","command":{}}}]}}]}}}}"#,
+            serde_json::json!(c)
+        )
+    };
+    let t = |k: &str, a: &[(&str, &str)]| copy_core::copy_text(k, a);
+    let cases: Vec<(String, &dyn Fn(&str) -> bool, String, HookTone)> = vec![
+        (
+            r#"{"hooks":{}}"#.to_string(),
+            &always,
+            t("reason.spawn.notInstalled", &[]),
+            HookTone::Bad,
+        ),
+        (
+            cmd("cc-bus stop-hook"),
+            &never,
+            t("ccBusHooks.state.onPath", &[]),
+            HookTone::Ok,
+        ),
+        (
+            cmd("/opt/x/cc-bus stop-hook"),
+            &always,
+            t("ccBusHooks.state.explicit", &[("path", "/opt/x/cc-bus")]),
+            HookTone::Ok,
+        ),
+        (
+            cmd("/opt/gone/cc-bus stop-hook"),
+            &never,
+            t(
+                "ccBusHooks.state.brokenPath",
+                &[("path", "/opt/gone/cc-bus")],
+            ),
+            HookTone::Bad,
+        ),
+        (
+            cmd(r#"sh -c "cc-bus stop-hook""#),
+            &always,
+            t(
+                "ccBusHooks.state.indirect",
+                &[("command", r#"sh -c "cc-bus stop-hook""#)],
+            ),
+            HookTone::Unknown,
+        ),
+    ];
+    for (raw, exists, said, tone) in cases {
+        let d = diag(Some(&raw), exists);
+        assert_eq!(
+            (d.said.0.as_str(), d.tone),
+            (said.as_str(), tone),
+            "{:?}",
+            d.stop
+        );
+    }
+    // 读不到那份文件也是「未装」那一句（`note` 另说原因）。
+    let d = diag(None, &always);
+    assert_eq!(
+        (d.said.0, d.tone),
+        (t("reason.spawn.notInstalled", &[]), HookTone::Bad)
+    );
+}
+
 #[test]
 fn same_name_elsewhere_but_present_counts_as_installed() {
     // 装在别处但**确实存在** → 算已装（它能跑）。只有不存在才是问题。
     let raw = r#"{"hooks":{"Stop":[{"hooks":[{"type":"command",
           "command":"/usr/local/bin/cc-bus stop-hook"}]}]}}"#;
-    let d = diagnose(Some(raw), &always);
+    let d = diag(Some(raw), &always);
     assert!(d.stop.is_working());
 }
 
@@ -68,13 +168,13 @@ fn only_the_entry_with_the_stop_hook_verb_counts() {
     ] {
         let raw = serde_json::json!({"hooks": {"Stop": [{"hooks": [{"type": "command", "command": cmd}]}]}}).to_string();
         assert_eq!(
-            diagnose(Some(&raw), &always).stop,
+            diag(Some(&raw), &always).stop,
             HookState::NotInstalled,
             "{cmd:?}"
         );
     }
     let raw = r#"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"cc-bus stop-hook"}]}]}}"#;
-    assert!(diagnose(Some(raw), &always).stop.is_working());
+    assert!(diag(Some(raw), &always).stop.is_working());
 }
 
 // ===== program_of：只做够用的事，看不懂就说不知道 =====
@@ -116,7 +216,7 @@ fn program_of_handles_real_shapes() {
 fn unrelated_hooks_do_not_false_positive() {
     let raw = r#"{"hooks":{"Stop":[{"hooks":[{"type":"command",
           "command":"some-other-tool --register"}]}]}}"#;
-    let d = diagnose(Some(raw), &always);
+    let d = diag(Some(raw), &always);
     assert_eq!(
         d.stop,
         HookState::NotInstalled,
@@ -130,7 +230,7 @@ fn coexisting_hooks_do_not_require_exclusivity() {
     let raw = r#"{"hooks":{"Stop":[
           {"hooks":[{"type":"command","command":"other-tool"}]},
           {"hooks":[{"type":"command","command":"cc-bus stop-hook"}]}]}}"#;
-    assert!(diagnose(Some(raw), &always).stop.is_working());
+    assert!(diag(Some(raw), &always).stop.is_working());
 }
 
 #[test]
@@ -139,20 +239,20 @@ fn working_entry_wins_over_path_missing() {
     let raw = r#"{"hooks":{"Stop":[
           {"hooks":[{"type":"command","command":"/gone/cc-bus stop-hook"}]},
           {"hooks":[{"type":"command","command":"cc-bus stop-hook"}]}]}}"#;
-    let d = diagnose(Some(raw), &never);
+    let d = diag(Some(raw), &never);
     assert!(matches!(d.stop, HookState::InstalledViaPath { .. }));
 }
 
 // ===== 脏输入逐层容忍，不抛、不让坏条目吃掉整份诊断 =====
 #[test]
 fn malformed_input_degrades_with_a_reason() {
-    assert!(diagnose(None, &always)
+    assert!(diag(None, &always)
         .note
         .contains(copy_core::copy_static!("rsHooksDiag.diagnose.noSettings")));
-    assert!(diagnose(Some("{not json"), &always)
+    assert!(diag(Some("{not json"), &always)
         .note
         .contains(copy_core::copy_static!("rsHooksDiag.diagnose.badJson")));
-    assert!(diagnose(Some("[1,2]"), &always)
+    assert!(diag(Some("[1,2]"), &always)
         .note
         .contains(copy_core::copy_static!("rsHooksDiag.diagnose.notObject")));
     // 结构不对的各层：一律降级成未装，且不 panic
@@ -164,7 +264,7 @@ fn malformed_input_degrades_with_a_reason() {
         r#"{"hooks":{"Stop":[{"hooks":[{"type":"command"}]}]}}"#,
         r#"{"hooks":{"Stop":[{"hooks":[{"command":"   "}]}]}}"#,
     ] {
-        let d = diagnose(Some(raw), &always);
+        let d = diag(Some(raw), &always);
         assert_eq!(d.stop, HookState::NotInstalled, "raw={raw}");
         assert!(d.note.is_empty(), "结构问题不该报成读取失败: raw={raw}");
     }
@@ -173,7 +273,7 @@ fn malformed_input_degrades_with_a_reason() {
 #[test]
 fn bom_is_tolerated() {
     let raw = "\u{feff}{\"hooks\":{\"Stop\":[{\"hooks\":[{\"command\":\"cc-bus stop-hook\"}]}]}}";
-    assert!(diagnose(Some(raw), &always).stop.is_working());
+    assert!(diag(Some(raw), &always).stop.is_working());
 }
 
 /// 在 `<skills>/cc-bus/scripts/` 放上入口（空文件，只造结构）。
@@ -190,9 +290,14 @@ fn put_scripts(skills: &std::path::Path) {
 fn the_snippet_points_at_the_installed_scripts_and_reads_back_as_installed() {
     let home = test_home::scratch("snippet");
     let skills = home.join(".claude").join("skills");
-    assert_eq!(snippet(&skills, Some(&home)), None, "cc-bus 没装 ⇒ 不给");
+    assert_eq!(
+        snippet(&bus_adapter().footprint.unwrap(), &skills, Some(&home)),
+        None,
+        "cc-bus 没装 ⇒ 不给"
+    );
     put_scripts(&skills);
-    let text = snippet(&skills, Some(&home)).expect("装着就该给");
+    let text =
+        snippet(&bus_adapter().footprint.unwrap(), &skills, Some(&home)).expect("装着就该给");
     let v: serde_json::Value = serde_json::from_str(&text).expect("要加的内容必须是合法 JSON");
     assert_eq!(
         v["hooks"]
@@ -206,7 +311,7 @@ fn the_snippet_points_at_the_installed_scripts_and_reads_back_as_installed() {
         serde_json::json!("\"$HOME/.claude/skills/cc-bus/scripts/cc-bus\" stop-hook")
     );
     let exists = |s: &str| expand(s, Some(&home)).exists();
-    let d = diagnose(Some(&text), &exists);
+    let d = diag(Some(&text), &exists);
     assert!(
         matches!(d.stop, HookState::InstalledAtPath { .. }),
         "{:?}",
@@ -214,7 +319,7 @@ fn the_snippet_points_at_the_installed_scripts_and_reads_back_as_installed() {
     );
     // skills 根不在家目录底下 ⇒ 绝对路径（POSIX 单引号）。
     let other = test_home::scratch("snippet-elsewhere");
-    let text = snippet(&skills, Some(&other)).unwrap();
+    let text = snippet(&bus_adapter().footprint.unwrap(), &skills, Some(&other)).unwrap();
     let abs = skills.join("cc-bus/scripts/cc-bus");
     assert!(
         text.contains(&shell_quote_core::posix_quote(&abs.display().to_string())),
@@ -222,7 +327,10 @@ fn the_snippet_points_at_the_installed_scripts_and_reads_back_as_installed() {
     );
     // 脚本不在了就不给。
     std::fs::remove_file(skills.join("cc-bus/scripts/cc-bus")).unwrap();
-    assert_eq!(snippet(&skills, Some(&home)), None);
+    assert_eq!(
+        snippet(&bus_adapter().footprint.unwrap(), &skills, Some(&home)),
+        None
+    );
     let _ = std::fs::remove_dir_all(&home);
     let _ = std::fs::remove_dir_all(&other);
 }
@@ -321,7 +429,7 @@ fn brace_home_form_is_not_a_false_alarm() {
 const HOME_MARK: &str = "/HOME";
 
 /// ★ 成品两侧对拍：一台造好的机器（cc-bus 装着 · Stop 钩子是显式路径且在盘上）⇒ 整份成品 == 金样。
-/// 金样同时是界面解码器（`src/frontend/ui/cc-bus-hooks-reads.ts::decodeHooksReport`）的输入。
+/// 金样同时是界面读口（`src/frontend/ui/cc-bus-hooks-reads.ts`，类型从后端生成）读的那一形。
 #[test]
 fn the_product_is_the_golden_the_ui_decodes() {
     let home = test_home::scratch("golden");
@@ -338,7 +446,7 @@ fn the_product_is_the_golden_the_ui_decodes() {
     .unwrap();
     let skills = agent.join("skills");
     put_scripts(&skills);
-    let rep = answer_at(Some(&home), &agent, Some(&skills), true);
+    let rep = here(Some(&home), &agent, Some(&skills), true);
     let got = serde_json::to_string_pretty(&rep)
         .unwrap()
         .replace(&home.display().to_string(), HOME_MARK);
@@ -356,7 +464,8 @@ fn the_product_is_the_golden_the_ui_decodes() {
 fn a_machine_without_settings_says_so() {
     let home = test_home::scratch("none");
     let agent = home.join(".claude");
-    let rep = answer_at(Some(&home), &agent, Some(&agent.join("skills")), true);
+    let all = here(Some(&home), &agent, Some(&agent.join("skills")), true);
+    let rep = &all.families[0];
     assert!(
         rep.diagnosis
             .note
@@ -377,14 +486,227 @@ fn a_machine_without_tmux_says_it_cannot_receive() {
     let agent = home.join(".claude");
     let skills = agent.join("skills");
     put_scripts(&skills);
-    let rep = answer_at(Some(&home), &agent, Some(&skills), false);
+    let rep = here(Some(&home), &agent, Some(&skills), false);
     assert!(!rep.supported);
-    assert_eq!(rep.snippet, None, "跑不了还给了要加的内容");
+    assert_eq!(rep.families[0].snippet, None, "跑不了还给了要加的内容");
     assert!(
-        answer_at(Some(&home), &agent, Some(&skills), true)
+        here(Some(&home), &agent, Some(&skills), true).families[0]
             .snippet
             .is_some(),
         "正控：同一台换成跑得了就给"
     );
     let _ = std::fs::remove_dir_all(&home);
+}
+
+// ===== 逐家认 · 连信任（两家替身：甲家声明信任，乙家不要） =====
+
+use crate::agents::fake::footprint::{
+    trust_key_a, trust_value_a, two_footprint_families, TRUST_FILE_A,
+};
+
+/// 一台造好的机器：家目录 `home`，cc-bus 装在 `home/skills` 底下；甲家的家 `home/a`、乙家的家 `home/b`。
+struct Rig {
+    home: std::path::PathBuf,
+}
+
+impl Rig {
+    fn new(tag: &str) -> Self {
+        let home = test_home::scratch(tag);
+        put_scripts(&home.join("skills"));
+        for d in ["a", "b"] {
+            std::fs::create_dir_all(home.join(d)).unwrap();
+        }
+        Rig { home }
+    }
+    /// 要加的那条钩子的命令（指向这台装好的 cc-bus 入口）。
+    fn command(&self) -> String {
+        "\"$HOME/skills/cc-bus/scripts/cc-bus\" stop-hook".to_string()
+    }
+    fn hooks_a(&self) -> std::path::PathBuf {
+        self.home.join("a").join("fake-settings.json")
+    }
+    fn trust_a(&self) -> std::path::PathBuf {
+        self.home.join("a").join(TRUST_FILE_A)
+    }
+    fn hooks_b(&self) -> std::path::PathBuf {
+        self.home.join("b").join("b-hooks.json")
+    }
+    fn answer(&self) -> HooksReport {
+        let home = self.home.clone();
+        answer_among(
+            two_footprint_families(),
+            Some(&self.home),
+            &move |k| home.join(if k == "fake" { "a" } else { "b" }),
+            Some(&self.home.join("skills")),
+            true,
+        )
+    }
+}
+
+impl Drop for Rig {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.home);
+    }
+}
+
+fn family<'a>(rep: &'a HooksReport, kind: &str) -> &'a FamilyHooks {
+    rep.families
+        .iter()
+        .find(|f| f.kind == kind)
+        .unwrap_or_else(|| panic!("成品里没有 {kind} 那一家：{rep:?}"))
+}
+
+/// ★ 声明了收信钩子的每一家各判一份（照注册表次序），各读各的那份文件。
+#[test]
+fn every_family_with_a_stop_hook_gets_its_own_verdict() {
+    let rig = Rig::new("per-family");
+    std::fs::write(
+        rig.hooks_b(),
+        serde_json::json!({ "stop": [rig.command()] }).to_string(),
+    )
+    .unwrap();
+    let rep = rig.answer();
+    let kinds: Vec<&str> = rep.families.iter().map(|f| f.kind.as_str()).collect();
+    assert_eq!(kinds, ["fake", "fake2"]);
+    let (a, b) = (family(&rep, "fake"), family(&rep, "fake2"));
+    assert_eq!(a.diagnosis.stop, HookState::NotInstalled);
+    assert!(b.diagnosis.stop.is_working(), "{:?}", b.diagnosis);
+    assert_eq!(a.source, rig.hooks_a().display().to_string());
+    assert_eq!(b.source, rig.hooks_b().display().to_string());
+}
+
+/// ★ 钩子在、信任值对 ⇒ 已装、信任已对上，不给要加的那一段。
+#[test]
+fn hook_present_and_trust_matching_is_installed() {
+    let rig = Rig::new("trust-ok");
+    let cmd = rig.command();
+    std::fs::write(
+        rig.hooks_a(),
+        serde_json::json!({ "onStop": [{ "run": cmd }] }).to_string(),
+    )
+    .unwrap();
+    let key = trust_key_a(&rig.hooks_a(), 0);
+    std::fs::write(rig.trust_a(), format!("{key} = {}\n", trust_value_a(&cmd))).unwrap();
+    let rep = rig.answer();
+    let a = family(&rep, "fake");
+    assert!(a.diagnosis.stop.is_working(), "{:?}", a.diagnosis);
+    let t = a.trust.as_ref().expect("甲家声明了信任");
+    assert!(t.trusted, "{t:?}");
+    assert_eq!(t.said.0, copy_core::copy_text("ccBusHooks.trust.ok", &[]));
+    assert_eq!(t.tone, HookTone::Ok);
+    assert_eq!(t.line, None);
+    assert_eq!(t.file, rig.trust_a().display().to_string());
+}
+
+/// ★ 钩子在、信任值不对或缺 ⇒ 说信任未对上，给出的那一段恰是照那一家算法算出的键与值。
+#[test]
+fn hook_present_but_trust_wrong_or_missing_gives_the_computed_line() {
+    let cmd_of = |rig: &Rig| rig.command();
+    for recorded in [None, Some("fnv1a:0000000000000000")] {
+        let rig = Rig::new("trust-bad");
+        let cmd = cmd_of(&rig);
+        std::fs::write(
+            rig.hooks_a(),
+            serde_json::json!({ "onStop": [{ "run": "other-tool" }, { "run": cmd }] }).to_string(),
+        )
+        .unwrap();
+        let key = trust_key_a(&rig.hooks_a(), 1);
+        if let Some(v) = recorded {
+            std::fs::write(rig.trust_a(), format!("{key} = {v}\n")).unwrap();
+        }
+        let rep = rig.answer();
+        let a = family(&rep, "fake");
+        assert!(a.diagnosis.stop.is_working(), "{:?}", a.diagnosis);
+        let t = a.trust.as_ref().expect("甲家声明了信任");
+        assert!(!t.trusted, "记着 {recorded:?} 不该算对上");
+        assert_eq!(t.tone, HookTone::Bad);
+        assert_eq!(
+            t.said.0,
+            copy_core::copy_text("ccBusHooks.trust.mismatch", &[("file", &t.file)])
+        );
+        assert_eq!(
+            t.line.as_deref(),
+            Some(format!("{key} = {}\n", trust_value_a(&cmd)).as_str()),
+            "记着 {recorded:?}"
+        );
+    }
+}
+
+/// ★ 钩子不在 ⇒ 两段都给：钩子那一条照那一家的格并进，信任那一段的键照并进之后它落的那一格算。
+#[test]
+fn hook_absent_gives_both_pieces() {
+    let rig = Rig::new("absent");
+    std::fs::write(
+        rig.hooks_a(),
+        serde_json::json!({ "onStop": [{ "run": "other-tool" }] }).to_string(),
+    )
+    .unwrap();
+    let rep = rig.answer();
+    let a = family(&rep, "fake");
+    assert_eq!(a.diagnosis.stop, HookState::NotInstalled);
+    let snip: serde_json::Value =
+        serde_json::from_str(a.snippet.as_deref().expect("cc-bus 装着就给钩子那一段")).unwrap();
+    assert_eq!(
+        snip,
+        serde_json::json!({ "onStop": [{ "run": rig.command() }] })
+    );
+    let t = a.trust.as_ref().expect("甲家声明了信任");
+    assert!(!t.trusted);
+    let key = trust_key_a(&rig.hooks_a(), 1);
+    assert_eq!(
+        t.line.as_deref(),
+        Some(format!("{key} = {}\n", trust_value_a(&rig.command())).as_str())
+    );
+}
+
+/// ★ 不声明信任的那一家只判钩子：成品里没有信任那一格。
+#[test]
+fn a_family_without_trust_only_judges_the_hook() {
+    let rig = Rig::new("no-trust");
+    let rep = rig.answer();
+    let b = family(&rep, "fake2");
+    assert_eq!(b.diagnosis.stop, HookState::NotInstalled);
+    assert!(b.trust.is_none(), "{:?}", b.trust);
+    let snip: serde_json::Value = serde_json::from_str(b.snippet.as_deref().unwrap()).unwrap();
+    assert_eq!(snip, serde_json::json!({ "stop": [rig.command()] }));
+}
+
+/// ★ 只读：诊断前后，钩子那份与信任那份一个字节不变（信任没对上也不替用户写）。
+#[test]
+fn diagnosis_leaves_both_files_untouched() {
+    let rig = Rig::new("read-only");
+    let hooks = serde_json::json!({ "onStop": [{ "run": rig.command() }] }).to_string();
+    let trust = "unrelated = 1\n".to_string();
+    std::fs::write(rig.hooks_a(), &hooks).unwrap();
+    std::fs::write(rig.trust_a(), &trust).unwrap();
+    let rep = rig.answer();
+    assert!(family(&rep, "fake")
+        .trust
+        .as_ref()
+        .is_some_and(|t| !t.trusted));
+    assert_eq!(std::fs::read_to_string(rig.hooks_a()).unwrap(), hooks);
+    assert_eq!(std::fs::read_to_string(rig.trust_a()).unwrap(), trust);
+    assert!(!rig.hooks_b().exists(), "乙家那份不在，诊断也不建");
+}
+
+/// 登记的那条命令前后带空白：判钩子时照修剪过的认，信任也照那一家读回的原文算 —— 不因空白落成「判不了」。
+#[test]
+fn a_padded_command_still_gets_its_trust_judged() {
+    let rig = Rig::new("trust-padded");
+    let padded = format!("  {}  ", rig.command());
+    std::fs::write(
+        rig.hooks_a(),
+        serde_json::json!({ "onStop": [{ "run": padded }] }).to_string(),
+    )
+    .unwrap();
+    let key = trust_key_a(&rig.hooks_a(), 0);
+    std::fs::write(
+        rig.trust_a(),
+        format!("{key} = {}\n", trust_value_a(&padded)),
+    )
+    .unwrap();
+    let rep = rig.answer();
+    let a = family(&rep, "fake");
+    assert!(a.diagnosis.stop.is_working(), "{:?}", a.diagnosis);
+    assert!(a.trust.as_ref().is_some_and(|t| t.trusted), "{:?}", a.trust);
 }

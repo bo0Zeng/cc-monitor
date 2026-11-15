@@ -1,8 +1,8 @@
-//! **号名与语义位名的字**（唯一一处）：起会话时没说是哪个号的那一个（`_`）· 账号 0（不设配置目录的那一份登录，`~/.claude`）叫什么、
+//! **号名与语义位名的字**（唯一一处）：起会话时没说是哪个号的那一个（`_`）· 账号 0（不设配置目录的那一份登录，叫那一家默认家目录的短形）叫什么、
 //! `5h` / `7d` 两个语义位叫什么。`_` 只说「没表态」：落在哪一份登录说不准（建了账号库的机器上可能是 shell rc 导出的那个配置根），
 //! 所以它不叫 `~/.claude`，叫「未指定账号」（与额度行那一格同一条键）。
 //!
-//! 后端自己拼句子时用 [`account_text`] / [`slot_text`]；出口画号名照 `accounts-list` 每号那一行的 `label`（[`account_text`] 写），
+//! 后端自己拼句子时用 [`account_text_of`]（照号那一家问）/ [`slot_text`]；出口画号名照 `accounts-list` 每号那一行的 `label`（[`account_text_among`] 写），
 //! 画位名照 `quota-read` 成品上的 `names`（[`names`]：`{slots: {码: 字}}`）。出口不认 `_`、不认 `5h` / `7d`。
 
 use crate::common::cells::Words;
@@ -18,15 +18,45 @@ pub fn is_candidate(account: &str) -> bool {
     account != HOME_ACCOUNT
 }
 
-/// 一个号在人眼里叫什么：`_` ⇒「未指定账号」· 账号 0 ⇒ `~/.claude`；其余照原名。
-pub fn account_text(name: &str) -> String {
+/// `agent`（线上的 kind 或路由名都认）那一家的一个号在人眼里叫什么：`_` ⇒「未指定账号」·
+/// 账号 0 ⇒ 那一家默认家目录的短形（[`bare_account_text_among`]）；其余照原名。
+pub fn account_text_of(agent: &str, name: &str) -> String {
+    account_text_among(crate::agents::REGISTRY, Some(agent), name)
+}
+
+/// [`account_text_of`] 照给定注册表（账号库扫清单照它手里那张表问）。认不出号是哪一家的（`agent` 缺）：
+/// 账号 0 的号名要问那一家的家目录 ⇒ 照实说认不出是哪一家的（[`bare_account_text_among`] 判）；别的号名不看家，照常写。
+pub(crate) fn account_text_among(
+    registry: &[crate::agents::Adapter],
+    agent: Option<&str>,
+    name: &str,
+) -> String {
     if name == HOME_ACCOUNT {
         copy_text("acct.tag.home", &[])
     } else if name == acct_core::BARE_ACCOUNT {
-        copy_text("acct.home.name", &[])
+        bare_account_text_among(
+            registry,
+            agent.map(|a| crate::agents::kind_of_route_among(registry, a)),
+            crate::platform::paths::home_dir().as_deref(),
+        )
     } else {
         name.to_string()
     }
+}
+
+/// 账号 0（不设配置目录的那一份登录）的名字：`kind` 那一家不给配置目录时的家目录（[`crate::agents::LocalFace::home_at`]），
+/// 在这台家目录 `user_home` 底下 ⇒ 写成 `~/…`。不知道是哪一家（`kind` 缺）· 认不出 · 那一家没有本机布局 ⇒
+/// 照实说认不出是哪一家的（只这一处判）。
+pub(crate) fn bare_account_text_among(
+    registry: &[crate::agents::Adapter],
+    kind: Option<&str>,
+    user_home: Option<&std::path::Path>,
+) -> String {
+    kind.and_then(|k| crate::agents::local_face_among(registry, k))
+        .map_or_else(
+            || copy_text("rsAgents.family.unknown", &[]),
+            |f| copy_core::home_short(&(f.home_at)(None, false).to_string_lossy(), user_home),
+        )
 }
 
 /// 号牌上那一两个字（号色那一格里画的）：字母数字开头 ⇒ 前两个字；别的 ⇒ 第一个字；空名 ⇒ `?`。

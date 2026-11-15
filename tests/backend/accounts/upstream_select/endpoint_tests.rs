@@ -34,7 +34,11 @@ fn inject(url: &str, when_down: WhenDown, account: Option<&str>) -> Endpoint {
 /// E1 ＋ E11：决策表逐格。
 #[test]
 fn us1_the_launch_table_matches_the_hand_written_one() {
-    let rows = vec!["acct-a".to_string(), "clash".to_string()];
+    // 表里那几行挂在 `claude-code` 名下：别家照自己那一家取行（`RoutedRows::of`）⇒ 零条。
+    let rows = super::super::file_face::RoutedRows {
+        agent: "claude-code",
+        ids: vec!["acct-a".to_string(), "clash".to_string()],
+    };
     let s = "http://127.0.0.1:8788/s/claude-code";
     let t = "http://127.0.0.1:8788/t/claude-code";
     // (agent, 账号, 开关, 登记了没有, 期望)
@@ -127,7 +131,7 @@ fn us1_the_launch_table_matches_the_hand_written_one() {
             false,
             all,
             relay_route_core::PORT,
-            &rows,
+            rows.of(agent),
             reg,
         );
         assert_eq!(

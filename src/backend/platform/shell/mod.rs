@@ -105,7 +105,7 @@ pub fn fresh_terminal_path() -> Option<String> {
     #[cfg(not(unix))]
     {
         let cmd = powershell_on(
-            PsHost::Desktop,
+            PsHost::Powershell,
             &powershell::fresh_path_query(SESSION_PATH_MARK),
         )?;
         ask_session_path(cmd, SESSION_PATH_WITHIN)
@@ -180,7 +180,7 @@ pub fn find_session_command(
                 let (program, lead) = match by {
                     StartBy::Itself => (file.clone().into_os_string(), Vec::new()),
                     StartBy::PowerShellFile => (
-                        "powershell.exe".into(),
+                        POWERSHELL_FILE_HOST.into(),
                         vec![
                             "-NoProfile".into(),
                             "-File".into(),
@@ -198,6 +198,32 @@ pub fn find_session_command(
         }
     }
     SessionCommand::Absent
+}
+
+/// [`StartBy::PowerShellFile`] 那一形起的程序。
+const POWERSHELL_FILE_HOST: &str = "powershell.exe";
+
+/// [`find_session_command`] 找到的那一形起的 `program` 是不是在 agent 外面「包一层」（ccm 起它那一刻就知道）：Windows 上
+/// `.cmd` · `.bat`（起进程原语经 `cmd.exe /c` 起，后缀不分大小写）与 [`StartBy::PowerShellFile`]（`powershell.exe -File`）—— 那一层只跑这一条，
+/// 它的直接子进程才是 agent；`.exe` · `.com` 与 unix（就地 exec）⇒ 不包。托管终端在读不到终端的平台上照它认前台（`host::managed`）。
+pub fn launch_wraps(program: &std::ffi::OsStr, windows: bool) -> bool {
+    if !windows {
+        return false;
+    }
+    if program == POWERSHELL_FILE_HOST {
+        return true;
+    }
+    std::path::Path::new(program)
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("cmd") || e.eq_ignore_ascii_case("bat"))
+}
+
+/// `sh -c` 那一趟最后 `exec` 起的 `program` 是不是在 agent 外面「包一层」：Windows 上 `sh.exe` 的 `exec` 把它起成自己的直接子进程，
+/// `sh.exe` 那一层只跑这一条 ⇒ `program` 是原生的就包一层；它自己又包一层（[`launch_wraps`]：`.cmd` · `.bat` · PowerShell）⇒ 两层，不算；
+/// unix 上 `exec` 就地换、pid 不变 ⇒ 不包。
+pub fn shell_launch_wraps(program: &std::ffi::OsStr, windows: bool) -> bool {
+    windows && !launch_wraps(program, windows)
 }
 
 /// 终端里敲 `ccm` 走到哪（[`reach`] 的答案）。
@@ -265,7 +291,7 @@ pub fn agent_launch(prog: &str, given: Option<&str>) -> Result<AgentLaunch, Stri
     )?;
     // 找到的那个文件：`.ps1` 那一形是交给 PowerShell 的最后一个前导参数，别的就是程序本身。
     let file = std::path::PathBuf::from(found.lead.last().unwrap_or(&found.program));
-    let policy = || powershell::execution_policy(PsHost::Desktop).effective;
+    let policy = || powershell::execution_policy(PsHost::Powershell).effective;
     let as_found = SessionCommand::Found {
         file: file.clone(),
         program: found.program.clone(),
@@ -398,13 +424,12 @@ pub(crate) fn parse_marked_path(out: &str) -> Option<String> {
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
+#[serde(rename_all = "lowercase")]
 pub enum PsHost {
     /// Windows 自带的 5.1。
-    #[serde(rename = "powershell")]
-    Desktop,
+    Powershell,
     /// PowerShell 7。
-    #[serde(rename = "pwsh")]
-    Core,
+    Pwsh,
 }
 
 /// 备一条 `<那一代>.exe -NoProfile -NonInteractive -Command <脚本>`（不弹窗）。
@@ -423,8 +448,8 @@ pub(crate) fn powershell_on(host: PsHost, script: &str) -> Option<Child> {
 )]
 fn powershell_command(host: PsHost, script: &str) -> Child {
     let c = match host {
-        PsHost::Desktop => Child::new("powershell.exe"),
-        PsHost::Core => Child::new("pwsh.exe"),
+        PsHost::Powershell => Child::new("powershell.exe"),
+        PsHost::Pwsh => Child::new("pwsh.exe"),
     };
     c.args(["-NoProfile", "-NonInteractive", "-Command", script])
         .env_remove("PSExecutionPolicyPreference")
@@ -472,6 +497,15 @@ pub fn bare_terminal_argv() -> Vec<String> {
     {
         vec!["powershell.exe".into(), "-NoLogo".into()]
     }
+}
+
+/// 前台程序名是这几个之一 ⇒ 那是一个 shell（登录 shell 的 `-bash` 去掉前缀照认）。只比终端报的前台程序名，不起 shell。
+const SHELLS: &str = "bash zsh fish sh dash ksh tcsh csh nu pwsh powershell";
+
+/// `program`（终端报的前台程序名）是不是一个 shell。
+pub fn is_shell_program(program: &str) -> bool {
+    let p = program.trim_start_matches('-');
+    SHELLS.split_whitespace().any(|s| s == p)
 }
 
 #[cfg(test)]

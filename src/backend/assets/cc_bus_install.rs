@@ -191,9 +191,12 @@ pub(crate) fn state_at(skills: &Path) -> CcBusState {
     }
 }
 
+/// 默认那一家的用户级 skill 根（取根照家只经 `skill_install` 那一处）。
 fn skills_root() -> Result<PathBuf, crate::common::said::Said> {
-    crate::agents::asset_kind()
-        .and_then(crate::agents::skills_root)
+    use crate::assets::skill_install::{skill_root_of, Roots};
+    skill_root_of(Roots::HERE, None, None)
+        .ok()
+        .flatten()
         .ok_or_else(|| {
             crate::wire::spec::fail("refused", copy_text("beCcBusInstall.root.unknown", &[]))
         })
@@ -244,6 +247,8 @@ pub(crate) fn install_at(
             name: NAME.to_string(),
             files,
             project: None,
+            // cc-bus 只装默认那一家。
+            agent: None,
         })
         .err()
         .map(|f| copy_text("beCcBusInstall.record.failed", &[("why", &f.into_note())])))

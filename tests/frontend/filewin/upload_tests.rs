@@ -1,13 +1,12 @@
 //! 命令栏「上传」那颗按钮的判据（直接弹系统选文件框）。
 //!
 //! - 🔴 **挂载那一跳在执行链上**：真跑 `frame_body` ＋ 命令栏，合成一次点击点在画出来的「上传」上 ⇒ 选择框被问；
-//!   选到的那一份走拖入那一条（真回环 ＋ 真钥匙 ＋ 合成对端上逐步读回：整组一条开单、同名由对端探了回 `exists` ⇒
-//!   冲突框问一次、人答覆盖 ⇒ 同一组带 `decide` 再开单 → 订阅 → 提交，提交带 `overwrite: true`；窗口自己一次 `files-stat` 都不问）。
+//!   选到的那一份走拖入那一条（真回环 ＋ 合成对端上逐步读回：一组寻址本机的 `transfer-copy`、同名由对端探了回 `exists` ⇒
+//!   冲突框问一次、人答覆盖 ⇒ 同一组带 `decide` 再发；窗口自己一次 `files-stat` 都不问、一次提交都不发）。
 //!
 //! ⚠ 买不到：真弹框（选择框是注入的假的）；真图形会话上的一次真点击（这里是合成事件）。
 
 use super::*;
-use crate::transfer::tests::{steps, xfer_rig, Ends};
 
 /// 假选择框：恒答那一份本机文件。
 struct One(std::path::PathBuf);
@@ -22,17 +21,9 @@ impl crate::picker::Picker for One {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn clicking_upload_picks_a_file_and_runs_the_drop_path_over_the_channel() {
     use crate::copy::testing::rects_of;
-    let (line, origin, log) = xfer_rig(Ends::Clash).await;
-    let cfg = origin.to_string();
-    let mut w = crate::shell::FileWindow::seeded(
-        crate::source::Source::remote(cfg),
-        "/srv".to_string(),
-        tokio::runtime::Handle::try_current().ok(),
-        Vec::<crate::source::Row>::new(),
-    );
-    w.attach_line(line);
+    let (mut w, log) = crate::transfer::tests::one_line_window_with(Default::default(), true);
+    let machine = w.source.label();
     let local = std::env::temp_dir().join(format!("ccm-f7c-upbtn-{}", std::process::id()));
-    std::fs::write(&local, b"abc").unwrap();
     w.picker = std::sync::Arc::new(One(local.clone()));
     let ctx = egui::Context::default();
     let painted = |w: &mut crate::shell::FileWindow, ev: Vec<egui::Event>| {
@@ -58,7 +49,7 @@ async fn clicking_upload_picks_a_file_and_runs_the_drop_path_over_the_channel() 
     let asking = tokio::time::timeout(guard_core::wall::CEILING, async {
         loop {
             let ask = w.my_trips().into_iter().find_map(|j| match j.trip {
-                crate::progress::Trip::Upload { ask, .. } if ask.is_asking() => Some(ask),
+                crate::progress::Trip::Batch { board, .. } if board.is_asking() => Some(board),
                 _ => None,
             });
             if let Some(b) = ask {
@@ -72,47 +63,47 @@ async fn clicking_upload_picks_a_file_and_runs_the_drop_path_over_the_channel() 
     .expect("同名那一问没摆出来 —— 没走拖入那一条");
     assert_eq!(asking.conflicts().len(), 1, "冲突框照对端的同名清单画");
     assert!(asking.answer(Some(cmd_wire::batch::Decide::Overwrite), false));
+    let sent = |log: &std::sync::Mutex<Vec<(String, String, serde_json::Value)>>| -> Vec<(String, serde_json::Value)> {
+        log.lock()
+            .unwrap()
+            .iter()
+            .filter(|(_, s, _)| s == crate::transfer::CMD_TRANSFER || s.starts_with("files-commit") || s == "files-stat")
+            .map(|(o, s, v)| (format!("{o} {s}"), v.clone()))
+            .collect()
+    };
     tokio::time::timeout(guard_core::wall::CEILING, async {
-        while !steps(&log).iter().any(|s| s == "files-commit-upload") {
+        while sent(&log).len() < 2 {
             tokio::task::yield_now().await;
         }
     })
     .await
-    .expect("一直没等到提交");
-    let got: Vec<(String, serde_json::Value)> = log
-        .lock()
-        .unwrap()
-        .iter()
-        .filter(|(s, _)| s != "dropped")
-        .cloned()
-        .collect();
-    let names: Vec<&str> = got.iter().map(|(s, _)| s.as_str()).collect();
-    assert_eq!(
-        names,
-        [
-            "files-home",
-            "transfer-upload",
-            "transfer-upload",
-            "subscribe",
-            "files-commit-upload"
-        ],
-        "窗口不再自己探同名：整组一条开单，答过冲突框带 `decide` 再开一次"
-    );
+    .expect("答完冲突框没再发");
+    let got = sent(&log);
     let local_s = local.to_string_lossy().into_owned();
+    let want = |decide: Option<serde_json::Value>| {
+        let mut v = serde_json::json!({
+            "from": cmd_wire::LOCAL, "to": machine, "items": [{"path": local_s}], "to_dir": "/srv",
+        });
+        if let Some(d) = decide {
+            v["decide"] = d;
+        }
+        v
+    };
+    let strip = |mut v: serde_json::Value| {
+        assert!(v["ticket"].is_string(), "没带票：{v}");
+        v.as_object_mut().unwrap().remove("ticket");
+        v
+    };
+    let addressed = format!("{} {}", cmd_wire::LOCAL, crate::transfer::CMD_TRANSFER);
     assert_eq!(
-        got[1].1,
-        serde_json::json!({"items": [{"local_path": local_s}], "remote_dir": "/srv", "home": "/srv/a.bin"})
+        got.iter().map(|(s, _)| s.clone()).collect::<Vec<_>>(),
+        [addressed.clone(), addressed],
+        "窗口不再自己探同名、不提交：一组一条，答过冲突框带 `decide` 再发一次"
     );
+    assert_eq!(got[0].1["ticket"], got[1].1["ticket"], "再发换了票");
+    assert_eq!(strip(got[0].1.clone()), want(None));
     assert_eq!(
-        got[2].1,
-        serde_json::json!({"items": [{"local_path": local_s}], "remote_dir": "/srv", "home": "/srv/a.bin",
-                           "decide": {"0": "overwrite"}})
+        strip(got[1].1.clone()),
+        want(Some(serde_json::json!({"0": "overwrite"})))
     );
-    assert_eq!(
-        got[4].1["on_exists"],
-        serde_json::json!("overwrite"),
-        "人答了覆盖，提交却没带"
-    );
-    assert_eq!(got[4].1["root"], serde_json::json!("/srv"));
-    let _ = std::fs::remove_file(&local);
 }

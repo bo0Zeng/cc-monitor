@@ -65,18 +65,20 @@ mkdir -p "$HOME"
 # ⇒ wrapper 在这里造一份同款 shim 塞进后端的 PATH，socket 名读台架目录里的 `tmux-sock`
 #   （`tier2-rig.sh setup` 经共享原语 `tmux-shim.sh` 取名写下；`tier2-rig.sh run` 把同一个名字交给套件）。
 #   经 SSH exec 时 env 不带 CCM_E2E_*，文件是唯一传得进来的东西（同 `backend-path`）；缺了它上面已经拒了。
+#   哪一步不成（名字读出来是空的 · PATH 上没有 tmux · 垫片写不下）⇒ 退 2、不起后端：没有垫片的后端裸调 tmux 落到缺省 server。
+#   垫片住台架目录（每次叫都写同一份、先写临时名再改名上位）：放 /tmp 的话每叫一次留一个目录，一趟下来几十个没人收。
 CCM_E2E_TMUX_SOCK=$(cat "$E2E_DIR/tmux-sock")
-if [ -n "${CCM_E2E_TMUX_SOCK:-}" ]; then
-  _real_tmux=$(command -v tmux 2>/dev/null)
-  if [ -n "$_real_tmux" ]; then
-    # 垫片住台架目录（每次叫都写同一份、先写临时名再改名上位）：放 /tmp 的话每叫一次留一个目录，一趟下来几十个没人收。
-    _shim="$E2E_DIR/.tmux-shim"
-    if mkdir -p "$_shim" && printf '#!/bin/sh\nexec %s -L %s "$@"\n' "$_real_tmux" "$CCM_E2E_TMUX_SOCK" > "$_shim/tmux.$$" \
-       && chmod +x "$_shim/tmux.$$" && mv -f "$_shim/tmux.$$" "$_shim/tmux"; then
-      PATH="$_shim:$PATH"; export PATH
-    fi
-  fi
+_real_tmux=$(command -v tmux 2>/dev/null)
+_shim="$E2E_DIR/.tmux-shim"
+if [ -z "${CCM_E2E_TMUX_SOCK:-}" ] || [ -z "$_real_tmux" ] \
+   || ! { mkdir -p "$_shim" && printf '#!/bin/sh\nexec %s -L %s "$@"\n' "$_real_tmux" "$CCM_E2E_TMUX_SOCK" > "$_shim/tmux.$$" \
+          && chmod +x "$_shim/tmux.$$" && mv -f "$_shim/tmux.$$" "$_shim/tmux"; }; then
+  echo "backend-wrapper.sh：装不上本趟私有 tmux 的垫片（$_shim，名字 '${CCM_E2E_TMUX_SOCK:-}'，tmux '${_real_tmux:-没有}'）—— 不起后端" >&2
+  exit 2
 fi
+PATH="$_shim:$PATH"; export PATH
+# 外面会话的 `TMUX` / `TMUX_PANE` 不带给后端（下面三处起后端都在这之后）：后端宣告时会给那个窗格打标。
+unset TMUX TMUX_PANE
 # ## ★★ 查 `#60` 时用这个 tap 排除到哪一步了〔`P0b` 08-13，九拍的结论〕
 #
 # 同一个后端二进制、同样的 fixture 形状，三条起法的读数：

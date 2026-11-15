@@ -68,8 +68,8 @@ fn lock(home: &str) -> Result<Option<crate::platform::lock::DirLock>, Said> {
 /// 账号表里一个号增 / 减那一刻要对别名清单做的事（清单只跟着它走）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AliasEvent {
-    Added(String),
-    Removed(String),
+    Added(super::aliases::AliasOwner),
+    Removed(super::aliases::AliasOwner),
 }
 
 /// 一趟改动的结局（帧面宿主据 `alias_events` 决定要不要改别名文件）。
@@ -80,21 +80,28 @@ pub struct Done {
     pub alias_events: Vec<AliasEvent>,
 }
 
-fn names_of(m: Option<&super::model::Manifest>) -> Vec<String> {
-    m.map(|m| m.managed().map(|a| a.name.clone()).collect())
+fn names_of(m: Option<&super::model::Manifest>) -> Vec<super::aliases::AliasOwner> {
+    m.map(|m| m.managed().map(super::aliases::AliasOwner::of).collect())
         .unwrap_or_default()
 }
 
 /// 清单只跟着账号表里号的增减走：前后账号表之差 ⇒ 消失的号按删号、新出现的号按建号（建号 · 删号 · 回滚都是它的特例）。
-fn alias_events(before: &[String], after: &[String]) -> Vec<AliasEvent> {
+fn alias_events(
+    before: &[super::aliases::AliasOwner],
+    after: &[super::aliases::AliasOwner],
+) -> Vec<AliasEvent> {
+    // 号按名字认（号名在清单里唯一）：同一个号只是家那一格的写法变了，不算删了又建。
+    let has = |t: &[super::aliases::AliasOwner], n: &super::aliases::AliasOwner| {
+        t.iter().any(|o| o.name == n.name)
+    };
     before
         .iter()
-        .filter(|n| !after.contains(n))
+        .filter(|n| !has(after, n))
         .map(|n| AliasEvent::Removed(n.clone()))
         .chain(
             after
                 .iter()
-                .filter(|n| !before.contains(n))
+                .filter(|n| !has(before, n))
                 .map(|n| AliasEvent::Added(n.clone())),
         )
         .collect()
@@ -122,10 +129,10 @@ pub(crate) fn busy_of(rows: &[LiveSession]) -> (std::collections::BTreeSet<Strin
 /// 导入凭据的那个路径：`~/…` 按家目录展开；只收家目录底下的绝对路径（无 `..` 段 · 无控制符）。
 fn cred_path(home: &str, raw: &str) -> Result<String, Said> {
     let t = raw.trim();
-    let abs = crate::platform::acct_view::slash_form(&crate::platform::paths::expand_tilde_from(
-        t,
-        Some(std::path::Path::new(home)),
-    ));
+    let abs = crate::platform::acct_view::slash_form(
+        &crate::platform::paths::expand_tilde_text(t, Some(std::path::Path::new(home)))
+            .map_err(|s| crate::wire::spec::fail("refused", s))?,
+    );
     // 尾部 `/` 先去掉再判：`~/` · `<家>/` 就是家目录本身，不许当成「家目录底下」放过去。
     let abs = abs.trim_end_matches('/');
     let ok = crate::platform::acct_view::is_absolute(abs)
@@ -161,8 +168,8 @@ fn login_line(home: &str, name: &str) -> String {
     )
 }
 
-/// 这个号会拿到的那几条别名的名字（三形各一条，`aliases::IN_ORDER`）。
-fn alias_names_for(account: &str) -> Vec<String> {
+/// 这个号会拿到的那几条别名的名字（三形各一条，`aliases::IN_ORDER`；照它那一家起）。
+fn alias_names_for(account: &super::aliases::AliasOwner) -> Vec<String> {
     super::aliases::IN_ORDER
         .into_iter()
         .filter_map(|f| super::aliases::alias_name(account, f))
@@ -222,7 +229,11 @@ pub fn run_change(
             layout::plan_init(&snap, &a.name)?,
             a.dry_run == Some(true),
             AccountChange {
-                alias_names: alias_names_for(&a.name),
+                // 建账号库收的是这台此刻登录的那个身份：缺省那一家的号。
+                alias_names: alias_names_for(&super::aliases::AliasOwner {
+                    name: a.name.clone(),
+                    agent: None,
+                }),
                 ..AccountChange::default()
             },
         ),
@@ -232,6 +243,7 @@ pub fn run_change(
                 api_key: a.kind == AccountKind::ApiKey,
                 cred_file: cred,
                 make_default: a.is_default == Some(true),
+                agent: a.agent.as_ref().map(|k| k.as_str().to_string()),
             };
             let plan = layout::plan_add(&snap, &want)?;
             let extra = AccountChange {
@@ -239,7 +251,10 @@ pub fn run_change(
                     name: a.name.clone(),
                     config_dir: join(&snap.roots().accts, &a.name),
                 }),
-                alias_names: alias_names_for(&a.name),
+                alias_names: alias_names_for(&super::aliases::AliasOwner {
+                    name: a.name.clone(),
+                    agent: want.agent.clone(),
+                }),
                 ..AccountChange::default()
             };
             (plan, a.dry_run == Some(true), extra)
@@ -321,7 +336,7 @@ pub fn colors_here(d: &dyn Door) {
         Ok(false) => {}
         Err(e) => tracing::warn!(
             "[accounts] 账号库补号色不成：{} {}",
-            e.code_or_fallback(),
+            &cmd_wire::failed::Failed::code_or_fallback(e.code.clone()),
             e.logged()
         ),
     }
@@ -358,7 +373,7 @@ pub fn align_here(d: &dyn Door) {
         Ok(n) => tracing::info!("[accounts] 账号库对齐（{n} 步）"),
         Err(e) => tracing::warn!(
             "[accounts] 账号库对齐不成：{} {}",
-            e.code_or_fallback(),
+            &cmd_wire::failed::Failed::code_or_fallback(e.code.clone()),
             e.logged()
         ),
     }

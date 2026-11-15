@@ -251,6 +251,33 @@ impl TextClock {
     pub fn rel(&self, t: u64) -> Option<crate::common::cells::Words> {
         fmt_rel(i64::try_from(t).unwrap_or(i64::MAX), self.now).map(crate::common::cells::Words)
     }
+
+    /// 那一刻落在看的那一台日历上的哪天，比今天晚几天（本地日期直接比：明天 ⇒ 1，今天 ⇒ 0，昨天 ⇒ -1）。
+    pub fn days_from_today(&self, t: u64) -> i64 {
+        let t = i64::try_from(t).unwrap_or(i64::MAX);
+        self.tz.local(t).div_euclid(DAY) - self.tz.local(self.now).div_euclid(DAY)
+    }
+
+    /// 那一刻的钟面 `HH:MM`（看的那一台的时区，不写日子）。
+    pub fn face(&self, t: u64) -> crate::common::cells::Words {
+        crate::common::cells::Words(hm(self.tz.local(i64::try_from(t).unwrap_or(i64::MAX))))
+    }
+}
+
+/// ★ 一段时长（分钟）写成窗口键（唯一写法，机器键；给人看的名字经文案表写，`faces/quota_rows.rs` 的 `window_label`）：
+/// 整天 ⇒ `7d` · 整点 ⇒ `5h` · 否则 ⇒ `90m`；不是正数 ⇒ 缺。各家照窗口时长认不出语义位时，键照它写。
+pub fn span_key(minutes: i64) -> Option<String> {
+    const HOUR_MIN: i64 = 60;
+    const DAY_MIN: i64 = 24 * HOUR_MIN;
+    Some(if minutes <= 0 {
+        return None;
+    } else if minutes % DAY_MIN == 0 {
+        format!("{}d", minutes / DAY_MIN)
+    } else if minutes % HOUR_MIN == 0 {
+        format!("{}h", minutes / HOUR_MIN)
+    } else {
+        format!("{minutes}m")
+    })
 }
 
 /// 本地钟秒数 ⇒ 钟面 `HH:MM`（不写日子）。

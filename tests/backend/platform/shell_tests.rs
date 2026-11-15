@@ -70,17 +70,20 @@ fn which_execution_policies_load_a_local_unsigned_profile() {
 #[test]
 fn the_policy_listing_reads_the_effective_policy_and_group_policy() {
     use super::powershell::read_policy_listing as read;
-    let a = read(PsHost::Desktop, "Restricted\r\nUndefined\r\nUndefined\r\n");
+    let a = read(
+        PsHost::Powershell,
+        "Restricted\r\nUndefined\r\nUndefined\r\n",
+    );
     assert_eq!(
         (a.effective.as_deref(), a.loads, a.group_policy, a.error),
         (Some("Restricted"), Some(false), false, None)
     );
-    let b = read(PsHost::Core, "AllSigned\nUndefined\nAllSigned\n");
+    let b = read(PsHost::Pwsh, "AllSigned\nUndefined\nAllSigned\n");
     assert_eq!(
         (b.host, b.loads, b.group_policy),
-        (PsHost::Core, Some(false), true)
+        (PsHost::Pwsh, Some(false), true)
     );
-    let c = read(PsHost::Desktop, "RemoteSigned\n");
+    let c = read(PsHost::Powershell, "RemoteSigned\n");
     assert_eq!((c.effective, c.loads), (None, None));
     assert_eq!(
         c.error.as_deref(),
@@ -94,8 +97,8 @@ fn the_policy_listing_reads_the_effective_policy_and_group_policy() {
 #[test]
 fn a_powershell_starts_without_profile_and_without_the_inherited_policy() {
     for (h, exe) in [
-        (PsHost::Desktop, "powershell.exe"),
-        (PsHost::Core, "pwsh.exe"),
+        (PsHost::Powershell, "powershell.exe"),
+        (PsHost::Pwsh, "pwsh.exe"),
     ] {
         let c = super::powershell_command(h, "Get-ExecutionPolicy").built();
         assert_eq!(c.get_program(), exe);
@@ -141,16 +144,15 @@ fn the_session_shell_path_is_read_between_its_markers() {
 }
 
 /// 沙箱家目录（`sh` 代替用户的 shell；登录时读的那份文件由各条自己写）。
+/// 假 `sh` 马上被起 ⇒ 经 `write_exe` 写：本进程写的写端会漏进别的判据线程 fork 出来的子进程 ⇒ ETXTBSY ⇒ 问不出。
 #[cfg(unix)]
 fn login_box(tag: &str, profile: &str) -> std::path::PathBuf {
-    use std::os::unix::fs::PermissionsExt;
     let home = std::env::temp_dir().join(format!("ccm-session-path-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&home);
     std::fs::create_dir_all(&home).unwrap();
     std::fs::write(home.join(".profile"), profile).unwrap();
     let sh = home.join("sh");
-    std::fs::write(&sh, "#!/bin/sh\nexec /bin/sh +m \"$@\"\n").unwrap();
-    std::fs::set_permissions(&sh, std::fs::Permissions::from_mode(0o755)).unwrap();
+    test_home::write_exe(&sh, "#!/bin/sh\nexec /bin/sh +m \"$@\"\n");
     home
 }
 
@@ -496,13 +498,12 @@ fn probe_helper_inner() {
     println!("probe ok");
 }
 
-/// 「这台有没有某程序」（hello 的 tmux 在不在 · sideload 判 claude 版本 · MCP 判命令在不在 · 找插件）只照一份 `PATH`，
+/// 「这台有没有某程序」（hello 的 tmux 在不在 · `hook_version` 判 claude 版本 · MCP 判命令在不在 · 找插件）只照一份 `PATH`，
 /// 就是起进程用的那一份：本进程的 `PATH` 与起会话那个 shell 的喂不同值 ⇒ 探针答的是起会话那个 shell 的、与子进程拿到的一样；
 /// 问不出（登录 shell 不答）⇒ 两边都是本进程的。
 #[cfg(unix)]
 #[test]
 fn the_probe_path_is_the_one_children_are_started_with() {
-    use std::os::unix::fs::PermissionsExt as _;
     let d = std::env::temp_dir().join(format!("ccm-probe-path-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
@@ -510,8 +511,7 @@ fn the_probe_path_is_the_one_children_are_started_with() {
     let own = "/usr/bin:/bin";
     let mk = |name: &str, body: &str| {
         let p = d.join(name);
-        std::fs::write(&p, body).unwrap();
-        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        test_home::write_exe(&p, body);
         p
     };
     let answers = mk(
@@ -578,20 +578,17 @@ fn off_terminal_helper_inner() {
 #[test]
 fn asking_the_path_from_a_terminal_is_not_stopped_by_it() {
     use crate::platform::child::{Child, Heard};
-    use std::os::unix::fs::PermissionsExt as _;
     let d = std::env::temp_dir().join(format!("ccm-off-terminal-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
     let shell = d.join("login-shell");
-    std::fs::write(
+    test_home::write_exe(
         &shell,
-        format!(
+        &format!(
             "#!/bin/sh\n[ \"$1\" = -l ] || exit 9\n{{ read -r x </dev/tty; }} 2>/dev/null\nprintf '%s%s%s' '{m}' '/asked/bin:/usr/bin' '{m}'\n",
             m = super::SESSION_PATH_MARK
         ),
-    )
-    .unwrap();
-    std::fs::set_permissions(&shell, std::fs::Permissions::from_mode(0o755)).unwrap();
+    );
     let mut conv = Child::new(std::env::current_exe().expect("本测试程序"))
         .args([
             "shell::tests::off_terminal_helper_inner",
@@ -619,5 +616,61 @@ fn asking_the_path_from_a_terminal_is_not_stopped_by_it() {
     assert!(
         said.iter().any(|l| l.contains("off-terminal ok")),
         "帮手没跑到那条判据（名字对不上 · 被筛掉）：{said:?}"
+    );
+}
+
+/// ★ ccm 起的那一跳是不是「包一层」（[`super::launch_wraps`]，托管终端照它认前台）：照找到的那一形问它起的那个程序 ——
+/// `.cmd` · `.bat`（起进程原语经 `cmd.exe /c` 起）与 `.ps1`（经 PowerShell `-File` 起）包一层；`.exe` · `.com` 就是 agent 自己；unix 恒不包。
+#[test]
+fn the_launches_that_wrap_the_agent_in_one_more_process_are_known_when_started() {
+    use super::{find_session_command as find, launch_wraps, SessionCommand};
+    let a = std::path::PathBuf::from("/w/a");
+    let dir = a.to_str().unwrap();
+    let wraps = |file: &str, windows: bool| {
+        let present = [a.join(file)];
+        let found = find("claude", Some(dir), windows, &files_at(&present));
+        match found {
+            SessionCommand::Found { program, .. } => launch_wraps(&program, windows),
+            other => panic!("{file} 没找到：{other:?}"),
+        }
+    };
+    assert!(wraps("claude.cmd", true), ".cmd 经 cmd.exe");
+    assert!(wraps("claude.bat", true), ".bat 经 cmd.exe");
+    assert!(
+        launch_wraps(std::ffi::OsStr::new(r"C:\npm\claude.CMD"), true),
+        "后缀不分大小写（用户自己给的路径）"
+    );
+    assert!(wraps("claude.ps1", true), ".ps1 经 PowerShell");
+    assert!(!wraps("claude.exe", true), "原生 .exe 就是它自己");
+    assert!(!wraps("claude.com", true), ".com 就是它自己");
+    assert!(!wraps("claude", false), "unix 就地 exec，不包");
+    assert!(
+        !launch_wraps(std::ffi::OsStr::new("/w/a/claude.cmd"), false),
+        "unix 上同名后缀也不包"
+    );
+}
+
+/// ★ `sh -c` 那一趟起的那个程序在 agent 外面包没包一层（[`super::shell_launch_wraps`]）：Windows 上 `sh.exe` 的 `exec` 把它起成自己的直接子进程 ——
+/// 那个程序是原生的（`.exe` · `.com`）⇒ 包一层（`sh.exe` 那一层只跑这一条）；它自己又包一层（`.cmd` · `.bat` · PowerShell）⇒ 两层，不算（照实落说不清）；
+/// unix 上 `exec` 就地换、pid 不变 ⇒ 不包。
+#[test]
+fn a_native_program_under_sh_is_one_wrap_and_a_wrapped_one_is_two() {
+    use super::{shell_launch_wraps as under_sh, POWERSHELL_FILE_HOST};
+    use std::ffi::OsStr;
+    assert!(
+        under_sh(OsStr::new(r"C:\w\claude.exe"), true),
+        "原生：sh.exe 包一层"
+    );
+    assert!(
+        !under_sh(OsStr::new(r"C:\npm\claude.cmd"), true),
+        "sh.exe 底下再经 cmd.exe：两层"
+    );
+    assert!(
+        !under_sh(OsStr::new(POWERSHELL_FILE_HOST), true),
+        "sh.exe 底下再经 PowerShell：两层"
+    );
+    assert!(
+        !under_sh(OsStr::new("/w/a/claude"), false),
+        "unix 就地 exec，不包"
     );
 }

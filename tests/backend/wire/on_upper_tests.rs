@@ -31,20 +31,20 @@ const SESSION_STREAM_GOLDEN: &str = "tests/__fixtures__/session-stream.golden.js
 /// 每种帧两行：`[全格, 最少格]` —— 全格 ＝ 可选格（`skip_serializing_if` 的）都在；最少格 ＝ 都缺。
 /// 没有可选格的帧两行相同。
 /// `live` 一种 `op` 一形：全格取整卡（带 `run`），最少格取「说完了」那一形（不带 `run`）。
-fn golden_pairs() -> Vec<[Frame; 2]> {
+fn golden_pairs() -> Vec<[WireFrame; 2]> {
     use crate::agents::{BlockKind, RunDid};
     use crate::wire::Life;
     use crate::wire::{
         LiveBlock, LiveCard, LiveOp, LivePhase, RereadWhy, RunEnded, RunInfo, RunState, RunWhy,
-        SessionContainer, TransferEnd, Unavailable,
+        SessionContainer, Unavailable,
     };
     use cmd_wire::frame::{RunEndLine, RunExplain, RunLine};
     let s = |v: &str| v.to_string();
     let w = |v: &str| crate::common::cells::Words(v.to_string());
-    let both = |f: Frame| [f.clone(), f];
+    let both = |f: WireFrame| [f.clone(), f];
     vec![
         [
-            Frame::Hello(crate::wire::Hello {
+            WireFrame::Hello(crate::wire::Hello {
                 build_id: s("b1"),
                 host_arch: s("x86_64"),
                 version: Some(s("4.2.0")),
@@ -58,7 +58,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 shapes: [(s("ping"), s("0000abcd"))].into_iter().collect(),
                 frames: [(s("line"), s("0000abcd"))].into_iter().collect(),
             }),
-            Frame::Hello(crate::wire::Hello {
+            WireFrame::Hello(crate::wire::Hello {
                 build_id: s("b1"),
                 host_arch: s("x86_64"),
                 version: None,
@@ -70,7 +70,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
             }),
         ],
         [
-            Frame::Line(crate::wire::Line {
+            WireFrame::Line(cmd_wire::frame::Line {
                 session_id: s("s1"),
                 path: s("/p/s1.jsonl"),
                 seq: 3,
@@ -84,7 +84,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 byte_offset: 120,
                 rid: Some(s("r1")),
             }),
-            Frame::Line(crate::wire::Line {
+            WireFrame::Line(cmd_wire::frame::Line {
                 session_id: s("s1"),
                 path: s("/p/s1.jsonl"),
                 seq: 3,
@@ -95,11 +95,10 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
             }),
         ],
         [
-            Frame::SessionAdded(crate::wire::SessionAdded {
+            WireFrame::SessionAdded(crate::wire::SessionAdded {
                 sid: s("s1"),
                 agent_kind: s("claude"),
                 background: true,
-                attachable: Some(true),
                 cwd: Some(s("/w")),
                 project_dir: Some(s("/w")),
                 name: Some(s("n")),
@@ -129,11 +128,10 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 }),
                 pid: 42,
             }),
-            Frame::SessionAdded(crate::wire::SessionAdded {
+            WireFrame::SessionAdded(crate::wire::SessionAdded {
                 sid: s("s1"),
                 agent_kind: "claude".to_string(),
                 background: false,
-                attachable: None,
                 cwd: None,
                 project_dir: None,
                 name: None,
@@ -146,19 +144,19 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
             }),
         ],
         [
-            Frame::SessionPrimed(crate::wire::SessionPrimed {
+            WireFrame::SessionPrimed(crate::wire::SessionPrimed {
                 sid: s("s1"),
                 path: Some(s("/p/s1.jsonl")),
                 lines: Some(9),
             }),
-            Frame::SessionPrimed(crate::wire::SessionPrimed {
+            WireFrame::SessionPrimed(crate::wire::SessionPrimed {
                 sid: s("s1"),
                 path: None,
                 lines: None,
             }),
         ],
         [
-            Frame::SessionStatus(crate::wire::SessionStatus {
+            WireFrame::SessionStatus(crate::wire::SessionStatus {
                 sid: s("s1"),
                 face: crate::wire::SessionFace::of(crate::wire::Life::Live { activity: Some(crate::agents::SessionActivity::NeedsYou), host: None })
                     .under(Some(s("b")))
@@ -168,6 +166,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                         text: cmd_wire::cells::Words(s("l")),
                         clock: Some(cmd_wire::frame::Clock { text: cmd_wire::cells::Words(s("l {dur}")), from: 1 }),
                         peek: Some(cmd_wire::cells::Words(s("p"))),
+                        asks: false,
                     })),
                 name_face: crate::history::search_rules::name_face(
                     &crate::history::search_rules::LabelFacts {
@@ -176,25 +175,23 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                         ..Default::default()
                     },
                 ),
-                waiting_for: Some(s("permission prompt")),
                 path: Some(s("/r/s1.jsonl")),
             }),
-            Frame::SessionStatus(crate::wire::SessionStatus {
+            WireFrame::SessionStatus(crate::wire::SessionStatus {
                 sid: s("s1"),
                 face: crate::wire::SessionFace::of(crate::wire::Life::Live { activity: None, host: None }),
                 name_face: crate::history::search_rules::name_face(&Default::default()),
-                waiting_for: None,
                 path: None,
             }),
         ],
         // 全格：被顶替（带顶替它的那条）、带号；少的那一形：可重连（不带号，关不掉 · 终端那两格的形只它有）。
         [
-            Frame::session_left(s("s1"), Life::Ended, Some(s("s2")), Some(s("b"))),
-            Frame::session_left(s("s1"), Life::Reconnectable, None, None),
+            WireFrame::session_left(s("s1"), Life::Ended, Some(s("s2")), Some(s("b"))),
+            WireFrame::session_left(s("s1"), Life::Reconnectable, None, None),
         ],
-        [Frame::overflow(0, true), Frame::overflow(7, false)],
+        [WireFrame::overflow(0, true), WireFrame::overflow(7, false)],
         [
-            Frame::Reply(crate::wire::Reply {
+            WireFrame::Reply(crate::wire::Reply {
                 id: s("q1"),
                 ok: false,
                 code: Some(s("bad_args")),
@@ -202,7 +199,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 detail: Some(s("码：bad_args")),
                 data: Some(serde_json::json!({"k": 1})),
             }),
-            Frame::Reply(crate::wire::Reply {
+            WireFrame::Reply(crate::wire::Reply {
                 id: s("q1"),
                 ok: true,
                 code: None,
@@ -211,51 +208,34 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 data: None,
             }),
         ],
-        both(Frame::Cancelled(crate::wire::Cancelled { id: s("q1") })),
+        both(WireFrame::Cancelled(crate::wire::Cancelled { id: s("q1") })),
         [
-            Frame::changed(crate::wire::Changed::Plan {
+            WireFrame::changed(crate::wire::Changed::Plan {
                 key: s("/w"),
                 rev: Some(s("r1")),
                 body: Some(cmd_wire::frame::PlanNeeds { needs: 2 }),
             }),
-            Frame::changed(crate::wire::Changed::Accounts {}),
+            WireFrame::changed(crate::wire::Changed::Accounts {}),
         ],
-        both(Frame::SessionsReplayed(crate::wire::SessionsReplayed {})),
-        both(Frame::SessionFileGone(crate::wire::SessionFileGone {
+        both(WireFrame::SessionsReplayed(crate::wire::SessionsReplayed {})),
+        both(WireFrame::SessionFileGone(crate::wire::SessionFileGone {
             session_id: s("s1"),
             path: s("/p/s1.jsonl"),
             said: crate::observe::watcher::gone_said(),
         })),
-        both(Frame::SessionFileReread(crate::wire::SessionFileReread {
+        both(WireFrame::SessionFileReread(crate::wire::SessionFileReread {
             session_id: s("s1"),
             path: s("/p/s1.jsonl"),
             why: RereadWhy::Truncated,
             lines: 7,
             said: crate::observe::watcher::reread_said(RereadWhy::Truncated),
         })),
-        [
-            Frame::Transfer(crate::wire::Transfer {
-                id: s("x1"),
-                got: 4,
-                total: 4,
-                end: Some(TransferEnd::Done {
-                    bytes: 4,
-                    sha256: Some(s("ab")),
-                }),
-            }),
-            Frame::Transfer(crate::wire::Transfer {
-                id: s("x1"),
-                got: 0,
-                total: 4,
-                end: None,
-            }),
-        ],
-        both(Frame::Probe(crate::wire::Probe {
+        both(WireFrame::Probe(crate::wire::Probe {
             ticket: s("t1"),
             cell: serde_json::json!({"reached": "ssh"}),
         })),
         [
-            Frame::FilesBatch(crate::wire::FilesBatch {
+            WireFrame::FilesBatch(crate::wire::FilesBatch {
                 ticket: s("b1"),
                 done: 1,
                 total: 3,
@@ -264,7 +244,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 bytes_total: Some(2048),
                 left_text: None,
             }),
-            Frame::FilesBatch(crate::wire::FilesBatch {
+            WireFrame::FilesBatch(crate::wire::FilesBatch {
                 ticket: s("b1"),
                 done: 3,
                 total: 3,
@@ -275,7 +255,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
             }),
         ],
         [
-            Frame::LiveCard(LiveCard {
+            WireFrame::LiveCard(LiveCard {
                 sid: s("s1"),
                 run: Some(s("a1")),
                 card: 0,
@@ -300,7 +280,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                     ],
                 },
             }),
-            Frame::LiveCard(LiveCard {
+            WireFrame::LiveCard(LiveCard {
                 sid: s("s1"),
                 run: None,
                 card: 0,
@@ -309,7 +289,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
             }),
         ],
         [
-            Frame::SessionRuns(crate::wire::SessionRuns {
+            WireFrame::SessionRuns(crate::wire::SessionRuns {
                 sid: s("s1"),
                 runs: vec![RunInfo {
                     run: s("a1"),
@@ -327,10 +307,8 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                     started_ms: Some(1_000),
                     started_text: Some(s("00:00 起")),
                     active_ms: Some(2_000),
-                    ended_ms: Some(3_000),
                     why: Some(RunWhy::Reported),
                     error: Some(s("boom")),
-                    calls: 7,
                     background: true,
                     facts: vec![
                         RunLine {
@@ -360,9 +338,15 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                     }),
                     needs: crate::observe::recognize::facts::dress_ask_with(
                         None,
-                        Some(crate::agents::asks::specimen()),
+                        Some(crate::agents::asks::Asked {
+                            ask: crate::agents::asks::specimen(),
+                            since_ms: 1,
+                        }),
                         1,
                     ),
+                    kids: vec![s("a2")],
+                    kids_text: Some(w("核心·下面 1 个")),
+                    kids_open: true,
                 }],
                 ended: vec![RunEnded {
                     run: s("a0"),
@@ -379,7 +363,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 },
                 summary: Some(w("核心·agent 1")),
             }),
-            Frame::SessionRuns(crate::wire::SessionRuns {
+            WireFrame::SessionRuns(crate::wire::SessionRuns {
                 sid: s("s1"),
                 runs: vec![RunInfo {
                     run: s("a1"),
@@ -391,7 +375,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
             }),
         ],
         [
-            Frame::SessionBranch(crate::wire::SessionBranch {
+            WireFrame::SessionBranch(crate::wire::SessionBranch {
                 sid: s("s1"),
                 path: s("/p/s1.jsonl"),
                 at: 0,
@@ -399,7 +383,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 runs: vec![],
                 sum: crate::wire::branch_sum(&[s("u2"), s("a2")]),
             }),
-            Frame::SessionBranch(crate::wire::SessionBranch {
+            WireFrame::SessionBranch(crate::wire::SessionBranch {
                 sid: s("s1"),
                 path: s("/p/s1.jsonl"),
                 at: 2,
@@ -409,13 +393,13 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
             }),
         ],
         [
-            Frame::TerminalScreen(crate::wire::TerminalScreen {
+            WireFrame::TerminalScreen(crate::wire::TerminalScreen {
                 ticket: s("t1"),
                 seq: 2,
                 view: serde_json::from_value(serde_json::json!({"screen": "00000000000000a1", "cols": 80, "rows": 1, "cursor": {"x": 0, "y": 0, "visible": true}, "lines": [{"text": "ok", "spans": [{"from": 0, "to": 2, "fg": "green"}]}], "scrollback_lines": 0, "capped": false, "captured_at": 1, "captured_at_text": "00:00:01"})).unwrap(),
                 input: cmd_wire::session::TermInput::Shared,
             }),
-            Frame::TerminalScreen(crate::wire::TerminalScreen {
+            WireFrame::TerminalScreen(crate::wire::TerminalScreen {
                 ticket: s("t1"),
                 seq: 1,
                 view: serde_json::from_value(serde_json::json!({"screen": "0000000000000000", "cols": 1, "rows": 0, "cursor": {"x": 0, "y": 0, "visible": false}, "lines": [], "scrollback_lines": 0, "capped": false, "captured_at": 0, "captured_at_text": "00:00:00"})).unwrap(),
@@ -423,23 +407,80 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
             }),
         ],
         [
-            Frame::TerminalFollowEnd(crate::wire::TerminalFollowEnd {
+            WireFrame::TerminalFollowEnd(crate::wire::TerminalFollowEnd {
                 ticket: s("t1"),
                 why: crate::wire::FollowEnd::TooBig,
                 said: s("that-sentence-1"),
             }),
-            Frame::TerminalFollowEnd(crate::wire::TerminalFollowEnd {
+            WireFrame::TerminalFollowEnd(crate::wire::TerminalFollowEnd {
                 ticket: s("t1"),
                 why: crate::wire::FollowEnd::Gone,
                 said: s("that-sentence-2"),
             }),
         ],
         [
-            Frame::Relayed(cmd_wire::frame::Relayed::Line {
+            WireFrame::Relayed(cmd_wire::frame::Relayed::Line {
                 machine: s("m1"),
                 line: s(r#"{"kind":"sessions_replayed"}"#),
             }),
-            Frame::Relayed(cmd_wire::frame::Relayed::Ended { machine: s("m1") }),
+            WireFrame::Relayed(cmd_wire::frame::Relayed::Ended { machine: s("m1") }),
+        ],
+        [
+            WireFrame::SessionSeats(cmd_wire::frame::SessionSeats {
+                seats: vec![
+                    cmd_wire::frame::SessionSeat::of(
+                        "s1",
+                        None,
+                        Some(&crate::wire::SessionLeft {
+                            sid: s("s1"),
+                            face: crate::wire::SessionFace::of(Life::Ended),
+                        }),
+                        None,
+                        None,
+                    ),
+                    cmd_wire::frame::SessionSeat::of("s2", None, None, None, None),
+                ],
+                listed: true,
+                whole: true,
+            }),
+            WireFrame::SessionSeats(cmd_wire::frame::SessionSeats::default()),
+        ],
+        [
+            WireFrame::LiveNow(cmd_wire::frame::LiveNow {
+                change: cmd_wire::live::LiveChange::Tail {
+                    tail: cmd_wire::live::LiveTail {
+                        sid: s("s1"),
+                        run: Some(s("a1")),
+                        card: 3,
+                        keep: 1,
+                        blocks: vec![],
+                        last: Some(s("在说")),
+                    },
+                },
+                whole: cmd_wire::live::LiveCards {
+                    sid: s("s1"),
+                    run: Some(s("a1")),
+                    cards: vec![],
+                },
+            }),
+            WireFrame::LiveNow(cmd_wire::frame::LiveNow {
+                change: cmd_wire::live::LiveChange::Whole {
+                    whole: cmd_wire::live::LiveCards {
+                        sid: s("s1"),
+                        run: None,
+                        cards: vec![],
+                    },
+                },
+                whole: cmd_wire::live::LiveCards {
+                    sid: s("s1"),
+                    run: None,
+                    cards: vec![],
+                },
+            }),
+        ],
+        [
+            WireFrame::SessionUnread(cmd_wire::frame::SessionUnread::counted("s1", 120)),
+            WireFrame::SessionUnread(cmd_wire::frame::SessionUnread::counted("s1", 0)),
         ],
     ]
 }
@@ -570,11 +611,10 @@ fn the_name_face_carries_the_name_and_the_whole_line() {
 /// `session_added.pid` 的线上形：恒在、排在最后、是个整数。
 #[test]
 fn loc1b_session_added_carries_the_pid() {
-    let line = to_line(&Frame::SessionAdded(crate::wire::SessionAdded {
+    let line = to_line(&WireFrame::SessionAdded(crate::wire::SessionAdded {
         sid: "s".into(),
         agent_kind: "claude".to_string(),
         background: false,
-        attachable: None,
         cwd: None,
         project_dir: None,
         name: None,
@@ -591,7 +631,7 @@ fn loc1b_session_added_carries_the_pid() {
     .unwrap();
     assert_eq!(
         line,
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"face\":{\"dot\":\"idle\",\"life\":{\"is\":\"live\"},\"settled\":false,\"name\":\"状态不明\",\"tip\":\"状态不明\",\"line\":\"状态不明\",\"tone\":\"plain\",\"order\":3,\"can\":{\"close\":{\"can\":\"no\",\"why\":\"运行中\"},\"resume\":{\"can\":\"no\",\"why\":\"运行中\"},\"front\":{\"can\":\"yes\"},\"attach\":{\"can\":\"yes\"},\"view\":{\"can\":\"yes\",\"said\":\"在 cc-monitor 里打开它的终端\",\"open\":{\"kind\":\"attach\"}},\"reattach\":{\"can\":\"no\",\"why\":\"运行中\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"},\"stop\":{\"can\":\"no\",\"why\":\"状态不明\"},\"say\":{\"can\":\"yes\",\"hint\":\"发消息…\"},\"end\":{\"can\":\"yes\"}}},\"label\":\"无消息的会话\",\"title\":\"无消息的会话\",\"pid\":4242}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"face\":{\"dot\":\"idle\",\"life\":{\"is\":\"live\"},\"settled\":false,\"name\":\"状态不明\",\"tip\":\"状态不明\",\"line\":\"状态不明\",\"tone\":\"plain\",\"order\":3,\"can\":{\"close\":{\"can\":\"no\",\"why\":\"运行中\"},\"resume\":{\"can\":\"no\",\"why\":\"运行中\"},\"front\":{\"can\":\"yes\"},\"attach\":{\"can\":\"no\",\"why\":\"无法确定所在终端\"},\"view\":{\"can\":\"no\",\"why\":\"无法确定所在终端\"},\"reattach\":{\"can\":\"no\",\"why\":\"运行中\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"},\"stop\":{\"can\":\"no\",\"why\":\"状态不明\"},\"say\":{\"can\":\"yes\",\"hint\":\"发消息…\"},\"end\":{\"can\":\"yes\"}}},\"label\":\"无消息的会话\",\"title\":\"无消息的会话\",\"pid\":4242}\n"
     );
 }
 
@@ -624,18 +664,15 @@ fn session_frames_carry_the_state_written_and_toned() {
     use crate::agents::SessionActivity as A;
     use crate::wire::Life;
     let status = |a: Option<A>| {
-        serde_json::to_value(Frame::<crate::agents::record::Record>::SessionStatus(
-            crate::wire::SessionStatus {
-                sid: "s".into(),
-                face: crate::wire::SessionFace::of(Life::Live {
-                    activity: a,
-                    host: None,
-                }),
-                name_face: crate::history::search_rules::name_face(&Default::default()),
-                waiting_for: None,
-                path: None,
-            },
-        ))
+        serde_json::to_value(WireFrame::SessionStatus(crate::wire::SessionStatus {
+            sid: "s".into(),
+            face: crate::wire::SessionFace::of(Life::Live {
+                activity: a,
+                host: None,
+            }),
+            name_face: crate::history::search_rules::name_face(&Default::default()),
+            path: None,
+        }))
         .unwrap()["face"]
             .clone()
     };
@@ -710,4 +747,75 @@ fn session_frames_carry_the_state_written_and_toned() {
         assert_eq!(v["tip"], copy_core::copy_text(hint, &[]), "{f:?}");
         assert_eq!(v["tone"], "plain", "{f:?}");
     }
+}
+
+/// ★ 脸上的点分两样在等人：状态一句说这一份界面答得了（配好的 `needs.ask` 在）⇒ 点 `asks`、名字「待答请求」，
+/// 拿名字当理由的那几格（悬停 · 停一轮）跟着换；答不了 ⇒ 照 `needs-you`「需手动」。不在等人的点不因这一格变。
+#[test]
+fn a_waiting_face_says_asks_only_when_the_ask_can_be_answered_here() {
+    let s = |k: &str| copy_core::copy_text(k, &[]);
+    let line = |asks: bool| StateLine {
+        text: cmd_wire::cells::Words(s("beSession.needs.approve")),
+        clock: None,
+        peek: None,
+        asks,
+    };
+    let waiting = || {
+        SessionFace::of(Life::Live {
+            activity: Some(crate::agents::SessionActivity::NeedsYou),
+            host: None,
+        })
+    };
+    let asks = waiting().saying(Some(line(true)));
+    assert_eq!(asks.dot, SessionDot::Asks);
+    assert_eq!(asks.name.0, s("needs.asks.title"));
+    assert_eq!(asks.tip.0, s("needs.asks.title"), "悬停照名字");
+    assert_eq!(
+        asks.can.stop,
+        Allow::No {
+            why: asks.name.clone()
+        },
+        "停一轮的理由照名字"
+    );
+    assert_eq!(asks.line.0, s("beSession.needs.approve"), "状态一句照旧");
+    assert_eq!(
+        (asks.tone, asks.order),
+        (waiting().tone, waiting().order),
+        "色与序同需手动"
+    );
+
+    let manual = waiting().saying(Some(line(false)));
+    assert_eq!(manual.dot, SessionDot::NeedsYou);
+    assert_eq!(manual.name.0, s("beSession.needs.unknown"));
+
+    // 不经状态一句的那几处（历史行 · 终端板）：那一句本来就是名字「需手动」⇒ 跟着换成「待答请求」，点与那一句不打架。
+    let plain = waiting().asking(true);
+    assert_eq!(plain.dot, SessionDot::Asks);
+    assert_eq!(plain.line.0, s("needs.asks.title"), "那一句照名字的跟着换");
+    assert_eq!(
+        waiting().asking(false).line.0,
+        waiting().line.0,
+        "答不了 ⇒ 那一句照旧"
+    );
+
+    let working = SessionFace::of(Life::Live {
+        activity: Some(crate::agents::SessionActivity::Working),
+        host: None,
+    })
+    .saying(Some(line(true)));
+    assert_eq!(working.dot, SessionDot::Running, "不在等人不换点");
+}
+/// ★ 不经状态一句造脸的那几处判「挂着的那一条答不答得了」只读 `Asked::manual` 那一判：有选项 ⇒ 是；挡着终端的 · 没挂 ⇒ 否。
+#[test]
+fn a_hung_ask_is_answerable_exactly_when_it_offers_a_choice() {
+    use crate::agents::asks::{specimen, Asked};
+    let hung = Asked {
+        ask: specimen(),
+        since_ms: 1,
+    };
+    let mut blocking = hung.clone();
+    blocking.ask.choices.clear();
+    assert!(answerable(Some(&hung)));
+    assert!(!answerable(Some(&blocking)));
+    assert!(!answerable(None));
 }

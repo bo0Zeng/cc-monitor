@@ -5,13 +5,9 @@ package com.ccmonitor.mobile.core.rs
  *
  * 一下的**记号**：`t<字>`（照原样打的一段字）· `s<修饰>:<键>`（特殊键）· `c<修饰>:<字>`（带修饰的一个字）。
  * 修饰是 `ctrl` · `alt` · `shift` 照这个先后的逗号连写，可空；键是库里存的线上名（`up` · `pgdn` · `f5` …）。
- * 第一次碰到时才加载那份 .so；JVM 单测加载同一个 crate 的宿主编译（根 `build.gradle.kts` 指好 `java.library.path`）。
+ * 算字节那一下经 [Core.keyBytes]。
  */
 object TermKeys {
-    init {
-        System.loadLibrary("mobcore")
-    }
-
     /** 修饰的线上名，照记号里的先后。 */
     val MOD_ORDER: List<String> = listOf("ctrl", "alt", "shift")
 
@@ -33,5 +29,5 @@ object TermKeys {
     private fun modWords(mods: Collection<String>) = MOD_ORDER.filter { it in mods }.joinToString(",")
 
     /** 几下（记号）⇒ 送进终端的字节，一下接一下拼起来；有一个记号核心读不出 ⇒ null。 */
-    external fun bytes(tokens: Array<String>): ByteArray?
+    fun bytes(tokens: Array<String>): ByteArray? = Core.keyBytes(tokens)
 }

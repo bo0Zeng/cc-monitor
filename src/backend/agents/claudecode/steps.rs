@@ -374,19 +374,15 @@ const PLAN_APPROVED_LEAD: &str = "User has approved your plan";
 /// 提问答了之后的固定句：`User has answered your questions: "问"="答", "问"="答". …`
 const ANSWERED_LEAD: &str = "User has answered your questions:";
 
-/// 一个 `tool_result` 块（＋ 记录级 `toolUseResult`）⇒ 结果的数与码（`text` 留空：右侧那一句由核心 `step_clock::said` 一处写）。
-/// 读文件那一类 ＝ 结果里有 `file.numLines`（[`StepResult::read`]）。
-pub(crate) fn result_of(block: &Value, tur: Option<&Value>) -> StepResult {
-    let mut r = counted(block, tur);
-    r.read = tur
-        .and_then(|t| t.get("file"))
+/// 记录级 `toolUseResult` 是读文件那一类 ＝ 里面有 `file.numLines`（不上线，交 [`crate::agents::Unsent::reads`]）。
+pub(crate) fn reads_file(tur: Option<&Value>) -> bool {
+    tur.and_then(|t| t.get("file"))
         .and_then(|f| f.get("numLines"))
-        .is_some();
-    r
+        .is_some()
 }
 
-/// [`result_of`] 的数那一半。
-fn counted(block: &Value, tur: Option<&Value>) -> StepResult {
+/// 一个 `tool_result` 块（＋ 记录级 `toolUseResult`）⇒ 结果的数与码（`text` 留空：右侧那一句由核心 `step_clock::said` 一处写）。
+pub(crate) fn result_of(block: &Value, tur: Option<&Value>) -> StepResult {
     let text = super::text::stringify_json(block.get("content").unwrap_or(&Value::Null));
     let is_error = block.get("is_error").and_then(Value::as_bool) == Some(true);
     let mut r = StepResult {

@@ -29,7 +29,7 @@ describe("session-account 问会话所在那台", () => {
       fromLine: null,
       usage: null,
       stale: false,
-      hover: [["bob"]],
+      hover: [[{ text: "bob", tone: "plain" }]],
       sampled: null,
       differs: false,
       badge: null,

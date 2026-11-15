@@ -74,7 +74,7 @@ impl Roots {
 
     /// 一个号的目录归不归本模块动：在账号库里，或者就是共享库本身（旧的 in-place 号）。
     pub(crate) fn controls(&self, dir: &str) -> bool {
-        (is_under(dir, &self.accts) && dir != self.accts) || dir == self.shared
+        in_library(dir, &self.accts) || dir == self.shared
     }
 }
 
@@ -87,6 +87,40 @@ pub(crate) fn join(a: &str, b: &str) -> String {
 pub(crate) fn is_under(child: &str, parent: &str) -> bool {
     let p = parent.trim_end_matches('/');
     child == p || child.starts_with(&format!("{p}/"))
+}
+
+/// 号目录 `dir` 在不在账号库 `accts` 里：在它底下、又不是库根本身（尾部 `/` 不论）。cc-monitor 只写库里的号目录，
+/// 库外的（用户自己的配置目录）一律不碰；「在不在账号库里」只判这一处。
+pub(crate) fn in_library(dir: &str, accts: &str) -> bool {
+    let (d, a) = (dir.trim_end_matches('/'), accts.trim_end_matches('/'));
+    is_under(d, a) && d != a
+}
+
+/// 读写号目录之前那一判：字面上在账号库里（[`in_library`]），落到盘上也还在 —— 号目录（或它上面哪一层）是指到库外的符号链接 ⇒ 算库外。
+/// 只在真去读写那个号的配置时问（排计划那一路的目录可能还不在，照字面判）。
+pub(crate) fn in_library_on_disk(dir: &str, accts: &str) -> bool {
+    in_library(dir, accts) && in_library(&on_disk(dir), &on_disk(accts))
+}
+
+/// `p` 落到盘上是哪：最深那一层还在的照它的真路径（符号链接解开），后面还不在的那几段原样接上。
+fn on_disk(p: &str) -> String {
+    let path = std::path::Path::new(p);
+    let mut rest = Vec::new();
+    let mut at = path;
+    loop {
+        if let Ok(real) = crate::platform::fs::Ro::canonicalize(at) {
+            let mut out = real;
+            out.extend(rest.iter().rev());
+            return out.to_string_lossy().into_owned();
+        }
+        match (at.parent(), at.file_name()) {
+            (Some(up), Some(name)) => {
+                rest.push(name);
+                at = up;
+            }
+            _ => return p.to_string(),
+        }
+    }
 }
 
 /// 一个目录此刻的样子。
@@ -143,7 +177,7 @@ pub(crate) struct Snapshot {
     pub home_items: BTreeMap<String, Item>,
     /// 每个号的目录（清单里的 ＋ 调用方另点名要看的）。
     pub dirs: BTreeMap<String, DirState>,
-    /// 目录 → 它的 `.claude.json` 里登录的邮箱（家目录那一格是账号 0 的）。
+    /// 目录 → 那个目录那一家（`AccountsFace::email_in`）读出的登录邮箱（家目录那一格是账号 0 的）。
     pub emails: BTreeMap<String, String>,
     /// 调用方另点名要看的单个路径（导入的凭据文件）。
     pub files: BTreeMap<String, Item>,
@@ -180,6 +214,15 @@ impl Snapshot {
 
 /// 读一遍。`home` 是这台机器的家目录（判据给临时目录）；`extra_dirs` / `extra_files` 是这一趟另要看的。
 pub(crate) fn scan(home: &str, extra_dirs: &[String], extra_files: &[String]) -> Snapshot {
+    scan_among(crate::agents::REGISTRY, home, extra_dirs, extra_files)
+}
+
+pub(crate) fn scan_among(
+    registry: &[crate::agents::Adapter],
+    home: &str,
+    extra_dirs: &[String],
+    extra_files: &[String],
+) -> Snapshot {
     let home = home.trim_end_matches('/').to_string();
     let accts = accts_root(&home);
     let mpath = join(&accts, MANIFEST_FILE);
@@ -187,7 +230,10 @@ pub(crate) fn scan(home: &str, extra_dirs: &[String], extra_files: &[String]) ->
         None => (None, None),
         Some((text, parsed)) => (text, Some(parsed.map_err(Unread::into_said))),
     };
-    let default_shared = super::layout::shared_root_in(&home);
+    // 共享库那一侧（缺省共享库 · 按需目录 · 家目录下的身份项）照缺省那一家的账号面，跟号目录的邮箱一样照 `registry` 问。
+    let lib = crate::agents::account_kind_among(registry, None)
+        .and_then(|k| crate::agents::accounts_face_among(registry, k));
+    let default_shared = super::layout::shared_root_of(lib.as_ref(), &home);
     let shared = manifest
         .as_ref()
         .and_then(|r| r.as_ref().ok())
@@ -213,7 +259,7 @@ pub(crate) fn scan(home: &str, extra_dirs: &[String], extra_files: &[String]) ->
         manifest,
         ..Snapshot::default()
     };
-    for n in super::layout::shared_on_demand() {
+    for n in lib.as_ref().map_or(&[][..], |f| f.shared_on_demand) {
         let at = join(&shared, n);
         if matches!(snap.shared.get(n), Item::Dir { .. })
             && crate::platform::fs::Ro::read_dir(&at).is_ok_and(|mut rd| rd.next().is_none())
@@ -221,7 +267,11 @@ pub(crate) fn scan(home: &str, extra_dirs: &[String], extra_files: &[String]) ->
             snap.empty_shared.insert((*n).to_string());
         }
     }
-    for (name, home_rooted, _) in super::layout::identity() {
+    for (name, home_rooted, _) in lib
+        .as_ref()
+        .map(super::layout::identity_of)
+        .unwrap_or_default()
+    {
         if home_rooted {
             snap.home_items.insert(
                 name.to_string(),
@@ -238,16 +288,21 @@ pub(crate) fn scan(home: &str, extra_dirs: &[String], extra_files: &[String]) ->
         let st = dir_state(&d);
         snap.dirs.insert(d, st);
     }
-    for d in std::iter::once(&home)
+    // 邮箱照那个目录那一家的读法读：号目录照清单里那个号的家，家目录 · 共享库 · 另点名的照缺省那一家。
+    let emails: Vec<(String, String)> = std::iter::once(&home)
         .chain(std::iter::once(&shared))
         .chain(snap.dirs.keys())
-        .cloned()
-        .collect::<Vec<_>>()
-    {
-        if let Some(e) = super::layout::email_in(&d) {
-            snap.emails.insert(d, e);
-        }
-    }
+        .filter_map(|d| {
+            let agent = snap
+                .manifest()
+                .and_then(|m| m.managed().find(|a| a.config_dir == *d))
+                .and_then(|a| a.agent.as_deref());
+            let face = crate::agents::account_kind_among(registry, agent)
+                .and_then(|k| crate::agents::accounts_face_among(registry, k))?;
+            Some((d.clone(), (face.email_in)(Path::new(d))?))
+        })
+        .collect();
+    snap.emails.extend(emails);
     for f in extra_files {
         snap.files.insert(f.clone(), acct_view::item(Path::new(f)));
     }

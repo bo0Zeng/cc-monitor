@@ -19,7 +19,6 @@ ts = ["dep:ts-rs"]
 
 [dependencies]
 acct-core = { path = "../../common/acct-core" }
-cmd-wire = { path = "../../common/cmd-wire" }
 copy-core = { path = "../../common/copy-core" }
 # 读凭据文件时按句柄量权限（`perm::open_checked`）：与主 crate 同开 `harden`。
 creds-core = { path = "../../common/creds-core", features = ["harden"] }
@@ -32,7 +31,6 @@ relay-route-core = { path = "../../common/relay-route-core" }
 cap-core = { path = "../../common/cap-core" }
 shell-quote-core = { path = "../../common/shell-quote-core" }
 win-path-core = { path = "../../common/win-path-core" }
-jiff.workspace = true
 libc.workspace = true
 notify.workspace = true
 portable-pty.workspace = true

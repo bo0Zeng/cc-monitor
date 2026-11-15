@@ -30,6 +30,8 @@ pub struct Extracted {
     pub dirs: u64,
     pub links: u64,
     pub bytes: u64,
+    /// `bytes` 写好的字（后端写好；照抄）。
+    pub size_text: String,
 }
 
 /// `files-extract` 的回包（按类型解好的）→ [`Extracted`]。
@@ -40,6 +42,7 @@ pub fn extracted_from_reply(d: &cmd_wire::files::FilesTreeReply) -> Extracted {
         dirs: d.dirs,
         links: d.links,
         bytes: d.bytes,
+        size_text: d.size_text.clone(),
     }
 }
 
@@ -64,7 +67,7 @@ pub fn outcome_text(name: &str, o: &Outcome) -> String {
                 ("files", &e.files.to_string()),
                 ("dirs", &e.dirs.to_string()),
                 ("links", &e.links.to_string()),
-                ("human", &copy_core::size_text(e.bytes)),
+                ("human", &e.size_text),
             ],
         ),
         Outcome::Skipped(said) => copy_text(

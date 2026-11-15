@@ -1,5 +1,4 @@
-//! **一组一条命令**在窗口里的那一层：复制到另一栏 · 复制到另一台 · 删除 · 改权限；下载 · 上传那两组的开单也经这里问同名
-//! （开了单之后各项怎么传见 [`super::download`] · [`super::transfer`]）。
+//! **一组一条命令**在窗口里的那一层：复制到另一栏 · 删除 · 改权限 · 搬到另一台（上传 · 下载 · 复制到另一台，[`super::transfer`]）。
 //!
 //! 一组的全过程（带票发 · 同名问一次 · 断了等连回同票再问 · 结局）与它的字住共用的 `batch_core`；窗口只剩：
 //! 看板（[`BatchBoard`]，egui 那条线程画、tokio 那条写）· 冲突框（[`ask_ui`]）· 起跑（[`go`]：订 `files-batch/<票>` 的进度、
@@ -12,9 +11,6 @@ use std::sync::{Arc, Mutex};
 use batch_core::{Phase, Plan, Tick};
 use cmd_wire::batch::{Conflict, Decide};
 use copy_core::copy_text;
-
-/// 下载一组那一条（monitor 补拨号请求、转给本机后端的传输台）。
-pub const CMD_DOWNLOAD: &str = <cmd_wire::transfer::TransferDownloadAsk as cmd_wire::Call>::NAME;
 
 /// 冲突框里摆着的那一问。
 pub struct Asking {
@@ -31,6 +27,8 @@ struct Desk {
     ticket: String,
     phase: Phase,
     tick: Tick,
+    /// 还要多久（本机后端写好的那一句，帧里的 `left_text`；说不出 ⇒ `None`）。
+    left: Option<String>,
     asking: Option<Asking>,
     stopper: Option<Arc<dyn Fn() + Send + Sync>>,
     stopping: bool,
@@ -54,6 +52,7 @@ impl BatchBoard {
                 ticket: uuid::Uuid::new_v4().to_string(),
                 phase: Phase::Running,
                 tick: Tick::default(),
+                left: None,
                 asking: None,
                 stopper: None,
                 stopping: false,
@@ -103,10 +102,19 @@ impl BatchBoard {
         self.poke();
     }
 
-    /// 进度来了一格（帧那一侧调）。
-    pub fn progress(&self, t: Tick) {
-        self.lock().tick = t;
+    /// 进度来了一格（帧那一侧调）：`left` ＝ 那一格带的「还要多久」。
+    pub fn progress(&self, t: Tick, left: Option<String>) {
+        {
+            let mut d = self.lock();
+            d.tick = t;
+            d.left = left;
+        }
         self.poke();
+    }
+
+    /// 还要多久（最后一格带的那一句）。
+    pub fn left(&self) -> Option<String> {
+        self.lock().left.clone()
     }
 
     /// 摆出冲突框，交出「答复送哪儿」那一头（`None` ＝ 取消）。
@@ -242,8 +250,8 @@ pub fn spawn(
     h.spawn(go(line, at, home, board));
 }
 
-/// 做一组到落地：订进度、装撤的那一手、发（[`run`]）。`at` ＝ 寻址的那台，`home` ＝ 那一组真正在哪台的后端里做
-/// （同台那几条 ＝ `at`；两台之间的复制在本机后端里做 ⇒ 本机）—— 撤发给它、断开时等它连回来。要在 tokio 运行时里调。
+/// 做一组到落地：订进度、装撤的那一手、发（[`run`]）。`at` ＝ 窗口看着的那台（「重试」照它找标签页），`home` ＝ 那一组在哪台的后端里做
+/// （同台那几条 ＝ `at`；搬到另一台的在本机后端里做 ⇒ 本机）—— 发 · 订 · 撤都寻址它、断开时等它连回来。要在 tokio 运行时里调。
 pub async fn go(
     line: super::source::Line,
     at: super::source::Origin,
@@ -271,12 +279,16 @@ pub async fn go(
     }
     // 进度：订 `files-batch/<票>` 到这一组收场。
     let watcher = {
-        let (line, at, board) = (line.clone(), at.clone(), board.clone());
+        let (line, home, board) = (line.clone(), home.clone(), board.clone());
         let kind = format!("{}{ticket}", filewin_contract::FILES_BATCH_KIND_PREFIX);
         rt.spawn(async move {
-            super::source::watch_cells(&line, &at, &kind, |v| {
+            super::source::watch_cells(&line, &home, &kind, |v| {
                 if let Some(t) = Tick::of_cell(&v) {
-                    board.progress(t);
+                    let left = v
+                        .get("left_text")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_string);
+                    board.progress(t, left);
                 }
             })
             .await;
@@ -286,9 +298,9 @@ pub async fn go(
     batch_core::run(
         &board,
         |args| {
-            let (line, at) = (line.clone(), at.clone());
+            let (line, home) = (line.clone(), home.clone());
             async move {
-                super::source::ask_batch(&line, &at, cmd, &args, batch_core::BATCH_BUDGET).await
+                super::source::ask_batch(&line, &home, cmd, &args, batch_core::BATCH_BUDGET).await
             }
         },
         || {

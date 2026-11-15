@@ -4,9 +4,7 @@
   "reply": {
     "added": 0,
     "removed": 1,
-    "retagged": 1,
-    "caught_up": 2,
-    "watchers": 1,
+    "said": "对齐那一句（夹具）",
     "unavailable": [{ "command": "terminal-preview", "code": "no_tmux" }]
   }
 }

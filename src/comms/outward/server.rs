@@ -953,7 +953,7 @@ fn dispatch(
             send_upstream(upstream, tag, None, head, rest, body, reach)
         }
         // 剥掉下游 auth，按这一行自己的说法写（`key` 为 `None` ＝ 什么都不写，
-        // 那是 `AuthSwap::write == None` 那一档，理由整段住 `accounts::upstream_select::dispatch_auth`）。
+        // 那是 `AuthSwap::write` 为空 那一档，理由整段住 `accounts::upstream_select::dispatch_auth`）。
         // ★★ 上游与 key 取自**同一个变体**，不是两个各自取的值。请求体给了就换整份（中转不解读）。
         Destination::Substitute {
             upstream,
@@ -1138,8 +1138,8 @@ pub fn render_upstream_request(
     //
     //  `auth` 的三态与它们各自的字节，整张表住 `accounts::upstream_select::dispatch_auth` 的头注：
     //    `None`                            ⇒ 下游那份鉴权头**原样转发**
-    //    `Some(AuthSwap{ write: Some(_) })` ⇒ 丢掉 `clear` 那几份，写上游选择算好的那一条
-    //    `Some(AuthSwap{ write: None })`    ⇒ 丢掉 `clear` 那几份，**一个头都不写**
+    //    `Some(AuthSwap{ write: [..] })`  ⇒ 丢掉 `clear` 那几份，写上游选择算好的那几条
+    //    `Some(AuthSwap{ write: [] })`    ⇒ 丢掉 `clear` 那几份，**一个头都不写**
     // ★★★ **请求行的目标由那个基址自己算**（前缀 + 客户端的真路径）。
     //    ⚠ 参数叫 `rest` 不叫 `target`：进来的是**下游那一段**，
     //      发出去的目标是**算出来的**。
@@ -1175,7 +1175,7 @@ pub fn render_upstream_request(
     //    中转不知道那个串里有没有前缀、是不是一把 key，它只看见一个串。
     //    把明文取出来的那一句住上游选择（`accounts::upstream_select::header_value`，`creds_store_exits` 钉着恰好 1 处）
     //      ⇒ 中转**碰不到明文**。
-    if let Some((name, value)) = auth.and_then(|a| a.write) {
+    for (name, value) in auth.map_or(&[][..], |a| a.write) {
         out.push_str(&format!("{name}: {value}\r\n"));
     }
     if body_len > 0 {

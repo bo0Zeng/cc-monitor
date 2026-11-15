@@ -19,14 +19,19 @@ pub(crate) struct Taken {
     pub(crate) egress: Vec<(String, String)>,
     /// 用户自己的上游地址（[`super::plan::Direct::own_upstream`]）。
     pub(crate) base: Option<String>,
+    /// 起会话那个号：中转地址路由第 2 段（[`crate::accounts::upstream_select::session_upstream::account_in`]）；没说是哪个号 ⇒ `None`。
+    pub(crate) account: Option<String>,
 }
 
 /// 计划面入口那一下（`plan_of`）：直路注入了中转、这一家认的代理变量设了 ⇒ 补上免代理那几个变量；
-/// 中转地址带着来处、有代理或上游是用户的 ⇒ 交回这条会话要留的那一份（exec 之前落盘）。
+/// 中转地址带着来处、有代理或上游是用户的、或这一家先不知道会话号（`bind` 是 [`crate::agents::Bind::Origin`]：中转按来处读起会话那个号）、
+/// 或中转地址拼进了参数（[`super::plan::RelayVia::Args`]：会话归号读不到环境里的中转地址，照这一份认）
+/// ⇒ 交回这条会话要留的那一份（exec 之前落盘）。
 /// `face` ＝ 这一家申报的变量（没登记 ⇒ `None`）；`get` ＝ 继承来的环境（不继承：别名预览 ⇒ 答什么都没有）。
 pub(crate) fn onto(
     plan: &mut Plan,
     face: Option<ProxyFace>,
+    bind: crate::agents::Bind,
     get: &dyn Fn(&str) -> Option<String>,
 ) -> Option<Taken> {
     let Plan::Direct(d) = plan else {
@@ -34,7 +39,13 @@ pub(crate) fn onto(
     };
     let url = d.relay.clone()?;
     let egress = face.map_or_else(Vec::new, |f| proxied(d, f, &url, get));
-    if egress.is_empty() && d.own_upstream.is_none() {
+    // 中转地址拼进参数的那一家：会话进程环境里读不到它 ⇒ 总留一份，会话归号据它认「经本机中转」（`session_upstream::relayed`）。
+    let spliced = d.relay_via == super::plan::RelayVia::Args;
+    if egress.is_empty()
+        && d.own_upstream.is_none()
+        && bind != crate::agents::Bind::Origin
+        && !spliced
+    {
         return None;
     }
     let origin = url
@@ -46,6 +57,7 @@ pub(crate) fn onto(
         origin,
         egress,
         base: d.own_upstream.clone(),
+        account: crate::accounts::upstream_select::session_upstream::account_in(&url),
     })
 }
 

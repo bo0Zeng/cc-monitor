@@ -384,3 +384,86 @@ fn the_hub_says_when_a_real_terminal_first_joins_and_last_leaves() {
     assert_eq!(attached(&hub.gone(back)), Vec::<bool>::new());
     assert_eq!(attached(&hub.gone(t2)), vec![false]);
 }
+
+// ── 有没有人看──
+
+/// 一段像 Claude Code 重绘那样的小写：第 `i` 次。
+fn redraw(i: u32) -> Vec<u8> {
+    format!(
+        "\x1b[H\x1b[2Kframe {i}\r\n\x1b[2Kstatus {} tokens\r\n\x1b[2K> ",
+        i * 7
+    )
+    .into_bytes()
+}
+
+/// 同一串逐段喂进一个 24×80 的终端：对照的那一屏。
+fn fed_one_by_one(chunks: &[Vec<u8>]) -> vt100::Parser {
+    let mut p = vt100::Parser::new(24, 80, 0);
+    for c in chunks {
+        p.process(c);
+    }
+    p
+}
+
+/// 只有后端持有输入的那一条接着（它只送键、不看屏）：一大段输出一帧 `out` 都不放；之后接上的一端拿到的屏与逐段喂的一样。
+#[test]
+fn with_nobody_watching_the_output_only_goes_onto_the_screen() {
+    let mut hub = Hub::new("h", sz(80, 24));
+    let (be, be_out) = hub.connect(Some(1), 0);
+    hub.frame(be, hello(Want::View, WhoKind::Backend, None), 0);
+    hub.frame(be, Frame::Ctl(Ctl::Take), 0);
+    assert_eq!(hub.holder, Some(be));
+    take(&be_out);
+    let chunks: Vec<Vec<u8>> = (0..1000).map(redraw).collect();
+    for c in &chunks {
+        hub.pty_out(c);
+    }
+    let got = take(&be_out);
+    assert!(
+        !got.iter().any(|f| matches!(f, Frame::Out(_))),
+        "没人看屏也推了 out：{} 帧",
+        got.len()
+    );
+    let (t, t_out) = hub.connect(Some(2), 1);
+    hub.frame(t, hello(Want::View, WhoKind::Terminal, Some(sz(80, 24))), 1);
+    let p = replay(&take(&t_out), vt100::Parser::new(24, 80, 0));
+    assert_eq!(grid(p.screen()), grid(fed_one_by_one(&chunks).screen()));
+}
+
+/// 有人看：两次取之间来的 1000 段并成一帧 `out`，喂出来与逐段喂的同一屏；中间夹一帧控制帧 ⇒ 前后各一帧、顺序照旧。
+#[test]
+fn output_between_two_takes_reaches_a_watcher_as_one_frame() {
+    let mut hub = Hub::new("h", sz(80, 24));
+    let (t, t_out) = hub.connect(Some(2), 0);
+    hub.frame(
+        t,
+        hello(Want::Input, WhoKind::Terminal, Some(sz(80, 24))),
+        0,
+    );
+    let mut seen = replay(&take(&t_out), vt100::Parser::new(24, 80, 0));
+    let chunks: Vec<Vec<u8>> = (0..1000).map(redraw).collect();
+    for c in &chunks {
+        hub.pty_out(c);
+    }
+    let got = take(&t_out);
+    let outs = got.iter().filter(|f| matches!(f, Frame::Out(_))).count();
+    assert_eq!(outs, 1, "1000 段该并成一帧，收到 {outs} 帧");
+    seen = replay(&got, seen);
+    assert_eq!(grid(seen.screen()), grid(fed_one_by_one(&chunks).screen()));
+
+    hub.pty_out(b"\x1b[Hbefore");
+    hub.frame(t, Frame::Ctl(Ctl::Clients), 1);
+    hub.pty_out(b" after");
+    let got = take(&t_out);
+    let kinds: Vec<&str> = got
+        .iter()
+        .map(|f| match f {
+            Frame::Out(_) => "out",
+            Frame::Ctl(Ctl::ClientsAre { .. }) => "clients",
+            _ => "other",
+        })
+        .collect();
+    assert_eq!(kinds, vec!["out", "clients", "out"]);
+    assert_eq!(got[0], Frame::Out(b"\x1b[Hbefore".to_vec()));
+    assert_eq!(got[2], Frame::Out(b" after".to_vec()));
+}

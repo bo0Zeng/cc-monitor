@@ -161,7 +161,7 @@ function result(seq: number, tool: string, text: string, kind: "handback" | "lau
     at: "2026-09-10T00:00:01.000Z",
     who: { speaker: { kind: "toolResult" }, text: "" },
     blocks: [{ type: "tool_result", for: tool, content: [{ type: "text", text }], isError: false }],
-    results: { [tool]: { ok: true, preview: text, chars: [...text].length, kind } },
+    results: { [tool]: { ok: true, preview: text, chars: [...text].length, kind, ...(kind === "handback" ? { resultText: `核心·交回 ${[...text].length}` } : {}) } },
     draw: "steps",
     human: false,
   }) as never;
@@ -175,7 +175,7 @@ function foldedResult(seq: number, tool: string, preview: string, chars: number)
     at: "2026-09-10T00:00:01.000Z",
     who: { speaker: { kind: "toolResult" }, text: "" },
     blocks: [{ type: "tool_result", for: tool, isError: false }],
-    results: { [tool]: { ok: true, preview, chars, kind: "handback" } },
+    results: { [tool]: { ok: true, preview, chars, kind: "handback", resultText: `核心·交回 ${chars}` } },
     draw: "steps",
     human: false,
   }) as never;
@@ -327,7 +327,7 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     expect(card.dataset.runState).toBe("running");
     // 后来真交回了（前台那一形 / 换了一次）⇒ 才写交回。
     tm.onLine(result(2, "t1", "找到两处"));
-    expect(card.querySelector('[data-role="run-result"] summary')?.textContent).toBe(copyText("runCard.result.done", { n: 4 }));
+    expect(card.querySelector('[data-role="run-result"] summary')?.textContent).toBe("核心·交回 4");
   });
 
   it("被挤出运行表的已收场子运行（`ended`）：派出它的那张卡照样标终态；面板上不列它", () => {
@@ -396,7 +396,7 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     tm.onLine(result(1, "t1", "找到两处"));
     tm.switchTo(SID);
     const res = streamRootEl.querySelector<HTMLDetailsElement>('[data-role="run-card"] [data-role="run-result"]')!;
-    expect(res.querySelector("summary")?.textContent).toBe(copyText("runCard.result.done", { n: 4 }));
+    expect(res.querySelector("summary")?.textContent).toBe("核心·交回 4");
     expect(res.open).toBe(false);
     expect(res.textContent, "收着时不建正文").not.toContain("找到两处");
     res.open = true;
@@ -410,7 +410,7 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     tm.onLine(foldedResult(1, "t1", "找到两处", 1234));
     tm.switchTo(SID);
     const res = streamRootEl.querySelector<HTMLDetailsElement>('[data-role="run-card"] [data-role="run-result"]')!;
-    expect(res.querySelector("summary")?.textContent).toBe(copyText("runCard.result.done", { n: 1234 }));
+    expect(res.querySelector("summary")?.textContent).toBe("核心·交回 1234");
     res.open = true;
     res.dispatchEvent(new Event("toggle"));
     expect(res.textContent).toContain("找到两处");

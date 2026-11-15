@@ -1,8 +1,9 @@
 //! 一步结果那一句（唯一一处，[`said`]）与一步用时的配对表：工具调用与它的结果在两条记录上，用时是跨记录的 ——
 //! 调用那一条记下 id 与时刻，结果那一条来了配上，连用时一起把那一句写进结果那一格。
 //!
-//! 通用层，不认哪一家：只读通用记录的 `at_ms` · 回复里的 `Block::ToolUse` · 带结果那一条的 `Block::ToolResult` 与 `results`。
-//! 适配层只交数与码（`text` 空、[`StepResult::read`]），字都在这里写。
+//! 通用层，不认哪一家：只读通用记录的 `at_ms` · 回复里的 `Block::ToolUse` · 带结果那一条的 `Block::ToolResult` 与 `results`，
+//! 外加适配层交的 `reads`（读文件那一类结果的调用 id，[`StepClock::time`] 的入参）。
+//! 适配层只交数与码（`text` 空；读文件那一类不上线，在 [`crate::agents::Unsent::reads`]），字都在这里写。
 //! 只记没结果的调用，至多 [`PENDING_KEEP`] 条（与会话事实里没结果的调用同一个数），满了丢最早的。
 //! 配不上（没记下 · 已丢 · 哪一头没有时刻 · 结果早于调用）⇒ 照没有用时的那一形写：读不到就不写，不猜。
 //! 调用方（出页 · 实时那条）各持一份，按记录的先后先 `note` 再 `time`，每条记录只过一次。时刻取 `at_ms`；出口还没写它（实时那条在出口之前配）⇒ 照 `at` 现算（[`at_ms_of`]）。
@@ -12,7 +13,7 @@ use crate::agents::record::{Block, Body, Record};
 use crate::agents::{Answer, StepResult};
 use crate::common::cells::Words;
 use crate::common::line_diff;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeSet, HashMap, VecDeque};
 
 /// 没结果的调用：`(调用 id, 调用那一条的 at_ms)`，记下的先后。
 #[derive(Debug, Default, Clone)]
@@ -45,7 +46,8 @@ impl StepClock {
     }
 
     /// 给这条里每个工具结果配上调用的时刻、写好那一句（[`said`]）：配上了 ⇒ 带用时；有结果的调用都从表里摘掉。
-    pub(crate) fn time(&mut self, r: &mut Record) {
+    /// `reads` ＝ 这一行里读文件那一类结果的调用 id（适配层交的 [`crate::agents::Unsent::reads`]）。
+    pub(crate) fn time(&mut self, r: &mut Record, reads: &BTreeSet<String>) {
         let at = at_ms_of(r);
         let Body::Said {
             blocks, results, ..
@@ -70,7 +72,11 @@ impl StepClock {
             }
         }
         for (of, cell) in results.iter_mut() {
-            *cell = said(std::mem::take(cell), timed.get(of.as_str()).copied());
+            *cell = said(
+                std::mem::take(cell),
+                timed.get(of.as_str()).copied(),
+                reads.contains(of),
+            );
         }
     }
 
@@ -84,9 +90,15 @@ impl StepClock {
 /// ★ 一步结果那一句与报错尾巴（唯一一处；适配层交来的数与码 ＋ 配上的用时 ⇒ 写好的字）。
 /// - 报错尾巴：失败了（没批准的不算）⇒ 有退出码写退出码，否则「出错」。
 /// - 右侧那一句：未批准 · 失败（配上了 ⇒「失败 · 用时」）· 提问 / 计划答了什么 · 改动「+N −M」（[`line_diff::stat`]）·
-///   读了几行（只读文件那一类，[`StepResult::read`]）· 几个文件；都说不上 ⇒ 配上了只写用时，否则空串。
-pub(crate) fn said(mut r: StepResult, ms: Option<u64>) -> StepResult {
+///   读了几行（只读文件那一类：`read`）· 几个文件；都说不上 ⇒ 配上了只写用时，否则空串。
+pub(crate) fn said(mut r: StepResult, ms: Option<u64>, read: bool) -> StepResult {
     use copy_core::copy_text;
+    r.result_text = (r.kind == Some(cmd_wire::record::ResultKind::Handback)).then(|| {
+        Words(copy_text(
+            "runCard.result.done",
+            &[("n", &r.chars.unwrap_or(0).to_string())],
+        ))
+    });
     r.error = (!r.ok && !r.rejected).then(|| {
         Words(match r.exit_code {
             Some(code) => copy_text("stream.result.exitCode", &[("n", &code.to_string())]),
@@ -113,7 +125,7 @@ pub(crate) fn said(mut r: StepResult, ms: Option<u64>) -> StepResult {
         }
     } else if !diff.is_empty() {
         diff
-    } else if let Some(n) = r.lines.filter(|_| r.read) {
+    } else if let Some(n) = r.lines.filter(|_| read) {
         copy_text("stream.step.lines", &[("n", &n.to_string())])
     } else if let Some(n) = r.files {
         copy_text("stream.step.files", &[("n", &n.to_string())])

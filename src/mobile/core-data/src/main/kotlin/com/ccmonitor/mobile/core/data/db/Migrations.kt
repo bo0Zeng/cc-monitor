@@ -1,3 +1,5 @@
+@file:Suppress("MatchingDeclarationName") // 整条迁移链一份文件：逐跳的迁移与 allMigrations 放一处
+
 package com.ccmonitor.mobile.core.data.db
 
 import androidx.room.migration.Migration
@@ -10,41 +12,42 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * 老 SQLite 没有 DROP COLUMN：删格一律照「建新表 → 搬行 → 删旧表 → 改名」重建。
  */
 
-// 机器表换成拨号核心那一形（同桌面那张表）：跳板从「另一台的 id」换成「另一台的名字」（名字由核心算，[machineNames]）·
+// 机器表换成拨号核心那一形（同桌面那张表）：跳板从「另一台的 id」换成「另一台的名字」（名字照注入的 [MachineNamer]）·
 // 备用地址那一格改名 `addresses`（一行一条，原样）·「起哪一家」那一格删（缺省照那台的，要别的在起会话框里选）。
 // 跳板指着的那一台已经不在 ⇒ 名字照抄那个 id：拨号时核心照「跳板找不到」拒，不悄悄变直连。别的表一字不动。
-val MIGRATION_23_24 =
-    object : Migration(23, 24) {
-        override fun migrate(db: SupportSQLiteDatabase) {
-            val rows =
-                db.query("SELECT id, label, host, proxyJumpHostId FROM `hosts`").use { c ->
-                    generateSequence {
-                        if (c.moveToNext()) listOf(c.getString(0), c.getString(1), c.getString(2), c.getString(3)) else null
-                    }.toList()
-                }
-            val names =
-                rows.map { it[0] }.zip(machineNames(rows.map { Host(id = it[0], label = it[1], host = it[2], username = "") })).toMap()
-            db.execSQL(
-                "CREATE TABLE `hosts_new` (`id` TEXT NOT NULL, `label` TEXT NOT NULL, `host` TEXT NOT NULL, " +
-                    "`port` INTEGER NOT NULL, `username` TEXT NOT NULL, `authRef` TEXT, `addresses` TEXT NOT NULL, " +
-                    "`groupId` TEXT, `sortOrder` INTEGER NOT NULL, `lastConnected` INTEGER, `defaultWorkingDir` TEXT, " +
-                    "`sessionManager` TEXT, `autoReconnect` INTEGER NOT NULL, `jump` TEXT NOT NULL, `passwordEnc` TEXT, " +
-                    "PRIMARY KEY(`id`))",
-            )
-            db.execSQL(
-                "INSERT INTO `hosts_new` (id,label,host,port,username,authRef,addresses,groupId,sortOrder,lastConnected," +
-                    "defaultWorkingDir,sessionManager,autoReconnect,jump,passwordEnc) " +
-                    "SELECT id,label,host,port,username,authRef,COALESCE(extraAddresses,''),groupId,sortOrder," +
-                    "lastConnected,defaultWorkingDir,sessionManager,autoReconnect,'',passwordEnc FROM `hosts`",
-            )
-            for (r in rows) {
-                val via = r[3]?.takeIf { it.isNotBlank() } ?: continue
-                db.execSQL("UPDATE `hosts_new` SET jump = ? WHERE id = ?", arrayOf(names[via] ?: via, r[0]))
+class Migration23To24(
+    private val namer: MachineNamer,
+) : Migration(23, 24) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        val rows =
+            db.query("SELECT id, label, host, proxyJumpHostId FROM `hosts`").use { c ->
+                generateSequence {
+                    if (c.moveToNext()) listOf(c.getString(0), c.getString(1), c.getString(2), c.getString(3)) else null
+                }.toList()
             }
-            db.execSQL("DROP TABLE `hosts`")
-            db.execSQL("ALTER TABLE `hosts_new` RENAME TO `hosts`")
+        val names =
+            rows.map { it[0] }.zip(namer.names(rows.map { Host(id = it[0], label = it[1], host = it[2], username = "") })).toMap()
+        db.execSQL(
+            "CREATE TABLE `hosts_new` (`id` TEXT NOT NULL, `label` TEXT NOT NULL, `host` TEXT NOT NULL, " +
+                "`port` INTEGER NOT NULL, `username` TEXT NOT NULL, `authRef` TEXT, `addresses` TEXT NOT NULL, " +
+                "`groupId` TEXT, `sortOrder` INTEGER NOT NULL, `lastConnected` INTEGER, `defaultWorkingDir` TEXT, " +
+                "`sessionManager` TEXT, `autoReconnect` INTEGER NOT NULL, `jump` TEXT NOT NULL, `passwordEnc` TEXT, " +
+                "PRIMARY KEY(`id`))",
+        )
+        db.execSQL(
+            "INSERT INTO `hosts_new` (id,label,host,port,username,authRef,addresses,groupId,sortOrder,lastConnected," +
+                "defaultWorkingDir,sessionManager,autoReconnect,jump,passwordEnc) " +
+                "SELECT id,label,host,port,username,authRef,COALESCE(extraAddresses,''),groupId,sortOrder," +
+                "lastConnected,defaultWorkingDir,sessionManager,autoReconnect,'',passwordEnc FROM `hosts`",
+        )
+        for (r in rows) {
+            val via = r[3]?.takeIf { it.isNotBlank() } ?: continue
+            db.execSQL("UPDATE `hosts_new` SET jump = ? WHERE id = ?", arrayOf(names[via] ?: via, r[0]))
         }
+        db.execSQL("DROP TABLE `hosts`")
+        db.execSQL("ALTER TABLE `hosts_new` RENAME TO `hosts`")
     }
+}
 
 // 24 → 25：缓存那四张表搬去缓存库（`CacheDatabase`，不迁移）：状态库里那几张整张删掉，不搬行（缓存，照那台重取）。别的表一字不动。
 val MIGRATION_24_25 =
@@ -109,12 +112,22 @@ val MIGRATION_27_28 =
         }
     }
 
-/** 整条迁移链（从 [OLDEST_STATE_DB] 起）。 */
-fun allMigrations(): Array<Migration> =
+// 28 → 29：待发加「那台拒时那一句」那一格（`refusedSaid`，重开照它画）。已标被拒的那几行仍是被拒、那一格空（那台当时说的没留下，
+// 重开照实说原因未留存；不改回没回执，免得把早已标被拒的那一句隔很久再送进会话）。别的行 · 别的格 · 别的表一字不动。
+val MIGRATION_28_29 =
+    object : Migration(28, 29) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `pending` ADD COLUMN `refusedSaid` TEXT")
+        }
+    }
+
+/** 整条迁移链（从 [OLDEST_STATE_DB] 起）；23→24 给跳板取名照 [namer]。 */
+fun allMigrations(namer: MachineNamer): Array<Migration> =
     arrayOf(
-        MIGRATION_23_24,
+        Migration23To24(namer),
         MIGRATION_24_25,
         MIGRATION_25_26,
         MIGRATION_26_27,
         MIGRATION_27_28,
+        MIGRATION_28_29,
     )

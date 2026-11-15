@@ -85,6 +85,56 @@ fn rh(host: &str, key: Option<&str>, user: &str, pj: Option<&str>) -> ResolvedHo
     }
 }
 
+/// 预览那一组给人看的字由后端写好（界面照抄）：说明行 ＝ 地址 · 用户（空 ⇒「无用户名」）· 经跳板 · 备用地址几个；
+/// 拆开之后那一行列各成员的别名；成员多于一个才有「按地址拆成 ×N」那颗。
+#[test]
+fn import_group_words_are_written_by_the_backend() {
+    let sep = copy_text("kit.text.sep", &[]);
+    let groups = aggregate_ssh_hosts(vec![
+        (
+            "devbox-lan".into(),
+            rh("192.0.2.2", None, "user", Some("bastion")),
+        ),
+        (
+            "devbox-wan".into(),
+            rh("devbox.example.com", None, "user", None),
+        ),
+        ("pi".into(), rh("pi.local", None, "", None)),
+    ]);
+    let devbox = &groups[0];
+    assert_eq!(
+        devbox.summary,
+        [
+            "192.0.2.2".to_string(),
+            "user".to_string(),
+            copy_text("addMachine.ssh.jump", &[("jump", "bastion")]),
+            copy_text("addMachine.ssh.addresses", &[("n", "1")]),
+        ]
+        .join(&sep)
+    );
+    assert_eq!(
+        devbox.split_into,
+        copy_text(
+            "addMachine.ssh.splitInto",
+            &[("names", &["devbox-lan", "devbox-wan"].join(&sep))]
+        )
+    );
+    assert_eq!(
+        devbox.split_action.as_deref(),
+        Some(copy_text("addMachine.ssh.split", &[("n", "2")]).as_str())
+    );
+    let pi = &groups[1];
+    assert_eq!(
+        pi.summary,
+        [
+            "pi.local".to_string(),
+            copy_text("remote.preview.noUser", &[])
+        ]
+        .join(&sep)
+    );
+    assert_eq!(pi.split_action, None);
+}
+
 #[test]
 fn alias_base_variants() {
     assert_eq!(alias_base("devbox-lan"), "devbox");
@@ -288,4 +338,23 @@ fn an_alias_that_ran_out_of_time_marks_the_import_partial() {
     });
     assert_eq!(groups.len(), 1);
     assert!(!partial, "解析失败的别名不算没读完");
+}
+
+/// 家目录名不是 UTF-8：`~/.ssh/config` 照字节拼、照实带，读得到里面的别名（有损拼出来的那一串指不到它）；家说不出 ⇒ 空。
+#[cfg(unix)]
+#[test]
+fn aliases_are_read_under_a_home_that_is_not_utf8() {
+    use std::os::unix::ffi::OsStrExt;
+    let base = std::env::temp_dir().join(format!("ccm-ssh-home-{}", std::process::id()));
+    let home = base.join(std::ffi::OsStr::from_bytes(b"caf\xe9"));
+    std::fs::create_dir_all(home.join(".ssh")).unwrap();
+    std::fs::write(
+        home.join(".ssh").join("config"),
+        "Host ledger\n  HostName ledger.example.test\n",
+    )
+    .unwrap();
+    let got = aliases_under(Some(&home));
+    let _ = std::fs::remove_dir_all(&base);
+    assert_eq!(got, vec!["ledger".to_string()]);
+    assert!(aliases_under(None).is_empty());
 }

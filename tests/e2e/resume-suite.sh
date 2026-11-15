@@ -161,11 +161,11 @@ SID2="$(cat /proc/sys/kernel/random/uuid)"; S2="cc-${SID2:0:8}"
 CMD2D="$(drv direct "$SID2" "$CWD_DIR" "$FAKE" a)"
 echo "   direct: $CMD2D"
 echo "$CMD2D" | grep -q "^$CCM_ENTRY --resume $SID2 -- --ccm-agent claude --account a " && ok "B2 直连命令是一行 ccm、点名账号 A（--account a）" || bad "B2 直连命令缺账号 A"
-# tmux-new 形态(resumeTabTmux 归档分支):新建 cc-<sid8> 会话 + @ccm_sid,真执行 → argv 落 A。
+# tmux-new 形态(resumeTabTmux 归档分支):新建 cc-<sid8> 会话,真执行 → argv 落 A。
 CMD2T="$(drv tmux-new "$SID2" "$CWD_DIR" "$FAKE" "$S2" a)"
 echo "   tmux-new: $CMD2T"
 SESSIONS+=("$S2")
-echo "$CMD2T" | grep -q "^$CCM_ENTRY --resume $SID2 -- --ccm-tmux=$S2 --detach --ccm-sid=$SID2 " && ok "B2 tmux-new 是一行 ccm：建 $S2 并带身份标记" || bad "B2 tmux-new 命令形状不符"
+echo "$CMD2T" | grep -q "^$CCM_ENTRY --resume $SID2 -- --ccm-tmux=$S2 --detach --ccm-agent " && ok "B2 tmux-new 是一行 ccm：建 $S2、不带身份标" || bad "B2 tmux-new 命令形状不符"
 fire_resume "$CMD2T"
 if AL="$(wait_argv_resume "$ACCT_A" "$SID2")"; then
   echo "   argv(A): $AL"

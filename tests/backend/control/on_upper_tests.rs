@@ -425,7 +425,7 @@ mod ccm {
             let pick =
                 |k: &str, d: String| std::env::var(k).ok().filter(|v| !v.is_empty()).unwrap_or(d);
             let e = Env {
-                home: home.clone(),
+                home: home.clone().into(),
                 pwd: home.clone(),
                 accts_manifest: plan::accts_manifest_under(&home),
                 ccm_env: pick("CCM_ENV", argv::Defaults::ENV.to_string()),
@@ -439,7 +439,9 @@ mod ccm {
                 ..Default::default()
             };
             // 账号清单成品照这台机器的真值（预览要的就是这一点：「这台机器上敲这条别名」）—— 与真跑同一个入口交的那一份。
-            let table = || crate::faces::launch_account_face::list_at(&e.home, &o.agent);
+            let table = || {
+                crate::faces::launch_account_face::list_at(std::path::Path::new(&e.home), &o.agent)
+            };
             let mut plan = plan::build(&o, &e, &table, None).expect("该算得出计划");
             // 直路的启动器在计划里换成要起的那个文件，同真跑那一处（找法只一处）。
             if let plan::Plan::Direct(d) = &mut plan {
@@ -464,7 +466,11 @@ mod ccm {
             vec![SUBCOMMAND_WORD.to_string()],
             "别名叫的是 `ccm`"
         );
-        assert_eq!(e.pwd, e.home, "不给 --cwd 的别名在家目录里敲");
+        assert_eq!(
+            e.pwd,
+            e.home.to_string_lossy(),
+            "不给 --cwd 的别名在家目录里敲"
+        );
         assert!(e.tmux.is_none(), "新终端不在 tmux 里");
         assert!(e.inherited_config_dir.is_none(), "账号目录变量不继承");
         assert!(
@@ -481,7 +487,7 @@ mod ccm {
         let home = std::env::var("HOME").unwrap_or_default();
         assert!(
             line(&["--", "--ccm-agent", "claude", "--launcher", "/bin/sh"])
-                .contains(&plan::qarg(&home)),
+                .contains(&crate::platform::shell::dialect::posix_word(&home)),
             "不给 --cwd 却没落在家目录"
         );
         let boxed = line(&["--", "--ccm-tmux=w5alias-preview-probe", "--cwd", "/p"]);
@@ -496,7 +502,7 @@ mod ccm {
     fn the_alias_preview_refuses_in_the_words_of_ccm() {
         let code = |v: serde_json::Value| match answer_print(&v) {
             Ok(_) => "ok".to_string(),
-            Err(e) => e.code_or_fallback().to_string(),
+            Err(e) => cmd_wire::failed::Failed::code_or_fallback(e.code.clone()),
         };
         assert_eq!(code(serde_json::json!({})), "bad_args");
         assert_eq!(code(serde_json::json!({ "args": [1] })), "bad_args");

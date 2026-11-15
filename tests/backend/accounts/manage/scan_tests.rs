@@ -71,7 +71,6 @@ fn snapshot_lookups_default_to_absent() {
 #[cfg(unix)]
 mod on_disk {
     use super::super::*;
-    use std::os::unix::fs::PermissionsExt as _;
     use std::path::{Path, PathBuf};
 
     struct Home(PathBuf);
@@ -114,7 +113,13 @@ mod on_disk {
         let r = snap.roots();
         assert_eq!(r.home, hs);
         assert_eq!(r.accts, accts_root(&hs));
-        assert_eq!(r.shared, super::super::super::layout::shared_root_in(&hs));
+        assert_eq!(
+            r.shared,
+            super::super::super::layout::shared_root_of(
+                super::super::super::layout::face().as_ref(),
+                &hs
+            )
+        );
         assert!(snap.backups.is_empty() && snap.dirs.is_empty());
     }
 
@@ -130,7 +135,7 @@ mod on_disk {
         std::fs::create_dir_all(shared.join("plans")).unwrap();
         write(&shared.join("agents").join("a.md"), "");
         std::fs::create_dir_all(z.join("projects")).unwrap();
-        std::fs::set_permissions(&z, std::fs::Permissions::from_mode(0o700)).unwrap();
+        test_home::set_dir_mode(&z, 0o700);
         std::os::unix::fs::symlink(shared.join("skills"), z.join("skills")).unwrap();
         write(
             &z.join(".claude.json"),
@@ -200,6 +205,100 @@ mod on_disk {
         );
     }
 
+    /// 两家替身各一个号：每个号的邮箱照它那一家的读法读（缺省那一家的号 z · 另一家的号 t 各认各家那一份）；
+    /// 共享库是缺省那一家的配置根，照缺省那一家读。
+    #[test]
+    fn each_account_email_is_read_the_way_its_family_reads_it() {
+        let face = |row: &crate::agents::Adapter| row.accounts.expect("替身家有账号面");
+        let one =
+            crate::agents::fake::family_row("stand-in", "CCM_STAND_IN_DIR", "si", true, || None);
+        let two =
+            crate::agents::fake::family_row("stand-two", "CCM_STAND_TWO_DIR", "st", false, || None);
+        let reg = [
+            crate::agents::Adapter {
+                accounts: Some(crate::agents::AccountsFace {
+                    email_in: |d| std::fs::read_to_string(d.join("si-email")).ok(),
+                    ..face(&one)
+                }),
+                ..one
+            },
+            crate::agents::Adapter {
+                accounts: Some(crate::agents::AccountsFace {
+                    email_in: |d| std::fs::read_to_string(d.join("st-email")).ok(),
+                    ..face(&two)
+                }),
+                ..two
+            },
+        ];
+        let h = home("family-email");
+        let hs = s(&h.0);
+        let accts = PathBuf::from(accts_root(&hs));
+        let shared = h.0.join("store");
+        for (d, n) in [
+            (&shared, "shared"),
+            (&accts.join("z"), "z"),
+            (&accts.join("t"), "t"),
+        ] {
+            write(&d.join("si-email"), &format!("{n}-si@example.test"));
+            write(&d.join("st-email"), &format!("{n}-st@example.test"));
+        }
+        let manifest = format!(
+            r#"{{"version":1,"sharedStore":"{}","accounts":[
+                {{"name":"z","email":"","configDir":"{}","isDefault":true}},
+                {{"name":"t","email":"","configDir":"{}","agent":"stand-two"}}]}}"#,
+            s(&shared),
+            s(&accts.join("z")),
+            s(&accts.join("t"))
+        );
+        write(&accts.join(MANIFEST_FILE), &manifest);
+        let snap = scan_among(&reg, &hs, &[], &[]);
+        assert_eq!(
+            snap.email_of(&s(&accts.join("z"))),
+            Some("z-si@example.test")
+        );
+        assert_eq!(
+            snap.email_of(&s(&accts.join("t"))),
+            Some("t-st@example.test"),
+            "另一家的号照它那一家读"
+        );
+        assert_eq!(snap.email_of(&s(&shared)), Some("shared-si@example.test"));
+    }
+
+    /// 共享库那一侧整个照喂进来的注册表：缺省共享库落那一家的配置根、按需目录照它的表认空、家目录下的身份项照它的身份表看。
+    #[test]
+    fn the_shared_side_follows_the_registry_it_is_given() {
+        use crate::agents::{IdentityClass, IdentityRoot};
+        let one =
+            crate::agents::fake::family_row("stand-in", "CCM_STAND_IN_DIR", "si", true, || None);
+        let face = one.accounts.expect("替身家有账号面");
+        let reg = [crate::agents::Adapter {
+            accounts: Some(crate::agents::AccountsFace {
+                identity: &[("si-home.json", IdentityRoot::Home, IdentityClass::Secret)],
+                shared_on_demand: &["si-od"],
+                shared_root: |h| h.join("si-store"),
+                ..face
+            }),
+            ..one
+        }];
+        let h = home("registry-shared");
+        let hs = s(&h.0);
+        std::fs::create_dir_all(h.0.join("si-store").join("si-od")).unwrap();
+        write(&h.0.join("si-home.json"), "{}");
+        let snap = scan_among(&reg, &hs, &[], &[]);
+        assert_eq!(snap.roots().shared, s(&h.0.join("si-store")), "缺省共享库");
+        assert_eq!(
+            snap.empty_shared.iter().collect::<Vec<_>>(),
+            ["si-od"],
+            "按需目录照那一家的表"
+        );
+        assert_eq!(
+            snap.home_items.keys().collect::<Vec<_>>(),
+            ["si-home.json"],
+            "家目录下的身份项照那一家的表"
+        );
+        assert!(snap.home_items["si-home.json"].exists());
+    }
+
     /// 清单在却读不动（不是 UTF-8）⇒ 记成 `Some(Err)`、原文 `None`，由用的那一步报；共享库落默认那一处。
     #[test]
     fn an_unreadable_manifest_is_recorded_not_raised() {
@@ -214,7 +313,10 @@ mod on_disk {
         assert!(snap.manifest().is_none());
         assert_eq!(
             snap.roots().shared,
-            super::super::super::layout::shared_root_in(&hs)
+            super::super::super::layout::shared_root_of(
+                super::super::super::layout::face().as_ref(),
+                &hs
+            )
         );
         assert!(manifest_text_at(&accts.join(MANIFEST_FILE)).is_err());
     }

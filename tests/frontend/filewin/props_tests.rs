@@ -13,7 +13,7 @@ fn stat_from_reply(d: &serde_json::Value) -> Result<Stat, String> {
 #[test]
 fn a_stat_reply_is_read_with_owner_and_link_target() {
     let d = serde_json::json!({
-        "path": "/srv/ln", "up": "/srv", "kind": "file", "size": 3, "readonly": false, "mtime_secs": 0, "mode": 493,
+        "path": "/srv/ln", "up": "/srv", "kind": "file", "size": 3, "size_text": "3 B", "readonly": false, "mtime_secs": 0, "mode": 493,
         "mtime_full": "2026-10-02 15:01:23",
         "owner": "user", "link_target": { "b16": "612e62696e" }
     });
@@ -26,7 +26,7 @@ fn a_stat_reply_is_read_with_owner_and_link_target() {
     assert_eq!(s.owner.as_deref(), Some("user"));
     assert_eq!(s.link_target.as_deref(), Some("a.bin"));
     assert_eq!(s.mode, Some(0o755));
-    let plain = serde_json::json!({ "path": "/srv/a", "up": "/srv", "kind": "file", "size": 3, "readonly": false, "owner": null, "link_target": null });
+    let plain = serde_json::json!({ "path": "/srv/a", "up": "/srv", "kind": "file", "size": 3, "size_text": "3 B", "readonly": false, "owner": null, "link_target": null });
     let s = stat_from_reply(&plain).unwrap();
     assert_eq!((s.owner, s.link_target, s.mode), (None, None, None));
     assert!(
@@ -57,7 +57,10 @@ async fn the_menu_item_puts_up_the_box_and_asks_the_backend() {
     })];
     // 目录里只有这一份 ⇒ 全选就是选中它。
     assert!(w.apply_intent(crate::select::Intent::SelectAll, 0.0, None));
-    assert!(w.perform(Action::Properties, None), "菜单那一下该摆出框");
+    assert!(
+        crate::find::testing::perform_now_async(&mut w, Action::Properties).await,
+        "菜单那一下该摆出框"
+    );
     for _ in guard_core::wall::rounds() {
         if !matches!(
             *w.props.as_ref().unwrap().state.lock().unwrap(),

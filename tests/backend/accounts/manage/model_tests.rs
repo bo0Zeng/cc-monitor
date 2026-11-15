@@ -12,6 +12,7 @@ fn acct(name: &str, default: bool) -> Account {
         is_default: default,
         auth_kind: None,
         color: None,
+        agent: None,
         extra: Default::default(),
     }
 }
@@ -194,15 +195,16 @@ fn an_old_manifest_is_colored_once_in_library_order() {
     assert_eq!(c.with_colors(), c, "补过就不再动");
 }
 
-/// 8 格都用了 ⇒ 第 9 个号按名字哈希兜底（哈希只住这一处）。
+/// `COLOR_SLOTS` 格都用了 ⇒ 下一个号按名字哈希兜底（哈希只住这一处）。
 #[test]
-fn past_eight_accounts_the_name_hash_is_the_fallback() {
+fn past_all_color_slots_the_name_hash_is_the_fallback() {
     let mut m = Manifest::default();
-    for n in ["a1", "a2", "a3", "a4", "a5", "a6", "a7"] {
-        m = m.with_added(acct(n, false));
+    for i in 1..COLOR_SLOTS {
+        m = m.with_added(acct(&format!("a{i}"), false));
     }
     let used: Vec<u8> = m.managed().filter_map(|a| a.color).collect();
-    assert_eq!(used, [0, 2, 3, 4, 5, 6, 7], "第 1 格是账号 0 的");
+    let want: Vec<u8> = (0..COLOR_SLOTS).filter(|&s| s != 1).collect();
+    assert_eq!(used, want, "第 1 格是账号 0 的");
     let m = m.with_added(acct("team", false));
     assert_eq!(m.find("team").unwrap().color, Some(color_fallback("team")));
     assert!(color_fallback("team") < COLOR_SLOTS);
@@ -214,4 +216,59 @@ fn color_fallback_slots_are_pinned() {
     for (name, slot) in [("team", 4), ("lab", 4), ("x", 7), ("work", 0), ("b", 5)] {
         assert_eq!(color_fallback(name), slot, "{name}");
     }
+}
+
+/// 两家替身：默认起的那一家（清单里没写是哪一家的号归它）· 本假 agent（不是默认起的）。
+fn two_families() -> [crate::agents::Adapter; 2] {
+    [
+        crate::agents::fake::family_row("stand-in", "CCM_STAND_IN_DIR", "si", true, || None),
+        crate::agents::fake::full_row(|| None),
+    ]
+}
+
+/// 号带着它是哪一家的号（`agent` 那一格）：写了 ⇒ 读回它、原样写回；加一个替身号 ⇒ 写进清单；
+/// 旧清单没有那一格 ⇒ 缺席，归缺省那一家（声明了账号面、又是默认起的那一家）。
+#[test]
+fn an_account_carries_its_family_and_an_old_entry_reads_as_the_default_family() {
+    let fake = crate::agents::fake::AGENT_KIND;
+    let reg = two_families();
+    let text = json!({
+        "version": 1,
+        "accounts": [
+            { "name": "f", "configDir": "/h/.cc-monitor/accounts/f", "agent": fake },
+            { "name": "z", "configDir": "/h/.cc-monitor/accounts/z" }
+        ]
+    })
+    .to_string();
+    let m = Manifest::parse(&text).unwrap();
+    assert_eq!(m.find("f").unwrap().agent.as_deref(), Some(fake));
+    assert_eq!(
+        m.find("z").unwrap().agent.as_deref(),
+        None,
+        "旧清单那一号没有这一格"
+    );
+    assert_eq!(
+        crate::agents::account_kind_among(&reg, m.find("z").unwrap().agent.as_deref()),
+        Some("stand-in"),
+        "缺席 ⇒ 缺省那一家"
+    );
+    assert_eq!(
+        crate::agents::account_kind_among(&reg, m.find("f").unwrap().agent.as_deref()),
+        Some(fake)
+    );
+    assert_eq!(
+        crate::agents::account_kind_among(&reg, Some("nobody")),
+        None,
+        "认不出的家不归缺省那一家"
+    );
+    let out = render(&m);
+    assert_eq!(out["accounts"][0]["agent"], json!(fake), "原样写回");
+    assert!(out["accounts"][1].get("agent").is_none(), "没写的不补");
+
+    let added = Manifest::default().with_added(Account {
+        agent: Some(fake.to_string()),
+        ..acct("g", false)
+    });
+    assert_eq!(render(&added)["accounts"][0]["agent"], json!(fake));
+    assert_eq!(added.find("g").unwrap().agent.as_deref(), Some(fake));
 }

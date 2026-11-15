@@ -33,6 +33,27 @@ class ExitScanTest {
             """fun f(e: E) = when { e.state == "on" -> Tone.NOW; else -> Tone.PLAIN }""" to ExitScan.Hits(0, 1),
             """fun f(e: E) { if (CODES.contains(e.why)) { show(copyText("s.k.x")) } }
                val CODES = listOf("a")""" to ExitScan.Hits(0, 1),
+            // 线上枚举：类型从线上类型那一包 import 进来（或写全路径），when 臂上 · 条件里比它的常量，就是在按码判。
+            """
+            import com.ccmonitor.mobile.core.wire.gen.Relation
+            fun f(state: Relation) = when (state) { Relation.Older -> copyText("s.k.x"); else -> null }
+            """.trimIndent() to ExitScan.Hits(0, 1),
+            """
+            import com.ccmonitor.mobile.core.wire.gen.VersionRelation
+            fun f(r: VersionRelation) = when (r) { VersionRelation.OLDER -> Tone.NOW; else -> Tone.PLAIN }
+            """.trimIndent() to ExitScan.Hits(0, 2),
+            """
+            import com.ccmonitor.mobile.core.wire.gen.VersionRelation as V
+            fun f(r: V) = if (r != V.SAME) "版本不一样" else null
+            """.trimIndent() to ExitScan.Hits(0, 1),
+            """fun f(s: S) = when (s) { com.ccmonitor.mobile.core.wire.gen.Relation.Older -> copyText("s.k.x"); else -> null }""" to
+                ExitScan.Hits(0, 1),
+            """
+            import com.ccmonitor.mobile.core.wire.gen.VersionRelation as V
+            val SETTLED = setOf(V.SAME, V.OLDER)
+            fun f(r: V) = if (r in SETTLED) copyText("s.k.x") else null
+            fun g(r: V) = if (setOf(V.NEWER).contains(r)) "更新" else null
+            """.trimIndent() to ExitScan.Hits(0, 2),
             """fun f() = copyText("b.k.x")""" to ExitScan.Hits(1, 0),
             """fun f(n: Int) = copyText("a.k.x", "n" to n)""" to ExitScan.Hits(1, 0),
             """fun f(k: String) = copyText(k)""" to ExitScan.Hits(1, 0),
@@ -42,6 +63,19 @@ class ExitScanTest {
             """fun f() = copyText("p.k.x")""" to ExitScan.Hits(0, 0),
             """fun f(open: Boolean) = if (open) copyText("s.k.x") else DeliveryState.FAILED""" to ExitScan.Hits(0, 0),
             """fun f(k: K) = when (k) { K.A -> copyText("s.k.x"); else -> DeliveryState.FAILED }""" to ExitScan.Hits(0, 0),
+            """
+            import com.ccmonitor.mobile.ui.Relation
+            fun f(state: Relation) = when (state) { Relation.Older -> copyText("s.k.x"); else -> null }
+            """.trimIndent() to ExitScan.Hits(0, 0),
+            """
+            import com.ccmonitor.mobile.core.wire.gen.*
+            fun f(state: Relation) = when (state) { Relation.Older -> copyText("s.k.x"); else -> null }
+            """.trimIndent() to ExitScan.Hits(0, 0),
+            """
+            import com.ccmonitor.mobile.core.wire.gen.Relation
+            fun f(state: Relation) = when (state) { Relation.Older -> Relation.Older.label(); else -> null }
+            fun g(r: Relation) = if (r.ok) copyText("s.k.x") else null
+            """.trimIndent() to ExitScan.Hits(0, 0),
             """fun f(e: E) { if (e.code == "dup") { fun g() = copyText("s.k.x") } }""" to ExitScan.Hits(0, 0),
             """fun f() { if (copyText("s.k.x") == "y") go() }""" to ExitScan.Hits(0, 0),
             """fun f(e: E) = if (e.code == "dup") Locale.ROOT.toString() else null""" to ExitScan.Hits(0, 0),

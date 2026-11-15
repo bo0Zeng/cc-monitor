@@ -36,7 +36,7 @@ private const val BREATHE_LOW = 0.6f
 
 /**
  * 一颗会话状态点（V10，与桌面 `kit/status-dot` 同一套）：8 dp、固定一列宽，状态变了不挤字。颜色 ＝ 在干什么，形状 ＝ 进程还在不在：
- * 实心（运行中 `--success` 呼吸 · 需手动 `--warn` · 后台任务 `--bgwork` · 空闲 `--text-2`）·
+ * 实心（运行中 `--success` 呼吸 · 待答请求 · 需手动同一个 `--warn` · 后台任务 `--bgwork` · 空闲 `--text-2`）·
  * 空心环（已退出 `--text-2` · 已结束 `--text-faint`）· 虚线环（说不清 `--text-2`）· 短横（记录已不在 `--text-faint`）。
  * [label] 是读屏念的那一句（人话状态）；系统关了动画 ⇒ 不呼吸、常亮。
  */
@@ -51,7 +51,7 @@ fun StatusDot(
     val color =
         when (dot) {
             SessionDot.RUNNING -> tokens.success
-            SessionDot.NEEDS_YOU -> tokens.warn
+            SessionDot.ASKS, SessionDot.NEEDS_YOU -> tokens.warn
             SessionDot.BACKGROUND -> tokens.bgwork
             SessionDot.IDLE, SessionDot.EXITED, SessionDot.UNKNOWN -> text2
             SessionDot.ENDED, SessionDot.GONE -> tokens.textFaint
@@ -60,7 +60,7 @@ fun StatusDot(
 }
 
 /**
- * 机器那一颗点：画哪一档是那台成品的 `dot`（后端 `deploy::machine::dot` 定，桌面同一份），这里只挑样子，与桌面 `machine-dot.ts` 一档对一样：
+ * 机器那一颗点：画哪一档是那台成品的 `dot`（`copy_core::machine::dot` 定，桌面同一份），这里只挑样子，与桌面 `machine-dot.ts` 一档对一样：
  * 在线（实心 `--success`、不呼吸）· 正在连 · 装 · 更新 · 还不知道（虚线环 `--text-2`）· 要更新（实心 `--warn`，照常能用）·
  * 离线 · 做不了（实心 `--error`）· 停用（空心环 `--text-2`）。[dot] 为 `null`（核心还没交过那一行）⇒ 只占位不画。
  */
@@ -102,7 +102,7 @@ internal enum class DotForm { SOLID, RING, DASHED, DASH }
 /** 会话点的形 ＝ 进程还在不在：在 ⇒ 实心；退了 · 结束了 ⇒ 环；说不清 ⇒ 虚线环；记录已不在 ⇒ 短横。 */
 internal fun formOf(dot: SessionDot): DotForm =
     when (dot) {
-        SessionDot.RUNNING, SessionDot.NEEDS_YOU, SessionDot.BACKGROUND, SessionDot.IDLE -> DotForm.SOLID
+        SessionDot.RUNNING, SessionDot.ASKS, SessionDot.NEEDS_YOU, SessionDot.BACKGROUND, SessionDot.IDLE -> DotForm.SOLID
         SessionDot.EXITED, SessionDot.ENDED -> DotForm.RING
         SessionDot.UNKNOWN -> DotForm.DASHED
         SessionDot.GONE -> DotForm.DASH

@@ -11,13 +11,8 @@ use std::time::Duration;
 
 use crate::hop::HopMeter;
 
-/// 一条 `base_url` 进不了 `Base` 的理由。带一句话而不是一个 `None`：「不是个 URL」「协议不认识」「端口读不懂」「路径里带查询串」挤在一个 `None` 里，
-/// 调用方只能印一句万能的话，在后三形上都是假的指引。那句话是 `&'static str`（不含文件内容）⇒ 进日志安全（与 `table::Rejected::why` 同一条理由）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BaseIssue(pub &'static str);
-
 /// 上游基址。`https` 走 TLS，`http` 走明文。本地部署（回环上的 http 明文）是一等公民；「明文 + 非回环」= 一把 key 明着过网线 ⇒ 由 `table::build` 拒掉并出声
-/// （判据 `a_plaintext_upstream_is_only_allowed_on_loopback`）。本结构体自己不判这一条：它只答「这个串长什么样」，不答「许不许用」。
+/// （判据 `a_plaintext_upstream_is_only_allowed_on_loopback`）。串怎么读成它是宿主的事；本结构体只装读好的那几格，不判许不许用。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Base {
     pub tls: bool,
@@ -30,17 +25,6 @@ pub struct Base {
 }
 
 impl Base {
-    /// 「base URL 能不能用」全仓只有一份，住共享 crate `upstream_url_core`（协议闭集 `SCHEMES` 也在那儿）；这里只把它的形状结论装成 `Base`、把理由翻成一句话。
-    pub fn parse(url: &str) -> Result<Base, BaseIssue> {
-        let u = upstream_url_core::parse(url).map_err(BaseIssue::of)?;
-        Ok(Base {
-            tls: u.tls,
-            host: u.host,
-            port: u.port,
-            path: u.path,
-        })
-    }
-
     /// `Host:` 头该写什么（默认端口不写端口，非默认端口要写）。
     pub fn host_header(&self) -> String {
         let default = if self.tls { 443 } else { 80 };
@@ -60,24 +44,6 @@ impl Base {
     /// 住 `Base` 不住 `table::Row`：「前缀 + 真路径」是传输原语，中转拿到的是 `Destination` 里那个 `&Base`，够不到 `Row`。
     pub fn upstream_target(&self, rest: &str) -> String {
         format!("{}{}", self.path, rest)
-    }
-}
-
-impl BaseIssue {
-    /// 形状那几形各一句（句子住文案表；判定住 `upstream_url_core::parse`）。
-    pub fn of(i: upstream_url_core::ShapeIssue) -> BaseIssue {
-        use upstream_url_core::ShapeIssue as S;
-        BaseIssue(match i {
-            S::Whitespace => copy_core::copy_static!("beRelayUpstream.parse.whitespace"),
-            S::NotUrl => copy_core::copy_static!("beRelayUpstream.parse.notUrl"),
-            S::BadScheme => copy_core::copy_static!("beRelayUpstream.parse.badScheme"),
-            S::NoHost => copy_core::copy_static!("beRelayUpstream.parse.noHost"),
-            S::HasQuery => copy_core::copy_static!("beRelayUpstream.parse.hasQuery"),
-            S::BadPort => copy_core::copy_static!("beRelayUpstream.parse.badPort"),
-            S::DoubleSlash => {
-                copy_core::copy_static!("beRelayUpstream.normalizePrefix.doubleSlash")
-            }
-        })
     }
 }
 

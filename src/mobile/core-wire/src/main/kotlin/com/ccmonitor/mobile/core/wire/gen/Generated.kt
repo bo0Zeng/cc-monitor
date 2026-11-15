@@ -326,6 +326,7 @@ data class AccountAddArgs(
     val key: String? = null,
     val isDefault: Boolean? = null,
     val dryRun: Boolean? = null,
+    val agent: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -339,9 +340,10 @@ data class AccountAddArgs(
             Field("key", { opt(Str) }, optional = true, nullable = true),
             Field("isDefault", { opt(Bool) }, optional = true, nullable = true),
             Field("dryRun", { opt(Bool) }, optional = true, nullable = true),
+            Field("agent", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> AccountAddArgs(a[0] as String, a[1] as AccountKind, a[2] as String?, a[3] as String?, a[4] as String?, a[5] as Boolean?, a[6] as Boolean?) },
-            { v -> arrayOf(v.name, v.kind, v.credFile, v.baseUrl, v.key, v.isDefault, v.dryRun) },
+            { a -> AccountAddArgs(a[0] as String, a[1] as AccountKind, a[2] as String?, a[3] as String?, a[4] as String?, a[5] as Boolean?, a[6] as Boolean?, a[7] as String?) },
+            { v -> arrayOf(v.name, v.kind, v.credFile, v.baseUrl, v.key, v.isDefault, v.dryRun, v.agent) },
         )
     }
 }
@@ -499,6 +501,8 @@ data class AccountMcpChoice(
 @Suppress("UNCHECKED_CAST")
 data class AccountMcpConflict(
     val name: String,
+    val agent: String? = null,
+    val agentSaid: String? = null,
     val choices: List<AccountMcpChoice>,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -507,10 +511,12 @@ data class AccountMcpConflict(
         val ADAPTER: JsonAdapter<AccountMcpConflict> = obj(
             listOf(
             Field("name", { Str }, optional = false, nullable = false),
+            Field("agent", { opt(Str) }, optional = true, nullable = true),
+            Field("agentSaid", { opt(Str) }, optional = true, nullable = true),
             Field("choices", { arr(AccountMcpChoice.ADAPTER) }, optional = false, nullable = false),
             ),
-            { a -> AccountMcpConflict(a[0] as String, a[1] as List<AccountMcpChoice>) },
-            { v -> arrayOf(v.name, v.choices) },
+            { a -> AccountMcpConflict(a[0] as String, a[1] as String?, a[2] as String?, a[3] as List<AccountMcpChoice>) },
+            { v -> arrayOf(v.name, v.agent, v.agentSaid, v.choices) },
         )
     }
 }
@@ -518,6 +524,7 @@ data class AccountMcpConflict(
 @Suppress("UNCHECKED_CAST")
 data class AccountMcpNameArgs(
     val name: String,
+    val agent: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -525,9 +532,10 @@ data class AccountMcpNameArgs(
         val ADAPTER: JsonAdapter<AccountMcpNameArgs> = obj(
             listOf(
             Field("name", { Str }, optional = false, nullable = false),
+            Field("agent", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> AccountMcpNameArgs(a[0] as String) },
-            { v -> arrayOf(v.name) },
+            { a -> AccountMcpNameArgs(a[0] as String, a[1] as String?) },
+            { v -> arrayOf(v.name, v.agent) },
         )
     }
 }
@@ -536,6 +544,7 @@ data class AccountMcpNameArgs(
 data class AccountMcpPickArgs(
     val name: String,
     val from: String? = null,
+    val agent: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -544,9 +553,31 @@ data class AccountMcpPickArgs(
             listOf(
             Field("name", { Str }, optional = false, nullable = false),
             Field("from", { opt(Str) }, optional = true, nullable = true),
+            Field("agent", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> AccountMcpPickArgs(a[0] as String, a[1] as String?) },
-            { v -> arrayOf(v.name, v.from) },
+            { a -> AccountMcpPickArgs(a[0] as String, a[1] as String?, a[2] as String?) },
+            { v -> arrayOf(v.name, v.from, v.agent) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class AccountMcpServer(
+    val name: String,
+    val agent: String? = null,
+    val agentSaid: String? = null,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<AccountMcpServer> = obj(
+            listOf(
+            Field("name", { Str }, optional = false, nullable = false),
+            Field("agent", { opt(Str) }, optional = true, nullable = true),
+            Field("agentSaid", { opt(Str) }, optional = true, nullable = true),
+            ),
+            { a -> AccountMcpServer(a[0] as String, a[1] as String?, a[2] as String?) },
+            { v -> arrayOf(v.name, v.agent, v.agentSaid) },
         )
     }
 }
@@ -572,7 +603,7 @@ data class AccountMcpSyncArgs(
 data class AccountMcpView(
     val enabled: Boolean,
     val sync: Boolean,
-    val servers: List<String>,
+    val servers: List<AccountMcpServer>,
     val conflicts: List<AccountMcpConflict>,
     val changed: List<String>,
     val notes: List<String>,
@@ -584,12 +615,12 @@ data class AccountMcpView(
             listOf(
             Field("enabled", { Bool }, optional = false, nullable = false),
             Field("sync", { Bool }, optional = false, nullable = false),
-            Field("servers", { arr(Str) }, optional = false, nullable = false),
+            Field("servers", { arr(AccountMcpServer.ADAPTER) }, optional = false, nullable = false),
             Field("conflicts", { arr(AccountMcpConflict.ADAPTER) }, optional = false, nullable = false),
             Field("changed", { arr(Str) }, optional = false, nullable = false),
             Field("notes", { arr(Str) }, optional = false, nullable = false),
             ),
-            { a -> AccountMcpView(a[0] as Boolean, a[1] as Boolean, a[2] as List<String>, a[3] as List<AccountMcpConflict>, a[4] as List<String>, a[5] as List<String>) },
+            { a -> AccountMcpView(a[0] as Boolean, a[1] as Boolean, a[2] as List<AccountMcpServer>, a[3] as List<AccountMcpConflict>, a[4] as List<String>, a[5] as List<String>) },
             { v -> arrayOf(v.enabled, v.sync, v.servers, v.conflicts, v.changed, v.notes) },
         )
     }
@@ -699,8 +730,12 @@ data class AccountRow(
     val plate: String,
     val kindLine: String,
     val slots: List<SlotShow>,
+    val quota: List<List<QuotaCell>>? = null,
     val unselectable: String?,
+    val mcpLogins: String? = null,
     val login: Boolean,
+    val signOut: Boolean? = null,
+    val status: Boolean? = null,
     val newSession: Boolean,
     val name: String,
     val label: String,
@@ -714,6 +749,8 @@ data class AccountRow(
     val authReady: Boolean,
     val selectable: Boolean,
     val color: Int? = null,
+    val agent: String? = null,
+    val unknownAgent: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -727,8 +764,12 @@ data class AccountRow(
             Field("plate", { Str }, optional = false, nullable = false),
             Field("kindLine", { Str }, optional = false, nullable = false),
             Field("slots", { arr(SlotShow.ADAPTER) }, optional = false, nullable = false),
+            Field("quota", { opt(arr(arr(QuotaCell.ADAPTER))) }, optional = true, nullable = true),
             Field("unselectable", { opt(Str) }, optional = false, nullable = true),
+            Field("mcpLogins", { opt(Str) }, optional = true, nullable = true),
             Field("login", { Bool }, optional = false, nullable = false),
+            Field("signOut", { opt(Bool) }, optional = true, nullable = true),
+            Field("status", { opt(Bool) }, optional = true, nullable = true),
             Field("newSession", { Bool }, optional = false, nullable = false),
             Field("name", { Str }, optional = false, nullable = false),
             Field("label", { Str }, optional = false, nullable = false),
@@ -742,9 +783,11 @@ data class AccountRow(
             Field("authReady", { Bool }, optional = false, nullable = false),
             Field("selectable", { Bool }, optional = false, nullable = false),
             Field("color", { opt(Int32) }, optional = true, nullable = true),
+            Field("agent", { opt(Str) }, optional = true, nullable = true),
+            Field("unknownAgent", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> AccountRow(a[0] as String?, a[1] as String?, a[2] as String?, a[3] as Badge, a[4] as String, a[5] as String, a[6] as List<SlotShow>, a[7] as String?, a[8] as Boolean, a[9] as Boolean, a[10] as String, a[11] as String, a[12] as String, a[13] as String?, a[14] as Boolean, a[15] as String, a[16] as Boolean, a[17] as Boolean, a[18] as String, a[19] as Boolean, a[20] as Boolean, a[21] as Int?) },
-            { v -> arrayOf(v.configDirShown, v.keyMasked, v.endpointHost, v.badge, v.plate, v.kindLine, v.slots, v.unselectable, v.login, v.newSession, v.name, v.label, v.email, v.configDir, v.isDefault, v.mode, v.exists, v.loggedIn, v.authKind, v.authReady, v.selectable, v.color) },
+            { a -> AccountRow(a[0] as String?, a[1] as String?, a[2] as String?, a[3] as Badge, a[4] as String, a[5] as String, a[6] as List<SlotShow>, a[7] as List<List<QuotaCell>>?, a[8] as String?, a[9] as String?, a[10] as Boolean, a[11] as Boolean?, a[12] as Boolean?, a[13] as Boolean, a[14] as String, a[15] as String, a[16] as String, a[17] as String?, a[18] as Boolean, a[19] as String, a[20] as Boolean, a[21] as Boolean, a[22] as String, a[23] as Boolean, a[24] as Boolean, a[25] as Int?, a[26] as String?, a[27] as String?) },
+            { v -> arrayOf(v.configDirShown, v.keyMasked, v.endpointHost, v.badge, v.plate, v.kindLine, v.slots, v.quota, v.unselectable, v.mcpLogins, v.login, v.signOut, v.status, v.newSession, v.name, v.label, v.email, v.configDir, v.isDefault, v.mode, v.exists, v.loggedIn, v.authKind, v.authReady, v.selectable, v.color, v.agent, v.unknownAgent) },
         )
     }
 }
@@ -755,6 +798,7 @@ data class AccountUnavailable(
     val pinned: Boolean,
     val listKnown: Boolean,
     val alternative: String?,
+    val login: Boolean,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -765,9 +809,10 @@ data class AccountUnavailable(
             Field("pinned", { Bool }, optional = false, nullable = false),
             Field("listKnown", { Bool }, optional = false, nullable = false),
             Field("alternative", { opt(Str) }, optional = false, nullable = true),
+            Field("login", { Bool }, optional = false, nullable = false),
             ),
-            { a -> AccountUnavailable(a[0] as String, a[1] as Boolean, a[2] as Boolean, a[3] as String?) },
-            { v -> arrayOf(v.requested, v.pinned, v.listKnown, v.alternative) },
+            { a -> AccountUnavailable(a[0] as String, a[1] as Boolean, a[2] as Boolean, a[3] as String?, a[4] as Boolean) },
+            { v -> arrayOf(v.requested, v.pinned, v.listKnown, v.alternative, v.login) },
         )
     }
 }
@@ -829,14 +874,46 @@ data class AckReq(
     }
 }
 
-enum class ActionTag(val wire: String) {
-    SKIP("skip"),
-    DEPLOY("deploy"),
-    KEEP("keep"),
+@Suppress("UNCHECKED_CAST")
+data class ActState(
+    val action: Action,
+    val text: String,
+    val why: String?,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<ActState> = obj(
+            listOf(
+            Field("action", { Action.ADAPTER }, optional = false, nullable = false),
+            Field("text", { Str }, optional = false, nullable = false),
+            Field("why", { opt(Str) }, optional = false, nullable = true),
+            ),
+            { a -> ActState(a[0] as Action, a[1] as String, a[2] as String?) },
+            { v -> arrayOf(v.action, v.text, v.why) },
+        )
+    }
+}
+
+enum class Action(val wire: String) {
+    OPEN("open"),
+    EDIT("edit"),
+    VIEW("view"),
+    COPY("copy"),
+    DOWNLOAD("download"),
+    SIZE("size"),
+    EXTRACT("extract"),
+    CROSS_COPY("cross_copy"),
+    ACROSS("across"),
+    COPY_TO("copy_to"),
+    RENAME("rename"),
+    CHMOD("chmod"),
+    DELETE("delete"),
+    PROPERTIES("properties"),
     ;
 
     companion object {
-        val ADAPTER: JsonAdapter<ActionTag> = enumOf(entries) { it.wire }
+        val ADAPTER: JsonAdapter<Action> = enumOf(entries) { it.wire }
     }
 }
 
@@ -869,17 +946,17 @@ data class AgentFacts(
 
 @Suppress("UNCHECKED_CAST")
 data class AgentHomeCheck(
-    val state: AgentHomeState,
+    val said: String?,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
     companion object {
         val ADAPTER: JsonAdapter<AgentHomeCheck> = obj(
             listOf(
-            Field("state", { AgentHomeState.ADAPTER }, optional = false, nullable = false),
+            Field("said", { opt(Str) }, optional = false, nullable = true),
             ),
-            { a -> AgentHomeCheck(a[0] as AgentHomeState) },
-            { v -> arrayOf(v.state) },
+            { a -> AgentHomeCheck(a[0] as String?) },
+            { v -> arrayOf(v.said) },
         )
     }
 }
@@ -901,24 +978,14 @@ data class AgentHomeCheckReq(
     }
 }
 
-enum class AgentHomeState(val wire: String) {
-    OK("ok"),
-    MISSING("missing"),
-    NOT_DIR("not_dir"),
-    NO_RECORDS("no_records"),
-    ;
-
-    companion object {
-        val ADAPTER: JsonAdapter<AgentHomeState> = enumOf(entries) { it.wire }
-    }
-}
-
 typealias AgentKind = String
 
 @Suppress("UNCHECKED_CAST")
 data class AgentPick(
     val value: String,
     val text: String,
+    val efforts: List<AgentPick>? = null,
+    val defaultEffort: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -927,9 +994,11 @@ data class AgentPick(
             listOf(
             Field("value", { Str }, optional = false, nullable = false),
             Field("text", { Str }, optional = false, nullable = false),
+            Field("efforts", { opt(arr(AgentPick.ADAPTER)) }, optional = true, nullable = true),
+            Field("defaultEffort", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> AgentPick(a[0] as String, a[1] as String) },
-            { v -> arrayOf(v.value, v.text) },
+            { a -> AgentPick(a[0] as String, a[1] as String, a[2] as List<AgentPick>?, a[3] as String?) },
+            { v -> arrayOf(v.value, v.text, v.efforts, v.defaultEffort) },
         )
     }
 }
@@ -1349,7 +1418,9 @@ sealed interface ArriveEnd {
     }
     @Suppress("UNCHECKED_CAST")
     data class Missed(
+        val title: String,
         val said: String,
+        val words: String?,
         val terminal: String?,
     ) : ArriveEnd, Ordered {
         override val kind: String get() = "missed"
@@ -1372,11 +1443,13 @@ sealed interface ArriveEnd {
                 Variant("missed", ArriveEnd.Missed::class.java, obj(
                         listOf(
                         Field("kind", { tag("missed") }, optional = false, nullable = false),
+                        Field("title", { Str }, optional = false, nullable = false),
                         Field("said", { Str }, optional = false, nullable = false),
+                        Field("words", { opt(Str) }, optional = false, nullable = true),
                         Field("terminal", { opt(Str) }, optional = false, nullable = true),
                         ),
-                        { a -> ArriveEnd.Missed(a[1] as String, a[2] as String?) },
-                        { v -> arrayOf("missed", v.said, v.terminal) },
+                        { a -> ArriveEnd.Missed(a[1] as String, a[2] as String, a[3] as String?, a[4] as String?) },
+                        { v -> arrayOf("missed", v.title, v.said, v.words, v.terminal) },
                     )),
                 ),
             )
@@ -1514,6 +1587,7 @@ data class AskReply(
 data class AskReq(
     val agent: String,
     val hook: Raw,
+    val asker: Int? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -1522,9 +1596,10 @@ data class AskReq(
             listOf(
             Field("agent", { Str }, optional = false, nullable = false),
             Field("hook", { RawJson }, optional = false, nullable = false),
+            Field("asker", { opt(Int32) }, optional = true, nullable = true),
             ),
-            { a -> AskReq(a[0] as String, a[1] as Raw) },
-            { v -> arrayOf(v.agent, v.hook) },
+            { a -> AskReq(a[0] as String, a[1] as Raw, a[2] as Int?) },
+            { v -> arrayOf(v.agent, v.hook, v.asker) },
         )
     }
 }
@@ -1708,6 +1783,365 @@ sealed interface AttachCardPhase {
     }
 }
 
+sealed interface AttachDo {
+    /** 判别格（`op`）那个词。 */
+    val op: String
+
+    @Suppress("UNCHECKED_CAST")
+    data class Open(
+        val sid: String,
+        val cards: List<AttachKept>,
+    ) : AttachDo, Ordered {
+        override val op: String get() = "open"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Add(
+        val tray: Long,
+        val card: AttachKept,
+    ) : AttachDo, Ordered {
+        override val op: String get() = "add"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Remove(
+        val tray: Long,
+        val key: String,
+    ) : AttachDo, Ordered {
+        override val op: String get() = "remove"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Retry(
+        val tray: Long,
+        val cards: List<AttachKept>,
+    ) : AttachDo, Ordered {
+        override val op: String get() = "retry"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Up(
+        val tray: Long,
+    ) : AttachDo, Ordered {
+        override val op: String get() = "up"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Local(
+        val tray: Long,
+        val why: AttachLocal?,
+    ) : AttachDo, Ordered {
+        override val op: String get() = "local"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Take(
+        val tray: Long,
+    ) : AttachDo, Ordered {
+        override val op: String get() = "take"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Close(
+        val tray: Long,
+    ) : AttachDo, Ordered {
+        override val op: String get() = "close"
+        override var wireOrder: IntArray? = null
+    }
+
+    companion object {
+        val ADAPTER: JsonAdapter<AttachDo> =
+            tagged<AttachDo>(
+                "op",
+                listOf(
+                Variant("open", AttachDo.Open::class.java, obj(
+                        listOf(
+                        Field("op", { tag("open") }, optional = false, nullable = false),
+                        Field("sid", { Str }, optional = false, nullable = false),
+                        Field("cards", { arr(AttachKept.ADAPTER) }, optional = false, nullable = false),
+                        ),
+                        { a -> AttachDo.Open(a[1] as String, a[2] as List<AttachKept>) },
+                        { v -> arrayOf("open", v.sid, v.cards) },
+                    )),
+                Variant("add", AttachDo.Add::class.java, obj(
+                        listOf(
+                        Field("op", { tag("add") }, optional = false, nullable = false),
+                        Field("tray", { Lng }, optional = false, nullable = false),
+                        Field("card", { AttachKept.ADAPTER }, optional = false, nullable = false),
+                        ),
+                        { a -> AttachDo.Add(a[1] as Long, a[2] as AttachKept) },
+                        { v -> arrayOf("add", v.tray, v.card) },
+                    )),
+                Variant("remove", AttachDo.Remove::class.java, obj(
+                        listOf(
+                        Field("op", { tag("remove") }, optional = false, nullable = false),
+                        Field("tray", { Lng }, optional = false, nullable = false),
+                        Field("key", { Str }, optional = false, nullable = false),
+                        ),
+                        { a -> AttachDo.Remove(a[1] as Long, a[2] as String) },
+                        { v -> arrayOf("remove", v.tray, v.key) },
+                    )),
+                Variant("retry", AttachDo.Retry::class.java, obj(
+                        listOf(
+                        Field("op", { tag("retry") }, optional = false, nullable = false),
+                        Field("tray", { Lng }, optional = false, nullable = false),
+                        Field("cards", { arr(AttachKept.ADAPTER) }, optional = false, nullable = false),
+                        ),
+                        { a -> AttachDo.Retry(a[1] as Long, a[2] as List<AttachKept>) },
+                        { v -> arrayOf("retry", v.tray, v.cards) },
+                    )),
+                Variant("up", AttachDo.Up::class.java, obj(
+                        listOf(
+                        Field("op", { tag("up") }, optional = false, nullable = false),
+                        Field("tray", { Lng }, optional = false, nullable = false),
+                        ),
+                        { a -> AttachDo.Up(a[1] as Long) },
+                        { v -> arrayOf("up", v.tray) },
+                    )),
+                Variant("local", AttachDo.Local::class.java, obj(
+                        listOf(
+                        Field("op", { tag("local") }, optional = false, nullable = false),
+                        Field("tray", { Lng }, optional = false, nullable = false),
+                        Field("why", { opt(AttachLocal.ADAPTER) }, optional = false, nullable = true),
+                        ),
+                        { a -> AttachDo.Local(a[1] as Long, a[2] as AttachLocal?) },
+                        { v -> arrayOf("local", v.tray, v.why) },
+                    )),
+                Variant("take", AttachDo.Take::class.java, obj(
+                        listOf(
+                        Field("op", { tag("take") }, optional = false, nullable = false),
+                        Field("tray", { Lng }, optional = false, nullable = false),
+                        ),
+                        { a -> AttachDo.Take(a[1] as Long) },
+                        { v -> arrayOf("take", v.tray) },
+                    )),
+                Variant("close", AttachDo.Close::class.java, obj(
+                        listOf(
+                        Field("op", { tag("close") }, optional = false, nullable = false),
+                        Field("tray", { Lng }, optional = false, nullable = false),
+                        ),
+                        { a -> AttachDo.Close(a[1] as Long) },
+                        { v -> arrayOf("close", v.tray) },
+                    )),
+                ),
+            )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class AttachDone(
+    val tray: Long,
+    val ids: List<String>?,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<AttachDone> = obj(
+            listOf(
+            Field("tray", { Lng }, optional = false, nullable = false),
+            Field("ids", { opt(arr(Str)) }, optional = false, nullable = true),
+            ),
+            { a -> AttachDone(a[0] as Long, a[1] as List<String>?) },
+            { v -> arrayOf(v.tray, v.ids) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class AttachDraftCard(
+    val key: String,
+    val name: String,
+    val path: String,
+    val bytes: Long,
+    val dir: Boolean? = null,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<AttachDraftCard> = obj(
+            listOf(
+            Field("key", { Str }, optional = false, nullable = false),
+            Field("name", { Str }, optional = false, nullable = false),
+            Field("path", { Str }, optional = false, nullable = false),
+            Field("bytes", { U64 }, optional = false, nullable = false),
+            Field("dir", { opt(Bool) }, optional = true, nullable = true),
+            ),
+            { a -> AttachDraftCard(a[0] as String, a[1] as String, a[2] as String, a[3] as Long, a[4] as Boolean?) },
+            { v -> arrayOf(v.key, v.name, v.path, v.bytes, v.dir) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class AttachDraftDropReq(
+    val draft: String,
+    val key: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<AttachDraftDropReq> = obj(
+            listOf(
+            Field("draft", { Str }, optional = false, nullable = false),
+            Field("key", { Str }, optional = false, nullable = false),
+            ),
+            { a -> AttachDraftDropReq(a[0] as String, a[1] as String) },
+            { v -> arrayOf(v.draft, v.key) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class AttachDraftPutReq(
+    val draft: String,
+    val machine: String,
+    val sid: String,
+    val cards: List<AttachDraftCard>,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<AttachDraftPutReq> = obj(
+            listOf(
+            Field("draft", { Str }, optional = false, nullable = false),
+            Field("machine", { Str }, optional = false, nullable = false),
+            Field("sid", { Str }, optional = false, nullable = false),
+            Field("cards", { arr(AttachDraftCard.ADAPTER) }, optional = false, nullable = false),
+            ),
+            { a -> AttachDraftPutReq(a[0] as String, a[1] as String, a[2] as String, a[3] as List<AttachDraftCard>) },
+            { v -> arrayOf(v.draft, v.machine, v.sid, v.cards) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class AttachDraftRetryReq(
+    val draft: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<AttachDraftRetryReq> = obj(
+            listOf(
+            Field("draft", { Str }, optional = false, nullable = false),
+            ),
+            { a -> AttachDraftRetryReq(a[0] as String) },
+            { v -> arrayOf(v.draft) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class AttachDraftShown(
+    val draft: String,
+    val cards: List<AttachDraftShownCard>,
+    val note: AttachFaceNote?,
+    val offline: Boolean,
+    val ready: Boolean,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<AttachDraftShown> = obj(
+            listOf(
+            Field("draft", { Str }, optional = false, nullable = false),
+            Field("cards", { arr(AttachDraftShownCard.ADAPTER) }, optional = false, nullable = false),
+            Field("note", { opt(AttachFaceNote.ADAPTER) }, optional = false, nullable = true),
+            Field("offline", { Bool }, optional = false, nullable = false),
+            Field("ready", { Bool }, optional = false, nullable = false),
+            ),
+            { a -> AttachDraftShown(a[0] as String, a[1] as List<AttachDraftShownCard>, a[2] as AttachFaceNote?, a[3] as Boolean, a[4] as Boolean) },
+            { v -> arrayOf(v.draft, v.cards, v.note, v.offline, v.ready) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class AttachDraftShownCard(
+    val key: String,
+    val name: String,
+    val phase: AttachCardPhase,
+    val done: Long,
+    val bytes: Long,
+    val id: String?,
+    val line: String?,
+    val remove: String,
+    val `class`: FileClass,
+    val classText: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<AttachDraftShownCard> = obj(
+            listOf(
+            Field("key", { Str }, optional = false, nullable = false),
+            Field("name", { Str }, optional = false, nullable = false),
+            Field("phase", { AttachCardPhase.ADAPTER }, optional = false, nullable = false),
+            Field("done", { U64 }, optional = false, nullable = false),
+            Field("bytes", { U64 }, optional = false, nullable = false),
+            Field("id", { opt(Str) }, optional = false, nullable = true),
+            Field("line", { opt(Str) }, optional = false, nullable = true),
+            Field("remove", { Str }, optional = false, nullable = false),
+            Field("class", { FileClass.ADAPTER }, optional = false, nullable = false),
+            Field("class_text", { Str }, optional = false, nullable = false),
+            ),
+            { a -> AttachDraftShownCard(a[0] as String, a[1] as String, a[2] as AttachCardPhase, a[3] as Long, a[4] as Long, a[5] as String?, a[6] as String?, a[7] as String, a[8] as FileClass, a[9] as String) },
+            { v -> arrayOf(v.key, v.name, v.phase, v.done, v.bytes, v.id, v.line, v.remove, v.`class`, v.classText) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class AttachDraftTakeReq(
+    val draft: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<AttachDraftTakeReq> = obj(
+            listOf(
+            Field("draft", { Str }, optional = false, nullable = false),
+            ),
+            { a -> AttachDraftTakeReq(a[0] as String) },
+            { v -> arrayOf(v.draft) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class AttachDraftTaken(
+    val ids: List<String>?,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<AttachDraftTaken> = obj(
+            listOf(
+            Field("ids", { opt(arr(Str)) }, optional = false, nullable = true),
+            ),
+            { a -> AttachDraftTaken(a[0] as List<String>?) },
+            { v -> arrayOf(v.ids) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class AttachDraftViewReq(
+    val draft: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<AttachDraftViewReq> = obj(
+            listOf(
+            Field("draft", { Str }, optional = false, nullable = false),
+            ),
+            { a -> AttachDraftViewReq(a[0] as String) },
+            { v -> arrayOf(v.draft) },
+        )
+    }
+}
+
 @Suppress("UNCHECKED_CAST")
 data class AttachFace(
     val cards: List<AttachFaceCard>,
@@ -1788,6 +2222,31 @@ data class AttachItem(
     }
 }
 
+@Suppress("UNCHECKED_CAST")
+data class AttachKept(
+    val key: String,
+    val name: String,
+    val bytes: Long,
+    val id: String?,
+    val fd: Int?,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<AttachKept> = obj(
+            listOf(
+            Field("key", { Str }, optional = false, nullable = false),
+            Field("name", { Str }, optional = false, nullable = false),
+            Field("bytes", { U64 }, optional = false, nullable = false),
+            Field("id", { opt(Str) }, optional = false, nullable = true),
+            Field("fd", { opt(Int32) }, optional = false, nullable = true),
+            ),
+            { a -> AttachKept(a[0] as String, a[1] as String, a[2] as Long, a[3] as String?, a[4] as Int?) },
+            { v -> arrayOf(v.key, v.name, v.bytes, v.id, v.fd) },
+        )
+    }
+}
+
 enum class AttachLocal(val wire: String) {
     NO_ROOM("no_room"),
     NO_CAMERA("no_camera"),
@@ -1810,6 +2269,58 @@ enum class AttachRefused(val wire: String) {
 
     companion object {
         val ADAPTER: JsonAdapter<AttachRefused> = enumOf(entries) { it.wire }
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class AttachShown(
+    val tray: Long,
+    val cards: List<AttachShownCard>,
+    val note: AttachFaceNote?,
+    val offline: Boolean,
+    val ready: Boolean,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<AttachShown> = obj(
+            listOf(
+            Field("tray", { Lng }, optional = false, nullable = false),
+            Field("cards", { arr(AttachShownCard.ADAPTER) }, optional = false, nullable = false),
+            Field("note", { opt(AttachFaceNote.ADAPTER) }, optional = false, nullable = true),
+            Field("offline", { Bool }, optional = false, nullable = false),
+            Field("ready", { Bool }, optional = false, nullable = false),
+            ),
+            { a -> AttachShown(a[0] as Long, a[1] as List<AttachShownCard>, a[2] as AttachFaceNote?, a[3] as Boolean, a[4] as Boolean) },
+            { v -> arrayOf(v.tray, v.cards, v.note, v.offline, v.ready) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class AttachShownCard(
+    val key: String,
+    val phase: AttachCardPhase,
+    val done: Long,
+    val id: String?,
+    val line: String?,
+    val remove: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<AttachShownCard> = obj(
+            listOf(
+            Field("key", { Str }, optional = false, nullable = false),
+            Field("phase", { AttachCardPhase.ADAPTER }, optional = false, nullable = false),
+            Field("done", { U64 }, optional = false, nullable = false),
+            Field("id", { opt(Str) }, optional = false, nullable = true),
+            Field("line", { opt(Str) }, optional = false, nullable = true),
+            Field("remove", { Str }, optional = false, nullable = false),
+            ),
+            { a -> AttachShownCard(a[0] as String, a[1] as AttachCardPhase, a[2] as Long, a[3] as String?, a[4] as String?, a[5] as String) },
+            { v -> arrayOf(v.key, v.phase, v.done, v.id, v.line, v.remove) },
+        )
     }
 }
 
@@ -2132,6 +2643,7 @@ sealed interface BatchLine {
         override val title: String,
         override val kept: Boolean,
         val conflicts: List<ClashRow>,
+        val whole: List<ClashChoice>,
         val go: String,
     ) : BatchLine, Ordered {
         override val phase: String get() = "asking"
@@ -2207,10 +2719,11 @@ sealed interface BatchLine {
                         Field("title", { Str }, optional = false, nullable = false),
                         Field("kept", { Bool }, optional = false, nullable = false),
                         Field("conflicts", { arr(ClashRow.ADAPTER) }, optional = false, nullable = false),
+                        Field("whole", { arr(ClashChoice.ADAPTER) }, optional = false, nullable = false),
                         Field("go", { Str }, optional = false, nullable = false),
                         ),
-                        { a -> BatchLine.Asking(a[1] as Long, a[2] as String, a[3] as Boolean, a[4] as List<ClashRow>, a[5] as String) },
-                        { v -> arrayOf("asking", v.id, v.title, v.kept, v.conflicts, v.go) },
+                        { a -> BatchLine.Asking(a[1] as Long, a[2] as String, a[3] as Boolean, a[4] as List<ClashRow>, a[5] as List<ClashChoice>, a[6] as String) },
+                        { v -> arrayOf("asking", v.id, v.title, v.kept, v.conflicts, v.whole, v.go) },
                     )),
                 Variant("cut", BatchLine.Cut::class.java, obj(
                         listOf(
@@ -3127,6 +3640,7 @@ data class BusInbox(
 @Suppress("UNCHECKED_CAST")
 data class BusInboxItem(
     val actSaid: String,
+    val line: String,
     val id: String,
     val ts: String,
     val from: String,
@@ -3144,6 +3658,7 @@ data class BusInboxItem(
         val ADAPTER: JsonAdapter<BusInboxItem> = obj(
             listOf(
             Field("act_said", { Str }, optional = false, nullable = false),
+            Field("line", { Str }, optional = false, nullable = false),
             Field("id", { Str }, optional = false, nullable = false),
             Field("ts", { Str }, optional = false, nullable = false),
             Field("from", { Str }, optional = false, nullable = false),
@@ -3155,8 +3670,8 @@ data class BusInboxItem(
             Field("refs", { arr(Str) }, optional = false, nullable = false),
             Field("text", { Str }, optional = false, nullable = false),
             ),
-            { a -> BusInboxItem(a[0] as String, a[1] as String, a[2] as String, a[3] as String, a[4] as String, a[5] as Int, a[6] as BusAct, a[7] as String, a[8] as String?, a[9] as List<String>, a[10] as String) },
-            { v -> arrayOf(v.actSaid, v.id, v.ts, v.from, v.to, v.tier, v.act, v.title, v.re, v.refs, v.text) },
+            { a -> BusInboxItem(a[0] as String, a[1] as String, a[2] as String, a[3] as String, a[4] as String, a[5] as String, a[6] as Int, a[7] as BusAct, a[8] as String, a[9] as String?, a[10] as List<String>, a[11] as String) },
+            { v -> arrayOf(v.actSaid, v.line, v.id, v.ts, v.from, v.to, v.tier, v.act, v.title, v.re, v.refs, v.text) },
         )
     }
 }
@@ -3183,6 +3698,7 @@ data class BusInboxReq(
 @Suppress("UNCHECKED_CAST")
 data class BusList(
     val agents: List<BusAgent>,
+    val summary: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -3190,9 +3706,10 @@ data class BusList(
         val ADAPTER: JsonAdapter<BusList> = obj(
             listOf(
             Field("agents", { arr(BusAgent.ADAPTER) }, optional = false, nullable = false),
+            Field("summary", { Str }, optional = false, nullable = false),
             ),
-            { a -> BusList(a[0] as List<BusAgent>) },
-            { v -> arrayOf(v.agents) },
+            { a -> BusList(a[0] as List<BusAgent>, a[1] as String) },
+            { v -> arrayOf(v.agents, v.summary) },
         )
     }
 }
@@ -3420,6 +3937,7 @@ sealed interface CallEnd {
 @Suppress("UNCHECKED_CAST")
 data class Can(
     val resume: CanResume,
+    val resumeWhy: String? = null,
     val accounts: Boolean,
     val fork: Boolean,
     val delete: CanDelete,
@@ -3430,12 +3948,13 @@ data class Can(
         val ADAPTER: JsonAdapter<Can> = obj(
             listOf(
             Field("resume", { CanResume.ADAPTER }, optional = false, nullable = false),
+            Field("resumeWhy", { opt(Str) }, optional = true, nullable = true),
             Field("accounts", { Bool }, optional = false, nullable = false),
             Field("fork", { Bool }, optional = false, nullable = false),
             Field("delete", { CanDelete.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> Can(a[0] as CanResume, a[1] as Boolean, a[2] as Boolean, a[3] as CanDelete) },
-            { v -> arrayOf(v.resume, v.accounts, v.fork, v.delete) },
+            { a -> Can(a[0] as CanResume, a[1] as String?, a[2] as Boolean, a[3] as Boolean, a[4] as CanDelete) },
+            { v -> arrayOf(v.resume, v.resumeWhy, v.accounts, v.fork, v.delete) },
         )
     }
 }
@@ -3505,6 +4024,7 @@ enum class CanResume(val wire: String) {
     YES("yes"),
     SWITCH("switch"),
     BG("bg"),
+    NO("no"),
     ;
 
     companion object {
@@ -3730,6 +4250,7 @@ data class Captured(
 
 @Suppress("UNCHECKED_CAST")
 data class CatalogAsset(
+    val agent: String? = null,
     val kind: ExtKind,
     val name: String,
     val project: String? = null,
@@ -3743,6 +4264,7 @@ data class CatalogAsset(
     companion object {
         val ADAPTER: JsonAdapter<CatalogAsset> = obj(
             listOf(
+            Field("agent", { opt(Str) }, optional = true, nullable = true),
             Field("kind", { ExtKind.ADAPTER }, optional = false, nullable = false),
             Field("name", { Str }, optional = false, nullable = false),
             Field("project", { opt(Str) }, optional = true, nullable = true),
@@ -3751,8 +4273,8 @@ data class CatalogAsset(
             Field("summary", { RawJson }, optional = false, nullable = false),
             Field("off", { opt(Bool) }, optional = true, nullable = true),
             ),
-            { a -> CatalogAsset(a[0] as ExtKind, a[1] as String, a[2] as String?, a[3] as String?, a[4] as String, a[5] as Raw, a[6] as Boolean?) },
-            { v -> arrayOf(v.kind, v.name, v.project, v.dir, v.digest, v.summary, v.off) },
+            { a -> CatalogAsset(a[0] as String?, a[1] as ExtKind, a[2] as String, a[3] as String?, a[4] as String?, a[5] as String, a[6] as Raw, a[7] as Boolean?) },
+            { v -> arrayOf(v.agent, v.kind, v.name, v.project, v.dir, v.digest, v.summary, v.off) },
         )
     }
 }
@@ -3876,6 +4398,7 @@ data class CatalogReply(
 
 @Suppress("UNCHECKED_CAST")
 data class CatalogRow(
+    val agent: String? = null,
     val kind: ExtKind,
     val name: String,
     val state: String,
@@ -3886,13 +4409,14 @@ data class CatalogRow(
     companion object {
         val ADAPTER: JsonAdapter<CatalogRow> = obj(
             listOf(
+            Field("agent", { opt(Str) }, optional = true, nullable = true),
             Field("kind", { ExtKind.ADAPTER }, optional = false, nullable = false),
             Field("name", { Str }, optional = false, nullable = false),
             Field("state", { Str }, optional = false, nullable = false),
             Field("from", { arr(CatalogFrom.ADAPTER) }, optional = false, nullable = false),
             ),
-            { a -> CatalogRow(a[0] as ExtKind, a[1] as String, a[2] as String, a[3] as List<CatalogFrom>) },
-            { v -> arrayOf(v.kind, v.name, v.state, v.from) },
+            { a -> CatalogRow(a[0] as String?, a[1] as ExtKind, a[2] as String, a[3] as String, a[4] as List<CatalogFrom>) },
+            { v -> arrayOf(v.agent, v.kind, v.name, v.state, v.from) },
         )
     }
 }
@@ -4131,6 +4655,14 @@ sealed interface Changed {
         override val topic: String get() = "session_queue"
         override var wireOrder: IntArray? = null
     }
+    @Suppress("UNCHECKED_CAST")
+    data class Attach(
+        val key: String,
+        val body: AttachDraftShown? = null,
+    ) : Changed, Ordered {
+        override val topic: String get() = "attach"
+        override var wireOrder: IntArray? = null
+    }
 
     companion object {
         val ADAPTER: JsonAdapter<Changed> =
@@ -4275,6 +4807,15 @@ sealed interface Changed {
                         { a -> Changed.SessionQueue(a[1] as String, a[2] as QueueList?) },
                         { v -> arrayOf("session_queue", v.key, v.body) },
                     )),
+                Variant("attach", Changed.Attach::class.java, obj(
+                        listOf(
+                        Field("topic", { tag("attach") }, optional = false, nullable = false),
+                        Field("key", { Str }, optional = false, nullable = false),
+                        Field("body", { opt(AttachDraftShown.ADAPTER) }, optional = true, nullable = true),
+                        ),
+                        { a -> Changed.Attach(a[1] as String, a[2] as AttachDraftShown?) },
+                        { v -> arrayOf("attach", v.key, v.body) },
+                    )),
                 ),
             )
     }
@@ -4285,6 +4826,7 @@ data class ChangedFile(
     val path: String,
     val what: String,
     val undo: UndoAt?,
+    val revert: Boolean? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -4294,9 +4836,10 @@ data class ChangedFile(
             Field("path", { Str }, optional = false, nullable = false),
             Field("what", { Str }, optional = false, nullable = false),
             Field("undo", { opt(UndoAt.ADAPTER) }, optional = false, nullable = true),
+            Field("revert", { opt(Bool) }, optional = true, nullable = true),
             ),
-            { a -> ChangedFile(a[0] as String, a[1] as String, a[2] as UndoAt?) },
-            { v -> arrayOf(v.path, v.what, v.undo) },
+            { a -> ChangedFile(a[0] as String, a[1] as String, a[2] as UndoAt?, a[3] as Boolean?) },
+            { v -> arrayOf(v.path, v.what, v.undo, v.revert) },
         )
     }
 }
@@ -4305,6 +4848,7 @@ data class ChangedFile(
 data class ChatsColumn(
     val sections: List<ColumnSection>,
     val groups: List<ColumnAt>,
+    val asks: List<ColumnAsks>,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -4313,9 +4857,10 @@ data class ChatsColumn(
             listOf(
             Field("sections", { arr(ColumnSection.ADAPTER) }, optional = false, nullable = false),
             Field("groups", { arr(ColumnAt.ADAPTER) }, optional = false, nullable = false),
+            Field("asks", { arr(ColumnAsks.ADAPTER) }, optional = false, nullable = false),
             ),
-            { a -> ChatsColumn(a[0] as List<ColumnSection>, a[1] as List<ColumnAt>) },
-            { v -> arrayOf(v.sections, v.groups) },
+            { a -> ChatsColumn(a[0] as List<ColumnSection>, a[1] as List<ColumnAt>, a[2] as List<ColumnAsks>) },
+            { v -> arrayOf(v.sections, v.groups, v.asks) },
         )
     }
 }
@@ -4366,6 +4911,27 @@ data class ChildRunTag(
             ),
             { a -> ChildRunTag(a[0] as String, a[1] as String?) },
             { v -> arrayOf(v.label, v.kind) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class ChmodAsk(
+    val title: String,
+    val line: String,
+    val prefill: String?,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<ChmodAsk> = obj(
+            listOf(
+            Field("title", { Str }, optional = false, nullable = false),
+            Field("line", { Str }, optional = false, nullable = false),
+            Field("prefill", { opt(Str) }, optional = false, nullable = true),
+            ),
+            { a -> ChmodAsk(a[0] as String, a[1] as String, a[2] as String?) },
+            { v -> arrayOf(v.title, v.line, v.prefill) },
         )
     }
 }
@@ -4789,6 +5355,25 @@ data class ClashRow(
 }
 
 @Suppress("UNCHECKED_CAST")
+data class ColumnAsks(
+    val rows: List<String>,
+    val unlisted: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<ColumnAsks> = obj(
+            listOf(
+            Field("rows", { arr(Str) }, optional = false, nullable = false),
+            Field("unlisted", { Str }, optional = false, nullable = false),
+            ),
+            { a -> ColumnAsks(a[0] as List<String>, a[1] as String) },
+            { v -> arrayOf(v.rows, v.unlisted) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class ColumnAt(
     val host: Int,
     val at: Int,
@@ -4828,6 +5413,7 @@ data class ColumnFork(
 
 @Suppress("UNCHECKED_CAST")
 data class ColumnHost(
+    val label: String,
     val rows: List<ColumnRow>,
     val groups: List<Long>,
 ) : Ordered {
@@ -4836,11 +5422,12 @@ data class ColumnHost(
     companion object {
         val ADAPTER: JsonAdapter<ColumnHost> = obj(
             listOf(
+            Field("label", { Str }, optional = false, nullable = false),
             Field("rows", { arr(ColumnRow.ADAPTER) }, optional = false, nullable = false),
             Field("groups", { arr(Lng) }, optional = false, nullable = false),
             ),
-            { a -> ColumnHost(a[0] as List<ColumnRow>, a[1] as List<Long>) },
-            { v -> arrayOf(v.rows, v.groups) },
+            { a -> ColumnHost(a[0] as String, a[1] as List<ColumnRow>, a[2] as List<Long>) },
+            { v -> arrayOf(v.label, v.rows, v.groups) },
         )
     }
 }
@@ -4853,6 +5440,7 @@ data class ColumnLine(
     val forks: Int,
     val forksOpen: Boolean,
     val orphan: Boolean,
+    val forksText: String?,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -4865,9 +5453,10 @@ data class ColumnLine(
             Field("forks", { Int32 }, optional = false, nullable = false),
             Field("forksOpen", { Bool }, optional = false, nullable = false),
             Field("orphan", { Bool }, optional = false, nullable = false),
+            Field("forksText", { opt(Str) }, optional = false, nullable = true),
             ),
-            { a -> ColumnLine(a[0] as Int, a[1] as Int, a[2] as Boolean, a[3] as Int, a[4] as Boolean, a[5] as Boolean) },
-            { v -> arrayOf(v.host, v.at, v.child, v.forks, v.forksOpen, v.orphan) },
+            { a -> ColumnLine(a[0] as Int, a[1] as Int, a[2] as Boolean, a[3] as Int, a[4] as Boolean, a[5] as Boolean, a[6] as String?) },
+            { v -> arrayOf(v.host, v.at, v.child, v.forks, v.forksOpen, v.orphan, v.forksText) },
         )
     }
 }
@@ -4879,6 +5468,7 @@ data class ColumnRow(
     val placed: Boolean,
     val sid: String,
     val parent: String?,
+    val delete: CanDelete,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -4890,9 +5480,10 @@ data class ColumnRow(
             Field("placed", { Bool }, optional = false, nullable = false),
             Field("sid", { Str }, optional = false, nullable = false),
             Field("parent", { opt(Str) }, optional = false, nullable = true),
+            Field("delete", { CanDelete.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> ColumnRow(a[0] as Long, a[1] as String?, a[2] as Boolean, a[3] as String, a[4] as String?) },
-            { v -> arrayOf(v.at, v.section, v.placed, v.sid, v.parent) },
+            { a -> ColumnRow(a[0] as Long, a[1] as String?, a[2] as Boolean, a[3] as String, a[4] as String?, a[5] as CanDelete) },
+            { v -> arrayOf(v.at, v.section, v.placed, v.sid, v.parent, v.delete) },
         )
     }
 }
@@ -5152,69 +5743,18 @@ data class Cursor(
     }
 }
 
-enum class DataClass(val wire: String) {
-    TRUTH("truth"),
-    CACHE("cache"),
+enum class Cut(val wire: String) {
+    MACHINE("machine"),
+    MONITOR("monitor"),
     ;
 
     companion object {
-        val ADAPTER: JsonAdapter<DataClass> = enumOf(entries) { it.wire }
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class DataPathInfo(
-    val label: String,
-    val `class`: DataClass,
-    val path: String,
-    val kind: String,
-    val description: String,
-    val exists: Boolean,
-    val sizeText: String? = null,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<DataPathInfo> = obj(
-            listOf(
-            Field("label", { Str }, optional = false, nullable = false),
-            Field("class", { DataClass.ADAPTER }, optional = false, nullable = false),
-            Field("path", { Str }, optional = false, nullable = false),
-            Field("kind", { Str }, optional = false, nullable = false),
-            Field("description", { Str }, optional = false, nullable = false),
-            Field("exists", { Bool }, optional = false, nullable = false),
-            Field("sizeText", { opt(Str) }, optional = true, nullable = true),
-            ),
-            { a -> DataPathInfo(a[0] as String, a[1] as DataClass, a[2] as String, a[3] as String, a[4] as String, a[5] as Boolean, a[6] as String?) },
-            { v -> arrayOf(v.label, v.`class`, v.path, v.kind, v.description, v.exists, v.sizeText) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class DataPathsResponse(
-    val monitorDataDir: String,
-    val entries: List<DataPathInfo>,
-    val webviewUserDataDir: DataPathInfo?,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<DataPathsResponse> = obj(
-            listOf(
-            Field("monitorDataDir", { Str }, optional = false, nullable = false),
-            Field("entries", { arr(DataPathInfo.ADAPTER) }, optional = false, nullable = false),
-            Field("webviewUserDataDir", { opt(DataPathInfo.ADAPTER) }, optional = false, nullable = true),
-            ),
-            { a -> DataPathsResponse(a[0] as String, a[1] as List<DataPathInfo>, a[2] as DataPathInfo?) },
-            { v -> arrayOf(v.monitorDataDir, v.entries, v.webviewUserDataDir) },
-        )
+        val ADAPTER: JsonAdapter<Cut> = enumOf(entries) { it.wire }
     }
 }
 
 @Suppress("UNCHECKED_CAST")
 data class DataReport(
-    val home: String,
     val changedFiles: List<ChangedFile>,
     val todo: List<Chore>,
     val tmux: Boolean?,
@@ -5227,7 +5767,6 @@ data class DataReport(
     companion object {
         val ADAPTER: JsonAdapter<DataReport> = obj(
             listOf(
-            Field("home", { Str }, optional = false, nullable = false),
             Field("changedFiles", { arr(ChangedFile.ADAPTER) }, optional = false, nullable = false),
             Field("todo", { arr(Chore.ADAPTER) }, optional = false, nullable = false),
             Field("tmux", { opt(Bool) }, optional = false, nullable = true),
@@ -5235,8 +5774,8 @@ data class DataReport(
             Field("rank", { Int32 }, optional = false, nullable = false),
             Field("own", { arr(OwnItem.ADAPTER) }, optional = false, nullable = false),
             ),
-            { a -> DataReport(a[0] as String, a[1] as List<ChangedFile>, a[2] as List<Chore>, a[3] as Boolean?, a[4] as ChoreCounts, a[5] as Int, a[6] as List<OwnItem>) },
-            { v -> arrayOf(v.home, v.changedFiles, v.todo, v.tmux, v.counts, v.rank, v.own) },
+            { a -> DataReport(a[0] as List<ChangedFile>, a[1] as List<Chore>, a[2] as Boolean?, a[3] as ChoreCounts, a[4] as Int, a[5] as List<OwnItem>) },
+            { v -> arrayOf(v.changedFiles, v.todo, v.tmux, v.counts, v.rank, v.own) },
         )
     }
 }
@@ -5273,24 +5812,12 @@ data class DeleteItem(
     }
 }
 
-enum class DeployAct(val wire: String) {
-    SKIP("skip"),
-    DEPLOY("deploy"),
-    KEEP("keep"),
-    ;
-
-    companion object {
-        val ADAPTER: JsonAdapter<DeployAct> = enumOf(entries) { it.wire }
-    }
-}
-
 sealed interface DeployEnd {
     /** 判别格（`end`）那个词。 */
     val end: String
 
     @Suppress("UNCHECKED_CAST")
     data class Done(
-        val act: DeployAct,
         val text: String,
     ) : DeployEnd, Ordered {
         override val end: String get() = "done"
@@ -5315,11 +5842,10 @@ sealed interface DeployEnd {
                 Variant("done", DeployEnd.Done::class.java, obj(
                         listOf(
                         Field("end", { tag("done") }, optional = false, nullable = false),
-                        Field("act", { DeployAct.ADAPTER }, optional = false, nullable = false),
                         Field("text", { Str }, optional = false, nullable = false),
                         ),
-                        { a -> DeployEnd.Done(a[1] as DeployAct, a[2] as String) },
-                        { v -> arrayOf("done", v.act, v.text) },
+                        { a -> DeployEnd.Done(a[1] as String) },
+                        { v -> arrayOf("done", v.text) },
                     )),
                 Variant("failed", DeployEnd.Failed::class.java, obj(
                         listOf(
@@ -5367,6 +5893,46 @@ data class DeployUninstallReq(
             ),
             { a -> DeployUninstallReq(a[0] as String) },
             { v -> arrayOf(v.machine) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class DeskEntry(
+    val item: Raw,
+    val text: String,
+    val why: String?,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<DeskEntry> = obj(
+            listOf(
+            Field("item", { RawJson }, optional = false, nullable = false),
+            Field("text", { Str }, optional = false, nullable = false),
+            Field("why", { opt(Str) }, optional = false, nullable = true),
+            ),
+            { a -> DeskEntry(a[0] as Raw, a[1] as String, a[2] as String?) },
+            { v -> arrayOf(v.item, v.text, v.why) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class DeskMenu(
+    val groups: List<List<DeskEntry>>,
+    val acts: List<ActState>,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<DeskMenu> = obj(
+            listOf(
+            Field("groups", { arr(arr(DeskEntry.ADAPTER)) }, optional = false, nullable = false),
+            Field("acts", { arr(ActState.ADAPTER) }, optional = false, nullable = false),
+            ),
+            { a -> DeskMenu(a[0] as List<List<DeskEntry>>, a[1] as List<ActState>) },
+            { v -> arrayOf(v.groups, v.acts) },
         )
     }
 }
@@ -5442,13 +6008,8 @@ data class DialAck(
     val said: String?,
     val detail: String? = null,
     val fingerprint: String?,
-    val endpoint: String?,
-    val winner: Endpoint?,
-    val reason: DialWhy?,
     val keyType: String? = null,
     val expectedFingerprint: String? = null,
-    val v: Int,
-    val uses: List<String>,
     val unreached: Boolean,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -5460,17 +6021,12 @@ data class DialAck(
             Field("said", { opt(Str) }, optional = false, nullable = true),
             Field("detail", { opt(Str) }, optional = true, nullable = true),
             Field("fingerprint", { opt(Str) }, optional = false, nullable = true),
-            Field("endpoint", { opt(Str) }, optional = false, nullable = true),
-            Field("winner", { opt(Endpoint.ADAPTER) }, optional = false, nullable = true),
-            Field("reason", { opt(DialWhy.ADAPTER) }, optional = false, nullable = true),
             Field("key_type", { opt(Str) }, optional = true, nullable = true),
             Field("expected_fingerprint", { opt(Str) }, optional = true, nullable = true),
-            Field("v", { Int32 }, optional = false, nullable = false),
-            Field("uses", { arr(Str) }, optional = false, nullable = false),
             Field("unreached", { Bool }, optional = false, nullable = false),
             ),
-            { a -> DialAck(a[0] as Boolean, a[1] as String?, a[2] as String?, a[3] as String?, a[4] as String?, a[5] as Endpoint?, a[6] as DialWhy?, a[7] as String?, a[8] as String?, a[9] as Int, a[10] as List<String>, a[11] as Boolean) },
-            { v -> arrayOf(v.ok, v.said, v.detail, v.fingerprint, v.endpoint, v.winner, v.reason, v.keyType, v.expectedFingerprint, v.v, v.uses, v.unreached) },
+            { a -> DialAck(a[0] as Boolean, a[1] as String?, a[2] as String?, a[3] as String?, a[4] as String?, a[5] as String?, a[6] as Boolean) },
+            { v -> arrayOf(v.ok, v.said, v.detail, v.fingerprint, v.keyType, v.expectedFingerprint, v.unreached) },
         )
     }
 }
@@ -5598,7 +6154,7 @@ enum class DialWhy(val wire: String) {
 
 @Suppress("UNCHECKED_CAST")
 data class DirChecked(
-    val exists: Boolean,
+    val said: String?,
     val shown: String,
     val tmuxName: String?,
 ) : Ordered {
@@ -5607,12 +6163,12 @@ data class DirChecked(
     companion object {
         val ADAPTER: JsonAdapter<DirChecked> = obj(
             listOf(
-            Field("exists", { Bool }, optional = false, nullable = false),
+            Field("said", { opt(Str) }, optional = false, nullable = true),
             Field("shown", { Str }, optional = false, nullable = false),
             Field("tmuxName", { opt(Str) }, optional = false, nullable = true),
             ),
-            { a -> DirChecked(a[0] as Boolean, a[1] as String, a[2] as String?) },
-            { v -> arrayOf(v.exists, v.shown, v.tmuxName) },
+            { a -> DirChecked(a[0] as String?, a[1] as String, a[2] as String?) },
+            { v -> arrayOf(v.said, v.shown, v.tmuxName) },
         )
     }
 }
@@ -5632,25 +6188,6 @@ data class Doc(
             ),
             { a -> Doc(a[0] as List<MdBlock>, a[1] as List<Int>) },
             { v -> arrayOf(v.blocks, v.segs) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class DownloadItem(
-    val remotePath: String,
-    val name: WirePath? = null,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<DownloadItem> = obj(
-            listOf(
-            Field("remote_path", { Str }, optional = false, nullable = false),
-            Field("name", { opt(WirePath.ADAPTER) }, optional = true, nullable = true),
-            ),
-            { a -> DownloadItem(a[0] as String, a[1] as WirePath?) },
-            { v -> arrayOf(v.remotePath, v.name) },
         )
     }
 }
@@ -5708,6 +6245,7 @@ data class DriftFaceReport(
 @Suppress("UNCHECKED_CAST")
 data class DriftReport(
     val faces: List<DriftFaceReport>,
+    val said: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -5715,9 +6253,10 @@ data class DriftReport(
         val ADAPTER: JsonAdapter<DriftReport> = obj(
             listOf(
             Field("faces", { arr(DriftFaceReport.ADAPTER) }, optional = false, nullable = false),
+            Field("said", { Str }, optional = false, nullable = false),
             ),
-            { a -> DriftReport(a[0] as List<DriftFaceReport>) },
-            { v -> arrayOf(v.faces) },
+            { a -> DriftReport(a[0] as List<DriftFaceReport>, a[1] as String) },
+            { v -> arrayOf(v.faces, v.said) },
         )
     }
 }
@@ -5805,7 +6344,7 @@ enum class EnvTier(val wire: String) {
 
 @Suppress("UNCHECKED_CAST")
 data class ExitPolicy(
-    val state: ExitPolicyState,
+    val state: FileState,
     val killOnExit: Boolean,
     val reason: String?,
     val detail: String?,
@@ -5817,14 +6356,14 @@ data class ExitPolicy(
     companion object {
         val ADAPTER: JsonAdapter<ExitPolicy> = obj(
             listOf(
-            Field("state", { ExitPolicyState.ADAPTER }, optional = false, nullable = false),
+            Field("state", { FileState.ADAPTER }, optional = false, nullable = false),
             Field("killOnExit", { Bool }, optional = false, nullable = false),
             Field("reason", { opt(Str) }, optional = false, nullable = true),
             Field("detail", { opt(Str) }, optional = false, nullable = true),
             Field("path", { opt(Str) }, optional = false, nullable = true),
             Field("said", { Str }, optional = false, nullable = false),
             ),
-            { a -> ExitPolicy(a[0] as ExitPolicyState, a[1] as Boolean, a[2] as String?, a[3] as String?, a[4] as String?, a[5] as String) },
+            { a -> ExitPolicy(a[0] as FileState, a[1] as Boolean, a[2] as String?, a[3] as String?, a[4] as String?, a[5] as String) },
             { v -> arrayOf(v.state, v.killOnExit, v.reason, v.detail, v.path, v.said) },
         )
     }
@@ -5848,17 +6387,6 @@ data class ExitPolicySetReq(
             { a -> ExitPolicySetReq(a[0] as Boolean) },
             { v -> arrayOf(v.killOnExit) },
         )
-    }
-}
-
-enum class ExitPolicyState(val wire: String) {
-    ABSENT("absent"),
-    CHOSEN("chosen"),
-    UNREADABLE("unreadable"),
-    ;
-
-    companion object {
-        val ADAPTER: JsonAdapter<ExitPolicyState> = enumOf(entries) { it.wire }
     }
 }
 
@@ -6122,7 +6650,6 @@ data class ExtMachine(
     val here: Boolean,
     val reachable: Boolean,
     val name: String,
-    val projects: List<String>,
     val mcp: Raw? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -6134,11 +6661,10 @@ data class ExtMachine(
             Field("here", { Bool }, optional = false, nullable = false),
             Field("reachable", { Bool }, optional = false, nullable = false),
             Field("name", { Str }, optional = false, nullable = false),
-            Field("projects", { arr(Str) }, optional = false, nullable = false),
             Field("mcp", { opt(RawJson) }, optional = true, nullable = true),
             ),
-            { a -> ExtMachine(a[0] as String?, a[1] as Boolean, a[2] as Boolean, a[3] as String, a[4] as List<String>, a[5] as Raw?) },
-            { v -> arrayOf(v.key, v.here, v.reachable, v.name, v.projects, v.mcp) },
+            { a -> ExtMachine(a[0] as String?, a[1] as Boolean, a[2] as Boolean, a[3] as String, a[4] as Raw?) },
+            { v -> arrayOf(v.key, v.here, v.reachable, v.name, v.mcp) },
         )
     }
 }
@@ -6164,6 +6690,7 @@ data class ExtNote(
 data class ExtNoteReq(
     val kind: ExtKind,
     val name: String,
+    val agent: String? = null,
     val text: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -6173,10 +6700,11 @@ data class ExtNoteReq(
             listOf(
             Field("kind", { ExtKind.ADAPTER }, optional = false, nullable = false),
             Field("name", { Str }, optional = false, nullable = false),
+            Field("agent", { opt(Str) }, optional = true, nullable = true),
             Field("text", { Str }, optional = false, nullable = false),
             ),
-            { a -> ExtNoteReq(a[0] as ExtKind, a[1] as String, a[2] as String) },
-            { v -> arrayOf(v.kind, v.name, v.text) },
+            { a -> ExtNoteReq(a[0] as ExtKind, a[1] as String, a[2] as String?, a[3] as String) },
+            { v -> arrayOf(v.kind, v.name, v.agent, v.text) },
         )
     }
 }
@@ -6212,6 +6740,8 @@ data class ExtPlace(
 
 @Suppress("UNCHECKED_CAST")
 data class ExtRow(
+    val agent: String? = null,
+    val agentSaid: String? = null,
     val kind: ExtKind,
     val kindSaid: String,
     val name: String,
@@ -6221,12 +6751,18 @@ data class ExtRow(
     val known: ExtKnown?,
     val note: String?,
     val cells: List<ExtCell>,
+    val variant: Int? = null,
+    val picks: List<Long?>? = null,
+    val heldSaid: String? = null,
+    val source: ExtSource? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
     companion object {
         val ADAPTER: JsonAdapter<ExtRow> = obj(
             listOf(
+            Field("agent", { opt(Str) }, optional = true, nullable = true),
+            Field("agentSaid", { opt(Str) }, optional = true, nullable = true),
             Field("kind", { ExtKind.ADAPTER }, optional = false, nullable = false),
             Field("kindSaid", { Str }, optional = false, nullable = false),
             Field("name", { Str }, optional = false, nullable = false),
@@ -6236,9 +6772,13 @@ data class ExtRow(
             Field("known", { opt(ExtKnown.ADAPTER) }, optional = false, nullable = true),
             Field("note", { opt(Str) }, optional = false, nullable = true),
             Field("cells", { arr(ExtCell.ADAPTER) }, optional = false, nullable = false),
+            Field("variant", { opt(Int32) }, optional = true, nullable = true),
+            Field("picks", { opt(arr(opt(Lng))) }, optional = true, nullable = true),
+            Field("heldSaid", { opt(Str) }, optional = true, nullable = true),
+            Field("source", { opt(ExtSource.ADAPTER) }, optional = true, nullable = true),
             ),
-            { a -> ExtRow(a[0] as ExtKind, a[1] as String, a[2] as String, a[3] as String?, a[4] as List<ExtDetail>, a[5] as Boolean, a[6] as ExtKnown?, a[7] as String?, a[8] as List<ExtCell>) },
-            { v -> arrayOf(v.kind, v.kindSaid, v.name, v.about, v.detail, v.new, v.known, v.note, v.cells) },
+            { a -> ExtRow(a[0] as String?, a[1] as String?, a[2] as ExtKind, a[3] as String, a[4] as String, a[5] as String?, a[6] as List<ExtDetail>, a[7] as Boolean, a[8] as ExtKnown?, a[9] as String?, a[10] as List<ExtCell>, a[11] as Int?, a[12] as List<Long?>?, a[13] as String?, a[14] as ExtSource?) },
+            { v -> arrayOf(v.agent, v.agentSaid, v.kind, v.kindSaid, v.name, v.about, v.detail, v.new, v.known, v.note, v.cells, v.variant, v.picks, v.heldSaid, v.source) },
         )
     }
 }
@@ -6279,6 +6819,25 @@ data class ExtSlot(
             ),
             { a -> ExtSlot(a[0] as String, a[1] as String, a[2] as Boolean) },
             { v -> arrayOf(v.field, v.key, v.kept) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class ExtSource(
+    val key: String,
+    val said: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<ExtSource> = obj(
+            listOf(
+            Field("key", { Str }, optional = false, nullable = false),
+            Field("said", { Str }, optional = false, nullable = false),
+            ),
+            { a -> ExtSource(a[0] as String, a[1] as String) },
+            { v -> arrayOf(v.key, v.said) },
         )
     }
 }
@@ -6340,6 +6899,8 @@ data class ExtTokens(
 data class ExtUninstallApplyReq(
     val kind: ExtKind,
     val name: String,
+    val agent: String? = null,
+    val source: String? = null,
     val at: ExtLoc,
     val token: String,
 ) : Ordered {
@@ -6350,11 +6911,13 @@ data class ExtUninstallApplyReq(
             listOf(
             Field("kind", { ExtKind.ADAPTER }, optional = false, nullable = false),
             Field("name", { Str }, optional = false, nullable = false),
+            Field("agent", { opt(Str) }, optional = true, nullable = true),
+            Field("source", { opt(Str) }, optional = true, nullable = true),
             Field("at", { ExtLoc.ADAPTER }, optional = false, nullable = false),
             Field("token", { Str }, optional = false, nullable = false),
             ),
-            { a -> ExtUninstallApplyReq(a[0] as ExtKind, a[1] as String, a[2] as ExtLoc, a[3] as String) },
-            { v -> arrayOf(v.kind, v.name, v.at, v.token) },
+            { a -> ExtUninstallApplyReq(a[0] as ExtKind, a[1] as String, a[2] as String?, a[3] as String?, a[4] as ExtLoc, a[5] as String) },
+            { v -> arrayOf(v.kind, v.name, v.agent, v.source, v.at, v.token) },
         )
     }
 }
@@ -6363,6 +6926,7 @@ data class ExtUninstallApplyReq(
 data class ExtUninstallCard(
     val kind: ExtKind,
     val name: String,
+    val agent: String? = null,
     val path: String,
     val recorded: Boolean,
     val files: List<String>,
@@ -6377,6 +6941,7 @@ data class ExtUninstallCard(
             listOf(
             Field("kind", { ExtKind.ADAPTER }, optional = false, nullable = false),
             Field("name", { Str }, optional = false, nullable = false),
+            Field("agent", { opt(Str) }, optional = true, nullable = true),
             Field("path", { Str }, optional = false, nullable = false),
             Field("recorded", { Bool }, optional = false, nullable = false),
             Field("files", { arr(Str) }, optional = false, nullable = false),
@@ -6384,8 +6949,8 @@ data class ExtUninstallCard(
             Field("said", { Str }, optional = false, nullable = false),
             Field("token", { Str }, optional = false, nullable = false),
             ),
-            { a -> ExtUninstallCard(a[0] as ExtKind, a[1] as String, a[2] as String, a[3] as Boolean, a[4] as List<String>, a[5] as String?, a[6] as String, a[7] as String) },
-            { v -> arrayOf(v.kind, v.name, v.path, v.recorded, v.files, v.backup, v.said, v.token) },
+            { a -> ExtUninstallCard(a[0] as ExtKind, a[1] as String, a[2] as String?, a[3] as String, a[4] as Boolean, a[5] as List<String>, a[6] as String?, a[7] as String, a[8] as String) },
+            { v -> arrayOf(v.kind, v.name, v.agent, v.path, v.recorded, v.files, v.backup, v.said, v.token) },
         )
     }
 }
@@ -6394,6 +6959,8 @@ data class ExtUninstallCard(
 data class ExtUninstallReq(
     val kind: ExtKind,
     val name: String,
+    val agent: String? = null,
+    val source: String? = null,
     val at: ExtLoc,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -6403,10 +6970,12 @@ data class ExtUninstallReq(
             listOf(
             Field("kind", { ExtKind.ADAPTER }, optional = false, nullable = false),
             Field("name", { Str }, optional = false, nullable = false),
+            Field("agent", { opt(Str) }, optional = true, nullable = true),
+            Field("source", { opt(Str) }, optional = true, nullable = true),
             Field("at", { ExtLoc.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> ExtUninstallReq(a[0] as ExtKind, a[1] as String, a[2] as ExtLoc) },
-            { v -> arrayOf(v.kind, v.name, v.at) },
+            { a -> ExtUninstallReq(a[0] as ExtKind, a[1] as String, a[2] as String?, a[3] as String?, a[4] as ExtLoc) },
+            { v -> arrayOf(v.kind, v.name, v.agent, v.source, v.at) },
         )
     }
 }
@@ -6467,6 +7036,7 @@ enum class FactWhy(val wire: String) {
     USED("used"),
     LOGIN("login"),
     KEY("key"),
+    BASE_UNTOUCHED("baseUntouched"),
     ;
 
     companion object {
@@ -6556,6 +7126,7 @@ data class FactsClock(
 data class FactsReply(
     val path: String? = null,
     val touchedFiles: List<String>,
+    val touchedText: String? = null,
     val usage: UsageFact?,
     val modelText: String?,
     val modelPick: String?,
@@ -6592,6 +7163,7 @@ data class FactsReply(
             listOf(
             Field("path", { opt(Str) }, optional = true, nullable = true),
             Field("touchedFiles", { arr(Str) }, optional = false, nullable = false),
+            Field("touchedText", { opt(Str) }, optional = true, nullable = true),
             Field("usage", { opt(UsageFact.ADAPTER) }, optional = false, nullable = true),
             Field("modelText", { opt(Str) }, optional = false, nullable = true),
             Field("modelPick", { opt(Str) }, optional = false, nullable = true),
@@ -6621,8 +7193,8 @@ data class FactsReply(
             Field("startedByText", { opt(Str) }, optional = false, nullable = true),
             Field("childrenText", { opt(Str) }, optional = false, nullable = true),
             ),
-            { a -> FactsReply(a[0] as String?, a[1] as List<String>, a[2] as UsageFact?, a[3] as String?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as String?, a[8] as String?, a[9] as List<Int>, a[10] as String?, a[11] as String?, a[12] as String?, a[13] as List<PendingCall>, a[14] as LastSay?, a[15] as Needs?, a[16] as List<RetryRun>, a[17] as List<NoticeRun>, a[18] as String?, a[19] as String?, a[20] as TokenUse?, a[21] as FactsBackground?, a[22] as Int?, a[23] as List<AutoChoice>, a[24] as AskEnd?, a[25] as List<McpTrouble>, a[26] as Kin?, a[27] as List<Kin>, a[28] as String?, a[29] as String?) },
-            { v -> arrayOf(v.path, v.touchedFiles, v.usage, v.modelText, v.modelPick, v.projectDir, v.cwdShown, v.projectName, v.agent, v.writers, v.writersLine, v.forkedLine, v.whereLine, v.pending, v.lastSay, v.needs, v.retries, v.notices, v.permissionMode, v.permissionModeText, v.tokens, v.background, v.autoAnswer, v.autoAnswerChoices, v.askEnd, v.mcp, v.startedBy, v.children, v.startedByText, v.childrenText) },
+            { a -> FactsReply(a[0] as String?, a[1] as List<String>, a[2] as String?, a[3] as UsageFact?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as String?, a[8] as String?, a[9] as String?, a[10] as List<Int>, a[11] as String?, a[12] as String?, a[13] as String?, a[14] as List<PendingCall>, a[15] as LastSay?, a[16] as Needs?, a[17] as List<RetryRun>, a[18] as List<NoticeRun>, a[19] as String?, a[20] as String?, a[21] as TokenUse?, a[22] as FactsBackground?, a[23] as Int?, a[24] as List<AutoChoice>, a[25] as AskEnd?, a[26] as List<McpTrouble>, a[27] as Kin?, a[28] as List<Kin>, a[29] as String?, a[30] as String?) },
+            { v -> arrayOf(v.path, v.touchedFiles, v.touchedText, v.usage, v.modelText, v.modelPick, v.projectDir, v.cwdShown, v.projectName, v.agent, v.writers, v.writersLine, v.forkedLine, v.whereLine, v.pending, v.lastSay, v.needs, v.retries, v.notices, v.permissionMode, v.permissionModeText, v.tokens, v.background, v.autoAnswer, v.autoAnswerChoices, v.askEnd, v.mcp, v.startedBy, v.children, v.startedByText, v.childrenText) },
         )
     }
 }
@@ -6646,6 +7218,33 @@ data class Failed(
             ),
             { a -> Failed(a[0] as String, a[1] as String, a[2] as String, a[3] as Raw?) },
             { v -> arrayOf(v.code, v.said, v.detail, v.data) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class FamilyHooks(
+    val kind: String,
+    val name: String,
+    val diagnosis: HooksDiagnosis,
+    val snippet: String?,
+    val source: String,
+    val trust: HookTrustDiagnosis?,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<FamilyHooks> = obj(
+            listOf(
+            Field("kind", { Str }, optional = false, nullable = false),
+            Field("name", { Str }, optional = false, nullable = false),
+            Field("diagnosis", { HooksDiagnosis.ADAPTER }, optional = false, nullable = false),
+            Field("snippet", { opt(Str) }, optional = false, nullable = true),
+            Field("source", { Str }, optional = false, nullable = false),
+            Field("trust", { opt(HookTrustDiagnosis.ADAPTER) }, optional = false, nullable = true),
+            ),
+            { a -> FamilyHooks(a[0] as String, a[1] as String, a[2] as HooksDiagnosis, a[3] as String?, a[4] as String, a[5] as HookTrustDiagnosis?) },
+            { v -> arrayOf(v.kind, v.name, v.diagnosis, v.snippet, v.source, v.trust) },
         )
     }
 }
@@ -6686,6 +7285,23 @@ enum class FileState(val wire: String) {
 
     companion object {
         val ADAPTER: JsonAdapter<FileState> = enumOf(entries) { it.wire }
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class FilesArchiveSessionReq(
+    val sid: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<FilesArchiveSessionReq> = obj(
+            listOf(
+            Field("sid", { Str }, optional = false, nullable = false),
+            ),
+            { a -> FilesArchiveSessionReq(a[0] as String) },
+            { v -> arrayOf(v.sid) },
+        )
     }
 }
 
@@ -6920,6 +7536,7 @@ data class FilesFindHit(
     val `class`: FileClass,
     val location: WirePath,
     val size: Long?,
+    val sizeText: String? = null,
     val mtimeSecs: Long?,
     val mtimeText: String?,
     val marks: List<FilesFindHitMarks>,
@@ -6934,12 +7551,13 @@ data class FilesFindHit(
             Field("class", { FileClass.ADAPTER }, optional = false, nullable = false),
             Field("location", { WirePath.ADAPTER }, optional = false, nullable = false),
             Field("size", { opt(U64) }, optional = false, nullable = true),
+            Field("size_text", { opt(Str) }, optional = true, nullable = true),
             Field("mtime_secs", { opt(U64) }, optional = false, nullable = true),
             Field("mtime_text", { opt(Str) }, optional = false, nullable = true),
             Field("marks", { arr(FilesFindHitMarks.ADAPTER) }, optional = false, nullable = false),
             ),
-            { a -> FilesFindHit(a[0] as WirePath, a[1] as FileKind, a[2] as FileClass, a[3] as WirePath, a[4] as Long?, a[5] as Long?, a[6] as String?, a[7] as List<FilesFindHitMarks>) },
-            { v -> arrayOf(v.path, v.kind, v.`class`, v.location, v.size, v.mtimeSecs, v.mtimeText, v.marks) },
+            { a -> FilesFindHit(a[0] as WirePath, a[1] as FileKind, a[2] as FileClass, a[3] as WirePath, a[4] as Long?, a[5] as String?, a[6] as Long?, a[7] as String?, a[8] as List<FilesFindHitMarks>) },
+            { v -> arrayOf(v.path, v.kind, v.`class`, v.location, v.size, v.sizeText, v.mtimeSecs, v.mtimeText, v.marks) },
         )
     }
 }
@@ -6954,6 +7572,27 @@ data class FilesFindHitMarks(
             listOf({ Lng }, { Lng }),
             { a -> FilesFindHitMarks(a[0] as Long, a[1] as Long) },
             { v -> arrayOf(v.p0, v.p1) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class FilesMenuReq(
+    val picked: List<LsEntry>,
+    val here: Here,
+    val plan: String?,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<FilesMenuReq> = obj(
+            listOf(
+            Field("picked", { arr(LsEntry.ADAPTER) }, optional = false, nullable = false),
+            Field("here", { Here.ADAPTER }, optional = false, nullable = false),
+            Field("plan", { opt(Str) }, optional = false, nullable = true),
+            ),
+            { a -> FilesMenuReq(a[0] as List<LsEntry>, a[1] as Here, a[2] as String?) },
+            { v -> arrayOf(v.picked, v.here, v.plan) },
         )
     }
 }
@@ -7080,6 +7719,7 @@ data class FilesStageChunkReq(
 data class FilesTreeReply(
     val path: WirePath,
     val bytes: Long,
+    val sizeText: String,
     val files: Long,
     val dirs: Long,
     val links: Long,
@@ -7091,12 +7731,30 @@ data class FilesTreeReply(
             listOf(
             Field("path", { WirePath.ADAPTER }, optional = false, nullable = false),
             Field("bytes", { U64 }, optional = false, nullable = false),
+            Field("size_text", { Str }, optional = false, nullable = false),
             Field("files", { U64 }, optional = false, nullable = false),
             Field("dirs", { U64 }, optional = false, nullable = false),
             Field("links", { U64 }, optional = false, nullable = false),
             ),
-            { a -> FilesTreeReply(a[0] as WirePath, a[1] as Long, a[2] as Long, a[3] as Long, a[4] as Long) },
-            { v -> arrayOf(v.path, v.bytes, v.files, v.dirs, v.links) },
+            { a -> FilesTreeReply(a[0] as WirePath, a[1] as Long, a[2] as String, a[3] as Long, a[4] as Long, a[5] as Long) },
+            { v -> arrayOf(v.path, v.bytes, v.sizeText, v.files, v.dirs, v.links) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class FilesUnarchiveSessionReq(
+    val sid: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<FilesUnarchiveSessionReq> = obj(
+            listOf(
+            Field("sid", { Str }, optional = false, nullable = false),
+            ),
+            { a -> FilesUnarchiveSessionReq(a[0] as String) },
+            { v -> arrayOf(v.sid) },
         )
     }
 }
@@ -7146,6 +7804,25 @@ data class FilesWrittenReply(
 }
 
 @Suppress("UNCHECKED_CAST")
+data class FilewinBusy(
+    val unsaved: Int,
+    val running: Int,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<FilewinBusy> = obj(
+            listOf(
+            Field("unsaved", { Int32 }, optional = false, nullable = false),
+            Field("running", { Int32 }, optional = false, nullable = false),
+            ),
+            { a -> FilewinBusy(a[0] as Int, a[1] as Int) },
+            { v -> arrayOf(v.unsaved, v.running) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class FilewinTotals(
     val windows: Long,
     val unsaved: Long,
@@ -7170,12 +7847,11 @@ data class FilewinTotals(
 data class FindHit(
     val uuid: String,
     val line: Long,
-    val kind: String,
     val before: String,
     val matched: String,
     val after: String,
     val turn: Long,
-    val tsText: String,
+    val meta: String,
     val tool: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -7185,16 +7861,15 @@ data class FindHit(
             listOf(
             Field("uuid", { Str }, optional = false, nullable = false),
             Field("line", { U64 }, optional = false, nullable = false),
-            Field("kind", { Str }, optional = false, nullable = false),
             Field("before", { Str }, optional = false, nullable = false),
             Field("matched", { Str }, optional = false, nullable = false),
             Field("after", { Str }, optional = false, nullable = false),
             Field("turn", { U64 }, optional = false, nullable = false),
-            Field("tsText", { Str }, optional = false, nullable = false),
+            Field("meta", { Str }, optional = false, nullable = false),
             Field("tool", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> FindHit(a[0] as String, a[1] as Long, a[2] as String, a[3] as String, a[4] as String, a[5] as String, a[6] as Long, a[7] as String, a[8] as String?) },
-            { v -> arrayOf(v.uuid, v.line, v.kind, v.before, v.matched, v.after, v.turn, v.tsText, v.tool) },
+            { a -> FindHit(a[0] as String, a[1] as Long, a[2] as String, a[3] as String, a[4] as String, a[5] as Long, a[6] as String, a[7] as String?) },
+            { v -> arrayOf(v.uuid, v.line, v.before, v.matched, v.after, v.turn, v.meta, v.tool) },
         )
     }
 }
@@ -7525,6 +8200,7 @@ data class FollowReq(
 data class FootprintClient(
     val home: String,
     val path: String? = null,
+    val webview: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -7533,9 +8209,10 @@ data class FootprintClient(
             listOf(
             Field("home", { Str }, optional = false, nullable = false),
             Field("path", { opt(Str) }, optional = true, nullable = true),
+            Field("webview", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> FootprintClient(a[0] as String, a[1] as String?) },
-            { v -> arrayOf(v.home, v.path) },
+            { a -> FootprintClient(a[0] as String, a[1] as String?, a[2] as String?) },
+            { v -> arrayOf(v.home, v.path, v.webview) },
         )
     }
 }
@@ -7563,6 +8240,7 @@ data class ForkFacts(
     val launch: ForkLaunch,
     val turn: Long?,
     val startText: String?,
+    val fromText: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -7573,9 +8251,10 @@ data class ForkFacts(
             Field("launch", { ForkLaunch.ADAPTER }, optional = false, nullable = false),
             Field("turn", { opt(U64) }, optional = false, nullable = true),
             Field("startText", { opt(Str) }, optional = false, nullable = true),
+            Field("fromText", { Str }, optional = false, nullable = false),
             ),
-            { a -> ForkFacts(a[0] as String, a[1] as ForkLaunch, a[2] as Long?, a[3] as String?) },
-            { v -> arrayOf(v.agent, v.launch, v.turn, v.startText) },
+            { a -> ForkFacts(a[0] as String, a[1] as ForkLaunch, a[2] as Long?, a[3] as String?, a[4] as String) },
+            { v -> arrayOf(v.agent, v.launch, v.turn, v.startText, v.fromText) },
         )
     }
 }
@@ -7794,7 +8473,7 @@ data class ForwardRow(
     val remoteHost: String,
     val remotePort: Int,
     val state: ForwardRowState,
-    val connCount: Long,
+    val said: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -7807,10 +8486,10 @@ data class ForwardRow(
             Field("remoteHost", { Str }, optional = false, nullable = false),
             Field("remotePort", { Int32 }, optional = false, nullable = false),
             Field("state", { ForwardRowState.ADAPTER }, optional = false, nullable = false),
-            Field("connCount", { U64 }, optional = false, nullable = false),
+            Field("said", { Str }, optional = false, nullable = false),
             ),
-            { a -> ForwardRow(a[0] as String, a[1] as String, a[2] as Int, a[3] as String, a[4] as Int, a[5] as ForwardRowState, a[6] as Long) },
-            { v -> arrayOf(v.id, v.origin, v.localPort, v.remoteHost, v.remotePort, v.state, v.connCount) },
+            { a -> ForwardRow(a[0] as String, a[1] as String, a[2] as Int, a[3] as String, a[4] as Int, a[5] as ForwardRowState, a[6] as String) },
+            { v -> arrayOf(v.id, v.origin, v.localPort, v.remoteHost, v.remotePort, v.state, v.said) },
         )
     }
 }
@@ -8109,6 +8788,7 @@ data class GapCount(
     val code: String,
     val count: Long,
     val said: String,
+    val row: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -8118,9 +8798,10 @@ data class GapCount(
             Field("code", { Str }, optional = false, nullable = false),
             Field("count", { Lng }, optional = false, nullable = false),
             Field("said", { Str }, optional = false, nullable = false),
+            Field("row", { Str }, optional = false, nullable = false),
             ),
-            { a -> GapCount(a[0] as String, a[1] as Long, a[2] as String) },
-            { v -> arrayOf(v.code, v.count, v.said) },
+            { a -> GapCount(a[0] as String, a[1] as Long, a[2] as String, a[3] as String) },
+            { v -> arrayOf(v.code, v.count, v.said, v.row) },
         )
     }
 }
@@ -8742,6 +9423,25 @@ data class Held(
 }
 
 @Suppress("UNCHECKED_CAST")
+data class Here(
+    val offline: Cut?,
+    val unavailable: List<String>,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<Here> = obj(
+            listOf(
+            Field("offline", { opt(Cut.ADAPTER) }, optional = false, nullable = true),
+            Field("unavailable", { arr(Str) }, optional = false, nullable = false),
+            ),
+            { a -> Here(a[0] as Cut?, a[1] as List<String>) },
+            { v -> arrayOf(v.offline, v.unavailable) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class HereGroup(
     val id: String,
     val name: String,
@@ -8879,9 +9579,9 @@ enum class HideAsk(val wire: String) {
 @Suppress("UNCHECKED_CAST")
 data class HistoryBrowseHead(
     val machines: List<HistoryMachine>,
-    val projects: Int,
     val grouped: Long,
     val sections: List<HistorySection>,
+    val said: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -8889,12 +9589,12 @@ data class HistoryBrowseHead(
         val ADAPTER: JsonAdapter<HistoryBrowseHead> = obj(
             listOf(
             Field("machines", { arr(HistoryMachine.ADAPTER) }, optional = false, nullable = false),
-            Field("projects", { Int32 }, optional = false, nullable = false),
             Field("grouped", { U64 }, optional = false, nullable = false),
             Field("sections", { arr(HistorySection.ADAPTER) }, optional = false, nullable = false),
+            Field("said", { Str }, optional = false, nullable = false),
             ),
-            { a -> HistoryBrowseHead(a[0] as List<HistoryMachine>, a[1] as Int, a[2] as Long, a[3] as List<HistorySection>) },
-            { v -> arrayOf(v.machines, v.projects, v.grouped, v.sections) },
+            { a -> HistoryBrowseHead(a[0] as List<HistoryMachine>, a[1] as Long, a[2] as List<HistorySection>, a[3] as String) },
+            { v -> arrayOf(v.machines, v.grouped, v.sections, v.said) },
         )
     }
 }
@@ -8967,6 +9667,7 @@ sealed interface HistoryFactsReq {
 
 @Suppress("UNCHECKED_CAST")
 data class HistoryFailedDir(
+    val agent: String,
     val projectDir: String,
     val error: String,
 ) : Ordered {
@@ -8975,11 +9676,12 @@ data class HistoryFailedDir(
     companion object {
         val ADAPTER: JsonAdapter<HistoryFailedDir> = obj(
             listOf(
+            Field("agent", { Str }, optional = false, nullable = false),
             Field("projectDir", { Str }, optional = false, nullable = false),
             Field("error", { Str }, optional = false, nullable = false),
             ),
-            { a -> HistoryFailedDir(a[0] as String, a[1] as String) },
-            { v -> arrayOf(v.projectDir, v.error) },
+            { a -> HistoryFailedDir(a[0] as String, a[1] as String, a[2] as String) },
+            { v -> arrayOf(v.agent, v.projectDir, v.error) },
         )
     }
 }
@@ -9056,11 +9758,12 @@ data class HistoryFold(
 @Suppress("UNCHECKED_CAST")
 data class HistoryGroup(
     val key: String,
-    val agent: String,
+    val agent: String? = null,
     val projectName: String,
     val projectPath: String,
     val projectDir: String,
     val count: Long,
+    val countText: String,
     val hasLive: Boolean?,
     val starred: Boolean,
     val atText: String?,
@@ -9074,11 +9777,12 @@ data class HistoryGroup(
         val ADAPTER: JsonAdapter<HistoryGroup> = obj(
             listOf(
             Field("key", { Str }, optional = false, nullable = false),
-            Field("agent", { Str }, optional = false, nullable = false),
+            Field("agent", { opt(Str) }, optional = true, nullable = true),
             Field("projectName", { Str }, optional = false, nullable = false),
             Field("projectPath", { Str }, optional = false, nullable = false),
             Field("projectDir", { Str }, optional = false, nullable = false),
             Field("count", { U64 }, optional = false, nullable = false),
+            Field("countText", { Str }, optional = false, nullable = false),
             Field("hasLive", { opt(Bool) }, optional = false, nullable = true),
             Field("starred", { Bool }, optional = false, nullable = false),
             Field("atText", { opt(Str) }, optional = false, nullable = true),
@@ -9086,8 +9790,8 @@ data class HistoryGroup(
             Field("failed", { opt(Str) }, optional = false, nullable = true),
             Field("origin", { Str }, optional = false, nullable = false),
             ),
-            { a -> HistoryGroup(a[0] as String, a[1] as String, a[2] as String, a[3] as String, a[4] as String, a[5] as Long, a[6] as Boolean?, a[7] as Boolean, a[8] as String?, a[9] as Long, a[10] as String?, a[11] as String) },
-            { v -> arrayOf(v.key, v.agent, v.projectName, v.projectPath, v.projectDir, v.count, v.hasLive, v.starred, v.atText, v.order, v.failed, v.origin) },
+            { a -> HistoryGroup(a[0] as String, a[1] as String?, a[2] as String, a[3] as String, a[4] as String, a[5] as Long, a[6] as String, a[7] as Boolean?, a[8] as Boolean, a[9] as String?, a[10] as Long, a[11] as String?, a[12] as String) },
+            { v -> arrayOf(v.key, v.agent, v.projectName, v.projectPath, v.projectDir, v.count, v.countText, v.hasLive, v.starred, v.atText, v.order, v.failed, v.origin) },
         )
     }
 }
@@ -9257,6 +9961,7 @@ sealed interface HistoryLine {
         val forks: Int,
         val forksOpen: Boolean,
         val orphan: Boolean,
+        val forksText: String?,
     ) : HistoryLine, Ordered {
         override val kind: String get() = "row"
         override var wireOrder: IntArray? = null
@@ -9284,9 +9989,10 @@ sealed interface HistoryLine {
                         Field("forks", { Int32 }, optional = false, nullable = false),
                         Field("forksOpen", { Bool }, optional = false, nullable = false),
                         Field("orphan", { Bool }, optional = false, nullable = false),
+                        Field("forksText", { opt(Str) }, optional = false, nullable = true),
                         ),
-                        { a -> HistoryLine.Row(a[1] as HistoryRow, a[2] as Boolean, a[3] as Int, a[4] as Boolean, a[5] as Boolean) },
-                        { v -> arrayOf("row", v.row, v.child, v.forks, v.forksOpen, v.orphan) },
+                        { a -> HistoryLine.Row(a[1] as HistoryRow, a[2] as Boolean, a[3] as Int, a[4] as Boolean, a[5] as Boolean, a[6] as String?) },
+                        { v -> arrayOf("row", v.row, v.child, v.forks, v.forksOpen, v.orphan, v.forksText) },
                     )),
                 ),
             )
@@ -9415,6 +10121,7 @@ data class HistoryMachine(
     val origin: String,
     val total: Int,
     val read: HistoryMachineRead,
+    val seen: Long? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -9424,9 +10131,10 @@ data class HistoryMachine(
             Field("origin", { Str }, optional = false, nullable = false),
             Field("total", { Int32 }, optional = false, nullable = false),
             Field("read", { HistoryMachineRead.ADAPTER }, optional = false, nullable = false),
+            Field("seen", { opt(Lng) }, optional = true, nullable = true),
             ),
-            { a -> HistoryMachine(a[0] as String, a[1] as Int, a[2] as HistoryMachineRead) },
-            { v -> arrayOf(v.origin, v.total, v.read) },
+            { a -> HistoryMachine(a[0] as String, a[1] as Int, a[2] as HistoryMachineRead, a[3] as Long?) },
+            { v -> arrayOf(v.origin, v.total, v.read, v.seen) },
         )
     }
 }
@@ -9551,7 +10259,7 @@ data class HistoryPageReq(
 
 @Suppress("UNCHECKED_CAST")
 data class HistoryRawRow(
-    val agent: String,
+    val agent: String? = null,
     val sessionId: String,
     val projectPath: String,
     val projectName: String,
@@ -9562,6 +10270,8 @@ data class HistoryRawRow(
     val updatedAt: Long,
     val jsonlPath: String,
     val life: Life,
+    val housed: SessionContainer? = null,
+    val asks: Boolean,
     val messageCountApprox: Int,
     val isBg: Boolean,
     val starred: Boolean,
@@ -9578,7 +10288,7 @@ data class HistoryRawRow(
     companion object {
         val ADAPTER: JsonAdapter<HistoryRawRow> = obj(
             listOf(
-            Field("agent", { Str }, optional = false, nullable = false),
+            Field("agent", { opt(Str) }, optional = true, nullable = true),
             Field("sessionId", { Str }, optional = false, nullable = false),
             Field("projectPath", { Str }, optional = false, nullable = false),
             Field("projectName", { Str }, optional = false, nullable = false),
@@ -9589,6 +10299,8 @@ data class HistoryRawRow(
             Field("updatedAt", { Lng }, optional = false, nullable = false),
             Field("jsonlPath", { Str }, optional = false, nullable = false),
             Field("life", { Life.ADAPTER }, optional = false, nullable = false),
+            Field("housed", { opt(SessionContainer.ADAPTER) }, optional = true, nullable = true),
+            Field("asks", { Bool }, optional = false, nullable = false),
             Field("messageCountApprox", { Int32 }, optional = false, nullable = false),
             Field("isBg", { Bool }, optional = false, nullable = false),
             Field("starred", { Bool }, optional = false, nullable = false),
@@ -9600,8 +10312,8 @@ data class HistoryRawRow(
             Field("group", { Str }, optional = false, nullable = false),
             Field("lastAccount", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> HistoryRawRow(a[0] as String, a[1] as String, a[2] as String, a[3] as String, a[4] as String?, a[5] as String, a[6] as String, a[7] as Long, a[8] as Long, a[9] as String, a[10] as Life, a[11] as Int, a[12] as Boolean, a[13] as Boolean, a[14] as String?, a[15] as LaunchTab?, a[16] as String?, a[17] as String?, a[18] as String, a[19] as String, a[20] as String?) },
-            { v -> arrayOf(v.agent, v.sessionId, v.projectPath, v.projectName, v.aiTitle, v.firstUserExcerpt, v.title, v.startedAt, v.updatedAt, v.jsonlPath, v.life, v.messageCountApprox, v.isBg, v.starred, v.customTitle, v.launchTab, v.parent, v.forkedFromSessionId, v.projectDir, v.group, v.lastAccount) },
+            { a -> HistoryRawRow(a[0] as String?, a[1] as String, a[2] as String, a[3] as String, a[4] as String?, a[5] as String, a[6] as String, a[7] as Long, a[8] as Long, a[9] as String, a[10] as Life, a[11] as SessionContainer?, a[12] as Boolean, a[13] as Int, a[14] as Boolean, a[15] as Boolean, a[16] as String?, a[17] as LaunchTab?, a[18] as String?, a[19] as String?, a[20] as String, a[21] as String, a[22] as String?) },
+            { v -> arrayOf(v.agent, v.sessionId, v.projectPath, v.projectName, v.aiTitle, v.firstUserExcerpt, v.title, v.startedAt, v.updatedAt, v.jsonlPath, v.life, v.housed, v.asks, v.messageCountApprox, v.isBg, v.starred, v.customTitle, v.launchTab, v.parent, v.forkedFromSessionId, v.projectDir, v.group, v.lastAccount) },
         )
     }
 }
@@ -9669,7 +10381,7 @@ data class HistoryRecordReq(
 
 @Suppress("UNCHECKED_CAST")
 data class HistoryRow(
-    val agent: String,
+    val agent: String? = null,
     val sessionId: String,
     val projectPath: String,
     val projectName: String,
@@ -9692,6 +10404,7 @@ data class HistoryRow(
     val untitled: Boolean,
     val face: SessionFace,
     val can: Can,
+    val archive: RowArchive?,
     val agentTag: String?,
     val context: Boolean? = null,
     val at: Long,
@@ -9707,7 +10420,7 @@ data class HistoryRow(
     companion object {
         val ADAPTER: JsonAdapter<HistoryRow> = obj(
             listOf(
-            Field("agent", { Str }, optional = false, nullable = false),
+            Field("agent", { opt(Str) }, optional = true, nullable = true),
             Field("sessionId", { Str }, optional = false, nullable = false),
             Field("projectPath", { Str }, optional = false, nullable = false),
             Field("projectName", { Str }, optional = false, nullable = false),
@@ -9730,6 +10443,7 @@ data class HistoryRow(
             Field("untitled", { Bool }, optional = false, nullable = false),
             Field("face", { SessionFace.ADAPTER }, optional = false, nullable = false),
             Field("can", { Can.ADAPTER }, optional = false, nullable = false),
+            Field("archive", { opt(RowArchive.ADAPTER) }, optional = false, nullable = true),
             Field("agentTag", { opt(Str) }, optional = false, nullable = true),
             Field("context", { opt(Bool) }, optional = true, nullable = true),
             Field("at", { Lng }, optional = false, nullable = false),
@@ -9740,8 +10454,8 @@ data class HistoryRow(
             Field("reveal", { Bool }, optional = false, nullable = false),
             Field("deleteAsk", { Str }, optional = false, nullable = false),
             ),
-            { a -> HistoryRow(a[0] as String, a[1] as String, a[2] as String, a[3] as String, a[4] as String?, a[5] as String, a[6] as String, a[7] as Long, a[8] as Long, a[9] as String, a[10] as Int, a[11] as Boolean, a[12] as Boolean, a[13] as String?, a[14] as Hidden?, a[15] as String?, a[16] as String, a[17] as String, a[18] as String?, a[19] as String, a[20] as Boolean, a[21] as SessionFace, a[22] as Can, a[23] as String?, a[24] as Boolean?, a[25] as Long, a[26] as String, a[27] as String, a[28] as String, a[29] as String, a[30] as Boolean, a[31] as String) },
-            { v -> arrayOf(v.agent, v.sessionId, v.projectPath, v.projectName, v.aiTitle, v.firstUserExcerpt, v.title, v.startedAt, v.updatedAt, v.jsonlPath, v.messageCountApprox, v.isBg, v.starred, v.customTitle, v.hidden, v.forkedFromSessionId, v.projectDir, v.group, v.lastAccount, v.label, v.untitled, v.face, v.can, v.agentTag, v.context, v.at, v.atText, v.sectionText, v.spanText, v.origin, v.reveal, v.deleteAsk) },
+            { a -> HistoryRow(a[0] as String?, a[1] as String, a[2] as String, a[3] as String, a[4] as String?, a[5] as String, a[6] as String, a[7] as Long, a[8] as Long, a[9] as String, a[10] as Int, a[11] as Boolean, a[12] as Boolean, a[13] as String?, a[14] as Hidden?, a[15] as String?, a[16] as String, a[17] as String, a[18] as String?, a[19] as String, a[20] as Boolean, a[21] as SessionFace, a[22] as Can, a[23] as RowArchive?, a[24] as String?, a[25] as Boolean?, a[26] as Long, a[27] as String, a[28] as String, a[29] as String, a[30] as String, a[31] as Boolean, a[32] as String) },
+            { v -> arrayOf(v.agent, v.sessionId, v.projectPath, v.projectName, v.aiTitle, v.firstUserExcerpt, v.title, v.startedAt, v.updatedAt, v.jsonlPath, v.messageCountApprox, v.isBg, v.starred, v.customTitle, v.hidden, v.forkedFromSessionId, v.projectDir, v.group, v.lastAccount, v.label, v.untitled, v.face, v.can, v.archive, v.agentTag, v.context, v.at, v.atText, v.sectionText, v.spanText, v.origin, v.reveal, v.deleteAsk) },
         )
     }
 }
@@ -9862,7 +10576,7 @@ data class HistorySearchReq(
     val query: String,
     val includeTools: Boolean? = null,
     val scope: SearchScope? = null,
-    val afterMs: Long? = null,
+    val withinDays: Long? = null,
     val limit: Long? = null,
     val titles: Boolean? = null,
 ) : Ordered {
@@ -9874,12 +10588,12 @@ data class HistorySearchReq(
             Field("query", { Str }, optional = false, nullable = false),
             Field("include_tools", { opt(Bool) }, optional = true, nullable = true),
             Field("scope", { opt(SearchScope.ADAPTER) }, optional = true, nullable = true),
-            Field("after_ms", { opt(U64) }, optional = true, nullable = true),
+            Field("within_days", { opt(U64) }, optional = true, nullable = true),
             Field("limit", { opt(U64) }, optional = true, nullable = true),
             Field("titles", { opt(Bool) }, optional = true, nullable = true),
             ),
             { a -> HistorySearchReq(a[0] as String, a[1] as Boolean?, a[2] as SearchScope?, a[3] as Long?, a[4] as Long?, a[5] as Boolean?) },
-            { v -> arrayOf(v.query, v.includeTools, v.scope, v.afterMs, v.limit, v.titles) },
+            { v -> arrayOf(v.query, v.includeTools, v.scope, v.withinDays, v.limit, v.titles) },
         )
     }
 }
@@ -10038,18 +10752,6 @@ data class HlCode(
     }
 }
 
-enum class HolderWho(val wire: String) {
-    TERMINAL_WINDOW("terminal-window"),
-    DESKTOP("desktop"),
-    MOBILE("mobile"),
-    NONE("none"),
-    ;
-
-    companion object {
-        val ADAPTER: JsonAdapter<HolderWho> = enumOf(entries) { it.wire }
-    }
-}
-
 data object HomeReq {
     val ADAPTER: JsonAdapter<HomeReq> = obj(emptyList(), { HomeReq }, { emptyArray() })
 }
@@ -10143,9 +10845,47 @@ sealed interface HookState {
     }
 }
 
+enum class HookTone(val wire: String) {
+    OK("ok"),
+    BAD("bad"),
+    UNKNOWN("unknown"),
+    ;
+
+    companion object {
+        val ADAPTER: JsonAdapter<HookTone> = enumOf(entries) { it.wire }
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class HookTrustDiagnosis(
+    val trusted: Boolean,
+    val said: String,
+    val tone: HookTone,
+    val file: String,
+    val line: String?,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<HookTrustDiagnosis> = obj(
+            listOf(
+            Field("trusted", { Bool }, optional = false, nullable = false),
+            Field("said", { Str }, optional = false, nullable = false),
+            Field("tone", { HookTone.ADAPTER }, optional = false, nullable = false),
+            Field("file", { Str }, optional = false, nullable = false),
+            Field("line", { opt(Str) }, optional = false, nullable = true),
+            ),
+            { a -> HookTrustDiagnosis(a[0] as Boolean, a[1] as String, a[2] as HookTone, a[3] as String, a[4] as String?) },
+            { v -> arrayOf(v.trusted, v.said, v.tone, v.file, v.line) },
+        )
+    }
+}
+
 @Suppress("UNCHECKED_CAST")
 data class HooksDiagnosis(
     val stop: HookState,
+    val said: String,
+    val tone: HookTone,
     val note: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -10154,10 +10894,12 @@ data class HooksDiagnosis(
         val ADAPTER: JsonAdapter<HooksDiagnosis> = obj(
             listOf(
             Field("stop", { HookState.ADAPTER }, optional = false, nullable = false),
+            Field("said", { Str }, optional = false, nullable = false),
+            Field("tone", { HookTone.ADAPTER }, optional = false, nullable = false),
             Field("note", { Str }, optional = false, nullable = false),
             ),
-            { a -> HooksDiagnosis(a[0] as HookState, a[1] as String) },
-            { v -> arrayOf(v.stop, v.note) },
+            { a -> HooksDiagnosis(a[0] as HookState, a[1] as String, a[2] as HookTone, a[3] as String) },
+            { v -> arrayOf(v.stop, v.said, v.tone, v.note) },
         )
     }
 }
@@ -10165,9 +10907,7 @@ data class HooksDiagnosis(
 @Suppress("UNCHECKED_CAST")
 data class HooksReport(
     val supported: Boolean,
-    val diagnosis: HooksDiagnosis,
-    val snippet: String?,
-    val source: String,
+    val families: List<FamilyHooks>,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -10175,12 +10915,10 @@ data class HooksReport(
         val ADAPTER: JsonAdapter<HooksReport> = obj(
             listOf(
             Field("supported", { Bool }, optional = false, nullable = false),
-            Field("diagnosis", { HooksDiagnosis.ADAPTER }, optional = false, nullable = false),
-            Field("snippet", { opt(Str) }, optional = false, nullable = true),
-            Field("source", { Str }, optional = false, nullable = false),
+            Field("families", { arr(FamilyHooks.ADAPTER) }, optional = false, nullable = false),
             ),
-            { a -> HooksReport(a[0] as Boolean, a[1] as HooksDiagnosis, a[2] as String?, a[3] as String) },
-            { v -> arrayOf(v.supported, v.diagnosis, v.snippet, v.source) },
+            { a -> HooksReport(a[0] as Boolean, a[1] as List<FamilyHooks>) },
+            { v -> arrayOf(v.supported, v.families) },
         )
     }
 }
@@ -10277,6 +11015,8 @@ data class HubApplyReq(
     val place: ExtLoc?,
     val tokens: Map<String, ExtTokens>,
     val fill: Map<String, Map<String, String>>,
+    val agent: String? = null,
+    val source: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -10289,9 +11029,11 @@ data class HubApplyReq(
             Field("place", { opt(ExtLoc.ADAPTER) }, optional = false, nullable = true),
             Field("tokens", { dict(ExtTokens.ADAPTER) }, optional = false, nullable = false),
             Field("fill", { dict(dict(Str)) }, optional = false, nullable = false),
+            Field("agent", { opt(Str) }, optional = true, nullable = true),
+            Field("source", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> HubApplyReq(a[0] as ExtKind, a[1] as String, a[2] as List<String?>, a[3] as ExtLoc?, a[4] as Map<String, ExtTokens>, a[5] as Map<String, Map<String, String>>) },
-            { v -> arrayOf(v.kind, v.name, v.to, v.place, v.tokens, v.fill) },
+            { a -> HubApplyReq(a[0] as ExtKind, a[1] as String, a[2] as List<String?>, a[3] as ExtLoc?, a[4] as Map<String, ExtTokens>, a[5] as Map<String, Map<String, String>>, a[6] as String?, a[7] as String?) },
+            { v -> arrayOf(v.kind, v.name, v.to, v.place, v.tokens, v.fill, v.agent, v.source) },
         )
     }
 }
@@ -10377,6 +11119,8 @@ data class HubReq(
     val name: String,
     val to: List<String?>,
     val place: ExtLoc?,
+    val agent: String? = null,
+    val source: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -10387,9 +11131,11 @@ data class HubReq(
             Field("name", { Str }, optional = false, nullable = false),
             Field("to", { arr(opt(Str)) }, optional = false, nullable = false),
             Field("place", { opt(ExtLoc.ADAPTER) }, optional = false, nullable = true),
+            Field("agent", { opt(Str) }, optional = true, nullable = true),
+            Field("source", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> HubReq(a[0] as ExtKind, a[1] as String, a[2] as List<String?>, a[3] as ExtLoc?) },
-            { v -> arrayOf(v.kind, v.name, v.to, v.place) },
+            { a -> HubReq(a[0] as ExtKind, a[1] as String, a[2] as List<String?>, a[3] as ExtLoc?, a[4] as String?, a[5] as String?) },
+            { v -> arrayOf(v.kind, v.name, v.to, v.place, v.agent, v.source) },
         )
     }
 }
@@ -10701,7 +11447,6 @@ sealed interface InlNode {
 
 @Suppress("UNCHECKED_CAST")
 data class InputHolder(
-    val who: HolderWho,
     val mine: Boolean,
     val said: String,
 ) : Ordered {
@@ -10710,12 +11455,11 @@ data class InputHolder(
     companion object {
         val ADAPTER: JsonAdapter<InputHolder> = obj(
             listOf(
-            Field("who", { HolderWho.ADAPTER }, optional = false, nullable = false),
             Field("mine", { Bool }, optional = false, nullable = false),
             Field("said", { Str }, optional = false, nullable = false),
             ),
-            { a -> InputHolder(a[0] as HolderWho, a[1] as Boolean, a[2] as String) },
-            { v -> arrayOf(v.who, v.mine, v.said) },
+            { a -> InputHolder(a[0] as Boolean, a[1] as String) },
+            { v -> arrayOf(v.mine, v.said) },
         )
     }
 }
@@ -10739,46 +11483,48 @@ data class InputNow(
 
 @Suppress("UNCHECKED_CAST")
 data class Installed(
-    val action: ActionTag,
     val said: String,
-    val build: String,
-    val os: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
     companion object {
         val ADAPTER: JsonAdapter<Installed> = obj(
             listOf(
-            Field("action", { ActionTag.ADAPTER }, optional = false, nullable = false),
             Field("said", { Str }, optional = false, nullable = false),
-            Field("build", { Str }, optional = false, nullable = false),
-            Field("os", { Str }, optional = false, nullable = false),
             ),
-            { a -> Installed(a[0] as ActionTag, a[1] as String, a[2] as String, a[3] as String) },
-            { v -> arrayOf(v.action, v.said, v.build, v.os) },
+            { a -> Installed(a[0] as String) },
+            { v -> arrayOf(v.said) },
         )
     }
 }
 
+enum class InterruptAct(val wire: String) {
+    STOP("stop"),
+    RESTART("restart"),
+    UPDATE("update"),
+    UNINSTALL("uninstall"),
+    ;
+
+    companion object {
+        val ADAPTER: JsonAdapter<InterruptAct> = enumOf(entries) { it.wire }
+    }
+}
+
 @Suppress("UNCHECKED_CAST")
-data class Interrupts(
-    val relayedSessions: Int,
-    val relayedMaybe: Int,
-    val liveStreams: Int,
-    val forwards: Int,
+data class InterruptRow(
+    val label: String,
+    val items: List<String>,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
     companion object {
-        val ADAPTER: JsonAdapter<Interrupts> = obj(
+        val ADAPTER: JsonAdapter<InterruptRow> = obj(
             listOf(
-            Field("relayedSessions", { Int32 }, optional = false, nullable = false),
-            Field("relayedMaybe", { Int32 }, optional = false, nullable = false),
-            Field("liveStreams", { Int32 }, optional = false, nullable = false),
-            Field("forwards", { Int32 }, optional = false, nullable = false),
+            Field("label", { Str }, optional = false, nullable = false),
+            Field("items", { arr(Str) }, optional = false, nullable = false),
             ),
-            { a -> Interrupts(a[0] as Int, a[1] as Int, a[2] as Int, a[3] as Int) },
-            { v -> arrayOf(v.relayedSessions, v.relayedMaybe, v.liveStreams, v.forwards) },
+            { a -> InterruptRow(a[0] as String, a[1] as List<String>) },
+            { v -> arrayOf(v.label, v.items) },
         )
     }
 }
@@ -11215,6 +11961,7 @@ data class LineDiff(
     val removed: Int,
     val stat: String,
     val notice: String? = null,
+    val showAllText: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -11228,9 +11975,10 @@ data class LineDiff(
             Field("removed", { Int32 }, optional = false, nullable = false),
             Field("stat", { Str }, optional = false, nullable = false),
             Field("notice", { opt(Str) }, optional = true, nullable = true),
+            Field("showAllText", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> LineDiff(a[0] as List<LineDiffRow>, a[1] as Int, a[2] as Boolean, a[3] as Int, a[4] as Int, a[5] as String, a[6] as String?) },
-            { v -> arrayOf(v.rows, v.shown, v.truncated, v.added, v.removed, v.stat, v.notice) },
+            { a -> LineDiff(a[0] as List<LineDiffRow>, a[1] as Int, a[2] as Boolean, a[3] as Int, a[4] as Int, a[5] as String, a[6] as String?, a[7] as String?) },
+            { v -> arrayOf(v.rows, v.shown, v.truncated, v.added, v.removed, v.stat, v.notice, v.showAllText) },
         )
     }
 }
@@ -12441,6 +13189,25 @@ data class LogTail(
 }
 
 @Suppress("UNCHECKED_CAST")
+data class LoginAccountReq(
+    val agent: String? = null,
+    val account: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<LoginAccountReq> = obj(
+            listOf(
+            Field("agent", { opt(Str) }, optional = true, nullable = true),
+            Field("account", { Str }, optional = false, nullable = false),
+            ),
+            { a -> LoginAccountReq(a[0] as String?, a[1] as String) },
+            { v -> arrayOf(v.agent, v.account) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class LoginAgain(
     val again: LoginAgainHow,
     val terminal: Boolean,
@@ -12540,20 +13307,37 @@ data class LoginFinishReq(
     }
 }
 
+@Suppress("UNCHECKED_CAST")
+data class LoginSignedOut(
+    val said: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<LoginSignedOut> = obj(
+            listOf(
+            Field("said", { Str }, optional = false, nullable = false),
+            ),
+            { a -> LoginSignedOut(a[0] as String) },
+            { v -> arrayOf(v.said) },
+        )
+    }
+}
+
 sealed interface LoginStartArgs {
     /** 判别格（`kind`）那个词。 */
     val kind: String
 
     val browserHere: Boolean?
 
-    val agent: String
+    val agent: String?
 
     val account: String?
 
     @Suppress("UNCHECKED_CAST")
     data class Account(
         override val browserHere: Boolean? = null,
-        override val agent: String,
+        override val agent: String? = null,
         override val account: String,
     ) : LoginStartArgs, Ordered {
         override val kind: String get() = "account"
@@ -12580,10 +13364,10 @@ sealed interface LoginStartArgs {
                         listOf(
                         Field("browserHere", { opt(Bool) }, optional = true, nullable = true),
                         Field("kind", { tag("account") }, optional = false, nullable = false),
-                        Field("agent", { Str }, optional = false, nullable = false),
+                        Field("agent", { opt(Str) }, optional = true, nullable = true),
                         Field("account", { Str }, optional = false, nullable = false),
                         ),
-                        { a -> LoginStartArgs.Account(a[0] as Boolean?, a[2] as String, a[3] as String) },
+                        { a -> LoginStartArgs.Account(a[0] as Boolean?, a[2] as String?, a[3] as String) },
                         { v -> arrayOf(v.browserHere, "account", v.agent, v.account) },
                     )),
                 Variant("mcp", LoginStartArgs.Mcp::class.java, obj(
@@ -12607,13 +13391,13 @@ sealed interface LoginStartReq {
     /** 判别格（`kind`）那个词。 */
     val kind: String
 
-    val agent: String
+    val agent: String?
 
     val account: String?
 
     @Suppress("UNCHECKED_CAST")
     data class Account(
-        override val agent: String,
+        override val agent: String? = null,
         override val account: String,
     ) : LoginStartReq, Ordered {
         override val kind: String get() = "account"
@@ -12638,10 +13422,10 @@ sealed interface LoginStartReq {
                 Variant("account", LoginStartReq.Account::class.java, obj(
                         listOf(
                         Field("kind", { tag("account") }, optional = false, nullable = false),
-                        Field("agent", { Str }, optional = false, nullable = false),
+                        Field("agent", { opt(Str) }, optional = true, nullable = true),
                         Field("account", { Str }, optional = false, nullable = false),
                         ),
-                        { a -> LoginStartReq.Account(a[1] as String, a[2] as String) },
+                        { a -> LoginStartReq.Account(a[1] as String?, a[2] as String) },
                         { v -> arrayOf("account", v.agent, v.account) },
                     )),
                 Variant("mcp", LoginStartReq.Mcp::class.java, obj(
@@ -12665,8 +13449,10 @@ data class LoginStarted(
     val job: String,
     val url: String,
     val paste: PasteKind,
+    val code: String?,
     val auto: Boolean,
     val opened: Boolean,
+    val elsewhere: String?,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -12676,11 +13462,13 @@ data class LoginStarted(
             Field("job", { Str }, optional = false, nullable = false),
             Field("url", { Str }, optional = false, nullable = false),
             Field("paste", { PasteKind.ADAPTER }, optional = false, nullable = false),
+            Field("code", { opt(Str) }, optional = false, nullable = true),
             Field("auto", { Bool }, optional = false, nullable = false),
             Field("opened", { Bool }, optional = false, nullable = false),
+            Field("elsewhere", { opt(Str) }, optional = false, nullable = true),
             ),
-            { a -> LoginStarted(a[0] as String, a[1] as String, a[2] as PasteKind, a[3] as Boolean, a[4] as Boolean) },
-            { v -> arrayOf(v.job, v.url, v.paste, v.auto, v.opened) },
+            { a -> LoginStarted(a[0] as String, a[1] as String, a[2] as PasteKind, a[3] as String?, a[4] as Boolean, a[5] as Boolean, a[6] as String?) },
+            { v -> arrayOf(v.job, v.url, v.paste, v.code, v.auto, v.opened, v.elsewhere) },
         )
     }
 }
@@ -12689,10 +13477,28 @@ enum class LoginState(val wire: String) {
     OK("ok"),
     NEEDS_LOGIN("needsLogin"),
     NEEDS_KEY("needsKey"),
+    BASE_UNTOUCHED("baseUntouched"),
     ;
 
     companion object {
         val ADAPTER: JsonAdapter<LoginState> = enumOf(entries) { it.wire }
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class LoginStatusRead(
+    val said: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<LoginStatusRead> = obj(
+            listOf(
+            Field("said", { Str }, optional = false, nullable = false),
+            ),
+            { a -> LoginStatusRead(a[0] as String) },
+            { v -> arrayOf(v.said) },
+        )
     }
 }
 
@@ -12758,6 +13564,9 @@ data class LsHead(
     val truncated: Boolean,
     val total: Long,
     val unreadable: Long,
+    val atHome: Boolean,
+    val by: LsSortBy,
+    val descending: Boolean,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -12770,9 +13579,12 @@ data class LsHead(
             Field("truncated", { Bool }, optional = false, nullable = false),
             Field("total", { U64 }, optional = false, nullable = false),
             Field("unreadable", { U64 }, optional = false, nullable = false),
+            Field("at_home", { Bool }, optional = false, nullable = false),
+            Field("by", { LsSortBy.ADAPTER }, optional = false, nullable = false),
+            Field("descending", { Bool }, optional = false, nullable = false),
             ),
-            { a -> LsHead(a[0] as WirePath, a[1] as WirePath?, a[2] as List<Crumb>, a[3] as Boolean, a[4] as Long, a[5] as Long) },
-            { v -> arrayOf(v.shown, v.up, v.crumbs, v.truncated, v.total, v.unreadable) },
+            { a -> LsHead(a[0] as WirePath, a[1] as WirePath?, a[2] as List<Crumb>, a[3] as Boolean, a[4] as Long, a[5] as Long, a[6] as Boolean, a[7] as LsSortBy, a[8] as Boolean) },
+            { v -> arrayOf(v.shown, v.up, v.crumbs, v.truncated, v.total, v.unreadable, v.atHome, v.by, v.descending) },
         )
     }
 }
@@ -13091,6 +13903,7 @@ data class MachineInterruptsReply(
     val relayedMaybe: Int,
     val liveStreams: Int,
     val forwards: Int,
+    val rows: List<InterruptRow>,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -13101,9 +13914,10 @@ data class MachineInterruptsReply(
             Field("relayedMaybe", { Int32 }, optional = false, nullable = false),
             Field("liveStreams", { Int32 }, optional = false, nullable = false),
             Field("forwards", { Int32 }, optional = false, nullable = false),
+            Field("rows", { arr(InterruptRow.ADAPTER) }, optional = false, nullable = false),
             ),
-            { a -> MachineInterruptsReply(a[0] as Int?, a[1] as Int, a[2] as Int, a[3] as Int) },
-            { v -> arrayOf(v.relayedSessions, v.relayedMaybe, v.liveStreams, v.forwards) },
+            { a -> MachineInterruptsReply(a[0] as Int?, a[1] as Int, a[2] as Int, a[3] as Int, a[4] as List<InterruptRow>) },
+            { v -> arrayOf(v.relayedSessions, v.relayedMaybe, v.liveStreams, v.forwards, v.rows) },
         )
     }
 }
@@ -13113,6 +13927,8 @@ data class MachineInterruptsReq(
     val machine: String? = null,
     val appExit: Boolean? = null,
     val fleet: Boolean? = null,
+    val act: InterruptAct? = null,
+    val files: FilewinBusy? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -13122,9 +13938,11 @@ data class MachineInterruptsReq(
             Field("machine", { opt(Str) }, optional = true, nullable = true),
             Field("appExit", { opt(Bool) }, optional = true, nullable = true),
             Field("fleet", { opt(Bool) }, optional = true, nullable = true),
+            Field("act", { opt(InterruptAct.ADAPTER) }, optional = true, nullable = true),
+            Field("files", { opt(FilewinBusy.ADAPTER) }, optional = true, nullable = true),
             ),
-            { a -> MachineInterruptsReq(a[0] as String?, a[1] as Boolean?, a[2] as Boolean?) },
-            { v -> arrayOf(v.machine, v.appExit, v.fleet) },
+            { a -> MachineInterruptsReq(a[0] as String?, a[1] as Boolean?, a[2] as Boolean?, a[3] as InterruptAct?, a[4] as FilewinBusy?) },
+            { v -> arrayOf(v.machine, v.appExit, v.fleet, v.act, v.files) },
         )
     }
 }
@@ -13318,6 +14136,8 @@ data class MachineState(
     val said: String,
     val offlineSaid: String,
     val heldSaid: String,
+    val withdrawHeld: String,
+    val rewindHeld: String,
     val fixes: List<MachineFixButton>,
     val seenHostKey: String?,
     val expectedHostKey: String?,
@@ -13343,6 +14163,8 @@ data class MachineState(
             Field("said", { Str }, optional = false, nullable = false),
             Field("offlineSaid", { Str }, optional = false, nullable = false),
             Field("heldSaid", { Str }, optional = false, nullable = false),
+            Field("withdrawHeld", { Str }, optional = false, nullable = false),
+            Field("rewindHeld", { Str }, optional = false, nullable = false),
             Field("fixes", { arr(MachineFixButton.ADAPTER) }, optional = false, nullable = false),
             Field("seenHostKey", { opt(Str) }, optional = false, nullable = true),
             Field("expectedHostKey", { opt(Str) }, optional = false, nullable = true),
@@ -13350,8 +14172,8 @@ data class MachineState(
             Field("route", { opt(Str) }, optional = true, nullable = true),
             Field("strip", { opt(MachineStripLine.ADAPTER) }, optional = true, nullable = true),
             ),
-            { a -> MachineState(a[0] as String, a[1] as MachineStateKind, a[2] as MachineDot, a[3] as Boolean, a[4] as Boolean, a[5] as DialWhy?, a[6] as MachineStage?, a[7] as String?, a[8] as String?, a[9] as String, a[10] as String, a[11] as String, a[12] as String, a[13] as List<MachineFixButton>, a[14] as String?, a[15] as String?, a[16] as String?, a[17] as String?, a[18] as MachineStripLine?) },
-            { v -> arrayOf(v.name, v.state, v.dot, v.linked, v.offline, v.reason, v.stage, v.version, v.os, v.word, v.said, v.offlineSaid, v.heldSaid, v.fixes, v.seenHostKey, v.expectedHostKey, v.detail, v.route, v.strip) },
+            { a -> MachineState(a[0] as String, a[1] as MachineStateKind, a[2] as MachineDot, a[3] as Boolean, a[4] as Boolean, a[5] as DialWhy?, a[6] as MachineStage?, a[7] as String?, a[8] as String?, a[9] as String, a[10] as String, a[11] as String, a[12] as String, a[13] as String, a[14] as String, a[15] as List<MachineFixButton>, a[16] as String?, a[17] as String?, a[18] as String?, a[19] as String?, a[20] as MachineStripLine?) },
+            { v -> arrayOf(v.name, v.state, v.dot, v.linked, v.offline, v.reason, v.stage, v.version, v.os, v.word, v.said, v.offlineSaid, v.heldSaid, v.withdrawHeld, v.rewindHeld, v.fixes, v.seenHostKey, v.expectedHostKey, v.detail, v.route, v.strip) },
         )
     }
 }
@@ -13396,6 +14218,7 @@ data class MachineStopReq(
 data class MachineStopped(
     val stopped: String,
     val pid: Int?,
+    val said: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -13404,9 +14227,10 @@ data class MachineStopped(
             listOf(
             Field("stopped", { Str }, optional = false, nullable = false),
             Field("pid", { opt(Int32) }, optional = false, nullable = true),
+            Field("said", { Str }, optional = false, nullable = false),
             ),
-            { a -> MachineStopped(a[0] as String, a[1] as Int?) },
-            { v -> arrayOf(v.stopped, v.pid) },
+            { a -> MachineStopped(a[0] as String, a[1] as Int?, a[2] as String) },
+            { v -> arrayOf(v.stopped, v.pid, v.said) },
         )
     }
 }
@@ -13575,12 +14399,32 @@ sealed interface ManualItem {
         override var wireOrder: IntArray? = null
     }
     @Suppress("UNCHECKED_CAST")
+    data class AccountNoAgent(
+        val agent: String,
+        val account: String,
+        override val said: String,
+        val go: String,
+        override val fix: ManualFix?,
+    ) : ManualItem, Ordered {
+        override val kind: String get() = "accountNoAgent"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
     data class SecretFile(
         override val said: String,
         override val fix: ManualFix?,
         val why: String? = null,
     ) : ManualItem, Ordered {
         override val kind: String get() = "secretFile"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class OwnFile(
+        override val said: String,
+        override val fix: ManualFix?,
+        val why: String? = null,
+    ) : ManualItem, Ordered {
+        override val kind: String get() = "ownFile"
         override var wireOrder: IntArray? = null
     }
 
@@ -13613,6 +14457,18 @@ sealed interface ManualItem {
                         { a -> ManualItem.McpLogin(a[1] as String?, a[2] as String, a[3] as String, a[4] as String, a[5] as ManualFix?, a[6] as String?) },
                         { v -> arrayOf("mcpLogin", v.account, v.server, v.scope, v.said, v.fix, v.why) },
                     )),
+                Variant("accountNoAgent", ManualItem.AccountNoAgent::class.java, obj(
+                        listOf(
+                        Field("kind", { tag("accountNoAgent") }, optional = false, nullable = false),
+                        Field("agent", { Str }, optional = false, nullable = false),
+                        Field("account", { Str }, optional = false, nullable = false),
+                        Field("said", { Str }, optional = false, nullable = false),
+                        Field("go", { Str }, optional = false, nullable = false),
+                        Field("fix", { opt(ManualFix.ADAPTER) }, optional = false, nullable = true),
+                        ),
+                        { a -> ManualItem.AccountNoAgent(a[1] as String, a[2] as String, a[3] as String, a[4] as String, a[5] as ManualFix?) },
+                        { v -> arrayOf("accountNoAgent", v.agent, v.account, v.said, v.go, v.fix) },
+                    )),
                 Variant("secretFile", ManualItem.SecretFile::class.java, obj(
                         listOf(
                         Field("kind", { tag("secretFile") }, optional = false, nullable = false),
@@ -13622,6 +14478,16 @@ sealed interface ManualItem {
                         ),
                         { a -> ManualItem.SecretFile(a[1] as String, a[2] as ManualFix?, a[3] as String?) },
                         { v -> arrayOf("secretFile", v.said, v.fix, v.why) },
+                    )),
+                Variant("ownFile", ManualItem.OwnFile::class.java, obj(
+                        listOf(
+                        Field("kind", { tag("ownFile") }, optional = false, nullable = false),
+                        Field("said", { Str }, optional = false, nullable = false),
+                        Field("fix", { opt(ManualFix.ADAPTER) }, optional = false, nullable = true),
+                        Field("why", { opt(Str) }, optional = true, nullable = true),
+                        ),
+                        { a -> ManualItem.OwnFile(a[1] as String, a[2] as ManualFix?, a[3] as String?) },
+                        { v -> arrayOf("ownFile", v.said, v.fix, v.why) },
                     )),
                 ),
             )
@@ -13891,6 +14757,7 @@ data class McpApplyReq(
     val def: Raw,
     val fill: Map<String, Map<String, String>>?,
     val target: String?,
+    val agent: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -13902,9 +14769,10 @@ data class McpApplyReq(
             Field("def", { RawJson }, optional = false, nullable = false),
             Field("fill", { opt(dict(dict(Str))) }, optional = false, nullable = true),
             Field("target", { opt(Str) }, optional = false, nullable = true),
+            Field("agent", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> McpApplyReq(a[0] as String, a[1] as ExtLoc, a[2] as Raw, a[3] as Map<String, Map<String, String>>?, a[4] as String?) },
-            { v -> arrayOf(v.name, v.at, v.def, v.fill, v.target) },
+            { a -> McpApplyReq(a[0] as String, a[1] as ExtLoc, a[2] as Raw, a[3] as Map<String, Map<String, String>>?, a[4] as String?, a[5] as String?) },
+            { v -> arrayOf(v.name, v.at, v.def, v.fill, v.target, v.agent) },
         )
     }
 }
@@ -13926,6 +14794,25 @@ data class McpFailedMark(
             ),
             { a -> McpFailedMark(a[0] as String, a[1] as String, a[2] as String?) },
             { v -> arrayOf(v.said, v.tip, v.detail) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class McpHeldMark(
+    val said: String,
+    val tip: String?,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<McpHeldMark> = obj(
+            listOf(
+            Field("said", { Str }, optional = false, nullable = false),
+            Field("tip", { opt(Str) }, optional = false, nullable = true),
+            ),
+            { a -> McpHeldMark(a[0] as String, a[1] as String?) },
+            { v -> arrayOf(v.said, v.tip) },
         )
     }
 }
@@ -14014,6 +14901,7 @@ data class McpPreviewReq(
     val name: String,
     val at: ExtLoc,
     val def: Raw,
+    val agent: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -14023,19 +14911,24 @@ data class McpPreviewReq(
             Field("name", { Str }, optional = false, nullable = false),
             Field("at", { ExtLoc.ADAPTER }, optional = false, nullable = false),
             Field("def", { RawJson }, optional = false, nullable = false),
+            Field("agent", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> McpPreviewReq(a[0] as String, a[1] as ExtLoc, a[2] as Raw) },
-            { v -> arrayOf(v.name, v.at, v.def) },
+            { a -> McpPreviewReq(a[0] as String, a[1] as ExtLoc, a[2] as Raw, a[3] as String?) },
+            { v -> arrayOf(v.name, v.at, v.def, v.agent) },
         )
     }
 }
 
 @Suppress("UNCHECKED_CAST")
 data class McpReadEntry(
+    val agent: String? = null,
     val scope: McpReadEntryScope,
     val name: String,
     val server: Raw,
     val sourcePath: String,
+    val accounts: List<String>? = null,
+    val mismatch: Boolean? = null,
+    val held: McpHeldMark? = null,
     val status: McpReadEntryStatus,
     val mark: McpMark?,
     val login: McpLoginMark?,
@@ -14046,17 +14939,21 @@ data class McpReadEntry(
     companion object {
         val ADAPTER: JsonAdapter<McpReadEntry> = obj(
             listOf(
+            Field("agent", { opt(Str) }, optional = true, nullable = true),
             Field("scope", { McpReadEntryScope.ADAPTER }, optional = false, nullable = false),
             Field("name", { Str }, optional = false, nullable = false),
             Field("server", { RawJson }, optional = false, nullable = false),
             Field("sourcePath", { Str }, optional = false, nullable = false),
+            Field("accounts", { opt(arr(Str)) }, optional = true, nullable = true),
+            Field("mismatch", { opt(Bool) }, optional = true, nullable = true),
+            Field("held", { opt(McpHeldMark.ADAPTER) }, optional = true, nullable = true),
             Field("status", { McpReadEntryStatus.ADAPTER }, optional = false, nullable = false),
             Field("mark", { opt(McpMark.ADAPTER) }, optional = false, nullable = true),
             Field("login", { opt(McpLoginMark.ADAPTER) }, optional = false, nullable = true),
             Field("failed", { opt(McpFailedMark.ADAPTER) }, optional = false, nullable = true),
             ),
-            { a -> McpReadEntry(a[0] as McpReadEntryScope, a[1] as String, a[2] as Raw, a[3] as String, a[4] as McpReadEntryStatus, a[5] as McpMark?, a[6] as McpLoginMark?, a[7] as McpFailedMark?) },
-            { v -> arrayOf(v.scope, v.name, v.server, v.sourcePath, v.status, v.mark, v.login, v.failed) },
+            { a -> McpReadEntry(a[0] as String?, a[1] as McpReadEntryScope, a[2] as String, a[3] as Raw, a[4] as String, a[5] as List<String>?, a[6] as Boolean?, a[7] as McpHeldMark?, a[8] as McpReadEntryStatus, a[9] as McpMark?, a[10] as McpLoginMark?, a[11] as McpFailedMark?) },
+            { v -> arrayOf(v.agent, v.scope, v.name, v.server, v.sourcePath, v.accounts, v.mismatch, v.held, v.status, v.mark, v.login, v.failed) },
         )
     }
 }
@@ -14086,8 +14983,6 @@ enum class McpReadEntryStatus(val wire: String) {
 @Suppress("UNCHECKED_CAST")
 data class McpReadReply(
     val entries: List<McpReadEntry>,
-    val dirs: List<String>,
-    val problems: List<String>,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -14095,11 +14990,9 @@ data class McpReadReply(
         val ADAPTER: JsonAdapter<McpReadReply> = obj(
             listOf(
             Field("entries", { arr(McpReadEntry.ADAPTER) }, optional = false, nullable = false),
-            Field("dirs", { arr(Str) }, optional = false, nullable = false),
-            Field("problems", { arr(Str) }, optional = false, nullable = false),
             ),
-            { a -> McpReadReply(a[0] as List<McpReadEntry>, a[1] as List<String>, a[2] as List<String>) },
-            { v -> arrayOf(v.entries, v.dirs, v.problems) },
+            { a -> McpReadReply(a[0] as List<McpReadEntry>) },
+            { v -> arrayOf(v.entries) },
         )
     }
 }
@@ -14117,6 +15010,42 @@ data class McpReadReq(
             ),
             { a -> McpReadReq(a[0] as String?) },
             { v -> arrayOf(v.projectDir) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class McpRevertReq(
+    val file: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<McpRevertReq> = obj(
+            listOf(
+            Field("file", { Str }, optional = false, nullable = false),
+            ),
+            { a -> McpRevertReq(a[0] as String) },
+            { v -> arrayOf(v.file) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class McpReverted(
+    val path: String,
+    val removed: Boolean,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<McpReverted> = obj(
+            listOf(
+            Field("path", { Str }, optional = false, nullable = false),
+            Field("removed", { Bool }, optional = false, nullable = false),
+            ),
+            { a -> McpReverted(a[0] as String, a[1] as Boolean) },
+            { v -> arrayOf(v.path, v.removed) },
         )
     }
 }
@@ -14148,6 +15077,7 @@ data class McpSource(
 data class McpSourceReq(
     val name: String,
     val at: ExtLoc,
+    val agent: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -14156,9 +15086,10 @@ data class McpSourceReq(
             listOf(
             Field("name", { Str }, optional = false, nullable = false),
             Field("at", { ExtLoc.ADAPTER }, optional = false, nullable = false),
+            Field("agent", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> McpSourceReq(a[0] as String, a[1] as ExtLoc) },
-            { v -> arrayOf(v.name, v.at) },
+            { a -> McpSourceReq(a[0] as String, a[1] as ExtLoc, a[2] as String?) },
+            { v -> arrayOf(v.name, v.at, v.agent) },
         )
     }
 }
@@ -14593,7 +15524,8 @@ data class Merged(
     val sessions: List<MergedRow>,
     val notes: List<String>,
     val down: List<SearchDown>,
-    val summary: String,
+    val summary: String? = null,
+    val empty: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -14605,10 +15537,11 @@ data class Merged(
             Field("sessions", { arr(MergedRow.ADAPTER) }, optional = false, nullable = false),
             Field("notes", { arr(Str) }, optional = false, nullable = false),
             Field("down", { arr(SearchDown.ADAPTER) }, optional = false, nullable = false),
-            Field("summary", { Str }, optional = false, nullable = false),
+            Field("summary", { opt(Str) }, optional = true, nullable = true),
+            Field("empty", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> Merged(a[0] as Long, a[1] as Boolean, a[2] as List<MergedRow>, a[3] as List<String>, a[4] as List<SearchDown>, a[5] as String) },
-            { v -> arrayOf(v.totalHits, v.truncated, v.sessions, v.notes, v.down, v.summary) },
+            { a -> Merged(a[0] as Long, a[1] as Boolean, a[2] as List<MergedRow>, a[3] as List<String>, a[4] as List<SearchDown>, a[5] as String?, a[6] as String?) },
+            { v -> arrayOf(v.totalHits, v.truncated, v.sessions, v.notes, v.down, v.summary, v.empty) },
         )
     }
 }
@@ -14618,6 +15551,7 @@ data class MergedRow(
     val origin: String,
     val reveal: Boolean,
     val deleteAsk: String,
+    val moreText: String? = null,
     val atText: String,
     val spanText: String,
     val label: String,
@@ -14645,6 +15579,7 @@ data class MergedRow(
             Field("origin", { Str }, optional = false, nullable = false),
             Field("reveal", { Bool }, optional = false, nullable = false),
             Field("deleteAsk", { Str }, optional = false, nullable = false),
+            Field("moreText", { opt(Str) }, optional = true, nullable = true),
             Field("atText", { Str }, optional = false, nullable = false),
             Field("spanText", { Str }, optional = false, nullable = false),
             Field("label", { Str }, optional = false, nullable = false),
@@ -14664,8 +15599,8 @@ data class MergedRow(
             Field("can", { Can.ADAPTER }, optional = false, nullable = false),
             Field("face", { SessionFace.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> MergedRow(a[0] as String, a[1] as Boolean, a[2] as String, a[3] as String, a[4] as String, a[5] as String, a[6] as Boolean, a[7] as Hidden?, a[8] as String, a[9] as String, a[10] as String, a[11] as String, a[12] as String, a[13] as String, a[14] as Long, a[15] as List<SearchHit>, a[16] as Int, a[17] as Boolean, a[18] as Boolean, a[19] as Can, a[20] as SessionFace) },
-            { v -> arrayOf(v.origin, v.reveal, v.deleteAsk, v.atText, v.spanText, v.label, v.starred, v.hidden, v.agent, v.sessionId, v.projectPath, v.projectName, v.jsonlPath, v.title, v.updatedAt, v.hits, v.moreHits, v.hitsTruncated, v.isBg, v.can, v.face) },
+            { a -> MergedRow(a[0] as String, a[1] as Boolean, a[2] as String, a[3] as String?, a[4] as String, a[5] as String, a[6] as String, a[7] as Boolean, a[8] as Hidden?, a[9] as String, a[10] as String, a[11] as String, a[12] as String, a[13] as String, a[14] as String, a[15] as Long, a[16] as List<SearchHit>, a[17] as Int, a[18] as Boolean, a[19] as Boolean, a[20] as Can, a[21] as SessionFace) },
+            { v -> arrayOf(v.origin, v.reveal, v.deleteAsk, v.moreText, v.atText, v.spanText, v.label, v.starred, v.hidden, v.agent, v.sessionId, v.projectPath, v.projectName, v.jsonlPath, v.title, v.updatedAt, v.hits, v.moreHits, v.hitsTruncated, v.isBg, v.can, v.face) },
         )
     }
 }
@@ -14693,6 +15628,7 @@ enum class ModeSwitchResult(val wire: String) {
     DONE("done"),
     UNSURE("unsure"),
     REFUSED("refused"),
+    SENT("sent"),
     ;
 
     companion object {
@@ -14916,8 +15852,11 @@ data class Needs(
     val tone: Tone,
     val rank: Long,
     val waitedMs: Long?,
+    val sinceMs: Long? = null,
     val ask: NeedsAsk?,
     val manualText: String?,
+    val askHead: String? = null,
+    val askPage: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -14934,11 +15873,14 @@ data class Needs(
             Field("tone", { Tone.ADAPTER }, optional = false, nullable = false),
             Field("rank", { U64 }, optional = false, nullable = false),
             Field("waitedMs", { opt(U64) }, optional = false, nullable = true),
+            Field("sinceMs", { opt(U64) }, optional = true, nullable = true),
             Field("ask", { opt(NeedsAsk.ADAPTER) }, optional = false, nullable = true),
             Field("manualText", { opt(Str) }, optional = false, nullable = true),
+            Field("askHead", { opt(Str) }, optional = true, nullable = true),
+            Field("askPage", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> Needs(a[0] as NeedsKind, a[1] as String?, a[2] as String?, a[3] as String?, a[4] as String, a[5] as String, a[6] as String?, a[7] as Tone, a[8] as Long, a[9] as Long?, a[10] as NeedsAsk?, a[11] as String?) },
-            { v -> arrayOf(v.kind, v.tool, v.call, v.what, v.text, v.head, v.headCode, v.tone, v.rank, v.waitedMs, v.ask, v.manualText) },
+            { a -> Needs(a[0] as NeedsKind, a[1] as String?, a[2] as String?, a[3] as String?, a[4] as String, a[5] as String, a[6] as String?, a[7] as Tone, a[8] as Long, a[9] as Long?, a[10] as Long?, a[11] as NeedsAsk?, a[12] as String?, a[13] as String?, a[14] as String?) },
+            { v -> arrayOf(v.kind, v.tool, v.call, v.what, v.text, v.head, v.headCode, v.tone, v.rank, v.waitedMs, v.sinceMs, v.ask, v.manualText, v.askHead, v.askPage) },
         )
     }
 }
@@ -15073,7 +16015,6 @@ enum class NeedsChoiceLook(val wire: String) {
 enum class NeedsChoiceRow(val wire: String) {
     MAIN("main"),
     HOLD("hold"),
-    RELEASE("release"),
     ;
 
     companion object {
@@ -15101,6 +16042,29 @@ data class NeedsClock(
 }
 
 @Suppress("UNCHECKED_CAST")
+data class NeedsColumn(
+    val items: List<NeedsAt>,
+    val total: Int,
+    val head: String,
+    val sure: Boolean,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<NeedsColumn> = obj(
+            listOf(
+            Field("items", { arr(NeedsAt.ADAPTER) }, optional = false, nullable = false),
+            Field("total", { Int32 }, optional = false, nullable = false),
+            Field("head", { Str }, optional = false, nullable = false),
+            Field("sure", { Bool }, optional = false, nullable = false),
+            ),
+            { a -> NeedsColumn(a[0] as List<NeedsAt>, a[1] as Int, a[2] as String, a[3] as Boolean) },
+            { v -> arrayOf(v.items, v.total, v.head, v.sure) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class NeedsDown(
     val origin: String,
     val said: String,
@@ -15117,6 +16081,27 @@ data class NeedsDown(
             ),
             { a -> NeedsDown(a[0] as String, a[1] as String, a[2] as String) },
             { v -> arrayOf(v.origin, v.said, v.detail) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class NeedsEnded(
+    val origin: String,
+    val sid: String,
+    val end: AskEnd,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<NeedsEnded> = obj(
+            listOf(
+            Field("origin", { Str }, optional = false, nullable = false),
+            Field("sid", { Str }, optional = false, nullable = false),
+            Field("end", { AskEnd.ADAPTER }, optional = false, nullable = false),
+            ),
+            { a -> NeedsEnded(a[0] as String, a[1] as String, a[2] as AskEnd) },
+            { v -> arrayOf(v.origin, v.sid, v.end) },
         )
     }
 }
@@ -15238,27 +16223,27 @@ data object NeedsMergeReq {
 
 @Suppress("UNCHECKED_CAST")
 data class NeedsMerged(
-    val items: List<NeedsAt>,
-    val total: Int,
-    val head: String,
-    val sure: Boolean,
+    val asks: NeedsColumn,
+    val manual: NeedsColumn,
     val unreadable: List<NeedsUnreadable>,
     val down: List<NeedsDown>,
+    val ended: List<NeedsEnded>,
+    val windowTitle: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
     companion object {
         val ADAPTER: JsonAdapter<NeedsMerged> = obj(
             listOf(
-            Field("items", { arr(NeedsAt.ADAPTER) }, optional = false, nullable = false),
-            Field("total", { Int32 }, optional = false, nullable = false),
-            Field("head", { Str }, optional = false, nullable = false),
-            Field("sure", { Bool }, optional = false, nullable = false),
+            Field("asks", { NeedsColumn.ADAPTER }, optional = false, nullable = false),
+            Field("manual", { NeedsColumn.ADAPTER }, optional = false, nullable = false),
             Field("unreadable", { arr(NeedsUnreadable.ADAPTER) }, optional = false, nullable = false),
             Field("down", { arr(NeedsDown.ADAPTER) }, optional = false, nullable = false),
+            Field("ended", { arr(NeedsEnded.ADAPTER) }, optional = false, nullable = false),
+            Field("windowTitle", { Str }, optional = false, nullable = false),
             ),
-            { a -> NeedsMerged(a[0] as List<NeedsAt>, a[1] as Int, a[2] as String, a[3] as Boolean, a[4] as List<NeedsUnreadable>, a[5] as List<NeedsDown>) },
-            { v -> arrayOf(v.items, v.total, v.head, v.sure, v.unreadable, v.down) },
+            { a -> NeedsMerged(a[0] as NeedsColumn, a[1] as NeedsColumn, a[2] as List<NeedsUnreadable>, a[3] as List<NeedsDown>, a[4] as List<NeedsEnded>, a[5] as String) },
+            { v -> arrayOf(v.asks, v.manual, v.unreadable, v.down, v.ended, v.windowTitle) },
         )
     }
 }
@@ -15326,7 +16311,6 @@ data class NeedsQuestionOption(
 data class NeedsRow(
     val sid: String,
     val label: String,
-    val face: SessionFace,
     val needs: Needs,
     val hidden: Hidden?,
 ) : Ordered {
@@ -15337,12 +16321,11 @@ data class NeedsRow(
             listOf(
             Field("sid", { Str }, optional = false, nullable = false),
             Field("label", { Str }, optional = false, nullable = false),
-            Field("face", { SessionFace.ADAPTER }, optional = false, nullable = false),
             Field("needs", { Needs.ADAPTER }, optional = false, nullable = false),
             Field("hidden", { opt(Hidden.ADAPTER) }, optional = false, nullable = true),
             ),
-            { a -> NeedsRow(a[0] as String, a[1] as String, a[2] as SessionFace, a[3] as Needs, a[4] as Hidden?) },
-            { v -> arrayOf(v.sid, v.label, v.face, v.needs, v.hidden) },
+            { a -> NeedsRow(a[0] as String, a[1] as String, a[2] as Needs, a[3] as Hidden?) },
+            { v -> arrayOf(v.sid, v.label, v.needs, v.hidden) },
         )
     }
 }
@@ -15377,6 +16360,7 @@ data class NewOpen(
     val fork: ForkFrom? = null,
     val prompt: String? = null,
     val model: String? = null,
+    val effort: String? = null,
     val permissionMode: String? = null,
     val rotation: RotationPick? = null,
     val alias: String? = null,
@@ -15393,12 +16377,13 @@ data class NewOpen(
             Field("fork", { opt(ForkFrom.ADAPTER) }, optional = true, nullable = true),
             Field("prompt", { opt(Str) }, optional = true, nullable = true),
             Field("model", { opt(Str) }, optional = true, nullable = true),
+            Field("effort", { opt(Str) }, optional = true, nullable = true),
             Field("permissionMode", { opt(Str) }, optional = true, nullable = true),
             Field("rotation", { opt(RotationPick.ADAPTER) }, optional = true, nullable = true),
             Field("alias", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> NewOpen(a[0] as String, a[1] as String, a[2] as String?, a[3] as String?, a[4] as ForkFrom?, a[5] as String?, a[6] as String?, a[7] as String?, a[8] as RotationPick?, a[9] as String?) },
-            { v -> arrayOf(v.agent, v.cwd, v.tmuxName, v.command, v.fork, v.prompt, v.model, v.permissionMode, v.rotation, v.alias) },
+            { a -> NewOpen(a[0] as String, a[1] as String, a[2] as String?, a[3] as String?, a[4] as ForkFrom?, a[5] as String?, a[6] as String?, a[7] as String?, a[8] as String?, a[9] as RotationPick?, a[10] as String?) },
+            { v -> arrayOf(v.agent, v.cwd, v.tmuxName, v.command, v.fork, v.prompt, v.model, v.effort, v.permissionMode, v.rotation, v.alias) },
         )
     }
 }
@@ -15575,17 +16560,6 @@ data class OpenRefusal(
     }
 }
 
-enum class OpenState(val wire: String) {
-    OPENED("opened"),
-    SKIPPED("skipped"),
-    FAILED("failed"),
-    ;
-
-    companion object {
-        val ADAPTER: JsonAdapter<OpenState> = enumOf(entries) { it.wire }
-    }
-}
-
 sealed interface OpenWhat {
     /** 判别格（`kind`）那个词。 */
     val kind: String
@@ -15599,6 +16573,7 @@ sealed interface OpenWhat {
         val fork: ForkFrom? = null,
         val prompt: String? = null,
         val model: String? = null,
+        val effort: String? = null,
         val permissionMode: String? = null,
         val rotation: RotationPick? = null,
         val alias: String? = null,
@@ -15645,12 +16620,13 @@ sealed interface OpenWhat {
                         Field("fork", { opt(ForkFrom.ADAPTER) }, optional = true, nullable = true),
                         Field("prompt", { opt(Str) }, optional = true, nullable = true),
                         Field("model", { opt(Str) }, optional = true, nullable = true),
+                        Field("effort", { opt(Str) }, optional = true, nullable = true),
                         Field("permissionMode", { opt(Str) }, optional = true, nullable = true),
                         Field("rotation", { opt(RotationPick.ADAPTER) }, optional = true, nullable = true),
                         Field("alias", { opt(Str) }, optional = true, nullable = true),
                         ),
-                        { a -> OpenWhat.New(a[1] as String, a[2] as String, a[3] as String?, a[4] as String?, a[5] as ForkFrom?, a[6] as String?, a[7] as String?, a[8] as String?, a[9] as RotationPick?, a[10] as String?) },
-                        { v -> arrayOf("new", v.agent, v.cwd, v.tmuxName, v.command, v.fork, v.prompt, v.model, v.permissionMode, v.rotation, v.alias) },
+                        { a -> OpenWhat.New(a[1] as String, a[2] as String, a[3] as String?, a[4] as String?, a[5] as ForkFrom?, a[6] as String?, a[7] as String?, a[8] as String?, a[9] as String?, a[10] as RotationPick?, a[11] as String?) },
+                        { v -> arrayOf("new", v.agent, v.cwd, v.tmuxName, v.command, v.fork, v.prompt, v.model, v.effort, v.permissionMode, v.rotation, v.alias) },
                     )),
                 Variant("resume", OpenWhat.Resume::class.java, obj(
                         listOf(
@@ -15744,41 +16720,6 @@ data class Opened(
 }
 
 @Suppress("UNCHECKED_CAST")
-data class OpenedItem(
-    val key: String,
-    val state: OpenState,
-    val id: String? = null,
-    val staged: String? = null,
-    val path: WirePath? = null,
-    val newName: WirePath? = null,
-    val overwrite: Boolean? = null,
-    val code: String? = null,
-    val reason: String? = null,
-    val detail: String? = null,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<OpenedItem> = obj(
-            listOf(
-            Field("key", { Str }, optional = false, nullable = false),
-            Field("state", { OpenState.ADAPTER }, optional = false, nullable = false),
-            Field("id", { opt(Str) }, optional = true, nullable = true),
-            Field("staged", { opt(Str) }, optional = true, nullable = true),
-            Field("path", { opt(WirePath.ADAPTER) }, optional = true, nullable = true),
-            Field("new_name", { opt(WirePath.ADAPTER) }, optional = true, nullable = true),
-            Field("overwrite", { opt(Bool) }, optional = true, nullable = true),
-            Field("code", { opt(Str) }, optional = true, nullable = true),
-            Field("reason", { opt(Str) }, optional = true, nullable = true),
-            Field("detail", { opt(Str) }, optional = true, nullable = true),
-            ),
-            { a -> OpenedItem(a[0] as String, a[1] as OpenState, a[2] as String?, a[3] as String?, a[4] as WirePath?, a[5] as WirePath?, a[6] as Boolean?, a[7] as String?, a[8] as String?, a[9] as String?) },
-            { v -> arrayOf(v.key, v.state, v.id, v.staged, v.path, v.newName, v.overwrite, v.code, v.reason, v.detail) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
 data class OriginSessionsListedPayload(
     val origin: String,
 ) : Ordered {
@@ -15823,9 +16764,6 @@ sealed interface OsOpen {
     data object LogFile : OsOpen {
         override val kind: String get() = "logFile"
     }
-    data object LogDir : OsOpen {
-        override val kind: String get() = "logDir"
-    }
 
     companion object {
         val ADAPTER: JsonAdapter<OsOpen> =
@@ -15863,13 +16801,6 @@ sealed interface OsOpen {
                         { OsOpen.LogFile },
                         { arrayOf("logFile") },
                     )),
-                Variant("logDir", OsOpen.LogDir::class.java, obj(
-                        listOf(
-                        Field("kind", { tag("logDir") }, optional = false, nullable = false),
-                        ),
-                        { OsOpen.LogDir },
-                        { arrayOf("logDir") },
-                    )),
                 ),
             )
     }
@@ -15890,9 +16821,12 @@ data class OwnItem(
     val id: String,
     val what: String,
     val path: String,
+    val label: String,
+    val abs: String,
     val dir: Boolean,
     val `class`: OwnClass,
     val exists: Boolean,
+    val absentSaid: String?,
     val sizeText: String?,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -15903,13 +16837,16 @@ data class OwnItem(
             Field("id", { Str }, optional = false, nullable = false),
             Field("what", { Str }, optional = false, nullable = false),
             Field("path", { Str }, optional = false, nullable = false),
+            Field("label", { Str }, optional = false, nullable = false),
+            Field("abs", { Str }, optional = false, nullable = false),
             Field("dir", { Bool }, optional = false, nullable = false),
             Field("class", { OwnClass.ADAPTER }, optional = false, nullable = false),
             Field("exists", { Bool }, optional = false, nullable = false),
+            Field("absent_said", { opt(Str) }, optional = false, nullable = true),
             Field("size_text", { opt(Str) }, optional = false, nullable = true),
             ),
-            { a -> OwnItem(a[0] as String, a[1] as String, a[2] as String, a[3] as Boolean, a[4] as OwnClass, a[5] as Boolean, a[6] as String?) },
-            { v -> arrayOf(v.id, v.what, v.path, v.dir, v.`class`, v.exists, v.sizeText) },
+            { a -> OwnItem(a[0] as String, a[1] as String, a[2] as String, a[3] as String, a[4] as String, a[5] as Boolean, a[6] as OwnClass, a[7] as Boolean, a[8] as String?, a[9] as String?) },
+            { v -> arrayOf(v.id, v.what, v.path, v.label, v.abs, v.dir, v.`class`, v.exists, v.absentSaid, v.sizeText) },
         )
     }
 }
@@ -15917,6 +16854,8 @@ data class OwnItem(
 enum class PasteKind(val wire: String) {
     CODE("code"),
     REDIRECT_URL("redirectUrl"),
+    SHOW_CODE("showCode"),
+    NO_PASTE("noPaste"),
     ;
 
     companion object {
@@ -16053,7 +16992,6 @@ data class PlaceReq(
 
 @Suppress("UNCHECKED_CAST")
 data class PlanAckReply(
-    val acked: Boolean,
     val key: String,
     val needCount: Int,
 ) : Ordered {
@@ -16062,12 +17000,11 @@ data class PlanAckReply(
     companion object {
         val ADAPTER: JsonAdapter<PlanAckReply> = obj(
             listOf(
-            Field("acked", { Bool }, optional = false, nullable = false),
             Field("key", { Str }, optional = false, nullable = false),
             Field("needCount", { Int32 }, optional = false, nullable = false),
             ),
-            { a -> PlanAckReply(a[0] as Boolean, a[1] as String, a[2] as Int) },
-            { v -> arrayOf(v.acked, v.key, v.needCount) },
+            { a -> PlanAckReply(a[0] as String, a[1] as Int) },
+            { v -> arrayOf(v.key, v.needCount) },
         )
     }
 }
@@ -16110,27 +17047,6 @@ data class PlanAdopted(
             ),
             { a -> PlanAdopted(a[0] as String, a[1] as String, a[2] as Boolean) },
             { v -> arrayOf(v.slice, v.path, v.switched) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class PlanArchived(
-    val id: String,
-    val title: String?,
-    val kind: String?,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<PlanArchived> = obj(
-            listOf(
-            Field("id", { Str }, optional = false, nullable = false),
-            Field("title", { opt(Str) }, optional = false, nullable = true),
-            Field("kind", { opt(Str) }, optional = false, nullable = true),
-            ),
-            { a -> PlanArchived(a[0] as String, a[1] as String?, a[2] as String?) },
-            { v -> arrayOf(v.id, v.title, v.kind) },
         )
     }
 }
@@ -16360,10 +17276,10 @@ data class PlanCell(
     val look: PlanLook,
     val end: String?,
     val quiet: String?,
-    val whyCode: PlanWhyCode?,
     val whyShort: PlanWhyShort?,
     val sets: List<PlanSetsTo>,
     val block: String?,
+    val rootOf: String?,
     val owner: PlanWho?,
     val signer: PlanWho?,
     val covers: List<String>,
@@ -16394,10 +17310,10 @@ data class PlanCell(
             Field("look", { PlanLook.ADAPTER }, optional = false, nullable = false),
             Field("end", { opt(Str) }, optional = false, nullable = true),
             Field("quiet", { opt(Str) }, optional = false, nullable = true),
-            Field("whyCode", { opt(PlanWhyCode.ADAPTER) }, optional = false, nullable = true),
             Field("whyShort", { opt(PlanWhyShort.ADAPTER) }, optional = false, nullable = true),
             Field("sets", { arr(PlanSetsTo.ADAPTER) }, optional = false, nullable = false),
             Field("block", { opt(Str) }, optional = false, nullable = true),
+            Field("rootOf", { opt(Str) }, optional = false, nullable = true),
             Field("owner", { opt(PlanWho.ADAPTER) }, optional = false, nullable = true),
             Field("signer", { opt(PlanWho.ADAPTER) }, optional = false, nullable = true),
             Field("covers", { arr(Str) }, optional = false, nullable = false),
@@ -16406,8 +17322,8 @@ data class PlanCell(
             Field("returned", { opt(PlanReturned.ADAPTER) }, optional = false, nullable = true),
             Field("said", { PlanCellSaid.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> PlanCell(a[0] as String, a[1] as String?, a[2] as String?, a[3] as String?, a[4] as String?, a[5] as List<String>, a[6] as PlanEdges, a[7] as PlanEdges, a[8] as List<PlanFile>, a[9] as List<PlanState>, a[10] as String?, a[11] as List<String>, a[12] as PlanCellStatusCode?, a[13] as Boolean, a[14] as PlanLook, a[15] as String?, a[16] as String?, a[17] as PlanWhyCode?, a[18] as PlanWhyShort?, a[19] as List<PlanSetsTo>, a[20] as String?, a[21] as PlanWho?, a[22] as PlanWho?, a[23] as List<String>, a[24] as List<String>, a[25] as PlanRefs, a[26] as PlanReturned?, a[27] as PlanCellSaid) },
-            { v -> arrayOf(v.id, v.title, v.kind, v.body, v.parent, v.children, v.edges, v.pointedBy, v.files, v.state, v.stateLine, v.evidencedBy, v.statusCode, v.undecided, v.look, v.end, v.quiet, v.whyCode, v.whyShort, v.sets, v.block, v.owner, v.signer, v.covers, v.coveredBy, v.refs, v.returned, v.said) },
+            { a -> PlanCell(a[0] as String, a[1] as String?, a[2] as String?, a[3] as String?, a[4] as String?, a[5] as List<String>, a[6] as PlanEdges, a[7] as PlanEdges, a[8] as List<PlanFile>, a[9] as List<PlanState>, a[10] as String?, a[11] as List<String>, a[12] as PlanCellStatusCode?, a[13] as Boolean, a[14] as PlanLook, a[15] as String?, a[16] as String?, a[17] as PlanWhyShort?, a[18] as List<PlanSetsTo>, a[19] as String?, a[20] as String?, a[21] as PlanWho?, a[22] as PlanWho?, a[23] as List<String>, a[24] as List<String>, a[25] as PlanRefs, a[26] as PlanReturned?, a[27] as PlanCellSaid) },
+            { v -> arrayOf(v.id, v.title, v.kind, v.body, v.parent, v.children, v.edges, v.pointedBy, v.files, v.state, v.stateLine, v.evidencedBy, v.statusCode, v.undecided, v.look, v.end, v.quiet, v.whyShort, v.sets, v.block, v.rootOf, v.owner, v.signer, v.covers, v.coveredBy, v.refs, v.returned, v.said) },
         )
     }
 }
@@ -16484,7 +17400,6 @@ data class PlanCheck(
     val unreadable: List<PlanReadError>,
     val unparsed: List<String>,
     val red: List<PlanRed>,
-    val undecidable: List<PlanUndecidable>,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -16494,10 +17409,9 @@ data class PlanCheck(
             Field("unreadable", { arr(PlanReadError.ADAPTER) }, optional = false, nullable = false),
             Field("unparsed", { arr(Str) }, optional = false, nullable = false),
             Field("red", { arr(PlanRed.ADAPTER) }, optional = false, nullable = false),
-            Field("undecidable", { arr(PlanUndecidable.ADAPTER) }, optional = false, nullable = false),
             ),
-            { a -> PlanCheck(a[0] as List<PlanReadError>, a[1] as List<String>, a[2] as List<PlanRed>, a[3] as List<PlanUndecidable>) },
-            { v -> arrayOf(v.unreadable, v.unparsed, v.red, v.undecidable) },
+            { a -> PlanCheck(a[0] as List<PlanReadError>, a[1] as List<String>, a[2] as List<PlanRed>) },
+            { v -> arrayOf(v.unreadable, v.unparsed, v.red) },
         )
     }
 }
@@ -16568,7 +17482,6 @@ data class PlanDomain(
     val name: String?,
     val error: String?,
     val kinds: List<PlanKind>,
-    val phases: List<PlanPhase>,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -16578,10 +17491,9 @@ data class PlanDomain(
             Field("name", { opt(Str) }, optional = false, nullable = true),
             Field("error", { opt(Str) }, optional = false, nullable = true),
             Field("kinds", { arr(PlanKind.ADAPTER) }, optional = false, nullable = false),
-            Field("phases", { arr(PlanPhase.ADAPTER) }, optional = false, nullable = false),
             ),
-            { a -> PlanDomain(a[0] as String?, a[1] as String?, a[2] as List<PlanKind>, a[3] as List<PlanPhase>) },
-            { v -> arrayOf(v.name, v.error, v.kinds, v.phases) },
+            { a -> PlanDomain(a[0] as String?, a[1] as String?, a[2] as List<PlanKind>) },
+            { v -> arrayOf(v.name, v.error, v.kinds) },
         )
     }
 }
@@ -16873,7 +17785,6 @@ data class PlanList(
 
 @Suppress("UNCHECKED_CAST")
 data class PlanListReq(
-    val dirs: List<String>? = null,
     val fresh: Boolean? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -16881,11 +17792,10 @@ data class PlanListReq(
     companion object {
         val ADAPTER: JsonAdapter<PlanListReq> = obj(
             listOf(
-            Field("dirs", { opt(arr(Str)) }, optional = true, nullable = true),
             Field("fresh", { opt(Bool) }, optional = true, nullable = true),
             ),
-            { a -> PlanListReq(a[0] as List<String>?, a[1] as Boolean?) },
-            { v -> arrayOf(v.dirs, v.fresh) },
+            { a -> PlanListReq(a[0] as Boolean?) },
+            { v -> arrayOf(v.fresh) },
         )
     }
 }
@@ -17018,10 +17928,10 @@ data class PlanNeed(
     val cell: String?,
     val sid: String?,
     val red: Int? = null,
-    val acked: Boolean,
     val title: String,
     val lines: List<String>,
     val pos: String?,
+    val who: String?,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -17034,13 +17944,13 @@ data class PlanNeed(
             Field("cell", { opt(Str) }, optional = false, nullable = true),
             Field("sid", { opt(Str) }, optional = false, nullable = true),
             Field("red", { opt(Int32) }, optional = true, nullable = true),
-            Field("acked", { Bool }, optional = false, nullable = false),
             Field("title", { Str }, optional = false, nullable = false),
             Field("lines", { arr(Str) }, optional = false, nullable = false),
             Field("pos", { opt(Str) }, optional = false, nullable = true),
+            Field("who", { opt(Str) }, optional = false, nullable = true),
             ),
-            { a -> PlanNeed(a[0] as String, a[1] as PlanNeedKind, a[2] as String?, a[3] as String?, a[4] as String?, a[5] as Int?, a[6] as Boolean, a[7] as String, a[8] as List<String>, a[9] as String?) },
-            { v -> arrayOf(v.key, v.kind, v.block, v.cell, v.sid, v.red, v.acked, v.title, v.lines, v.pos) },
+            { a -> PlanNeed(a[0] as String, a[1] as PlanNeedKind, a[2] as String?, a[3] as String?, a[4] as String?, a[5] as Int?, a[6] as String, a[7] as List<String>, a[8] as String?, a[9] as String?) },
+            { v -> arrayOf(v.key, v.kind, v.block, v.cell, v.sid, v.red, v.title, v.lines, v.pos, v.who) },
         )
     }
 }
@@ -17153,6 +18063,7 @@ data class PlanNewReq(
 data class PlanPb(
     val state: PlanPbState,
     val said: String?,
+    val hint: String? = null,
     val version: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -17162,10 +18073,11 @@ data class PlanPb(
             listOf(
             Field("state", { PlanPbState.ADAPTER }, optional = false, nullable = false),
             Field("said", { opt(Str) }, optional = false, nullable = true),
+            Field("hint", { opt(Str) }, optional = true, nullable = true),
             Field("version", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> PlanPb(a[0] as PlanPbState, a[1] as String?, a[2] as String?) },
-            { v -> arrayOf(v.state, v.said, v.version) },
+            { a -> PlanPb(a[0] as PlanPbState, a[1] as String?, a[2] as String?, a[3] as String?) },
+            { v -> arrayOf(v.state, v.said, v.hint, v.version) },
         )
     }
 }
@@ -17253,23 +18165,6 @@ data class PlanPendingSet(
 }
 
 @Suppress("UNCHECKED_CAST")
-data class PlanPhase(
-    val name: String?,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<PlanPhase> = obj(
-            listOf(
-            Field("name", { opt(Str) }, optional = false, nullable = true),
-            ),
-            { a -> PlanPhase(a[0] as String?) },
-            { v -> arrayOf(v.name) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
 data class PlanProgress(
     val done: Int,
     val of: Int,
@@ -17299,7 +18194,6 @@ data class PlanRead(
     val bySession: Map<String, PlanSessionBlock>,
     val rev: String,
     val readAt: Long,
-    val readAtText: String? = null,
     val seen: SeenAt? = null,
     val stale: PlanStale?,
     val needCount: Int,
@@ -17318,13 +18212,12 @@ data class PlanRead(
             Field("bySession", { dict(PlanSessionBlock.ADAPTER) }, optional = false, nullable = false),
             Field("rev", { Str }, optional = false, nullable = false),
             Field("readAt", { U64 }, optional = false, nullable = false),
-            Field("readAtText", { opt(Str) }, optional = true, nullable = true),
             Field("seen", { opt(SeenAt.ADAPTER) }, optional = true, nullable = true),
             Field("stale", { opt(PlanStale.ADAPTER) }, optional = false, nullable = true),
             Field("needCount", { Int32 }, optional = false, nullable = false),
             ),
-            { a -> PlanRead(a[0] as String?, a[1] as String, a[2] as String?, a[3] as Boolean, a[4] as List<PlanDomain>, a[5] as List<PlanSlice>, a[6] as Map<String, PlanSessionBlock>, a[7] as String, a[8] as Long, a[9] as String?, a[10] as SeenAt?, a[11] as PlanStale?, a[12] as Int) },
-            { v -> arrayOf(v.pb, v.workspace, v.repo, v.auto, v.domains, v.slices, v.bySession, v.rev, v.readAt, v.readAtText, v.seen, v.stale, v.needCount) },
+            { a -> PlanRead(a[0] as String?, a[1] as String, a[2] as String?, a[3] as Boolean, a[4] as List<PlanDomain>, a[5] as List<PlanSlice>, a[6] as Map<String, PlanSessionBlock>, a[7] as String, a[8] as Long, a[9] as SeenAt?, a[10] as PlanStale?, a[11] as Int) },
+            { v -> arrayOf(v.pb, v.workspace, v.repo, v.auto, v.domains, v.slices, v.bySession, v.rev, v.readAt, v.seen, v.stale, v.needCount) },
         )
     }
 }
@@ -17603,7 +18496,6 @@ data class PlanSessionBlock(
     val top: Boolean,
     val phase: String?,
     val at: String?,
-    val atTitle: String?,
     val via: PlanSessionBlockVia,
     val said: PlanSessionSaid,
 ) : Ordered {
@@ -17619,12 +18511,11 @@ data class PlanSessionBlock(
             Field("top", { Bool }, optional = false, nullable = false),
             Field("phase", { opt(Str) }, optional = false, nullable = true),
             Field("at", { opt(Str) }, optional = false, nullable = true),
-            Field("atTitle", { opt(Str) }, optional = false, nullable = true),
             Field("via", { PlanSessionBlockVia.ADAPTER }, optional = false, nullable = false),
             Field("said", { PlanSessionSaid.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> PlanSessionBlock(a[0] as String, a[1] as String, a[2] as String?, a[3] as String?, a[4] as Boolean, a[5] as String?, a[6] as String?, a[7] as String?, a[8] as PlanSessionBlockVia, a[9] as PlanSessionSaid) },
-            { v -> arrayOf(v.slice, v.block, v.cell, v.title, v.top, v.phase, v.at, v.atTitle, v.via, v.said) },
+            { a -> PlanSessionBlock(a[0] as String, a[1] as String, a[2] as String?, a[3] as String?, a[4] as Boolean, a[5] as String?, a[6] as String?, a[7] as PlanSessionBlockVia, a[8] as PlanSessionSaid) },
+            { v -> arrayOf(v.slice, v.block, v.cell, v.title, v.top, v.phase, v.at, v.via, v.said) },
         )
     }
 }
@@ -17700,8 +18591,6 @@ data class PlanSlice(
     val stale: PlanStale?,
     val bare: Boolean,
     val kinds: List<PlanKind>,
-    val phases: List<PlanPhase>,
-    val doneValue: String?,
     val top: List<String>,
     val progress: PlanProgress?,
     val openCells: Int,
@@ -17712,7 +18601,6 @@ data class PlanSlice(
     val check: PlanCheck,
     val labels: Map<String, String>,
     val cells: List<PlanCell>,
-    val archived: List<PlanArchived>,
     val audits: List<PlanAudit>,
     val needs: List<PlanNeed>,
     val needCount: Int,
@@ -17733,8 +18621,6 @@ data class PlanSlice(
             Field("stale", { opt(PlanStale.ADAPTER) }, optional = false, nullable = true),
             Field("bare", { Bool }, optional = false, nullable = false),
             Field("kinds", { arr(PlanKind.ADAPTER) }, optional = false, nullable = false),
-            Field("phases", { arr(PlanPhase.ADAPTER) }, optional = false, nullable = false),
-            Field("doneValue", { opt(Str) }, optional = false, nullable = true),
             Field("top", { arr(Str) }, optional = false, nullable = false),
             Field("progress", { opt(PlanProgress.ADAPTER) }, optional = false, nullable = true),
             Field("openCells", { Int32 }, optional = false, nullable = false),
@@ -17745,15 +18631,14 @@ data class PlanSlice(
             Field("check", { PlanCheck.ADAPTER }, optional = false, nullable = false),
             Field("labels", { dict(Str) }, optional = false, nullable = false),
             Field("cells", { arr(PlanCell.ADAPTER) }, optional = false, nullable = false),
-            Field("archived", { arr(PlanArchived.ADAPTER) }, optional = false, nullable = false),
             Field("audits", { arr(PlanAudit.ADAPTER) }, optional = false, nullable = false),
             Field("needs", { arr(PlanNeed.ADAPTER) }, optional = false, nullable = false),
             Field("needCount", { Int32 }, optional = false, nullable = false),
             Field("returned", { opt(PlanReturned.ADAPTER) }, optional = false, nullable = true),
             Field("said", { PlanSliceSaid.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> PlanSlice(a[0] as String, a[1] as String?, a[2] as String?, a[3] as Boolean, a[4] as Boolean, a[5] as String?, a[6] as PlanStale?, a[7] as Boolean, a[8] as List<PlanKind>, a[9] as List<PlanPhase>, a[10] as String?, a[11] as List<String>, a[12] as PlanProgress?, a[13] as Int, a[14] as List<PlanBlock>, a[15] as List<PlanUnbuilt>, a[16] as PlanUnowned, a[17] as List<PlanPendingSet>, a[18] as PlanCheck, a[19] as Map<String, String>, a[20] as List<PlanCell>, a[21] as List<PlanArchived>, a[22] as List<PlanAudit>, a[23] as List<PlanNeed>, a[24] as Int, a[25] as PlanReturned?, a[26] as PlanSliceSaid) },
-            { v -> arrayOf(v.name, v.domain, v.path, v.current, v.docsOnly, v.error, v.stale, v.bare, v.kinds, v.phases, v.doneValue, v.top, v.progress, v.openCells, v.blocks, v.unbuiltBlocks, v.unowned, v.pendingSets, v.check, v.labels, v.cells, v.archived, v.audits, v.needs, v.needCount, v.returned, v.said) },
+            { a -> PlanSlice(a[0] as String, a[1] as String?, a[2] as String?, a[3] as Boolean, a[4] as Boolean, a[5] as String?, a[6] as PlanStale?, a[7] as Boolean, a[8] as List<PlanKind>, a[9] as List<String>, a[10] as PlanProgress?, a[11] as Int, a[12] as List<PlanBlock>, a[13] as List<PlanUnbuilt>, a[14] as PlanUnowned, a[15] as List<PlanPendingSet>, a[16] as PlanCheck, a[17] as Map<String, String>, a[18] as List<PlanCell>, a[19] as List<PlanAudit>, a[20] as List<PlanNeed>, a[21] as Int, a[22] as PlanReturned?, a[23] as PlanSliceSaid) },
+            { v -> arrayOf(v.name, v.domain, v.path, v.current, v.docsOnly, v.error, v.stale, v.bare, v.kinds, v.top, v.progress, v.openCells, v.blocks, v.unbuiltBlocks, v.unowned, v.pendingSets, v.check, v.labels, v.cells, v.audits, v.needs, v.needCount, v.returned, v.said) },
         )
     }
 }
@@ -17877,25 +18762,6 @@ data class PlanUnbuilt(
 }
 
 @Suppress("UNCHECKED_CAST")
-data class PlanUndecidable(
-    val rule: String?,
-    val why: String?,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<PlanUndecidable> = obj(
-            listOf(
-            Field("rule", { opt(Str) }, optional = false, nullable = true),
-            Field("why", { opt(Str) }, optional = false, nullable = true),
-            ),
-            { a -> PlanUndecidable(a[0] as String?, a[1] as String?) },
-            { v -> arrayOf(v.rule, v.why) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
 data class PlanUnowned(
     val paths: List<String>?,
     val why: String?,
@@ -17921,7 +18787,7 @@ data class PlanWho(
     val sid: String?,
     val needs: String?,
     val face: SessionFace,
-    val label: String?,
+    val label: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -17933,9 +18799,9 @@ data class PlanWho(
             Field("sid", { opt(Str) }, optional = false, nullable = true),
             Field("needs", { opt(Str) }, optional = false, nullable = true),
             Field("face", { SessionFace.ADAPTER }, optional = false, nullable = false),
-            Field("label", { opt(Str) }, optional = false, nullable = true),
+            Field("label", { Str }, optional = false, nullable = false),
             ),
-            { a -> PlanWho(a[0] as String, a[1] as PlanWhoKind, a[2] as String?, a[3] as String?, a[4] as SessionFace, a[5] as String?) },
+            { a -> PlanWho(a[0] as String, a[1] as PlanWhoKind, a[2] as String?, a[3] as String?, a[4] as SessionFace, a[5] as String) },
             { v -> arrayOf(v.id, v.kind, v.sid, v.needs, v.face, v.label) },
         )
     }
@@ -17949,68 +18815,6 @@ enum class PlanWhoKind(val wire: String) {
 
     companion object {
         val ADAPTER: JsonAdapter<PlanWhoKind> = enumOf(entries) { it.wire }
-    }
-}
-
-sealed interface PlanWhyCode {
-    /** 判别格（`kind`）那个词。 */
-    val kind: String
-
-    data object Nosign : PlanWhyCode {
-        override val kind: String get() = "nosign"
-    }
-    @Suppress("UNCHECKED_CAST")
-    data class Inside(
-        val done: Int,
-        val of: Int,
-    ) : PlanWhyCode, Ordered {
-        override val kind: String get() = "inside"
-        override var wireOrder: IntArray? = null
-    }
-    data object Upper : PlanWhyCode {
-        override val kind: String get() = "upper"
-    }
-    data object Undecided : PlanWhyCode {
-        override val kind: String get() = "undecided"
-    }
-
-    companion object {
-        val ADAPTER: JsonAdapter<PlanWhyCode> =
-            tagged<PlanWhyCode>(
-                "kind",
-                listOf(
-                Variant("nosign", PlanWhyCode.Nosign::class.java, obj(
-                        listOf(
-                        Field("kind", { tag("nosign") }, optional = false, nullable = false),
-                        ),
-                        { PlanWhyCode.Nosign },
-                        { arrayOf("nosign") },
-                    )),
-                Variant("inside", PlanWhyCode.Inside::class.java, obj(
-                        listOf(
-                        Field("kind", { tag("inside") }, optional = false, nullable = false),
-                        Field("done", { Int32 }, optional = false, nullable = false),
-                        Field("of", { Int32 }, optional = false, nullable = false),
-                        ),
-                        { a -> PlanWhyCode.Inside(a[1] as Int, a[2] as Int) },
-                        { v -> arrayOf("inside", v.done, v.of) },
-                    )),
-                Variant("upper", PlanWhyCode.Upper::class.java, obj(
-                        listOf(
-                        Field("kind", { tag("upper") }, optional = false, nullable = false),
-                        ),
-                        { PlanWhyCode.Upper },
-                        { arrayOf("upper") },
-                    )),
-                Variant("undecided", PlanWhyCode.Undecided::class.java, obj(
-                        listOf(
-                        Field("kind", { tag("undecided") }, optional = false, nullable = false),
-                        ),
-                        { PlanWhyCode.Undecided },
-                        { arrayOf("undecided") },
-                    )),
-                ),
-            )
     }
 }
 
@@ -18029,6 +18833,25 @@ data class PlanWhyShort(
             ),
             { a -> PlanWhyShort(a[0] as String, a[1] as Boolean) },
             { v -> arrayOf(v.text, v.wait) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class PluginInstallReq(
+    val name: String,
+    val agent: String? = null,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<PluginInstallReq> = obj(
+            listOf(
+            Field("name", { Str }, optional = false, nullable = false),
+            Field("agent", { opt(Str) }, optional = true, nullable = true),
+            ),
+            { a -> PluginInstallReq(a[0] as String, a[1] as String?) },
+            { v -> arrayOf(v.name, v.agent) },
         )
     }
 }
@@ -18078,8 +18901,10 @@ data class Prefs(
     val contextLimits: Map<String, Long>,
     val agentHomes: Map<String, String>,
     val pbDir: String?,
+    val planDirs: List<String>,
     val childTab: Tab,
     val bgTab: Tab,
+    val statusLine: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -18093,11 +18918,13 @@ data class Prefs(
             Field("contextLimits", { dict(Lng) }, optional = false, nullable = false),
             Field("agentHomes", { dict(Str) }, optional = false, nullable = false),
             Field("pbDir", { opt(Str) }, optional = false, nullable = true),
+            Field("planDirs", { arr(Str) }, optional = false, nullable = false),
             Field("childTab", { Tab.ADAPTER }, optional = false, nullable = false),
             Field("bgTab", { Tab.ADAPTER }, optional = false, nullable = false),
+            Field("statusLine", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> Prefs(a[0] as Map<String, String>, a[1] as ResumeWhere, a[2] as Map<String, String>, a[3] as Map<String, String>, a[4] as Map<String, Long>, a[5] as Map<String, String>, a[6] as String?, a[7] as Tab, a[8] as Tab) },
-            { v -> arrayOf(v.launchers, v.resumeWhere, v.models, v.permissionModes, v.contextLimits, v.agentHomes, v.pbDir, v.childTab, v.bgTab) },
+            { a -> Prefs(a[0] as Map<String, String>, a[1] as ResumeWhere, a[2] as Map<String, String>, a[3] as Map<String, String>, a[4] as Map<String, Long>, a[5] as Map<String, String>, a[6] as String?, a[7] as List<String>, a[8] as Tab, a[9] as Tab, a[10] as String?) },
+            { v -> arrayOf(v.launchers, v.resumeWhere, v.models, v.permissionModes, v.contextLimits, v.agentHomes, v.pbDir, v.planDirs, v.childTab, v.bgTab, v.statusLine) },
         )
     }
 }
@@ -18109,6 +18936,7 @@ data class PrefsReply(
     val detail: String?,
     val path: String?,
     val prefs: Prefs,
+    val contextLimitsText: String?,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -18120,9 +18948,10 @@ data class PrefsReply(
             Field("detail", { opt(Str) }, optional = false, nullable = true),
             Field("path", { opt(Str) }, optional = false, nullable = true),
             Field("prefs", { Prefs.ADAPTER }, optional = false, nullable = false),
+            Field("contextLimitsText", { opt(Str) }, optional = false, nullable = true),
             ),
-            { a -> PrefsReply(a[0] as FileState, a[1] as String?, a[2] as String?, a[3] as String?, a[4] as Prefs) },
-            { v -> arrayOf(v.state, v.reason, v.detail, v.path, v.prefs) },
+            { a -> PrefsReply(a[0] as FileState, a[1] as String?, a[2] as String?, a[3] as String?, a[4] as Prefs, a[5] as String?) },
+            { v -> arrayOf(v.state, v.reason, v.detail, v.path, v.prefs, v.contextLimitsText) },
         )
     }
 }
@@ -18138,6 +18967,8 @@ data class PrefsSet(
     val childTab: Tab? = null,
     val bgTab: Tab? = null,
     val pbDir: String? = null,
+    val planDirs: List<String>? = null,
+    val statusLine: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -18153,9 +18984,11 @@ data class PrefsSet(
             Field("childTab", { opt(Tab.ADAPTER) }, optional = true, nullable = true),
             Field("bgTab", { opt(Tab.ADAPTER) }, optional = true, nullable = true),
             Field("pbDir", { opt(Str) }, optional = true, nullable = true),
+            Field("planDirs", { opt(arr(Str)) }, optional = true, nullable = true),
+            Field("statusLine", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> PrefsSet(a[0] as Map<String, String>?, a[1] as ResumeWhere?, a[2] as Map<String, String?>?, a[3] as Map<String, String?>?, a[4] as Map<String, Long>?, a[5] as Map<String, String>?, a[6] as Tab?, a[7] as Tab?, a[8] as String?) },
-            { v -> arrayOf(v.launchers, v.resumeWhere, v.models, v.permissionModes, v.contextLimits, v.agentHomes, v.childTab, v.bgTab, v.pbDir) },
+            { a -> PrefsSet(a[0] as Map<String, String>?, a[1] as ResumeWhere?, a[2] as Map<String, String?>?, a[3] as Map<String, String?>?, a[4] as Map<String, Long>?, a[5] as Map<String, String>?, a[6] as Tab?, a[7] as Tab?, a[8] as String?, a[9] as List<String>?, a[10] as String?) },
+            { v -> arrayOf(v.launchers, v.resumeWhere, v.models, v.permissionModes, v.contextLimits, v.agentHomes, v.childTab, v.bgTab, v.pbDir, v.planDirs, v.statusLine) },
         )
     }
 }
@@ -19155,6 +19988,7 @@ enum class PushOutcome(val wire: String) {
 @Suppress("UNCHECKED_CAST")
 data class QueueCancelled(
     val cancelled: Boolean,
+    val said: String,
     val queue: QueueList,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -19163,10 +19997,11 @@ data class QueueCancelled(
         val ADAPTER: JsonAdapter<QueueCancelled> = obj(
             listOf(
             Field("cancelled", { Bool }, optional = false, nullable = false),
+            Field("said", { Str }, optional = false, nullable = false),
             Field("queue", { QueueList.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> QueueCancelled(a[0] as Boolean, a[1] as QueueList) },
-            { v -> arrayOf(v.cancelled, v.queue) },
+            { a -> QueueCancelled(a[0] as Boolean, a[1] as String, a[2] as QueueList) },
+            { v -> arrayOf(v.cancelled, v.said, v.queue) },
         )
     }
 }
@@ -19288,6 +20123,7 @@ data class QuietUnread(
 @Suppress("UNCHECKED_CAST")
 data class QuotaAccount(
     val rows: List<List<QuotaCell>>,
+    val sampled: String,
     val warm: QuotaWarm,
     val agent: String,
     val account: String,
@@ -19305,6 +20141,7 @@ data class QuotaAccount(
         val ADAPTER: JsonAdapter<QuotaAccount> = obj(
             listOf(
             Field("rows", { arr(arr(QuotaCell.ADAPTER)) }, optional = false, nullable = false),
+            Field("sampled", { Str }, optional = false, nullable = false),
             Field("warm", { QuotaWarm.ADAPTER }, optional = false, nullable = false),
             Field("agent", { Str }, optional = false, nullable = false),
             Field("account", { Str }, optional = false, nullable = false),
@@ -19316,8 +20153,8 @@ data class QuotaAccount(
             Field("windows", { opt(arr(WindowShow.ADAPTER)) }, optional = true, nullable = true),
             Field("usage", { Usage.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> QuotaAccount(a[0] as List<List<QuotaCell>>, a[1] as QuotaWarm, a[2] as String, a[3] as String, a[4] as QuotaKind, a[5] as QuotaState, a[6] as Boolean, a[7] as List<SlotShow>, a[8] as LoginState, a[9] as List<WindowShow>?, a[10] as Usage) },
-            { v -> arrayOf(v.rows, v.warm, v.agent, v.account, v.kind, v.state, v.stale, v.slots, v.login, v.windows, v.usage) },
+            { a -> QuotaAccount(a[0] as List<List<QuotaCell>>, a[1] as String, a[2] as QuotaWarm, a[3] as String, a[4] as String, a[5] as QuotaKind, a[6] as QuotaState, a[7] as Boolean, a[8] as List<SlotShow>, a[9] as LoginState, a[10] as List<WindowShow>?, a[11] as Usage) },
+            { v -> arrayOf(v.rows, v.sampled, v.warm, v.agent, v.account, v.kind, v.state, v.stale, v.slots, v.login, v.windows, v.usage) },
         )
     }
 }
@@ -20108,9 +20945,7 @@ data class ResyncReq(
 data class Resynced(
     val added: Long,
     val removed: Long,
-    val retagged: Long,
-    val caughtUp: Long,
-    val watchers: Long,
+    val said: String,
     val unavailable: List<Unavailable>,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -20120,13 +20955,11 @@ data class Resynced(
             listOf(
             Field("added", { Lng }, optional = false, nullable = false),
             Field("removed", { Lng }, optional = false, nullable = false),
-            Field("retagged", { Lng }, optional = false, nullable = false),
-            Field("caught_up", { Lng }, optional = false, nullable = false),
-            Field("watchers", { Lng }, optional = false, nullable = false),
+            Field("said", { Str }, optional = false, nullable = false),
             Field("unavailable", { arr(Unavailable.ADAPTER) }, optional = false, nullable = false),
             ),
-            { a -> Resynced(a[0] as Long, a[1] as Long, a[2] as Long, a[3] as Long, a[4] as Long, a[5] as List<Unavailable>) },
-            { v -> arrayOf(v.added, v.removed, v.retagged, v.caughtUp, v.watchers, v.unavailable) },
+            { a -> Resynced(a[0] as Long, a[1] as Long, a[2] as String, a[3] as List<Unavailable>) },
+            { v -> arrayOf(v.added, v.removed, v.said, v.unavailable) },
         )
     }
 }
@@ -20990,6 +21823,7 @@ sealed interface RotLogCause {
 @Suppress("UNCHECKED_CAST")
 data class RotLogRow(
     val because: String,
+    val moved: String,
     val at: Long,
     val from: String,
     val to: String,
@@ -21003,6 +21837,7 @@ data class RotLogRow(
         val ADAPTER: JsonAdapter<RotLogRow> = obj(
             listOf(
             Field("because", { Str }, optional = false, nullable = false),
+            Field("moved", { Str }, optional = false, nullable = false),
             Field("at", { U64 }, optional = false, nullable = false),
             Field("from", { Str }, optional = false, nullable = false),
             Field("to", { Str }, optional = false, nullable = false),
@@ -21010,8 +21845,8 @@ data class RotLogRow(
             Field("why", { opt(Str) }, optional = true, nullable = true),
             Field("saw", { opt(RotSaw.ADAPTER) }, optional = true, nullable = true),
             ),
-            { a -> RotLogRow(a[0] as String, a[1] as Long, a[2] as String, a[3] as String, a[4] as RotLogCause, a[5] as String?, a[6] as RotSaw?) },
-            { v -> arrayOf(v.because, v.at, v.from, v.to, v.cause, v.why, v.saw) },
+            { a -> RotLogRow(a[0] as String, a[1] as String, a[2] as Long, a[3] as String, a[4] as String, a[5] as RotLogCause, a[6] as String?, a[7] as RotSaw?) },
+            { v -> arrayOf(v.because, v.moved, v.at, v.from, v.to, v.cause, v.why, v.saw) },
         )
     }
 }
@@ -21983,6 +22818,27 @@ data class RotationViewReq(
 }
 
 @Suppress("UNCHECKED_CAST")
+data class RowArchive(
+    val archived: Boolean,
+    val label: String,
+    val failed: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<RowArchive> = obj(
+            listOf(
+            Field("archived", { Bool }, optional = false, nullable = false),
+            Field("label", { Str }, optional = false, nullable = false),
+            Field("failed", { Str }, optional = false, nullable = false),
+            ),
+            { a -> RowArchive(a[0] as Boolean, a[1] as String, a[2] as String) },
+            { v -> arrayOf(v.archived, v.label, v.failed) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class RowEdit(
     val cwd: String,
     val alias: String,
@@ -22258,6 +23114,9 @@ data class RunInfo(
     val explain: RunExplain? = null,
     val end: RunEndLine? = null,
     val needs: Needs? = null,
+    val kids: List<String>? = null,
+    val kidsText: String? = null,
+    val kidsOpen: Boolean? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -22286,9 +23145,12 @@ data class RunInfo(
             Field("explain", { opt(RunExplain.ADAPTER) }, optional = true, nullable = true),
             Field("end", { opt(RunEndLine.ADAPTER) }, optional = true, nullable = true),
             Field("needs", { opt(Needs.ADAPTER) }, optional = true, nullable = true),
+            Field("kids", { opt(arr(Str)) }, optional = true, nullable = true),
+            Field("kids_text", { opt(Str) }, optional = true, nullable = true),
+            Field("kids_open", { opt(Bool) }, optional = true, nullable = true),
             ),
-            { a -> RunInfo(a[0] as String, a[1] as String?, a[2] as String?, a[3] as String?, a[4] as String?, a[5] as RunState, a[6] as String, a[7] as String?, a[8] as String, a[9] as RunDid?, a[10] as String?, a[11] as String?, a[12] as Long?, a[13] as String?, a[14] as Long?, a[15] as RunWhy?, a[16] as String?, a[17] as Boolean?, a[18] as List<RunLine>?, a[19] as RunExplain?, a[20] as RunEndLine?, a[21] as Needs?) },
-            { v -> arrayOf(v.run, v.label, v.kind, v.tool, v.parent, v.state, v.statusText, v.tookText, v.labelText, v.last, v.lastText, v.waiting, v.startedMs, v.startedText, v.activeMs, v.why, v.error, v.background, v.facts, v.explain, v.end, v.needs) },
+            { a -> RunInfo(a[0] as String, a[1] as String?, a[2] as String?, a[3] as String?, a[4] as String?, a[5] as RunState, a[6] as String, a[7] as String?, a[8] as String, a[9] as RunDid?, a[10] as String?, a[11] as String?, a[12] as Long?, a[13] as String?, a[14] as Long?, a[15] as RunWhy?, a[16] as String?, a[17] as Boolean?, a[18] as List<RunLine>?, a[19] as RunExplain?, a[20] as RunEndLine?, a[21] as Needs?, a[22] as List<String>?, a[23] as String?, a[24] as Boolean?) },
+            { v -> arrayOf(v.run, v.label, v.kind, v.tool, v.parent, v.state, v.statusText, v.tookText, v.labelText, v.last, v.lastText, v.waiting, v.startedMs, v.startedText, v.activeMs, v.why, v.error, v.background, v.facts, v.explain, v.end, v.needs, v.kids, v.kidsText, v.kidsOpen) },
         )
     }
 }
@@ -22389,6 +23251,8 @@ data class ScannedAccount(
     val authReady: Boolean,
     val selectable: Boolean,
     val color: Int? = null,
+    val agent: String? = null,
+    val unknownAgent: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -22407,9 +23271,11 @@ data class ScannedAccount(
             Field("authReady", { Bool }, optional = false, nullable = false),
             Field("selectable", { Bool }, optional = false, nullable = false),
             Field("color", { opt(Int32) }, optional = true, nullable = true),
+            Field("agent", { opt(Str) }, optional = true, nullable = true),
+            Field("unknownAgent", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> ScannedAccount(a[0] as String, a[1] as String, a[2] as String, a[3] as String?, a[4] as Boolean, a[5] as String, a[6] as Boolean, a[7] as Boolean, a[8] as String, a[9] as Boolean, a[10] as Boolean, a[11] as Int?) },
-            { v -> arrayOf(v.name, v.label, v.email, v.configDir, v.isDefault, v.mode, v.exists, v.loggedIn, v.authKind, v.authReady, v.selectable, v.color) },
+            { a -> ScannedAccount(a[0] as String, a[1] as String, a[2] as String, a[3] as String?, a[4] as Boolean, a[5] as String, a[6] as Boolean, a[7] as Boolean, a[8] as String, a[9] as Boolean, a[10] as Boolean, a[11] as Int?, a[12] as String?, a[13] as String?) },
+            { v -> arrayOf(v.name, v.label, v.email, v.configDir, v.isDefault, v.mode, v.exists, v.loggedIn, v.authKind, v.authReady, v.selectable, v.color, v.agent, v.unknownAgent) },
         )
     }
 }
@@ -22455,7 +23321,7 @@ data class SearchDown(
 @Suppress("UNCHECKED_CAST")
 data class SearchHit(
     val uuid: String,
-    val kind: String,
+    val who: String,
     val before: String,
     val matched: String,
     val after: String,
@@ -22469,7 +23335,7 @@ data class SearchHit(
         val ADAPTER: JsonAdapter<SearchHit> = obj(
             listOf(
             Field("uuid", { Str }, optional = false, nullable = false),
-            Field("kind", { Str }, optional = false, nullable = false),
+            Field("who", { Str }, optional = false, nullable = false),
             Field("before", { Str }, optional = false, nullable = false),
             Field("matched", { Str }, optional = false, nullable = false),
             Field("after", { Str }, optional = false, nullable = false),
@@ -22478,7 +23344,7 @@ data class SearchHit(
             Field("line", { U64 }, optional = false, nullable = false),
             ),
             { a -> SearchHit(a[0] as String, a[1] as String, a[2] as String, a[3] as String, a[4] as String, a[5] as String?, a[6] as Long, a[7] as Long) },
-            { v -> arrayOf(v.uuid, v.kind, v.before, v.matched, v.after, v.tool, v.offset, v.line) },
+            { v -> arrayOf(v.uuid, v.who, v.before, v.matched, v.after, v.tool, v.offset, v.line) },
         )
     }
 }
@@ -22733,8 +23599,8 @@ data class SessionAccountReply(
     val fromLine: String?,
     val usage: Usage?,
     val stale: Boolean,
-    val hover: List<List<String>>,
-    val sampled: Long?,
+    val hover: List<List<QuotaCell>>,
+    val sampled: String?,
     val differs: Boolean,
     val badge: SessionAccountReplyBadge?,
     val ownUpstream: String? = null,
@@ -22752,13 +23618,13 @@ data class SessionAccountReply(
             Field("fromLine", { opt(Str) }, optional = false, nullable = true),
             Field("usage", { opt(Usage.ADAPTER) }, optional = false, nullable = true),
             Field("stale", { Bool }, optional = false, nullable = false),
-            Field("hover", { arr(arr(Str)) }, optional = false, nullable = false),
-            Field("sampled", { opt(Lng) }, optional = false, nullable = true),
+            Field("hover", { arr(arr(QuotaCell.ADAPTER)) }, optional = false, nullable = false),
+            Field("sampled", { opt(Str) }, optional = false, nullable = true),
             Field("differs", { Bool }, optional = false, nullable = false),
             Field("badge", { opt(SessionAccountReplyBadge.ADAPTER) }, optional = false, nullable = true),
             Field("ownUpstream", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> SessionAccountReply(a[0] as String?, a[1] as String, a[2] as SessionAccountReplyWhen, a[3] as String?, a[4] as String?, a[5] as String?, a[6] as Usage?, a[7] as Boolean, a[8] as List<List<String>>, a[9] as Long?, a[10] as Boolean, a[11] as SessionAccountReplyBadge?, a[12] as String?) },
+            { a -> SessionAccountReply(a[0] as String?, a[1] as String, a[2] as SessionAccountReplyWhen, a[3] as String?, a[4] as String?, a[5] as String?, a[6] as Usage?, a[7] as Boolean, a[8] as List<List<QuotaCell>>, a[9] as String?, a[10] as Boolean, a[11] as SessionAccountReplyBadge?, a[12] as String?) },
             { v -> arrayOf(v.account, v.name, v.`when`, v.from, v.accountLine, v.fromLine, v.usage, v.stale, v.hover, v.sampled, v.differs, v.badge, v.ownUpstream) },
         )
     }
@@ -23021,6 +23887,7 @@ data class SessionBook(
     val fileSaid: Map<String, String>,
     val listed: Boolean,
     val unseen: SessionFace? = null,
+    val unread: Map<String, String>? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -23035,9 +23902,10 @@ data class SessionBook(
             Field("file_said", { dict(Str) }, optional = false, nullable = false),
             Field("listed", { Bool }, optional = false, nullable = false),
             Field("unseen", { opt(SessionFace.ADAPTER) }, optional = true, nullable = true),
+            Field("unread", { opt(dict(Str)) }, optional = true, nullable = true),
             ),
-            { a -> SessionBook(a[0] as Map<String, SessionAdded>, a[1] as Map<String, SessionLeft>, a[2] as Map<String, SessionRuns>, a[3] as Map<String, String>, a[4] as Map<String, Long>, a[5] as Map<String, String>, a[6] as Boolean, a[7] as SessionFace?) },
-            { v -> arrayOf(v.live, v.left, v.runs, v.successors, v.rereads, v.fileSaid, v.listed, v.unseen) },
+            { a -> SessionBook(a[0] as Map<String, SessionAdded>, a[1] as Map<String, SessionLeft>, a[2] as Map<String, SessionRuns>, a[3] as Map<String, String>, a[4] as Map<String, Long>, a[5] as Map<String, String>, a[6] as Boolean, a[7] as SessionFace?, a[8] as Map<String, String>?) },
+            { v -> arrayOf(v.live, v.left, v.runs, v.successors, v.rereads, v.fileSaid, v.listed, v.unseen, v.unread) },
         )
     }
 }
@@ -23255,6 +24123,7 @@ sealed interface SessionContainer {
 
 enum class SessionDot(val wire: String) {
     RUNNING("running"),
+    ASKS("asks"),
     NEEDS_YOU("needs-you"),
     BACKGROUND("background"),
     IDLE("idle"),
@@ -23311,6 +24180,7 @@ data class SessionFace(
 @Suppress("UNCHECKED_CAST")
 data class SessionFacts(
     val touchedFiles: List<String>,
+    val touchedText: String? = null,
     val usage: UsageFact?,
     val modelText: String?,
     val modelPick: String?,
@@ -23346,6 +24216,7 @@ data class SessionFacts(
         val ADAPTER: JsonAdapter<SessionFacts> = obj(
             listOf(
             Field("touchedFiles", { arr(Str) }, optional = false, nullable = false),
+            Field("touchedText", { opt(Str) }, optional = true, nullable = true),
             Field("usage", { opt(UsageFact.ADAPTER) }, optional = false, nullable = true),
             Field("modelText", { opt(Str) }, optional = false, nullable = true),
             Field("modelPick", { opt(Str) }, optional = false, nullable = true),
@@ -23375,8 +24246,8 @@ data class SessionFacts(
             Field("startedByText", { opt(Str) }, optional = false, nullable = true),
             Field("childrenText", { opt(Str) }, optional = false, nullable = true),
             ),
-            { a -> SessionFacts(a[0] as List<String>, a[1] as UsageFact?, a[2] as String?, a[3] as String?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as String?, a[8] as List<Int>, a[9] as String?, a[10] as String?, a[11] as String?, a[12] as List<PendingCall>, a[13] as LastSay?, a[14] as Needs?, a[15] as List<RetryRun>, a[16] as List<NoticeRun>, a[17] as String?, a[18] as String?, a[19] as TokenUse?, a[20] as FactsBackground?, a[21] as Int?, a[22] as List<AutoChoice>, a[23] as AskEnd?, a[24] as List<McpTrouble>, a[25] as Kin?, a[26] as List<Kin>, a[27] as String?, a[28] as String?) },
-            { v -> arrayOf(v.touchedFiles, v.usage, v.modelText, v.modelPick, v.projectDir, v.cwdShown, v.projectName, v.agent, v.writers, v.writersLine, v.forkedLine, v.whereLine, v.pending, v.lastSay, v.needs, v.retries, v.notices, v.permissionMode, v.permissionModeText, v.tokens, v.background, v.autoAnswer, v.autoAnswerChoices, v.askEnd, v.mcp, v.startedBy, v.children, v.startedByText, v.childrenText) },
+            { a -> SessionFacts(a[0] as List<String>, a[1] as String?, a[2] as UsageFact?, a[3] as String?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as String?, a[8] as String?, a[9] as List<Int>, a[10] as String?, a[11] as String?, a[12] as String?, a[13] as List<PendingCall>, a[14] as LastSay?, a[15] as Needs?, a[16] as List<RetryRun>, a[17] as List<NoticeRun>, a[18] as String?, a[19] as String?, a[20] as TokenUse?, a[21] as FactsBackground?, a[22] as Int?, a[23] as List<AutoChoice>, a[24] as AskEnd?, a[25] as List<McpTrouble>, a[26] as Kin?, a[27] as List<Kin>, a[28] as String?, a[29] as String?) },
+            { v -> arrayOf(v.touchedFiles, v.touchedText, v.usage, v.modelText, v.modelPick, v.projectDir, v.cwdShown, v.projectName, v.agent, v.writers, v.writersLine, v.forkedLine, v.whereLine, v.pending, v.lastSay, v.needs, v.retries, v.notices, v.permissionMode, v.permissionModeText, v.tokens, v.background, v.autoAnswer, v.autoAnswerChoices, v.askEnd, v.mcp, v.startedBy, v.children, v.startedByText, v.childrenText) },
         )
     }
 }
@@ -23532,6 +24403,7 @@ data class SessionModelReq(
     val sid: String,
     val model: String,
     val client: String? = null,
+    val effort: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -23541,9 +24413,10 @@ data class SessionModelReq(
             Field("sid", { Str }, optional = false, nullable = false),
             Field("model", { Str }, optional = false, nullable = false),
             Field("client", { opt(Str) }, optional = true, nullable = true),
+            Field("effort", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> SessionModelReq(a[0] as String, a[1] as String, a[2] as String?) },
-            { v -> arrayOf(v.sid, v.model, v.client) },
+            { a -> SessionModelReq(a[0] as String, a[1] as String, a[2] as String?, a[3] as String?) },
+            { v -> arrayOf(v.sid, v.model, v.client, v.effort) },
         )
     }
 }
@@ -23803,7 +24676,6 @@ enum class SessionState(val wire: String) {
 data class SessionStatus(
     val sid: String,
     val face: SessionFace,
-    val waitingFor: String? = null,
     val path: String? = null,
     val label: String,
     val title: String,
@@ -23815,13 +24687,12 @@ data class SessionStatus(
             listOf(
             Field("sid", { Str }, optional = false, nullable = false),
             Field("face", { SessionFace.ADAPTER }, optional = false, nullable = false),
-            Field("waiting_for", { opt(Str) }, optional = true, nullable = true),
             Field("path", { opt(Str) }, optional = true, nullable = true),
             Field("label", { Str }, optional = false, nullable = false),
             Field("title", { Str }, optional = false, nullable = false),
             ),
-            { a -> SessionStatus(a[0] as String, a[1] as SessionFace, a[2] as String?, a[3] as String?, a[4] as String, a[5] as String) },
-            { v -> arrayOf(v.sid, v.face, v.waitingFor, v.path, v.label, v.title) },
+            { a -> SessionStatus(a[0] as String, a[1] as SessionFace, a[2] as String?, a[3] as String, a[4] as String) },
+            { v -> arrayOf(v.sid, v.face, v.path, v.label, v.title) },
         )
     }
 }
@@ -23860,6 +24731,9 @@ sealed interface SessionStreamFrame {
     data class Watch(
         val value: WatchFrom,
     ) : SessionStreamFrame
+    data class Unread(
+        val value: SessionUnread,
+    ) : SessionStreamFrame
 
     companion object {
         val ADAPTER: JsonAdapter<SessionStreamFrame> =
@@ -23876,8 +24750,28 @@ sealed interface SessionStreamFrame {
                 Ext("runs", SessionStreamFrame.Runs::class.java, { SessionRuns.ADAPTER }, { SessionStreamFrame.Runs(it as SessionRuns) }, { (it as SessionStreamFrame.Runs).value }),
                 Ext("branch", SessionStreamFrame.Branch::class.java, { SessionBranchPayload.ADAPTER }, { SessionStreamFrame.Branch(it as SessionBranchPayload) }, { (it as SessionStreamFrame.Branch).value }),
                 Ext("watch", SessionStreamFrame.Watch::class.java, { WatchFrom.ADAPTER }, { SessionStreamFrame.Watch(it as WatchFrom) }, { (it as SessionStreamFrame.Watch).value }),
+                Ext("unread", SessionStreamFrame.Unread::class.java, { SessionUnread.ADAPTER }, { SessionStreamFrame.Unread(it as SessionUnread) }, { (it as SessionStreamFrame.Unread).value }),
                 ),
             )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class SessionUnread(
+    val sid: String,
+    val said: String? = null,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<SessionUnread> = obj(
+            listOf(
+            Field("sid", { Str }, optional = false, nullable = false),
+            Field("said", { opt(Str) }, optional = true, nullable = true),
+            ),
+            { a -> SessionUnread(a[0] as String, a[1] as String?) },
+            { v -> arrayOf(v.sid, v.said) },
+        )
     }
 }
 
@@ -24277,6 +25171,7 @@ sealed interface SignInState {
 data class SizeReply(
     val path: WirePath,
     val bytes: Long,
+    val sizeText: String,
     val files: Long,
     val dirs: Long,
     val links: Long,
@@ -24291,6 +25186,7 @@ data class SizeReply(
             listOf(
             Field("path", { WirePath.ADAPTER }, optional = false, nullable = false),
             Field("bytes", { U64 }, optional = false, nullable = false),
+            Field("size_text", { Str }, optional = false, nullable = false),
             Field("files", { U64 }, optional = false, nullable = false),
             Field("dirs", { U64 }, optional = false, nullable = false),
             Field("links", { U64 }, optional = false, nullable = false),
@@ -24298,8 +25194,8 @@ data class SizeReply(
             Field("skipped_mounts", { U64 }, optional = false, nullable = false),
             Field("unreadable_dirs", { U64 }, optional = false, nullable = false),
             ),
-            { a -> SizeReply(a[0] as WirePath, a[1] as Long, a[2] as Long, a[3] as Long, a[4] as Long, a[5] as Long, a[6] as Long, a[7] as Long) },
-            { v -> arrayOf(v.path, v.bytes, v.files, v.dirs, v.links, v.other, v.skippedMounts, v.unreadableDirs) },
+            { a -> SizeReply(a[0] as WirePath, a[1] as Long, a[2] as String, a[3] as Long, a[4] as Long, a[5] as Long, a[6] as Long, a[7] as Long, a[8] as Long) },
+            { v -> arrayOf(v.path, v.bytes, v.sizeText, v.files, v.dirs, v.links, v.other, v.skippedMounts, v.unreadableDirs) },
         )
     }
 }
@@ -24352,6 +25248,7 @@ data class SkillApplyReq(
     val target: List<SkillTargetFile>,
     val take: List<String>?,
     val overwrite: List<String>?,
+    val agent: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -24364,9 +25261,10 @@ data class SkillApplyReq(
             Field("target", { arr(SkillTargetFile.ADAPTER) }, optional = false, nullable = false),
             Field("take", { opt(arr(Str)) }, optional = false, nullable = true),
             Field("overwrite", { opt(arr(Str)) }, optional = false, nullable = true),
+            Field("agent", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> SkillApplyReq(a[0] as String, a[1] as String?, a[2] as List<SkillSourceFile>, a[3] as List<SkillTargetFile>, a[4] as List<String>?, a[5] as List<String>?) },
-            { v -> arrayOf(v.name, v.project, v.source, v.target, v.take, v.overwrite) },
+            { a -> SkillApplyReq(a[0] as String, a[1] as String?, a[2] as List<SkillSourceFile>, a[3] as List<SkillTargetFile>, a[4] as List<String>?, a[5] as List<String>?, a[6] as String?) },
+            { v -> arrayOf(v.name, v.project, v.source, v.target, v.take, v.overwrite, v.agent) },
         )
     }
 }
@@ -24428,6 +25326,7 @@ data class SkillPlanReq(
     val project: String?,
     val take: List<String>?,
     val overwrite: List<String>?,
+    val agent: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -24439,9 +25338,10 @@ data class SkillPlanReq(
             Field("project", { opt(Str) }, optional = false, nullable = true),
             Field("take", { opt(arr(Str)) }, optional = false, nullable = true),
             Field("overwrite", { opt(arr(Str)) }, optional = false, nullable = true),
+            Field("agent", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> SkillPlanReq(a[0] as String, a[1] as List<SkillSourceFile>, a[2] as String?, a[3] as List<String>?, a[4] as List<String>?) },
-            { v -> arrayOf(v.name, v.source, v.project, v.take, v.overwrite) },
+            { a -> SkillPlanReq(a[0] as String, a[1] as List<SkillSourceFile>, a[2] as String?, a[3] as List<String>?, a[4] as List<String>?, a[5] as String?) },
+            { v -> arrayOf(v.name, v.source, v.project, v.take, v.overwrite, v.agent) },
         )
     }
 }
@@ -24521,6 +25421,7 @@ data class SkillReadFile(
 data class SkillReadReq(
     val name: String,
     val project: String?,
+    val agent: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -24529,9 +25430,10 @@ data class SkillReadReq(
             listOf(
             Field("name", { Str }, optional = false, nullable = false),
             Field("project", { opt(Str) }, optional = false, nullable = true),
+            Field("agent", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> SkillReadReq(a[0] as String, a[1] as String?) },
-            { v -> arrayOf(v.name, v.project) },
+            { a -> SkillReadReq(a[0] as String, a[1] as String?, a[2] as String?) },
+            { v -> arrayOf(v.name, v.project, v.agent) },
         )
     }
 }
@@ -24602,8 +25504,6 @@ data class SlotShow(
     val slot: String,
     val pct: Int? = null,
     val resetsAt: Long? = null,
-    val resetsAtRelText: String? = null,
-    val resetText: String? = null,
     val full: Boolean? = null,
     val text: String,
     val tone: Tone,
@@ -24617,15 +25517,13 @@ data class SlotShow(
             Field("slot", { Str }, optional = false, nullable = false),
             Field("pct", { opt(Int32) }, optional = true, nullable = true),
             Field("resetsAt", { opt(U64) }, optional = true, nullable = true),
-            Field("resetsAtRelText", { opt(Str) }, optional = true, nullable = true),
-            Field("resetText", { opt(Str) }, optional = true, nullable = true),
             Field("full", { opt(Bool) }, optional = true, nullable = true),
             Field("text", { Str }, optional = false, nullable = false),
             Field("tone", { Tone.ADAPTER }, optional = false, nullable = false),
             Field("perPctText", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> SlotShow(a[0] as String, a[1] as Int?, a[2] as Long?, a[3] as String?, a[4] as String?, a[5] as Boolean?, a[6] as String, a[7] as Tone, a[8] as String?) },
-            { v -> arrayOf(v.slot, v.pct, v.resetsAt, v.resetsAtRelText, v.resetText, v.full, v.text, v.tone, v.perPctText) },
+            { a -> SlotShow(a[0] as String, a[1] as Int?, a[2] as Long?, a[3] as Boolean?, a[4] as String, a[5] as Tone, a[6] as String?) },
+            { v -> arrayOf(v.slot, v.pct, v.resetsAt, v.full, v.text, v.tone, v.perPctText) },
         )
     }
 }
@@ -24765,7 +25663,7 @@ sealed interface Speaker {
     }
     @Suppress("UNCHECKED_CAST")
     data class CompactSummary(
-        val charsText: String,
+        val titleText: String? = null,
     ) : Speaker, Ordered {
         override val kind: String get() = "compactSummary"
         override var wireOrder: IntArray? = null
@@ -24884,10 +25782,10 @@ sealed interface Speaker {
                 Variant("compactSummary", Speaker.CompactSummary::class.java, obj(
                         listOf(
                         Field("kind", { tag("compactSummary") }, optional = false, nullable = false),
-                        Field("charsText", { Str }, optional = false, nullable = false),
+                        Field("titleText", { opt(Str) }, optional = true, nullable = true),
                         ),
-                        { a -> Speaker.CompactSummary(a[1] as String) },
-                        { v -> arrayOf("compactSummary", v.charsText) },
+                        { a -> Speaker.CompactSummary(a[1] as String?) },
+                        { v -> arrayOf("compactSummary", v.titleText) },
                     )),
                 Variant("interrupt", Speaker.Interrupt::class.java, obj(
                         listOf(
@@ -24961,6 +25859,9 @@ data class SshImportGroup(
     val jump: String?,
     val members: List<SshImportMember>,
     val inList: Boolean,
+    val summary: String,
+    val splitInto: String,
+    val splitAction: String?,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -24976,9 +25877,12 @@ data class SshImportGroup(
             Field("jump", { opt(Str) }, optional = false, nullable = true),
             Field("members", { arr(SshImportMember.ADAPTER) }, optional = false, nullable = false),
             Field("inList", { Bool }, optional = false, nullable = false),
+            Field("summary", { Str }, optional = false, nullable = false),
+            Field("splitInto", { Str }, optional = false, nullable = false),
+            Field("splitAction", { opt(Str) }, optional = false, nullable = true),
             ),
-            { a -> SshImportGroup(a[0] as String, a[1] as String, a[2] as Int, a[3] as String, a[4] as String?, a[5] as List<String>, a[6] as String?, a[7] as List<SshImportMember>, a[8] as Boolean) },
-            { v -> arrayOf(v.label, v.host, v.port, v.user, v.keyPath, v.addresses, v.jump, v.members, v.inList) },
+            { a -> SshImportGroup(a[0] as String, a[1] as String, a[2] as Int, a[3] as String, a[4] as String?, a[5] as List<String>, a[6] as String?, a[7] as List<SshImportMember>, a[8] as Boolean, a[9] as String, a[10] as String, a[11] as String?) },
+            { v -> arrayOf(v.label, v.host, v.port, v.user, v.keyPath, v.addresses, v.jump, v.members, v.inList, v.summary, v.splitInto, v.splitAction) },
         )
     }
 }
@@ -25254,6 +26158,7 @@ data class StatReply(
     val up: WirePath?,
     val kind: FileKind,
     val size: Long,
+    val sizeText: String,
     val readonly: Boolean,
     val mode: Int? = null,
     val mtimeSecs: Long? = null,
@@ -25271,6 +26176,7 @@ data class StatReply(
             Field("up", { opt(WirePath.ADAPTER) }, optional = false, nullable = true),
             Field("kind", { FileKind.ADAPTER }, optional = false, nullable = false),
             Field("size", { U64 }, optional = false, nullable = false),
+            Field("size_text", { Str }, optional = false, nullable = false),
             Field("readonly", { Bool }, optional = false, nullable = false),
             Field("mode", { opt(Int32) }, optional = true, nullable = true),
             Field("mtime_secs", { opt(U64) }, optional = true, nullable = true),
@@ -25279,8 +26185,8 @@ data class StatReply(
             Field("owner", { opt(Str) }, optional = false, nullable = true),
             Field("link_target", { opt(WirePath.ADAPTER) }, optional = false, nullable = true),
             ),
-            { a -> StatReply(a[0] as WirePath, a[1] as WirePath?, a[2] as FileKind, a[3] as Long, a[4] as Boolean, a[5] as Int?, a[6] as Long?, a[7] as String?, a[8] as String?, a[9] as String?, a[10] as WirePath?) },
-            { v -> arrayOf(v.path, v.up, v.kind, v.size, v.readonly, v.mode, v.mtimeSecs, v.mtimeText, v.mtimeFull, v.owner, v.linkTarget) },
+            { a -> StatReply(a[0] as WirePath, a[1] as WirePath?, a[2] as FileKind, a[3] as Long, a[4] as String, a[5] as Boolean, a[6] as Int?, a[7] as Long?, a[8] as String?, a[9] as String?, a[10] as String?, a[11] as WirePath?) },
+            { v -> arrayOf(v.path, v.up, v.kind, v.size, v.sizeText, v.readonly, v.mode, v.mtimeSecs, v.mtimeText, v.mtimeFull, v.owner, v.linkTarget) },
         )
     }
 }
@@ -25298,6 +26204,67 @@ data class StatReq(
             ),
             { a -> StatReq(a[0] as WirePath) },
             { v -> arrayOf(v.path) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class StatusField(
+    val key: String,
+    val says: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<StatusField> = obj(
+            listOf(
+            Field("key", { Str }, optional = false, nullable = false),
+            Field("says", { Str }, optional = false, nullable = false),
+            ),
+            { a -> StatusField(a[0] as String, a[1] as String) },
+            { v -> arrayOf(v.key, v.says) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class StatusLinePreview(
+    val line: String?,
+    val unknownSaid: String?,
+    val fields: List<StatusField>,
+    val defaultTemplate: String,
+    val from: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<StatusLinePreview> = obj(
+            listOf(
+            Field("line", { opt(Str) }, optional = false, nullable = true),
+            Field("unknownSaid", { opt(Str) }, optional = false, nullable = true),
+            Field("fields", { arr(StatusField.ADAPTER) }, optional = false, nullable = false),
+            Field("defaultTemplate", { Str }, optional = false, nullable = false),
+            Field("from", { Str }, optional = false, nullable = false),
+            ),
+            { a -> StatusLinePreview(a[0] as String?, a[1] as String?, a[2] as List<StatusField>, a[3] as String, a[4] as String) },
+            { v -> arrayOf(v.line, v.unknownSaid, v.fields, v.defaultTemplate, v.from) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class StatusLinePreviewReq(
+    val template: String? = null,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<StatusLinePreviewReq> = obj(
+            listOf(
+            Field("template", { opt(Str) }, optional = true, nullable = true),
+            ),
+            { a -> StatusLinePreviewReq(a[0] as String?) },
+            { v -> arrayOf(v.template) },
         )
     }
 }
@@ -25411,6 +26378,7 @@ data class StepResult(
     val preview: String? = null,
     val chars: Int? = null,
     val kind: ResultKind? = null,
+    val resultText: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -25432,9 +26400,10 @@ data class StepResult(
             Field("preview", { opt(Str) }, optional = true, nullable = true),
             Field("chars", { opt(Int32) }, optional = true, nullable = true),
             Field("kind", { opt(ResultKind.ADAPTER) }, optional = true, nullable = true),
+            Field("resultText", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> StepResult(a[0] as Boolean, a[1] as Boolean?, a[2] as Int?, a[3] as Int?, a[4] as Int?, a[5] as Int?, a[6] as Answer?, a[7] as Int?, a[8] as String?, a[9] as String?, a[10] as LineDiff?, a[11] as String, a[12] as String?, a[13] as Int?, a[14] as ResultKind?) },
-            { v -> arrayOf(v.ok, v.rejected, v.lines, v.added, v.removed, v.files, v.answer, v.exitCode, v.error, v.file, v.patch, v.text, v.preview, v.chars, v.kind) },
+            { a -> StepResult(a[0] as Boolean, a[1] as Boolean?, a[2] as Int?, a[3] as Int?, a[4] as Int?, a[5] as Int?, a[6] as Answer?, a[7] as Int?, a[8] as String?, a[9] as String?, a[10] as LineDiff?, a[11] as String, a[12] as String?, a[13] as Int?, a[14] as ResultKind?, a[15] as String?) },
+            { v -> arrayOf(v.ok, v.rejected, v.lines, v.added, v.removed, v.files, v.answer, v.exitCode, v.error, v.file, v.patch, v.text, v.preview, v.chars, v.kind, v.resultText) },
         )
     }
 }
@@ -26669,37 +27638,11 @@ enum class Topic(val wire: String) {
     HISTORY_LIST("history_list"),
     GROUPS("groups"),
     SESSION_QUEUE("session_queue"),
+    ATTACH("attach"),
     ;
 
     companion object {
         val ADAPTER: JsonAdapter<Topic> = enumOf(entries) { it.wire }
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class TransferCopyAsk(
-    val to: String,
-    val items: List<CopyFrom>,
-    val toDir: WirePath,
-    val onExists: OnExists? = null,
-    val decide: Map<String, Decide>? = null,
-    val ticket: String? = null,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<TransferCopyAsk> = obj(
-            listOf(
-            Field("to", { Str }, optional = false, nullable = false),
-            Field("items", { arr(CopyFrom.ADAPTER) }, optional = false, nullable = false),
-            Field("to_dir", { WirePath.ADAPTER }, optional = false, nullable = false),
-            Field("on_exists", { opt(OnExists.ADAPTER) }, optional = true, nullable = true),
-            Field("decide", { opt(dict(Decide.ADAPTER)) }, optional = true, nullable = true),
-            Field("ticket", { opt(Str) }, optional = true, nullable = true),
-            ),
-            { a -> TransferCopyAsk(a[0] as String, a[1] as List<CopyFrom>, a[2] as WirePath, a[3] as OnExists?, a[4] as Map<String, Decide>?, a[5] as String?) },
-            { v -> arrayOf(v.to, v.items, v.toDir, v.onExists, v.decide, v.ticket) },
-        )
     }
 }
 
@@ -26728,157 +27671,6 @@ data class TransferCopyReq(
             ),
             { a -> TransferCopyReq(a[0] as String, a[1] as String, a[2] as List<CopyFrom>, a[3] as WirePath, a[4] as OnExists?, a[5] as Map<String, Decide>?, a[6] as String?) },
             { v -> arrayOf(v.from, v.to, v.items, v.toDir, v.onExists, v.decide, v.ticket) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class TransferDownloadAsk(
-    val items: List<DownloadItem>,
-    val localDir: WirePath,
-    val onExists: OnExists? = null,
-    val decide: Map<String, Decide>? = null,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<TransferDownloadAsk> = obj(
-            listOf(
-            Field("items", { arr(DownloadItem.ADAPTER) }, optional = false, nullable = false),
-            Field("local_dir", { WirePath.ADAPTER }, optional = false, nullable = false),
-            Field("on_exists", { opt(OnExists.ADAPTER) }, optional = true, nullable = true),
-            Field("decide", { opt(dict(Decide.ADAPTER)) }, optional = true, nullable = true),
-            ),
-            { a -> TransferDownloadAsk(a[0] as List<DownloadItem>, a[1] as WirePath, a[2] as OnExists?, a[3] as Map<String, Decide>?) },
-            { v -> arrayOf(v.items, v.localDir, v.onExists, v.decide) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class TransferDownloadReq(
-    val machine: String,
-    val items: List<DownloadItem>,
-    val localDir: WirePath,
-    val onExists: OnExists? = null,
-    val decide: Map<String, Decide>? = null,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<TransferDownloadReq> = obj(
-            listOf(
-            Field("machine", { Str }, optional = false, nullable = false),
-            Field("items", { arr(DownloadItem.ADAPTER) }, optional = false, nullable = false),
-            Field("local_dir", { WirePath.ADAPTER }, optional = false, nullable = false),
-            Field("on_exists", { opt(OnExists.ADAPTER) }, optional = true, nullable = true),
-            Field("decide", { opt(dict(Decide.ADAPTER)) }, optional = true, nullable = true),
-            ),
-            { a -> TransferDownloadReq(a[0] as String, a[1] as List<DownloadItem>, a[2] as WirePath, a[3] as OnExists?, a[4] as Map<String, Decide>?) },
-            { v -> arrayOf(v.machine, v.items, v.localDir, v.onExists, v.decide) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class TransferOpened(
-    val items: List<OpenedItem>,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<TransferOpened> = obj(
-            listOf(
-            Field("items", { arr(OpenedItem.ADAPTER) }, optional = false, nullable = false),
-            ),
-            { a -> TransferOpened(a[0] as List<OpenedItem>) },
-            { v -> arrayOf(v.items) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class TransferStartReq(
-    val id: String,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<TransferStartReq> = obj(
-            listOf(
-            Field("id", { Str }, optional = false, nullable = false),
-            ),
-            { a -> TransferStartReq(a[0] as String) },
-            { v -> arrayOf(v.id) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class TransferStopReq(
-    val id: String,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<TransferStopReq> = obj(
-            listOf(
-            Field("id", { Str }, optional = false, nullable = false),
-            ),
-            { a -> TransferStopReq(a[0] as String) },
-            { v -> arrayOf(v.id) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class TransferUploadAsk(
-    val items: List<UploadItem>,
-    val remoteDir: WirePath,
-    val home: String? = null,
-    val onExists: OnExists? = null,
-    val decide: Map<String, Decide>? = null,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<TransferUploadAsk> = obj(
-            listOf(
-            Field("items", { arr(UploadItem.ADAPTER) }, optional = false, nullable = false),
-            Field("remote_dir", { WirePath.ADAPTER }, optional = false, nullable = false),
-            Field("home", { opt(Str) }, optional = true, nullable = true),
-            Field("on_exists", { opt(OnExists.ADAPTER) }, optional = true, nullable = true),
-            Field("decide", { opt(dict(Decide.ADAPTER)) }, optional = true, nullable = true),
-            ),
-            { a -> TransferUploadAsk(a[0] as List<UploadItem>, a[1] as WirePath, a[2] as String?, a[3] as OnExists?, a[4] as Map<String, Decide>?) },
-            { v -> arrayOf(v.items, v.remoteDir, v.home, v.onExists, v.decide) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class TransferUploadReq(
-    val machine: String,
-    val items: List<UploadItem>,
-    val remoteDir: WirePath,
-    val home: String? = null,
-    val onExists: OnExists? = null,
-    val decide: Map<String, Decide>? = null,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<TransferUploadReq> = obj(
-            listOf(
-            Field("machine", { Str }, optional = false, nullable = false),
-            Field("items", { arr(UploadItem.ADAPTER) }, optional = false, nullable = false),
-            Field("remote_dir", { WirePath.ADAPTER }, optional = false, nullable = false),
-            Field("home", { opt(Str) }, optional = true, nullable = true),
-            Field("on_exists", { opt(OnExists.ADAPTER) }, optional = true, nullable = true),
-            Field("decide", { opt(dict(Decide.ADAPTER)) }, optional = true, nullable = true),
-            ),
-            { a -> TransferUploadReq(a[0] as String, a[1] as List<UploadItem>, a[2] as WirePath, a[3] as String?, a[4] as OnExists?, a[5] as Map<String, Decide>?) },
-            { v -> arrayOf(v.machine, v.items, v.remoteDir, v.home, v.onExists, v.decide) },
         )
     }
 }
@@ -26932,6 +27724,7 @@ data class TurnRow(
     val done: Boolean,
     val phase: TurnPhase,
     val folds: List<FoldSegment>,
+    val tipText: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -26955,9 +27748,10 @@ data class TurnRow(
             Field("done", { Bool }, optional = false, nullable = false),
             Field("phase", { TurnPhase.ADAPTER }, optional = false, nullable = false),
             Field("folds", { arr(FoldSegment.ADAPTER) }, optional = false, nullable = false),
+            Field("tipText", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> TurnRow(a[0] as Long, a[1] as Long, a[2] as String, a[3] as String, a[4] as String, a[5] as String, a[6] as String, a[7] as Int, a[8] as Int, a[9] as Int, a[10] as Int, a[11] as Int, a[12] as List<String>, a[13] as String, a[14] as Boolean, a[15] as TurnPhase, a[16] as List<FoldSegment>) },
-            { v -> arrayOf(v.at, v.line, v.uuid, v.start, v.end, v.startText, v.said, v.tools, v.thinking, v.agents, v.background, v.retries, v.shown, v.reply, v.done, v.phase, v.folds) },
+            { a -> TurnRow(a[0] as Long, a[1] as Long, a[2] as String, a[3] as String, a[4] as String, a[5] as String, a[6] as String, a[7] as Int, a[8] as Int, a[9] as Int, a[10] as Int, a[11] as Int, a[12] as List<String>, a[13] as String, a[14] as Boolean, a[15] as TurnPhase, a[16] as List<FoldSegment>, a[17] as String?) },
+            { v -> arrayOf(v.at, v.line, v.uuid, v.start, v.end, v.startText, v.said, v.tools, v.thinking, v.agents, v.background, v.retries, v.shown, v.reply, v.done, v.phase, v.folds, v.tipText) },
         )
     }
 }
@@ -27075,7 +27869,6 @@ data class UnfollowReq(
 
 @Suppress("UNCHECKED_CAST")
 data class Uninstalled(
-    val removed: Boolean,
     val said: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -27083,11 +27876,10 @@ data class Uninstalled(
     companion object {
         val ADAPTER: JsonAdapter<Uninstalled> = obj(
             listOf(
-            Field("removed", { Bool }, optional = false, nullable = false),
             Field("said", { Str }, optional = false, nullable = false),
             ),
-            { a -> Uninstalled(a[0] as Boolean, a[1] as String) },
-            { v -> arrayOf(v.removed, v.said) },
+            { a -> Uninstalled(a[0] as String) },
+            { v -> arrayOf(v.said) },
         )
     }
 }
@@ -27118,23 +27910,6 @@ enum class UnreadWhy(val wire: String) {
 
     companion object {
         val ADAPTER: JsonAdapter<UnreadWhy> = enumOf(entries) { it.wire }
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class UploadItem(
-    val localPath: String,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<UploadItem> = obj(
-            listOf(
-            Field("local_path", { Str }, optional = false, nullable = false),
-            ),
-            { a -> UploadItem(a[0] as String) },
-            { v -> arrayOf(v.localPath) },
-        )
     }
 }
 
@@ -27406,12 +28181,34 @@ enum class VersionRelation(val wire: String) {
 }
 
 @Suppress("UNCHECKED_CAST")
+data class WarmFailed(
+    val at: Long,
+    val why: String,
+    val raw: String?,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<WarmFailed> = obj(
+            listOf(
+            Field("at", { U64 }, optional = false, nullable = false),
+            Field("why", { Str }, optional = false, nullable = false),
+            Field("raw", { opt(Str) }, optional = false, nullable = true),
+            ),
+            { a -> WarmFailed(a[0] as Long, a[1] as String, a[2] as String?) },
+            { v -> arrayOf(v.at, v.why, v.raw) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class Warmed(
     val agent: String,
     val account: String,
     val sent: Boolean,
     val at: Long,
     val resetsAt: Long?,
+    val failed: WarmFailed?,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -27423,9 +28220,10 @@ data class Warmed(
             Field("sent", { Bool }, optional = false, nullable = false),
             Field("at", { U64 }, optional = false, nullable = false),
             Field("resets_at", { opt(U64) }, optional = false, nullable = true),
+            Field("failed", { opt(WarmFailed.ADAPTER) }, optional = false, nullable = true),
             ),
-            { a -> Warmed(a[0] as String, a[1] as String, a[2] as Boolean, a[3] as Long, a[4] as Long?) },
-            { v -> arrayOf(v.agent, v.account, v.sent, v.at, v.resetsAt) },
+            { a -> Warmed(a[0] as String, a[1] as String, a[2] as Boolean, a[3] as Long, a[4] as Long?, a[5] as WarmFailed?) },
+            { v -> arrayOf(v.agent, v.account, v.sent, v.at, v.resetsAt, v.failed) },
         )
     }
 }
@@ -27562,11 +28360,11 @@ data class WindowShow(
     val key: String? = null,
     val pct: Int? = null,
     val resetsAt: Long? = null,
-    val resetsAtRelText: String? = null,
     val from: QuotaSource,
     val tokensPerPct: Long? = null,
     val perPctText: String? = null,
     val tone: Tone,
+    val row: Int? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -27577,14 +28375,14 @@ data class WindowShow(
             Field("key", { opt(Str) }, optional = true, nullable = true),
             Field("pct", { opt(Int32) }, optional = true, nullable = true),
             Field("resetsAt", { opt(U64) }, optional = true, nullable = true),
-            Field("resetsAtRelText", { opt(Str) }, optional = true, nullable = true),
             Field("from", { QuotaSource.ADAPTER }, optional = false, nullable = false),
             Field("tokensPerPct", { opt(U64) }, optional = true, nullable = true),
             Field("perPctText", { opt(Str) }, optional = true, nullable = true),
             Field("tone", { Tone.ADAPTER }, optional = false, nullable = false),
+            Field("row", { opt(Int32) }, optional = true, nullable = true),
             ),
-            { a -> WindowShow(a[0] as String, a[1] as String?, a[2] as Int?, a[3] as Long?, a[4] as String?, a[5] as QuotaSource, a[6] as Long?, a[7] as String?, a[8] as Tone) },
-            { v -> arrayOf(v.name, v.key, v.pct, v.resetsAt, v.resetsAtRelText, v.from, v.tokensPerPct, v.perPctText, v.tone) },
+            { a -> WindowShow(a[0] as String, a[1] as String?, a[2] as Int?, a[3] as Long?, a[4] as QuotaSource, a[5] as Long?, a[6] as String?, a[7] as Tone, a[8] as Int?) },
+            { v -> arrayOf(v.name, v.key, v.pct, v.resetsAt, v.from, v.tokensPerPct, v.perPctText, v.tone, v.row) },
         )
     }
 }

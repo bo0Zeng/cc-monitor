@@ -3,6 +3,134 @@
 use super::*;
 use crate::history::history_annotations::kept_for_resume;
 
+/// ★ 分叉框顶那一句整句在这里写（出口照抄）：说得出第几轮 ⇒ 带轮次与钟面；说不出 ⇒ 只点名源会话。
+#[test]
+fn the_fork_line_is_one_sentence_with_the_turn_only_when_known() {
+    assert_eq!(
+        fork_from_text("修登录", Some(3), Some("09:41")),
+        copy_core::copy_text(
+            "newSession.fork.from",
+            &[("title", "修登录"), ("n", "3"), ("time", "09:41")]
+        )
+    );
+    assert_eq!(
+        fork_from_text("修登录", None, None),
+        copy_core::copy_text("newSession.fork.fromBare", &[("title", "修登录")])
+    );
+}
+
+/// 按 sid 找到的那一份（判据里手拼：家 · 根不参与取标题）。
+fn found_at(kind: &'static str, file: &std::path::Path) -> crate::agents::SessionAt {
+    let dir = file.parent().unwrap().to_path_buf();
+    crate::agents::SessionAt {
+        kind,
+        home: dir.clone(),
+        root: dir,
+        file: file.to_path_buf(),
+    }
+}
+
+/// 一句人说的话（住记录树那一家的记录形）。
+const SAID: &str = r#"{"type":"user","uuid":"u1","timestamp":"2026-10-09T01:02:00.000Z","message":{"role":"user","content":"整理订单服务"}}
+"#;
+
+/// ★ 分叉那一句的接线：标题照这台的规则取（改过的名 ＞ 记录里的），轮次与那一轮的钟面（按看的那一台的时区）都交进那一句。
+#[test]
+fn the_fork_line_takes_the_title_here_and_the_turn() {
+    let dir = test_home::scratch("fork-line");
+    let src = dir.join("s.jsonl");
+    std::fs::write(&src, SAID).unwrap();
+    let tz = crate::common::time::Tz::default();
+    let turn = Some((3, "2026-10-09T01:02:00.000Z".to_string()));
+    let at = found_at(crate::agents::claudecode::AGENT_KIND, &src);
+    let reg = crate::agents::REGISTRY;
+    assert_eq!(
+        fork_line_for(reg, &at, None, turn.clone(), &tz),
+        fork_from_text("整理订单服务", Some(3), Some("01:02")),
+        "没改过名 ⇒ 记录里的标题；轮次 · 钟面交进去"
+    );
+    assert_eq!(
+        fork_line_for(reg, &at, Some("改过的名".into()), turn, &tz),
+        fork_from_text("改过的名", Some(3), Some("01:02")),
+        "改过的名优先"
+    );
+    assert_eq!(
+        fork_line_for(reg, &at, Some("改过的名".into()), None, &tz),
+        fork_from_text("改过的名", None, None),
+        "说不出第几轮 ⇒ 只点名"
+    );
+}
+
+/// ★ 标题照按 sid 找到的那一家取、不照路径另认：路径认不出时，住记录树的那一家照它的读法扫出第一句。
+#[test]
+fn the_fork_title_reads_the_found_family_when_the_path_is_unrecognized() {
+    let dir = test_home::scratch("fork-line-tree-unrecognized");
+    // 哪一家都不认这个文件名、也不在哪一根下 ⇒ 照路径认不出。
+    let src = dir.join("s.record");
+    std::fs::write(&src, SAID).unwrap();
+    assert_eq!(crate::agents::record_kind_of(&src), None);
+    let tz = crate::common::time::Tz::default();
+    let at = found_at(crate::agents::claudecode::AGENT_KIND, &src);
+    assert_eq!(
+        fork_line_for(crate::agents::REGISTRY, &at, None, None, &tz),
+        fork_from_text("整理订单服务", None, None)
+    );
+}
+
+/// ★ 记录那一家有合成历史面、路径认不出：第一句照那一家的摘录法取（不照路径另认、不落成「未命名」）。
+#[test]
+fn the_fork_title_reads_the_found_synth_family_when_the_path_is_unrecognized() {
+    use crate::agents::fake::runs::history;
+    let dir = test_home::scratch("fork-line-synth-unrecognized");
+    // 那一家的根在别处（`<家>/chats` · `<家>/shelf`），这一份不在它底下。
+    let src = dir.join(history::file_name("s1"));
+    std::fs::write(
+        &src,
+        "{\"chat\":\"s1\",\"dir\":\"/w/proj\",\"said\":\"修一下夹具里的那条测试\"}\n",
+    )
+    .unwrap();
+    fn elsewhere() -> Option<std::path::PathBuf> {
+        Some(std::path::PathBuf::from("/nonexistent/fake-chats-home"))
+    }
+    let reg = [history::row(elsewhere)];
+    assert_eq!(crate::agents::record_kind_among(&reg, &src), None);
+    let tz = crate::common::time::Tz::default();
+    let at = found_at(history::KIND, &src);
+    assert_eq!(
+        fork_line_for(&reg, &at, None, None, &tz),
+        fork_from_text("修一下夹具里的那条测试", None, None)
+    );
+}
+
+/// ★ 认不出那一家（注册表里没有）⇒ 标题照「说不清」落，不退到注册序头一家去读（这一份照路径认得出也不读）。
+#[test]
+fn an_unknown_family_gives_the_untitled_line_not_the_first_registered_reading() {
+    let dir = test_home::scratch("fork-line-unknown-family");
+    let src = dir.join("s.jsonl");
+    std::fs::write(&src, SAID).unwrap();
+    let tz = crate::common::time::Tz::default();
+    let at = found_at("no-such-family", &src);
+    assert_eq!(
+        fork_line_for(crate::agents::REGISTRY, &at, None, None, &tz),
+        fork_from_text(
+            &copy_core::copy_text("history.row.untitled", &[]),
+            None,
+            None
+        )
+    );
+    assert_eq!(
+        fork_line_for(
+            crate::agents::REGISTRY,
+            &at,
+            Some("改过的名".into()),
+            None,
+            &tz
+        ),
+        fork_from_text("改过的名", None, None),
+        "改过的名照样优先"
+    );
+}
+
 #[test]
 fn recent_dirs_are_newest_first_once_each_and_skip_the_hidden_one() {
     let items: Vec<(String, i64)> = vec![
@@ -23,13 +151,11 @@ fn recent_dirs_are_newest_first_once_each_and_skip_the_hidden_one() {
             RecentDir {
                 cwd: "/home/x/a".into(),
                 shown: "~/a".into(),
-                last_ms: 40,
                 last_text: "00:00".into(),
             },
             RecentDir {
                 cwd: "/b".into(),
                 shown: "/b".into(),
-                last_ms: 30,
                 last_text: "00:00".into(),
             }
         ]
@@ -69,12 +195,11 @@ fn a_launcher_is_found_in_the_session_shell_path() {
     } else {
         "tool-x"
     });
-    std::fs::write(&exe, "x").unwrap();
+    // 可执行的文件只经 `write_exe` 写（不 exec 它也一样：设可执行位只此一处）。
     #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
-    }
+    test_home::write_exe(&exe, "x");
+    #[cfg(not(unix))]
+    std::fs::write(&exe, "x").unwrap();
     let joined = std::env::join_paths([&sys_bin, &user_bin]).unwrap();
     let login = joined.to_string_lossy().into_owned();
     let bare = sys_bin.display().to_string();
@@ -112,7 +237,7 @@ fn a_windows_launcher_counts_the_powershell_forms() {
 /// 字由后端写（界面零拼）；没声明的那一家 ⇒ 两张表都空（不是 `null`：界面照空表不画那颗 chip）。
 #[test]
 fn each_agent_comes_with_its_name_and_its_models_and_modes_in_words() {
-    let claude = agent_facts("claude");
+    let claude = agent_facts("claude", &|_| None);
     assert_eq!(claude.kind, "claude");
     assert_eq!(claude.text, "Claude Code");
     let t = |k: &str| copy_core::copy_text(k, &[]);
@@ -150,9 +275,22 @@ fn each_agent_comes_with_its_name_and_its_models_and_modes_in_words() {
     for c in &claude.models {
         assert!(shell_quote_core::model_name_ok(&c.value), "{}", c.value);
     }
-    let codex = agent_facts("codex");
+    let codex = agent_facts("codex", &|_| None);
     assert_eq!(codex.text, "Codex");
-    assert!(codex.models.is_empty() && codex.permission_modes.is_empty());
+    // 没有静态模型表、清单也没读到（`listed` 答 `None`）⇒ 模型为空；权限档是它那两档可选的。
+    assert!(codex.models.is_empty());
+    let codex_modes: Vec<(&str, String)> = codex
+        .permission_modes
+        .iter()
+        .map(|c| (c.value.as_str(), c.text.clone()))
+        .collect();
+    assert_eq!(
+        codex_modes,
+        vec![
+            (":read-only", t("beSessionNew.mode.readOnly")),
+            (":workspace", t("beSessionNew.mode.workspace")),
+        ]
+    );
 }
 
 /// ★ 换模型抽屉的第一项「默认」：回到那一家缺省模型的那个值 ＋ 写好的字；抽屉底那一句（换模型的副作用，那一家自己的行为）也由后端写。
@@ -160,7 +298,7 @@ fn each_agent_comes_with_its_name_and_its_models_and_modes_in_words() {
 #[test]
 fn each_agent_says_how_to_go_back_to_its_default_model_and_what_a_switch_also_changes() {
     let t = |k: &str| copy_core::copy_text(k, &[]);
-    let claude = agent_facts("claude");
+    let claude = agent_facts("claude", &|_| None);
     let d = claude.model_default.expect("Claude 有「默认」那一项");
     assert_eq!(
         (d.value.as_str(), d.text),
@@ -174,14 +312,14 @@ fn each_agent_says_how_to_go_back_to_its_default_model_and_what_a_switch_also_ch
         claude.model_note,
         Some(t("beSessionModel.note.savesDefault"))
     );
-    let codex = agent_facts("codex");
+    let codex = agent_facts("codex", &|_| None);
     assert!(codex.model_default.is_none() && codex.model_note.is_none());
 }
 
 /// ★ 线上那一形：`agents` 每项 `{kind, text, models, modelDefault, modelNote, permissionModes}`（这台偏好里设的默认档起会话时后端自己套，不上线），`recent` 每项 `{cwd, shown, lastMs, lastText}`。
 #[test]
 fn the_new_session_facts_wire_names_its_cells() {
-    let v = serde_json::to_value(agent_facts("claude")).unwrap();
+    let v = serde_json::to_value(agent_facts("claude", &|_| None)).unwrap();
     let keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
     assert_eq!(
         keys,

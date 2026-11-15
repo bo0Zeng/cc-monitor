@@ -4,4 +4,8 @@ import type { BusAgent } from "./BusAgent";
 /**
  * `bus-list` 的应答。
  */
-export type BusList = { agents: Array<BusAgent>, };
+export type BusList = { agents: Array<BusAgent>, 
+/**
+ * 名单上方那一句（登记几个 · 登记的不一定在线），界面照抄。
+ */
+summary: string, };

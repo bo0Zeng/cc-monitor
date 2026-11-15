@@ -1,10 +1,13 @@
 //! 内容摘要（SHA-256，64 位小写十六进制）：CAS 摘要形 `expect: {"sha256": …}` 的唯一算法住址。
-//! 文件管理那一块（读交出去的摘要 · 写面比对 · 提交核暂存件）与原生那一块（传输台上传边传边算）都用它，
+//! 文件管理那一块（读交出去的摘要 · 写面比对 · 提交核暂存件）与原生那一块（两台之间复制 `transfer-copy` 的 SFTP 腿上传时边传边算）都用它，
 //! 两块之间零互相依赖（文件管理那一块是独立的包，只引纯工具与平台两层），共用的只许住 `common/`。
 //! 另一形是不防篡改、只答相同 / 不同的 FNV-1a 64（[`Fnv`] · [`fnv_digest`]）：资产目录 · skill 装记录 · cc-bus 装件 · 各号 MCP 登录的指纹都用它。
 
-/// CAS 摘要形里十六进制串的长度（SHA-256 = 32 字节）。
-pub const SHA256_HEX_LEN: usize = 64;
+/// CAS 摘要形里十六进制串的长度：定义住线上类型那一侧（`Sha256Hex` 照它判）。
+pub use cmd_wire::files::SHA256_HEX_LEN;
+
+/// 字节 → 小写十六进制：实现住线上类型那一侧（`{"b16"}` 那一形也用它），后端各处（摘要 · 钥匙）经这里调同一份。
+pub use cmd_wire::files::to_hex;
 
 /// SHA-256 的**流式**那一形（`files::content_sha256` 同一个算法、同一种十六进制）：上传一边传一边算整份的摘要
 /// （`control/transfer.rs::upload_to_staging`），提交那一侧对暂存件逐块读着算（`files::file_sha256`）—— 几个 G 的文件不整份进内存。
@@ -17,16 +20,9 @@ impl ContentDigest {
     pub fn update(&mut self, bytes: &[u8]) {
         self.0.update(bytes);
     }
-    /// 64 位小写十六进制。
+    /// 64 位小写十六进制（[`to_hex`]）。
     pub fn finish(self) -> String {
-        use copy_core::{Discard, Why};
-        use std::fmt::Write as _;
-        let d = self.0.finish();
-        let mut out = String::with_capacity(SHA256_HEX_LEN);
-        for b in d.as_ref() {
-            write!(out, "{b:02x}").discard(Why::InfallibleWrite);
-        }
-        out
+        to_hex(self.0.finish().as_ref())
     }
 }
 
@@ -34,6 +30,13 @@ impl Default for ContentDigest {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// 一段字节一次算完的 SHA-256（[`ContentDigest`] 喂一段即出），64 位小写十六进制。**纯**。
+pub fn sha256_hex(bytes: &[u8]) -> String {
+    let mut d = ContentDigest::new();
+    d.update(bytes);
+    d.finish()
 }
 
 #[cfg(test)]

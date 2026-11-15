@@ -111,7 +111,11 @@ pub(crate) fn one(
         title,
     };
     if let Err(s) = end() {
-        let f = crate::wire::detail::failed_of("terminal-end", s.code_or_fallback(), s.clone());
+        let f = crate::wire::detail::failed_of(
+            "terminal-end",
+            &cmd_wire::failed::Failed::code_or_fallback(s.code.clone()),
+            s.clone(),
+        );
         o.outcome = SessionState::Failed;
         o.why = Some(f.code);
         o.said = Some(f.said);
@@ -225,8 +229,11 @@ fn outcome_of(
         ))),
     };
     let mut o = found.unwrap_or_else(|s| {
-        let f =
-            crate::wire::detail::failed_of(TerminalsEndCmd::NAME, s.code_or_fallback(), s.clone());
+        let f = crate::wire::detail::failed_of(
+            TerminalsEndCmd::NAME,
+            &cmd_wire::failed::Failed::code_or_fallback(s.code.clone()),
+            s.clone(),
+        );
         TerminalOutcome {
             machine: it.machine.clone(),
             terminal: it.terminal.clone(),

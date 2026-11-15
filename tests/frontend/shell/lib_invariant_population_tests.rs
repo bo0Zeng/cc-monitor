@@ -232,7 +232,12 @@ fn every_tmux_print_site_is_registered_with_how_it_carries_utf8() {
 /// `shell_quote_core::posix_quote(参数)` 的那几个函数名。返回 `(名字集, 别名本体所在的文件集)`。
 fn quote_aliases(srcs: &[(String, String)]) -> (Vec<String>, Vec<String>) {
     // 唯一的 quote 多了一个字节形（`posix_quote_bytes`，`$'…'`）—— 同一份 quote 的另一形，同样算拼接点。
-    let mut names = vec!["posix_quote".to_string(), "posix_quote_bytes".to_string()];
+    // 「一个词要不要加引号」那一处（`platform::shell::dialect::posix_word`：安全字原样、别的交 quote）也算：调它的就是把值拼进 shell 串。
+    let mut names = vec![
+        "posix_quote".to_string(),
+        "posix_quote_bytes".to_string(),
+        "posix_word".to_string(),
+    ];
     let mut bodies = Vec::new();
     for (rel, body) in srcs {
         if !rel.ends_with(".rs") {
@@ -344,8 +349,7 @@ fn quote_sites() -> (BTreeMap<String, BTreeSet<String>>, Vec<String>) {
 ///
 /// 人群 = 生产段里调 quote 的地方（「quote 只有一份」⇒ 值进 shell 串的合法入口只有它）。
 /// ⚠ 射程：它逮的是「新长一处拼接点」；**不经 quote 的裸插值**（`format!` 直接把值塞进命令串）它看不见；
-/// 条件 quote 的包装（`plan.rs::qarg` · `ccm_invocation.rs` 的 `argv` · `shell_dialect.rs` 的 `word`）
-/// 在它自己的文件里算一处，经它的那些调用方不再逐个数；第四列是**按文件**写的，不是逐处。
+/// 条件 quote 的那一处（`dialect.rs` 的 `posix_word`）当 quote 入口认，直接调它的逐个数；第四列是**按文件**写的，不是逐处。
 /// TS 那一侧（`posixQuote`）不在人群里 —— LR2 在删那几份 TS 命令构造器，「TS 零 shell 串」是那条机械判据的活。
 type QuoteRow = (
     &'static str,
@@ -374,7 +378,7 @@ const QUOTE_SITES: &[QuoteRow] = &[
     // 「等于」那一格的短形（`render_short`）只给人看、不进任何 shell：词与 `render_*` 同一份计划（已过上面两道放行判定），带空白的才 quote。
     // 托管容器那一形（`render_managed`）：托管进程那一串（`host_run_argv`）里的名字 · 目录 · 那一家与载荷同一份计划，逐词 quote（同 `render_container`）。
     // 渲给客户端的「接进一个 tmux 会话」（全仓唯一一处）：名字只 quote 进 `=名:` 目标。调用方各自先判过：
-    //   `ccm` 那几形的名字过 `plan.rs::validate_tmux_name`（或是 tmux 自己在快照里报的）· 就地 resume 的目标过 `gate_rules::existing_tmux_name_issue`。
+    //   `ccm` 那几形的名字过 `plan.rs::validate_tmux_name`（或是 tmux 自己在快照里报的）· `--attach <名>` 的目标在渲那一行时过 `gate_rules::existing_tmux_name_issue`（`ccm_invocation.rs`）。
     (
         "src/backend/common/tmux_utf8.rs",
         &["join_session"],
@@ -387,7 +391,7 @@ const QUOTE_SITES: &[QuoteRow] = &[
     ),
     (
         "src/backend/control/ccm/plan.rs",
-        &["build_among", "carried_into_pane", "posix_relay_word", "qarg", "render", "render_container", "render_container_tail", "render_direct", "render_managed", "render_short"],
+        &["build_among", "carried_into_pane", "posix_relay_word", "relay_export", "render", "render_container", "render_container_tail", "render_direct", "render_managed", "render_short"],
         &[
             ("src/backend/control/ccm/plan.rs", "validate_tmux_name"),
             ("src/backend/control/ccm/plan.rs", "free_text_gate"),
@@ -395,11 +399,6 @@ const QUOTE_SITES: &[QuoteRow] = &[
             (
                 "src/common/shell-quote-core/src/lib.rs",
                 "free_text_ok",
-            ),
-            // 〔§47 ①〕`--ccm-sid` 在 `argv.rs::validate` 进门判（判定住共享 crate）。
-            (
-                "src/common/shell-quote-core/src/lib.rs",
-                "session_id_ok",
             ),
             (
                 "src/common/shell-quote-core/src/lib.rs",
@@ -410,6 +409,14 @@ const QUOTE_SITES: &[QuoteRow] = &[
         ],
         "",
         "tmux 目标 `=名:` 的形 · 两个提示格式串常量 · cc-bus 脚本路径 · 本侧拼好的载荷 · 本侧上游选择出的中转地址（口是常量，路由段过段闸）",
+    ),
+    // 探针那一问（`self=`）答「怎么叫我」：本进程自己的叫法（`self_invocation`）逐词过 `posix_word`，不收外来值。
+    (
+        "src/backend/control/ccm/mod.rs",
+        &["run"],
+        &[],
+        "",
+        "本进程自己的叫法（argv0；被配置名叫起时换成同目录下的 `ccm`）",
     ),
     (
         "src/backend/control/tmux_hook.rs",
@@ -427,10 +434,10 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "落点常量后只跟本侧旗标（`--<帧命令>` · `--stdin-line` · 资产目录两旗）",
     ),
     // 〔§47〕cwd（`shell_quote_core::posix_free_path_ok`）· 透传参数（`free_text_ok`）进门判；剩下的见第四列。
-    // 就地 resume 回落那一形外层包一层 tmux —— 目标 `=名:`（名字过 `gate_rules::existing_tmux_name_issue`）· 键进 pane 的那一行直路 `ccm …`（本侧渲好的整串）。
+    // `ccm …` 那一行逐词过 `posix_word`：`--attach <名>` 的目标名过 `gate_rules::existing_tmux_name_issue`。
     (
         "src/backend/control/launch_render/ccm_invocation.rs",
-        &["argv"],
+        &["render_ccm_invocation", "render_ccm_invocation_ps"],
         &[
             (
                 "src/common/shell-quote-core/src/lib.rs",
@@ -440,7 +447,7 @@ const QUOTE_SITES: &[QuoteRow] = &[
                 "src/common/shell-quote-core/src/lib.rs",
                 "free_text_ok",
             ),
-            // 〔§47 ①〕resume 的 sid · `--ccm-sid=` · `--model` · `--account`：`Refusal::IdentifierRefused`。
+            // 〔§47 ①〕resume 的 sid · `--model` · `--account`：`Refusal::IdentifierRefused`。
             (
                 "src/common/shell-quote-core/src/lib.rs",
                 "session_id_ok",
@@ -454,10 +461,10 @@ const QUOTE_SITES: &[QuoteRow] = &[
                 "account_name_ok",
             ),
             ("src/common/acct-core/src/lib.rs", "config_dir_ok"), // `--account-dir`
-            ("src/backend/control/gate_rules.rs", "existing_tmux_name_issue"), // 就地 resume 的目标
+            ("src/backend/control/gate_rules.rs", "existing_tmux_name_issue"), // `--attach <名>` 的目标
         ],
         "",
-        "本侧渲染好的那一行直路 `ccm …`（就地 resume 回落那一形键进 pane 的整串）",
+        "ccm 入口路径（`ccm_path`，这台自己的）· 常量旗标 · 那一家的 resume 词",
     ),
     // `launch_render/payload.rs` 那一行（12）随文件删了：起会话只交一行 `ccm …`，载荷那一层整层删了。
     // monitor `tmux.rs` 那一行（Gate 1 前检 ＋ `exact_target` 的 quote，只剩跨轨锚点在用）随整份文件删了：门只在后端。
@@ -466,9 +473,10 @@ const QUOTE_SITES: &[QuoteRow] = &[
     // `src/frontend/shell/src/launch.rs` 那一行出表：远端那条 ssh 外壳（包一层 `bash -lic`）随渲染进了本机后端。
     // 文件窗口「在此打开终端」的当前目录（自由文本路径）在这里拼进 `cd`：拼之前过 `posix_free_path_ok`（POSIX 绝对 · 无 `..` 段 · 不含 NUL / CR / LF）；非 UTF-8 的走字节形 `posix_quote_bytes`，过 `posix_free_path_bytes_ok`。
     // 开终端那一行多一种方言（本机是 POSIX 时整串按 POSIX 单引号嵌，`literal`），拼进去的东西不变。
+    // 路径进那一行（`-F` 那份配置 · 开窗记录文件）都只经 `path_literal`：cc-monitor 自己的家底下，非 UTF-8 走 `posix_quote_bytes`、PowerShell 照实拒。
     (
         "src/backend/dial/terminal.rs",
-        &["command_for_cwd", "literal", "render"],
+        &["command_for_cwd", "literal", "path_literal", "render"],
         &[
             (
                 "src/common/shell-quote-core/src/lib.rs",
@@ -483,11 +491,11 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "开终端那一行里要在远端跑的整条命令（拼它的那几处各自判过；这里只包一层 `bash -lic`，本侧再判控制符 · 双引号 · 长度）",
     ),
     // 开窗那一串（带了 sid）：前奏 ＋ 那一行 ＋ 收尾。记录文件的路径 = 本机后端自己的数据目录 ＋ sid（`Sid` 解码那一下过 `session_id_ok`）·
-    //   那台的名字（机器表里那一格）；都只经本方言的单引号字面量，写法住 `platform/shell/{posix, powershell}.rs` 的
-    //   `note_own_window` · `then_forget_own_window`；夹在中间的那一行是本侧已渲好的成品。
+    //   那台的名字（机器表里那一格）；路径经 `terminal.rs::path_literal`（照字节），名字经本方言的单引号字面量，写法住
+    //   `platform/shell/{posix, powershell}.rs` 的 `note_own_window` · `then_forget_own_window`；夹在中间的那一行是本侧已渲好的成品。
     (
         "src/backend/dial/opened_windows.rs",
-        &["prelude", "window"],
+        &["prelude"],
         &[("src/common/shell-quote-core/src/lib.rs", "session_id_ok")],
         "",
         "开的那个 shell 记下自己窗口标签、ssh 一退就删的那两段：记录文件路径（数据目录 ＋ sid）· 那台的名字 · 本侧渲好的那一行",
@@ -502,9 +510,9 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "留窗脚本（常量）",
     ),
     // 那条命令随部署判定搬进共享的 `deploy-core`（本机常驻后端出计划时拼、在那台上跑）：`sftp.rs` 出列、这一行换住址。
-    // `deploy-core` 拆开：扫戳命令是戳格式（契约），随契约那一半住 `deploy-contract`。
+    // 扫戳命令只有后端部署那一趟在那台上跑 ⇒ 随问那台的两条命令住后端 `deploy`（戳的界标仍住 `deploy-contract`）。
     (
-        "src/common/deploy-contract/src/lib.rs",
+        "src/backend/deploy/lib.rs",
         &["stamp_scan_cmd"],
         &[],
         "",
@@ -513,9 +521,17 @@ const QUOTE_SITES: &[QuoteRow] = &[
     // 别名文件里每条只有名字（`名字() { ccm @名字 "$@"; }`），规则住配置文件；名字先过 `profile::name_ok`
     //   （两种 shell 都认得的命令名 `[A-Za-z_][A-Za-z0-9_]*`），过不了的那一段不进别名文件。
     //   「在终端里起它」那一行（`render_start`）同一个名字，另引 ccm 的落点（家目录 ＋ 固定段）。
+    //   `posix_word` 是「一个词要不要加引号」唯一那一处（别名文件那几行 · 待办复制那一行 · `ccm …` 那一行都经它）。
+    //   别名那一条（`render_alias`）逐词拼的是配置文件里那条规则的 argv；补全块（`render_hosted_completion`）拼的是
+    //   ccm 的固定词与那几个别名名字（同样先过 `name_ok`）。
     (
         "src/backend/platform/shell/dialect.rs",
-        &["render_start", "word"],
+        &[
+            "posix_word",
+            "render_alias",
+            "render_hosted_completion",
+            "render_start",
+        ],
         &[("src/backend/assets/aliases/profile.rs", "name_ok")],
         "",
         "我们那份别名文件的路径",
@@ -530,13 +546,21 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "",
         "夹住 `PATH` 的那个常量标记",
     ),
-    // cc-bus 钩子要加的内容：两条钩子指向这台 skills 根下那两个脚本；skills 根不在家目录底下时那条路径整份 quote（是这台后端自己的路径）。
+    // Codex 会话级钩子那一行命令：ccm 入口（这台后端自己的那份 ccm 路径）整份 quote，后面接固定的入口词与那一家的名字。
     (
-        "src/backend/assets/cc_bus_hooks.rs",
-        &["snippet"],
+        "src/backend/agents/codex/asks.rs",
+        &["command_of"],
         &[],
         "",
-        "这台后端自己的 skills 根下那两个脚本的路径",
+        "这台后端自己的 ccm 入口路径",
+    ),
+    // cc-bus 钩子要加的那条命令：指向这台 skills 根下的 cc-bus 入口；skills 根不在家目录底下时那条路径整份 quote（是这台后端自己的路径）。
+    (
+        "src/backend/assets/cc_bus_hooks.rs",
+        &["entry_command"],
+        &[],
+        "",
+        "这台后端自己的 skills 根下那个入口的路径",
     ),
     // 「待办」旧 ccm 那一件：复制给人自己跑的 `rm <路径>`，路径是这台 PATH 上找到的那个文件（这台自己的路径，不进任何会跑的串）。
     (
@@ -545,6 +569,14 @@ const QUOTE_SITES: &[QuoteRow] = &[
         &[],
         "",
         "这台 PATH 上先找到的那个 ccm 的路径（只复制给人，不拿去跑）",
+    ),
+    // 「待办」MCP 要登录那一件：复制给人自己敲的那一行，照那一家登录格给的 argv 逐词过 `posix_word`。
+    (
+        "src/backend/footprint/chores/gather.rs",
+        &["command_line"],
+        &[],
+        "",
+        "那一家登录格给的 argv：程序名或斜杠命令是常量，服务器名取自用户的 MCP 配置（只复制给人，不拿去跑）",
     ),
     // stream_source/exec.rs 2 → 0 · remote_resident.rs 2 → 0：远端后端落点是固定常量 `relay_route_core::BACKEND_LANDING_SHELL`（`backendPath` 那一格删了），
     //   流 / 探针 / 常驻起停四条命令不再 quote 任何外来值 ⇒ 两行出列。

@@ -20,7 +20,7 @@ fn sized_from_reply(name: &str, d: &serde_json::Value) -> Result<Sized, String> 
 
 fn full() -> serde_json::Value {
     serde_json::json!({
-        "path": "/srv/a", "bytes": 2048, "files": 3, "dirs": 2, "links": 1,
+        "path": "/srv/a", "bytes": 2048, "size_text": "2.0 KB", "files": 3, "dirs": 2, "links": 1,
         "other": 0, "skipped_mounts": 4, "unreadable_dirs": 5,
     })
 }
@@ -30,6 +30,7 @@ fn a_reply_missing_any_field_is_a_loud_failure() {
     assert!(sized_from_reply("a", &full()).is_ok());
     for k in [
         "bytes",
+        "size_text",
         "files",
         "dirs",
         "links",
@@ -127,7 +128,7 @@ async fn size_on_the_menu_walks_to_the_wire_for_each_picked_item() {
     *w.listing.rows.lock().unwrap() = vec![row("data", true), row("refuse-me", true)];
     w.apply_intent(Intent::SelectAll, 0.0, None);
     assert!(
-        w.perform(Action::Size, None),
+        crate::find::testing::perform_now_async(&mut w, Action::Size).await,
         "算大小没起来：{:?}",
         w.key_notice()
     );

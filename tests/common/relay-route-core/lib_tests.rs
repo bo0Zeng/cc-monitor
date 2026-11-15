@@ -648,6 +648,19 @@ fn the_data_dir_follows_the_override_else_the_home() {
     assert!(LISTEN_DIR_REL.starts_with(".cc-monitor/"));
 }
 
+/// 远端常驻后端那份 stderr 文件（家目录相对）落在本机那一份的同一层：`.cc-monitor/` ＋ [`BACKEND_STDERR_REL`] 底下。
+#[test]
+fn the_backend_stderr_file_lives_under_the_backend_log_dir() {
+    assert_eq!(
+        BACKEND_STDERR_LOG_REL,
+        ".cc-monitor/logs/backend/stderr.log"
+    );
+    assert_eq!(
+        BACKEND_STDERR_LOG_REL.strip_prefix(".cc-monitor/"),
+        Some(format!("{BACKEND_STDERR_REL}/stderr.log").as_str())
+    );
+}
+
 /// 「文件与数据」里后端列的家里那几样，含历史注解与 API key 表（落点照声明表那一行，后端逐样 stat，壳不另列）。
 #[test]
 fn home_entries_list_the_history_annotations_and_the_api_key_table() {

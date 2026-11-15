@@ -72,6 +72,41 @@ pub(crate) struct ImportGroup {
     pub(crate) members: Vec<ImportMember>,
     /// 这一组已在机器表里（组里任一地址 ＋ 用户 ＋ 端口与表里某台的拨号地址相同；表是本机后端自己那一张）。
     pub(crate) in_list: bool,
+    /// 预览那一行给人看的说明：地址 · 用户（空 ⇒「无用户名」）· 经跳板 · 备用地址几个（[`words_of`] 写，界面照抄）。
+    pub(crate) summary: String,
+    /// 拆开之后那一行：列各成员的别名。
+    pub(crate) split_into: String,
+    /// 「按地址拆成 ×N」那颗的字；成员只有一个 ⇒ 缺（不出那颗）。
+    pub(crate) split_action: Option<String>,
+}
+
+/// 一组聚好之后，写它给人看的那几格（说明行 · 拆开那一行 · 拆分那颗）。
+fn words_of(g: &mut ImportGroup) {
+    let sep = copy_text("kit.text.sep", &[]);
+    let mut parts = vec![g.host.clone()];
+    parts.push(if g.user.is_empty() {
+        copy_text("remote.preview.noUser", &[])
+    } else {
+        g.user.clone()
+    });
+    if let Some(j) = g.jump.as_deref().filter(|j| !j.is_empty()) {
+        parts.push(copy_text("addMachine.ssh.jump", &[("jump", j)]));
+    }
+    if !g.addresses.is_empty() {
+        parts.push(copy_text(
+            "addMachine.ssh.addresses",
+            &[("n", &g.addresses.len().to_string())],
+        ));
+    }
+    g.summary = parts.join(&sep);
+    let names: Vec<&str> = g.members.iter().map(|m| m.alias.as_str()).collect();
+    g.split_into = copy_text("addMachine.ssh.splitInto", &[("names", &names.join(&sep))]);
+    g.split_action = (g.members.len() > 1).then(|| {
+        copy_text(
+            "addMachine.ssh.split",
+            &[("n", &g.members.len().to_string())],
+        )
+    });
 }
 
 /// 标出已在机器表里的那几组（判定只在这里：表里某台的任一拨号地址（[`ssh_dial::machine::Host::endpoints`]，端口缺省照拨号核心）
@@ -149,8 +184,14 @@ pub(crate) fn parse_ssh_g_output(stdout: &str, alias: &str) -> ResolvedHost {
             "user" => user = Some(val.to_string()),
             "identityfile" if key_path.is_none() => {
                 let expanded = crate::platform::paths::expand_tilde(val);
-                if std::path::Path::new(&expanded).exists() {
-                    key_path = Some(expanded);
+                if expanded.exists() {
+                    // 家名不是 UTF-8、展开写不成字 ⇒ 留用户那一写法（用的那一刻照家原样再展开），不有损拼。
+                    key_path = Some(
+                        expanded
+                            .into_os_string()
+                            .into_string()
+                            .unwrap_or_else(|_| val.to_string()),
+                    );
                 }
             }
             "proxyjump" if !val.eq_ignore_ascii_case("none") => {
@@ -216,6 +257,9 @@ pub(crate) fn aggregate_ssh_hosts(hosts: Vec<(String, ResolvedHost)>) -> Vec<Imp
                     jump: r.proxy_jump.clone(),
                     members: vec![member],
                     in_list: false,
+                    summary: String::new(),
+                    split_into: String::new(),
+                    split_action: None,
                 },
             ));
         }
@@ -225,6 +269,7 @@ pub(crate) fn aggregate_ssh_hosts(hosts: Vec<(String, ResolvedHost)>) -> Vec<Imp
         if g.members.len() == 1 {
             g.label = g.members[0].alias.clone();
         }
+        words_of(g);
     }
     out
 }
@@ -237,8 +282,12 @@ const SSH_CONFIG_CAP: Cap = Cap {
 
 /// 读 `~/.ssh/config` 列别名。文件不在 / 读不了 / 超上限 ⇒ 空（没有 config 是正常的）。
 pub fn list_aliases() -> Vec<String> {
-    let Some(path) = crate::platform::paths::home_dir().map(|h| h.join(".ssh").join("config"))
-    else {
+    aliases_under(crate::platform::paths::home_dir().as_deref())
+}
+
+/// [`list_aliases`] 的本体：家目录是参数（照字节拼，家名不是 UTF-8 也读得到；判据拿临时目录喂）。家说不出 ⇒ 空。
+pub(crate) fn aliases_under(home: Option<&std::path::Path>) -> Vec<String> {
+    let Some(path) = home.map(|h| h.join(".ssh").join("config")) else {
         return Vec::new();
     };
     Ro::read_string_capped(path, SSH_CONFIG_CAP)

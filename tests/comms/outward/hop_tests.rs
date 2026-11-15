@@ -77,7 +77,12 @@ impl TapPort for NoTap {
 
 /// 起一个中转，上游是 `http://127.0.0.1:<port>`，开 TCP 那一口是 `open`。交回中转地址与它那一份记账。
 fn spawn_relay(port: u16, open: Arc<OpenFor>) -> (SocketAddr, Arc<HopMeter>) {
-    let base = Base::parse(&format!("http://127.0.0.1:{port}")).expect("base");
+    let base = Base {
+        tls: false,
+        host: "127.0.0.1".to_string(),
+        port,
+        path: String::new(),
+    };
     let relay = Arc::new(Relay::new(
         Arc::new(To(base)),
         door::Keys {
@@ -161,7 +166,7 @@ fn a_relayed_send_reports_the_proxy_the_bytes_and_that_it_got_through() {
     );
 }
 
-/// 上游连接失败 ⇒ 读数记下卡在建立连接，那一句说出卡在哪。
+/// 上游连接失败 ⇒ 读数记下卡在建立连接（那一句由宿主写，判据在后端 `links_tests`）。
 #[test]
 fn an_upstream_that_cannot_be_reached_reports_the_connect_step() {
     let open: Arc<OpenFor> = Arc::new(|_from, _h, _p, _d| {
@@ -177,43 +182,4 @@ fn an_upstream_that_cannot_be_reached_reports_the_connect_step() {
     assert_eq!(f.endpoint.as_deref(), Some("127.0.0.1:9"));
     assert_eq!(f.last, Some(Last::Failed(FailedAt::Connect)));
     assert_eq!((f.bytes_in, f.bytes_out), (0, 0));
-    let line = f.line().expect("走过一发 ⇒ 有那一句");
-    assert!(line.contains("127.0.0.1:9"), "{line}");
-    assert!(
-        line.contains(FailedAt::Connect.words().1),
-        "说出卡在哪一步：{line}"
-    );
-}
-
-/// 那一句：经代理那一形照出网口的写法；收发两格照大小的写法；连上了 ⇒ 不说卡在哪。
-#[test]
-fn the_line_names_the_upstream_the_proxy_and_both_byte_counts() {
-    let f = HopFacts {
-        endpoint: Some("api.example.test:443".to_string()),
-        via_proxy: true,
-        bytes_in: 2048,
-        bytes_out: 5 << 20,
-        last: Some(Last::Up),
-    };
-    let line = f.line().expect("有上游 ⇒ 有那一句");
-    let proxied = copy_core::copy_text(
-        "beLinks.route.proxy",
-        &[("endpoint", "api.example.test:443")],
-    );
-    assert!(line.contains(&proxied), "{line}");
-    assert!(line.contains(&copy_core::size_text(2048)), "{line}");
-    assert!(line.contains(&copy_core::size_text(5 << 20)), "{line}");
-    for at in [
-        FailedAt::Connect,
-        FailedAt::Send,
-        FailedAt::NoAnswer,
-        FailedAt::NotHttp,
-    ] {
-        assert!(!line.contains(at.words().1), "连上了不说卡在哪：{line}");
-    }
-    assert_eq!(
-        HopFacts::default().line(),
-        None,
-        "一发都没走过 ⇒ 没有那一句"
-    );
 }

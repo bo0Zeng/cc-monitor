@@ -50,6 +50,15 @@ function link(label: string, onClick: () => void, danger = false): HTMLButtonEle
   return b;
 }
 
+/** 几家同在这一栏时名字后面那一小段：是哪一家的（照抄后端写在那一条上的叫法；只一家时后端不写 ⇒ 不画）。 */
+function familyTag(said: string | undefined): HTMLElement[] {
+  if (said === undefined) return [];
+  const t = document.createElement("span");
+  t.className = "cfg-hint";
+  t.textContent = ` ${said}`;
+  return [t];
+}
+
 /** 「共用 MCP」那一行：各号共用的那几条 · 两边都改了的选一版 · 删一条（问一句）· 停止 / 开回同步。 */
 function buildMcpRow(origin: () => Machine, machine: () => string): { row: CfgRow; load(): void } {
   const row = cfgRow(copyText("cfgPage.mcp.title"), false);
@@ -58,6 +67,7 @@ function buildMcpRow(origin: () => Machine, machine: () => string): { row: CfgRo
   const body = row.body;
 
   const paint = (v: AccountMcpView): void => {
+    // 回包每条带家（缺省那一家不写）：几家的条目都画，删 · 挑把那一条的家原样交回；不止一家时每条带后端写好的叫法。
     body.replaceChildren();
     row.setAction(null);
     if (!v.enabled) {
@@ -75,7 +85,9 @@ function buildMcpRow(origin: () => Machine, machine: () => string): { row: CfgRo
       const box = document.createElement("div");
       box.className = "cfg-conflict";
       box.dataset.role = "mcp-conflict";
-      box.appendChild(line("cfg-conflict-title", copyText("cfgPage.mcp.conflictHead", { name: c.name })));
+      const head = line("cfg-conflict-title", copyText("cfgPage.mcp.conflictHead", { name: c.name }));
+      head.append(...familyTag(c.agentSaid));
+      box.appendChild(head);
       const acts = document.createElement("div");
       acts.className = "cfg-acts";
       for (const ch of c.choices) {
@@ -85,23 +97,26 @@ function buildMcpRow(origin: () => Machine, machine: () => string): { row: CfgRo
             : ch.gone
               ? copyText("cfgPage.mcp.useGone")
               : copyText("cfgPage.mcp.useShared");
-        acts.appendChild(button({ label, size: "compact", onClick: () => void send(() => accountsMcpPick(origin(), c.name, ch.from), () => copyText("rsFilewinSelect.refusal.none")) }));
+        acts.appendChild(button({ label, size: "compact", onClick: () => void send(() => accountsMcpPick(origin(), c.name, ch.from, c.agent), () => copyText("rsFilewinSelect.refusal.none")) }));
       }
       box.appendChild(acts);
       body.appendChild(box);
     }
     const list = document.createElement("div");
     list.className = "cfg-list";
-    for (const name of v.servers) {
+    for (const { name, agent, agentSaid } of v.servers) {
       const r = document.createElement("div");
       r.className = "cfg-list-row";
       r.dataset.role = "mcp-server";
+      const cellEl = document.createElement("div");
       const n = document.createElement("code");
       n.className = "cfg-list-name";
       n.textContent = name;
-      r.appendChild(n);
+      cellEl.appendChild(n);
+      cellEl.append(...familyTag(agentSaid));
+      r.appendChild(cellEl);
       if (v.sync) {
-        r.appendChild(link(copyText("cfgPage.mcp.remove"), () => void remove(name), true));
+        r.appendChild(link(copyText("cfgPage.mcp.remove"), () => void remove(name, agent), true));
       }
       list.appendChild(r);
     }
@@ -127,14 +142,14 @@ function buildMcpRow(origin: () => Machine, machine: () => string): { row: CfgRo
     if (end.stale) load();
   };
 
-  const remove = async (name: string): Promise<void> => {
+  const remove = async (name: string, agent: string | undefined): Promise<void> => {
     const ok = await confirmDialog({
       title: copyText("cfgPage.mcp.removeTitle", { name }),
       action: copyText("cfgPage.mcp.removeAction"),
       danger: true,
       body: copyText("cfgPage.mcp.removeBody", { name, machine: machine() }),
     });
-    if (ok) await send(() => accountsMcpRemove(origin(), name), () => copyText("cfgPage.mcp.removeFailed"));
+    if (ok) await send(() => accountsMcpRemove(origin(), name, agent), () => copyText("cfgPage.mcp.removeFailed"));
   };
 
   const load = (): void => {

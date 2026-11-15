@@ -44,12 +44,12 @@ describe("工具卡展开照 `steps[id]` 画", () => {
     expect(d.textContent).not.toContain("IGNORED");
   });
 
-  it("★ 收着先画后端说的前几行，其余点「显示全部改动」补上；按钮上的数照后端给的", () => {
-    const diff = { ...lineDiff([row("add", "1"), row("add", "2"), row("add", "3")]), shown: 2, added: 7, removed: 5 };
+  it("★ 收着先画后端说的前几行，其余点「显示全部改动」补上；那一颗的字整句照抄后端写好的", () => {
+    const diff = { ...lineDiff([row("add", "1"), row("add", "2"), row("add", "3")]), shown: 2, added: 7, removed: 5, showAllText: "核心·显示全部" };
     const d = opened({}, step({ body: { kind: "changes", diff } }));
     expect(drawn(d)).toEqual(["+1", "+2"]);
     const btn = d.querySelector<HTMLButtonElement>(".block-body-show-full");
-    expect(btn?.textContent).toBe(copyText("diff.buildDiffBody.showAll", { addCount: 7, delCount: 5 }));
+    expect(btn?.textContent, "照抄后端写好的那一颗").toBe("核心·显示全部");
     btn?.click();
     expect(drawn(d)).toEqual(["+1", "+2", "+3"]);
     expect(d.querySelector(".block-body-show-full")).toBeNull();
@@ -106,5 +106,25 @@ describe("工具卡展开照 `steps[id]` 画", () => {
     expect(d.querySelector(".step-tool")?.textContent).toBe("Tool");
     expect(d.querySelector(".step-arg")?.textContent).toBe("");
     expect(d.querySelector(".block-body-json")?.textContent).toMatch(/"q": "RAW"/);
+  });
+});
+
+describe("压缩摘要那张卡", () => {
+  it("收着时那一行照抄后端写好的 speaker.titleText（字数 · 钟面都是它的），不自己拼", () => {
+    const rec = {
+      agent: "claude",
+      t: "said",
+      id: "c",
+      at: "2026-01-01T00:00:00.000Z",
+      timeText: "08:00",
+      who: { speaker: { kind: "compactSummary", titleText: "核心·压缩摘要那一行" }, text: "摘要正文" },
+      blocks: [],
+      results: {},
+      draw: "card",
+      human: false,
+    } as never;
+    const r = renderMessage(rec, { parentPath: "/p/s.jsonl", origin: LOCAL, toolUseNames: new Map(), toolUseElements: new Map(), pendingToolResults: new Map(), lazy: false } as never);
+    if (r.kind !== "card") throw new Error(r.kind);
+    expect(r.element.querySelector("summary")!.textContent).toBe("核心·压缩摘要那一行");
   });
 });

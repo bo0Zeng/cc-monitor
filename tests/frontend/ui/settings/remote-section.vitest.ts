@@ -696,6 +696,8 @@ describe("S1 RemoteSection：保存走局部合并", () => {
       said: "",
       offlineSaid: "box-1 离线",
       heldSaid: "box-1 离线 · 连上后补交",
+      withdrawHeld: "夹具·撤着",
+      rewindHeld: "夹具·上一版撤着",
       fixes: [],
       seenHostKey: null,
       expectedHostKey: null,
@@ -729,6 +731,8 @@ describe("S1 RemoteSection：保存走局部合并", () => {
       said: "",
       offlineSaid: "m 离线",
       heldSaid: "m 离线 · 连上后补交",
+      withdrawHeld: "夹具·撤着",
+      rewindHeld: "夹具·上一版撤着",
       fixes: [],
       seenHostKey: null,
       expectedHostKey: null,
@@ -775,6 +779,8 @@ describe("S1 RemoteSection：保存走局部合并", () => {
       said: "核心·正在装",
       offlineSaid: "核心·a 离线",
       heldSaid: "核心·a 离线 · 连上后补交",
+      withdrawHeld: "夹具·撤着",
+      rewindHeld: "夹具·上一版撤着",
       fixes: [],
       seenHostKey: null,
       expectedHostKey: null,
@@ -880,15 +886,15 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   // 认形状 ＋ 机器页「测试连接」那一格不露 `v=… caps=[…]` 日志行；做不到的那几类点开看。
   it("★〔FIX5 续〕测试连接那一格是人话：不含「=」「[」；这台做不到的那几类在一个点开看的格里", async () => {
     localStorage.clear();
-    // 每类那一句后端写好（`probe.rs` 取置灰那一句同一个家），界面原样放进那一行。
-    const noTmux = copyText("machineCard.test.gapRow", { reason: "后端·a 无 tmux", n: "3" });
+    // 每类那一行后端写好（`probe.rs`：那一句 · 不可用几项），界面原样放进那一行。
+    const noTmux = "无 tmux 那一行（夹具）";
     ipcReplies.set("remote-probe", {
       said: copyText("beProbe.test.ok"),
       tone: "plain",
       segs: { resolve: "ok", connect: "ok", auth: "ok", ready: "ok" },
       end: {
         backendHello: copyText("beProbe.hello.okGaps", { build: "p5o", gaps: "3", dur: "12 ms" }),
-        backendGaps: [{ code: "no_tmux", count: 3, said: "后端·a 无 tmux" }],
+        backendGaps: [{ code: "no_tmux", count: 3, said: "后端·a 无 tmux", row: noTmux }],
         detail: null,
       },
     });
@@ -1209,6 +1215,8 @@ describe("S1 RemoteSection：保存走局部合并", () => {
         said: "核心·连接停用了",
         offlineSaid: "核心·a 离线",
         heldSaid: "核心·a 离线 · 连上后补交",
+        withdrawHeld: "夹具·撤着",
+        rewindHeld: "夹具·上一版撤着",
         fixes: [{ fix: "connect", label: "核心·连接" }],
         seenHostKey: null,
         expectedHostKey: null,
@@ -1239,6 +1247,8 @@ describe("S1 RemoteSection：保存走局部合并", () => {
         said: "",
         offlineSaid: "核心·a 离线",
         heldSaid: "核心·a 离线 · 连上后补交",
+        withdrawHeld: "夹具·撤着",
+        rewindHeld: "夹具·上一版撤着",
         fixes: [],
         seenHostKey: null,
         expectedHostKey: null,

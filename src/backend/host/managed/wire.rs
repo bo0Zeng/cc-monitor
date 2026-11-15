@@ -12,8 +12,8 @@ use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 /// 协议版本。加只发不等回话的动词不升；加要对方回话的动词 · 改了已有动词的意思升（新的一方按对方的 `proto` 说话）。
-/// 1 ＝ 起头那一版；2 ＝ 认 `say`（[`SAY_SINCE`]）；3 ＝ 认 `interrupt`（[`INTERRUPT_SINCE`]）。
-pub const PROTO: u32 = 3;
+/// 1 ＝ 起头那一版；2 ＝ 认 `say`（[`SAY_SINCE`]）；3 ＝ 认 `interrupt`（[`INTERRUPT_SINCE`]）；4 ＝ 认 `hop`（升这一版时它要回话；现在只发不回，没有哪一方再按 4 判，值留着不往回降；旧的读成 [`Ctl::Unknown`] 不理）。
+pub const PROTO: u32 = 4;
 /// 托管进程从这一版起认 `say`（回 `said`）：`welcome` 报的比它低 ⇒ 是旧托管进程，不说。
 pub(crate) const SAY_SINCE: u32 = 2;
 /// 托管进程从这一版起认 `interrupt`（回 `interrupted`）：低于它 ⇒ 不说、照实报旧版。
@@ -134,6 +134,9 @@ pub enum Ctl {
     Clients,
     /// 后端写来的会话身份（同 tmux 那一形写 `@ccm_sid`）。
     Tag { sid: String, agent: String },
+    /// 里面那个 ccm 起 agent 的那一跳起好了：它的 pid ＋ 它是不是「包一层」（落事实 `hop_pid` · `hop_wrapped`；读不到终端的平台照它认前台）。
+    /// `by` ＝ 交它的那个 ccm 自己的 pid：只有它就是托管终端的子进程才记（主会话里再起的 ccm 也带着 `CCM_HOST`，不许换掉那一跳）。
+    Hop { by: u32, pid: u32, wrapped: bool },
     /// 结束这个终端（子进程组 SIGHUP）。
     End,
     /// 这一端要走了（断开，会话照跑）。

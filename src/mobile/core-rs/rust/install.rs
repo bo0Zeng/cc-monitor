@@ -3,7 +3,7 @@
 //!
 //! 一个入口（`Core.deploy(handle, slots)`）。走到哪一步收进那台的状态成品（`deploy::machine`，同桌面那一份），经 `state` 那一行交 Kotlin
 //! （正在装 / 更新那一句与进度条照成品画）；结局经常驻流同一个口交（种类 `deploy`，一行 JSON）：
-//! - `{"end": "done", "act": "skip" | "deploy" | "keep", "text"}`：做完了（已是这一版 · 装上了这一版 · 那台不比这一版旧、没动它）；
+//! - `{"end": "done", "text"}`：做完了（那一句写着：已是这一版 · 装上了这一版 · 那台不比这一版旧、没动它 ＋ 出路；同桌面 `deploy-install` 应答那一句）；
 //! - `{"end": "failed", "code", "said", "detail"}`：没做成（交出去的那一形失败：码 · 那一句 · 复制详情）。
 //! 形状住契约（`cmd_wire::phone::DeployEnd`），Kotlin 读同一份生成的类。
 //!
@@ -12,10 +12,9 @@
 use std::sync::{Arc, Mutex, OnceLock};
 
 use cap_core::{Cap, Over, Regular};
-use cmd_wire::phone::{DeployAct, DeployEnd};
+use cmd_wire::phone::DeployEnd;
 use copy_core::copy_text;
 use copy_core::said::Said;
-use deploy_contract::DeployAction;
 
 use crate::resident::{self, OnEvent};
 
@@ -30,16 +29,7 @@ fn busy() -> &'static Mutex<std::collections::HashSet<i64>> {
 
 /// 做完了 ⇒ 那一行（那一句是 `deploy` crate 写的）。
 pub fn done_json(plan: &deploy::Plan) -> String {
-    let act = match &plan.action {
-        DeployAction::Skip => DeployAct::Skip,
-        DeployAction::Deploy(_) => DeployAct::Deploy,
-        DeployAction::Keep { .. } => DeployAct::Keep,
-    };
-    serde_json::to_string(&DeployEnd::Done {
-        act,
-        text: plan.said(),
-    })
-    .unwrap_or_default()
+    serde_json::to_string(&DeployEnd::Done { text: plan.said() }).unwrap_or_default()
 }
 
 /// 没做成 ⇒ 那一行（详情：命令 · 码 · 原话，钟是这台手机的）。
@@ -120,21 +110,35 @@ pub fn start(h: i64, slots_json: &str, on: OnEvent) -> bool {
         on(
             h,
             KIND,
-            failed_json(
-                "offline",
-                &comms_inward::chan::said::offline(&machine),
-                None,
-            ),
+            failed_json("offline", &copy_core::offline(&machine), None),
         );
         return true;
     };
+    let slots = slots_of(slots_json);
+    claim(
+        h,
+        async move { run(h, base, slots, feed, &machine, &on).await },
+    )
+}
+
+/// 那台此刻没在装 ⇒ 记上、在当前运行时上起 `job`，走完（半路 panic 也算）放掉，回 `true`；正在装 ⇒ `false`，不起第二趟。
+fn claim(h: i64, job: impl std::future::Future<Output = ()> + Send + 'static) -> bool {
     if !busy().lock().unwrap_or_else(|e| e.into_inner()).insert(h) {
         return false;
     }
-    let slots = slots_of(slots_json);
+    /// 那一趟结束（走完 · panic 展开）就放掉那台。
+    struct Release(i64);
+    impl Drop for Release {
+        fn drop(&mut self) {
+            busy()
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .remove(&self.0);
+        }
+    }
     tokio::spawn(async move {
-        run(h, base, slots, feed, &machine, &on).await;
-        busy().lock().unwrap_or_else(|e| e.into_inner()).remove(&h);
+        let _release = Release(h);
+        job.await;
     });
     true
 }
@@ -176,7 +180,11 @@ async fn run(
     };
     // 结局：做完了那一份 · 没做成那一份（那一句与详情也记进那台的成品，机器条照它说）。
     let ended = match deploy::install(&facing, &slots, &load, machine, now, &step).await {
-        Err(f) => Err(failed_of(f.code_or_fallback(), &f.said, f.raw.as_deref())),
+        Err(f) => Err(failed_of(
+            &cmd_wire::failed::Failed::code_or_fallback(f.code.clone()),
+            &f.said,
+            f.raw.as_deref(),
+        )),
         Ok(plan) => {
             // 换不换常驻由那台判（`--resident-ensure --replace`：在听的比落点旧才换）。
             step(deploy::Step::Restart);
@@ -201,6 +209,7 @@ async fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use deploy_contract::DeployAction;
 
     fn plan(action: DeployAction) -> deploy::Plan {
         deploy::Plan {
@@ -215,13 +224,18 @@ mod tests {
         serde_json::from_str(s).expect("JSON")
     }
 
-    /// 结局三种各一句：装上了（带这一版与原因）· 已是这一版 · 那台更新（计划里那一句，不叫人去别处卸载）。
+    /// 结局三种各一句：装上了（带这一版与原因）· 已是这一版 · 那台不比这一版旧（计划里那一句接出路，同桌面 `deploy-install` 应答那一句）。
     #[test]
     fn the_outcome_names_what_was_done() {
         let d = v(&done_json(&plan(DeployAction::Deploy("该机无后端".into()))));
+        assert_eq!(d["end"].as_str(), Some("done"));
+        let keys = |x: &serde_json::Value| -> Vec<String> {
+            x.as_object().unwrap().keys().cloned().collect()
+        };
         assert_eq!(
-            (d["end"].as_str(), d["act"].as_str()),
-            (Some("done"), Some("deploy"))
+            keys(&d),
+            ["end", "text"],
+            "做完那一行只带那一句（做了哪一样写在句里）"
         );
         assert!(
             copy_core::copy_matches("rsSftp.deploy.done", d["text"].as_str().unwrap()),
@@ -229,7 +243,6 @@ mod tests {
         );
         assert!(d["text"].as_str().unwrap().contains("p9b-mine"));
         let s = v(&done_json(&plan(DeployAction::Skip)));
-        assert_eq!(s["act"], "skip");
         assert!(copy_core::copy_matches(
             "rsSftp.deploy.upToDate",
             s["text"].as_str().unwrap()
@@ -239,8 +252,11 @@ mod tests {
             why: "那台更新".into(),
         })));
         assert_eq!(
-            (k["act"].as_str(), k["text"].as_str()),
-            (Some("keep"), Some("那台更新"))
+            k["text"].as_str(),
+            Some(
+                copy_core::copy_text("rsSftp.deploy.keptNotOlder", &[("why", "那台更新")]).as_str()
+            ),
+            "Keep 那一句连出路由 deploy crate 写全，两端同一句"
         );
         let f = v(&failed_json("refused", "box 不装", Some("uname: x")));
         assert_eq!(
@@ -303,6 +319,65 @@ mod tests {
         let said = load(&d).expect_err("目录却读成了").said;
         assert_eq!(said, copy_text("reason.fs.notRegular", &[]));
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// 那一趟半路 panic 也放掉那台：再起照起（不卡成永远在装）。
+    #[tokio::test]
+    async fn claim_releases_the_machine_even_when_the_run_panics() {
+        let h = -290; // 测试专用编号，不与别的判据撞
+        assert!(claim(h, async { panic!("半路崩了") }));
+        for _ in 0..100 {
+            if !busy().lock().unwrap().contains(&h) {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        assert!(claim(h, async {}), "那一趟崩了却还当它在装");
+    }
+
+    /// 只钉 `claim`：同一台连起两趟，第二趟回 `false`、只起一趟；那一趟走完放掉，再起照起；别的台不受它挡。
+    /// `start` 查过 feed 与拨号请求之后必须经 `claim` 起那一趟（直接调 `start` 要先有 `resident::open` 登记的一台）。
+    #[tokio::test]
+    async fn claim_refuses_a_second_run_on_the_same_machine_until_the_first_ends() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let h = -190; // 测试专用编号（`resident::open` 从 1 起发），不与别的判据撞
+        let ran = Arc::new(AtomicUsize::new(0));
+        let (go, wait) = tokio::sync::oneshot::channel::<()>();
+        let (done_tx, done) = tokio::sync::oneshot::channel::<()>();
+        let r = Arc::clone(&ran);
+        assert!(claim(h, async move {
+            r.fetch_add(1, Ordering::SeqCst);
+            let _ = wait.await;
+            let _ = done_tx.send(());
+        }));
+        let r = Arc::clone(&ran);
+        assert!(
+            !claim(h, async move {
+                r.fetch_add(1, Ordering::SeqCst);
+            }),
+            "那台正在装，第二趟却起了"
+        );
+        let r = Arc::clone(&ran);
+        assert!(
+            claim(h - 1, async move {
+                r.fetch_add(1, Ordering::SeqCst);
+            }),
+            "别的台被这一台挡了"
+        );
+        go.send(()).expect("第一趟还在等");
+        done.await.expect("第一趟走完");
+        for _ in 0..100 {
+            if !busy().lock().unwrap().contains(&h) {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(
+            ran.load(Ordering::SeqCst),
+            2,
+            "同一台只起一趟（另一台一趟）"
+        );
+        assert!(claim(h, async {}), "走完了却还当它在装");
     }
 
     /// Kotlin 交的那几格：认得的照收，缺格 · 空身份 · 表 A 外的机器丢掉。

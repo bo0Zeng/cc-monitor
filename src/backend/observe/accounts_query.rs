@@ -1,5 +1,6 @@
 //! 观测面里问活会话的那几问：谁持着一条会话（[`session_holders`]）· 每个活会话此刻在干什么（[`live_doing`]）·
-//! 需手动的会话（[`live_needs`]）· 这台活会话里断开的 MCP（[`live_mcp_failed`]）· 配置目录那一个形状关（`is_safe_config_dir`）。
+//! 需手动的会话（[`live_needs`]）· 这台活会话里断开的 MCP（[`live_mcp_failed`]）· 配置目录那一个形状关（`is_safe_config_dir`）·
+//! 一条会话是哪一家（[`session_kind`]）。
 //!
 //! 不认识账号库：账号清单成品与会话归属哪个号住 `accounts::manage::library`。
 //!
@@ -9,7 +10,6 @@
 
 use crate::history::live_table::LiveTable;
 use crate::platform::fs::Ro;
-use crate::wire::SessionFaceExt as _;
 pub use cmd_wire::needs::NeedsRow;
 use std::path::{Path, PathBuf};
 
@@ -19,6 +19,16 @@ use std::path::{Path, PathBuf};
 pub(crate) fn is_safe_config_dir(p: &str) -> bool {
     // 规则住共享 crate（`acct_core::config_dir_ok`）：后端 `control/ccm` 起会话也要这张全表，而 `control → observe` 是禁止方向。
     acct_core::config_dir_ok(p)
+}
+
+/// **这条会话是哪一家**（切权限档 · 会话归号 · 等人的会话认工具都只问这一处）：按 sid 找到的那一条（`at`）那一家；
+/// 这台找不到它的记录（别家刚起、还没写）⇒ 活会话表里写它那份 pidfile 的那一家（`live`，[`LiveTable::kind_of`]）；
+/// 两样都认不出 ⇒ `None`（不退到默认那一家）。
+pub fn session_kind<'a>(
+    at: Option<&crate::agents::SessionAt>,
+    live: Option<&'a str>,
+) -> Option<&'a str> {
+    at.map(|a| a.kind).or(live)
 }
 
 /// 这台活会话里那一家说断开的一个 MCP 服务器（[`live_mcp_failed`] 的一项）。
@@ -53,8 +63,11 @@ impl McpBook {
             *at = 0;
             mcp.clear();
         }
+        // 认不出是哪一家的 ⇒ MCP 那一格没有那一家可问（读出来也认不得），不读、交空。
+        let Some(kind) = crate::agents::record_kind_of(path) else {
+            return Ok(Vec::new());
+        };
         file.seek(SeekFrom::Start(*at))?;
-        let kind = crate::agents::record_kind_of(path).unwrap_or_default();
         *at += super::recognize::facts::mcp_from(std::io::BufReader::new(file), kind, mcp)?;
         Ok(mcp.clone())
     }
@@ -71,7 +84,7 @@ static MCP_BOOK: std::sync::Mutex<Option<McpBook>> = std::sync::Mutex::new(None)
 /// 这台此刻活着的交互会话（`homes` 各号的家那一张活会话表，后台任务不算）里，
 /// 那一家说断开的 MCP：每个名字取说它最晚的那一条，按名字排。会话结束了的不算（那份原话已经过时）。
 /// 每条会话只读 MCP 那一格、只读新长出来的那一截（[`McpBook`]）；标题取历史清单的缓存，带上这台注解里改过的名（`history::listing::session_title_of`）。
-pub fn live_mcp_failed(homes: &[PathBuf]) -> Vec<LiveMcpFailed> {
+pub fn live_mcp_failed(homes: &[crate::agents::AgentHome]) -> Vec<LiveMcpFailed> {
     let mut book = MCP_BOOK
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -81,6 +94,7 @@ pub fn live_mcp_failed(homes: &[PathBuf]) -> Vec<LiveMcpFailed> {
     // 这台的注解（叫什么带上改过的名）：真有断开的 MCP 要配标题时才读一次。
     let annotations = std::cell::OnceCell::new();
     for home in homes {
+        let home = std::slice::from_ref(home);
         let table = crate::history::live_table::now(home);
         for row in table.interactive() {
             let Some(sid) = row.sid() else {
@@ -135,7 +149,12 @@ pub fn live_mcp_failed(homes: &[PathBuf]) -> Vec<LiveMcpFailed> {
 
 /// **这条会话此刻谁持着它**（冷读那几处判活只问这一处）：`record` 是这条会话的记录（已过围栏），
 /// 哪一家照它落在哪棵树下认（`agents::record_kind_of`），怎么判照那一家声明的（[`crate::agents::Adapter::live`]，见 [`session_holders_by`]）。
-pub fn session_holders(agent_home: &Path, record: &Path) -> Option<Vec<u32>> {
+pub fn session_holders(
+    agent_home: impl crate::agents::IntoHomes,
+    record: &Path,
+) -> Option<Vec<u32>> {
+    let agent_home_v = crate::agents::IntoHomes::into_homes(agent_home);
+    let agent_home: &[crate::agents::AgentHome] = &agent_home_v;
     let kind = crate::agents::record_kind_of(record)?;
     session_holders_by(crate::agents::live_by(kind), agent_home, record)
 }
@@ -148,14 +167,16 @@ pub fn session_holders(agent_home: &Path, record: &Path) -> Option<Vec<u32>> {
 /// `Some(空)` ＝ 判过了、此刻没有谁持着它（走了）；`None` ＝ 判不了（不是「没有」）。pid 升序。
 pub(crate) fn session_holders_by(
     live: crate::agents::LiveBy,
-    agent_home: &Path,
+    agent_home: impl crate::agents::IntoHomes,
     record: &Path,
 ) -> Option<Vec<u32>> {
+    let agent_home_v = crate::agents::IntoHomes::into_homes(agent_home);
+    let agent_home: &[crate::agents::AgentHome] = &agent_home_v;
     use crate::agents::LiveBy;
     match live {
-        LiveBy::Pidfiles => {
-            Some(crate::history::live_table::now(agent_home).writers(record.file_stem()?.to_str()?))
-        }
+        LiveBy::Pidfiles => Some(
+            crate::history::live_table::now(agent_home).writers(&crate::agents::sid_of(record)?),
+        ),
         LiveBy::HeldOpen => {
             let want = crate::platform::writers::absolute(record);
             let found = crate::platform::writers::writers_of(&|p| p == want)?;
@@ -180,7 +201,11 @@ pub struct Doing {
 }
 
 /// 这台此刻活着的每个会话在干什么（活会话表 `LiveTable::doing`）；在等你 ⇒ 等的是什么同 [`waiting_needs`]（只留种类）。
-pub fn live_doing(agent_home: &Path) -> std::collections::BTreeMap<String, Doing> {
+pub fn live_doing(
+    agent_home: impl crate::agents::IntoHomes,
+) -> std::collections::BTreeMap<String, Doing> {
+    let agent_home_v = crate::agents::IntoHomes::into_homes(agent_home);
+    let agent_home: &[crate::agents::AgentHome] = &agent_home_v;
     let table = crate::history::live_table::now(agent_home);
     table
         .doing()
@@ -198,13 +223,15 @@ pub fn live_doing(agent_home: &Path) -> std::collections::BTreeMap<String, Doing
 /// 先答的在前（`needs.rank` 小的先，[`super::recognize::facts::needs_rank`]）。
 /// `dress` ＝ 给一条 `needs` 配上它挂着的请求（顶层壳交进来）。`hidden(sid, 是不是分身)` ＝ 那一格（顶层壳经 `history/session_hidden.rs` 判）。
 pub fn live_needs(
-    agent_home: &Path,
+    agent_home: impl crate::agents::IntoHomes,
     dress: &dyn Fn(
         Option<super::recognize::facts::Needs>,
         &str,
     ) -> Option<super::recognize::facts::Needs>,
     hidden: &dyn Fn(&str, bool) -> Option<cmd_wire::session::Hidden>,
 ) -> Vec<NeedsRow> {
+    let agent_home_v = crate::agents::IntoHomes::into_homes(agent_home);
+    let agent_home: &[crate::agents::AgentHome] = &agent_home_v;
     let table = crate::history::live_table::now(agent_home);
     let bg = table.background();
     let annotations = match crate::history::history_annotations::load() {
@@ -220,18 +247,8 @@ pub fn live_needs(
                     &sid,
                     &annotations,
                 )),
-                face: crate::wire::SessionFace::of(crate::wire::Life::Live {
-                    activity: Some(crate::agents::SessionActivity::NeedsYou),
-                    host: None,
-                }),
-                // 那台说在等 ⇒ 配上它在等什么；只挂着请求（挡着终端的那种 pidfile 不说在等）⇒ 交 `dress` 配请求。
-                needs: dress(
-                    table
-                        .says_waiting(&sid)
-                        .then(|| waiting_needs(agent_home, &table, &sid))
-                        .flatten(),
-                    &sid,
-                )?,
+                // 那台说在等（[`LiveTable::wait_of`]，会话事实同一判）⇒ 配上它在等什么；再交 `dress` 配挂着的请求（只挂着请求 ⇒ 照请求补出）。
+                needs: dress(waiting_needs(agent_home, &table, &sid), &sid)?,
                 hidden: hidden(&sid, bg.contains(&sid)),
                 sid,
             })
@@ -248,33 +265,24 @@ pub fn live_needs(
 }
 
 /// 一条在等人的会话此刻要人做什么：读它的记录（扫描图缓存）配上没结果的调用，经 [`super::recognize::facts::needs_of`] 判（同 `history-facts.needs`）；
-/// 记录找不到 ⇒ 不挂哪一步，框是哪种照那台说的（那台说在等 ⇒ 恒有一份）。
+/// 记录找不到 ⇒ 不挂哪一步，框是哪种照那台说的。那台说不说在等只照 [`LiveTable::wait_of`]（会话事实同一判；只有后台进程说在等不算）：不说 ⇒ `None`。
 fn waiting_needs(
-    agent_home: &Path,
+    agent_home: &[crate::agents::AgentHome],
     table: &LiveTable,
     sid: &str,
 ) -> Option<super::recognize::facts::Needs> {
-    let record = super::query::locate::session_record(agent_home, sid).ok();
-    let pending = record
+    let wait = table.wait_of(sid)?;
+    let at = super::query::locate::session_at(agent_home, sid).ok();
+    let pending = at
         .as_ref()
+        .map(|a| &a.file)
         .and_then(|p| {
             super::query::locate::facts(agent_home, &p.to_string_lossy(), &Vec::new(), None).ok()
         })
         .map(|f| f.pending)
         .unwrap_or_default();
     // 找不到记录 ⇒ 按写那份 pidfile 的那一家认工具（哪一家跟着那一行走，`ProcFact::kind`）。
-    let kind = record
-        .as_deref()
-        .and_then(crate::agents::record_kind_of)
-        .or_else(|| table.kind_of(sid))
-        .unwrap_or_default();
-    let wait = table
-        .wait_of(sid)
-        .unwrap_or(super::recognize::facts::PidWait {
-            waiting_for: None,
-            since_ms: None,
-            read_at_ms: 0,
-        });
+    let kind = session_kind(at.as_ref(), table.kind_of(sid));
     super::recognize::facts::needs_of(kind, &pending, Some(&wait))
 }
 

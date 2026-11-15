@@ -14,7 +14,11 @@ class: FileClass,
 /**
  * 相对搜索起点的那一段（所在目录）。
  */
-location: WirePath, size: number | null, mtime_secs: number | null, mtime_text: string | null, 
+location: WirePath, size: number | null, 
+/**
+ * `size` 写好的字（同 [`LsEntry::size_text`]）；`size` 缺 ⇒ 缺。
+ */
+size_text?: string, mtime_secs: number | null, mtime_text: string | null, 
 /**
  * 命中段的字节区间。
  */

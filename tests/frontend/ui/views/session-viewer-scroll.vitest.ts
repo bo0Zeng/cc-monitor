@@ -64,6 +64,7 @@ async function mount(lines: RigPayload[], scrollToUuid?: string): Promise<Sessio
   document.body.appendChild(v.element);
   await v.load({
     jsonlPath: "/p/s1.jsonl",
+    sessionId: "s1",
     displayTitle: "T",
     origin: LOCAL,
     suppressBranch: true, // 分支按钮不在这里的射程里

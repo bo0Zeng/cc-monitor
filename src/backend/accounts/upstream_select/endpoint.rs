@@ -30,7 +30,6 @@
 //! 上游是用户自己的（`own_upstream`：继承来的上游地址不是我们那一形）⇒ ① ⑤ 不成立（表里的行与它无关），恒落到 ⑥：
 //! 中转按那条会话的上游描述直通到用户的地址，中转不在 ⇒ 直连用户的地址。
 
-use super::CREDENTIALS_FILE_AGENT;
 use crate::agents::{SettingsBaseUrl, SettingsEnvFace};
 use copy_core::copy_text;
 use relay_route_core::{base_url, RouteMode, PORT, UNDECLARED_ACCOUNT_SEGMENT};
@@ -72,7 +71,7 @@ pub(crate) enum Endpoint {
     },
 }
 
-/// ★★ **决策表的唯一实现**（纯函数）。`routed` = 这台表里有哪几行（[`super::file_face::rows_at`]）；
+/// ★★ **决策表的唯一实现**（纯函数）。`routed` = 这台表里 `agent` 那一家有哪几行（[`super::file_face::RoutedRows::of`]）；
 /// `registered` = 这一家 agent 在适配层登记了默认上游没有。
 /// `own_upstream` = 这条会话的上游是用户自己的（继承来的上游地址不是我们那一形；中转按那条会话的上游描述走过去）。
 pub(crate) fn decide_launch(
@@ -85,9 +84,7 @@ pub(crate) fn decide_launch(
     registered: bool,
 ) -> Endpoint {
     // 上游是用户自己的 ⇒ 表里的行与这条会话无关（鉴权是用户网关的，中转按描述走过去、不查表）⇒ ① ⑤ 两格都不成立。
-    let has_row = |id: &str| {
-        !own_upstream && agent == CREDENTIALS_FILE_AGENT && routed.iter().any(|r| r == id)
-    };
+    let has_row = |id: &str| !own_upstream && routed.iter().any(|r| r == id);
     let id = match account {
         LaunchAccount::Named { config_dir } => acct_core::apikey_account_id_of_dir(config_dir),
         LaunchAccount::Base | LaunchAccount::Undeclared => None,
@@ -163,7 +160,7 @@ pub fn relay_for_exec(
         own_upstream,
         all_sessions_on(&get),
         relay_port(&get),
-        &super::file_face::machine_rows(),
+        super::file_face::machine_rows().of(agent),
         &|port, url| {
             keyed_for_exec(url, &get).is_some()
                 && egress::open(egress::here(), "127.0.0.1", port, None).is_ok()
@@ -201,7 +198,7 @@ pub fn relay_for_preview(
         own_upstream,
         all_sessions_on(&get),
         relay_port(&get),
-        &super::file_face::machine_rows(),
+        super::file_face::machine_rows().of(agent),
         &|port, _| crate::relay::our_relay_listening(port),
     )
 }
@@ -238,7 +235,7 @@ pub fn relay_with(
             "rsHistory.relay.downRefused",
             &[
                 ("account", &format!("{account:?}")),
-                ("where", &copy_text("detail.label.local", &[])),
+                ("where", &copy_core::local_machine()),
                 (
                     "why",
                     &copy_text("beUpstreamEndpoint.relay.notListening", &[]),

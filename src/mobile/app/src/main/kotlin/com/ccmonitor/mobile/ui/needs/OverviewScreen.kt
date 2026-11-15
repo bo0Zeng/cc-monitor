@@ -47,6 +47,7 @@ import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.core.wire.gen.ManualItem
 import com.ccmonitor.mobile.core.wire.gen.SessionDot
 import com.ccmonitor.mobile.link.HostBackends
+import com.ccmonitor.mobile.ssh.observeMachineNames
 import com.ccmonitor.mobile.ui.chat.needs.monoMs
 import com.ccmonitor.mobile.ui.chats.HostName
 import com.ccmonitor.mobile.ui.common.StatusDot
@@ -54,7 +55,6 @@ import com.ccmonitor.mobile.ui.common.dashedFrame
 import com.ccmonitor.mobile.ui.login.LoginFlow
 import com.ccmonitor.mobile.ui.login.LoginSheet
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.map
 import org.koin.compose.koinInject
 
 /** 「需手动 n」那颗入口的标记（判据按它找）。 */
@@ -64,17 +64,14 @@ const val NEEDS_ENTRY_TAG = "needs-entry"
 const val NEEDS_SKELETON_TAG = "needs-skeleton"
 
 /**
- * 「需手动 n」那一颗（聊天屏顶栏 ⋯ 左边 · 会话列表顶栏，同一份）：板上各台交核心合的那一份（[mergedOf]，总览同一份）照摆 ——
- * 字是核心写好的头那一句；数说得准且 0 ⇒ 不画；说不准（读中 · 答失败 · 会外读不出）⇒ 虚线框。点了进需手动屏。
+ * 「需手动 n」那一颗（聊天屏顶栏 ⋯ 左边 · 会话列表顶栏，同一份）：板上核心合好的需手动那一列（[NeedsNow.merged] 的 `manual`，总览同一份）照摆 ——
+ * 字是核心写好的那一列头那一句；数说得准且 0 ⇒ 不画；说不准（答失败 · 断着 · 会外读不出）⇒ 虚线框；头一圈还没问完 ⇒ 不画。点了进需手动屏。
  */
 @Composable
 fun NeedsEntry(onOpen: () -> Unit) {
     val board = koinInject<NeedsBoard>()
-    val hostRepo = koinInject<HostRepository>()
-    val names = remember(hostRepo) { hostRepo.observeAll().map { hs -> hs.map { HostName(it.id, it.label.ifBlank { it.id }) } } }
-    val hosts by names.collectAsState(initial = emptyList())
     val all by board.state.collectAsState()
-    val m = mergedOf(all, hosts)
+    val m = all.merged?.manual ?: return
     NeedsEntryView(entryText(m.head, m.total, m.sure), uncertain = !m.sure, onOpen)
 }
 
@@ -120,12 +117,13 @@ fun OverviewScreen(
     current: String,
     onOpen: (hostId: String, sid: String) -> Unit,
     onPlan: (hostId: String, workspace: String, slice: String, cell: String?) -> Unit,
+    onAccounts: () -> Unit,
     onBack: () -> Unit,
 ) {
     val board = koinInject<NeedsBoard>()
     val backends = koinInject<HostBackends>()
     val hostRepo = koinInject<HostRepository>()
-    val names = remember(hostRepo) { hostRepo.observeAll().map { hs -> hs.map { HostName(it.id, it.label.ifBlank { it.id }) } } }
+    val names = remember(hostRepo) { hostRepo.observeMachineNames() }
     val hosts by names.collectAsState(initial = emptyList())
     val all by board.state.collectAsState()
     val ov = overviewOf(all, hosts, current)
@@ -151,13 +149,13 @@ fun OverviewScreen(
                     is NeedsLine.Session -> SessionLine(line, tick) { onOpen(line.host.id, line.row.sid) }
                     is NeedsLine.Plan -> PlanLine(line) { onPlan(line.host.id, line.workspace, line.slice, line.cell?.id) }
                     is NeedsLine.Manual ->
-                        ManualLine(line, ov.manyHosts) { item ->
+                        ManualLine(line, ov.manyHosts, onAccounts) { item ->
                             item.fix?.let { fix -> login = line.host to LoginFlow(backends.of(line.host.id), line.host.id, line.host.label, fix.args, scope).also { it.start() } }
                         }
                 }
             }
             items(ov.loading) { SkeletonLine() }
-            items(ov.down.filter { it.retry }) { d -> FailedLine(d.said, d.detail) { board.reask(d.host.id) } }
+            items(ov.down.filter { it.retry }) { d -> FailedLine(d.said, d.detail) { board.reask() } }
             if (ov.empty) {
                 item { Note(copyText("needs.panel.empty")) }
                 item { Note(ov.readFrom.joinToString(copyText("kit.text.sep")) { it.label }) }
@@ -169,7 +167,7 @@ fun OverviewScreen(
     login?.let { (h, f) ->
         LoginSheet(f, null, null, h.label, onClosed = {
             login = null
-            board.reask(h.id)
+            board.reask()
         })
     }
 }
@@ -254,15 +252,17 @@ private fun PlanLine(
 private fun whyOf(item: ManualItem): String? =
     when (item) {
         is ManualItem.AccountLogin -> null
+        is ManualItem.AccountNoAgent -> null
         is ManualItem.McpLogin -> item.why
         is ManualItem.SecretFile -> item.why
+        is ManualItem.OwnFile -> item.why
     }
 
-/** 会话外那一行的图标：MCP · 权限太宽的秘密文件 · 号。 */
+/** 会话外那一行的图标：MCP · 权限太宽的秘密文件 · 格式太老的自家状态文件 · 号。 */
 private fun manualIcon(kind: String) =
     when (kind) {
         "mcpLogin" -> Ph.Key
-        "secretFile" -> Ph.Warning
+        "secretFile", "ownFile" -> Ph.Warning
         else -> Ph.UserCircle
     }
 
@@ -270,14 +270,24 @@ private fun manualIcon(kind: String) =
 private fun ManualLine(
     line: NeedsLine.Manual,
     manyHosts: Boolean,
+    onAccounts: () -> Unit,
     onLogin: (ManualItem) -> Unit,
 ) {
     val item = line.item
     val fix = item.fix
+    // 写了认不出的家的号：没有后端命令能修，去账号屏改号表那一格或删号。
+    val toAccounts = item is ManualItem.AccountNoAgent
     val second = listOfNotNull(line.host.label.takeIf { manyHosts }, whyOf(item).takeIf { fix == null }).joinToString(copyText("kit.text.sep"))
     val base = Modifier.fillMaxWidth()
+    val login: () -> Unit = { onLogin(item) }
+    val tap: (() -> Unit)? =
+        when {
+            toAccounts -> onAccounts
+            fix != null -> login
+            else -> null
+        }
     Row(
-        (if (fix != null) base.clickable { onLogin(item) } else base).padding(horizontal = 16.dp, vertical = 10.dp),
+        (if (tap != null) base.clickable(onClick = tap) else base).padding(horizontal = 16.dp, vertical = 10.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -286,7 +296,11 @@ private fun ManualLine(
             Text(item.said, style = MaterialTheme.typography.bodyMedium)
             if (second.isNotEmpty()) Text(second, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        if (fix != null) OutlinedButton(onClick = { onLogin(item) }) { Text(copyText("newSession.account.login")) }
+        if (item is ManualItem.AccountNoAgent) {
+            OutlinedButton(onClick = onAccounts) { Text(item.go) }
+        } else if (fix != null) {
+            OutlinedButton(onClick = { onLogin(item) }) { Text(copyText("newSession.account.login")) }
+        }
     }
 }
 

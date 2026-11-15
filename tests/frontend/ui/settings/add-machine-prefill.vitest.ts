@@ -16,6 +16,9 @@ const group = (label: string, host: string): ImportGroup => ({
   jump: null,
   members: [{ alias: label, host, port: 22, proxyJump: null }],
   inList: false,
+  summary: `${label} 的说明行（夹具）`,
+  splitInto: `${label} 拆开那一行（夹具）`,
+  splitAction: null,
 });
 
 const tick = async (): Promise<void> => {
@@ -46,6 +49,12 @@ describe("添加机器框带上打的名字", () => {
       ["backup", true],
       ["gpu", false],
     ]);
+  });
+
+  it("★ 每组那一行说明照抄后端写好的（地址 · 用户 · 跳板 · 备用地址由后端拼）", async () => {
+    const dlg = await open("backup");
+    const infos = [...dlg.querySelectorAll<HTMLElement>(".add-machine-info")].map((e) => e.textContent);
+    expect(infos).toEqual(["backup 的说明行（夹具）", "gpu 的说明行（夹具）"]);
   });
 
   it("没有那一条 ⇒ 落在「自己填」，名字那一格是它", async () => {

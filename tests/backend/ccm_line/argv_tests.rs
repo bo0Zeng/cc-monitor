@@ -87,30 +87,44 @@ fn the_resumed_session_is_read_the_way_that_agent_resumes() {
     assert_eq!(codex(&["exec", "resume", "s1"]).resumes, None);
 }
 
-/// 没有账号这一维的那一家（Codex）：`--account` / `--account-dir` 明说不行（不静默导出一个它不读的变量）；`--base` 照收。
+/// 选号照「这一家有没有账号这一维」认，不写死哪一家：声明了账号面的每一家 `--account` / `--account-dir` 都收下；
+/// 没声明的 ⇒ 明说不行（不静默导出一个它不读的变量）。`--base` 每一家都照收。
 #[test]
-fn an_agent_without_accounts_refuses_to_pick_one() {
-    let want = copy_core::copy_text("beArgv.validate.agentNoAccounts", &[("agent", "codex")]);
-    let said = |a: &[&str]| match parse(&v(a)) {
-        Err(Die(m)) => m,
-        other => panic!("{a:?} 该被拒：{other:?}"),
-    };
-    assert_eq!(
-        said(&["--", "--ccm-agent", "codex", "--account", "b"]),
-        want
-    );
-    assert_eq!(
-        said(&[
-            "--",
-            "--ccm-agent",
-            "codex",
-            "--account-dir",
-            "/h/.cc-monitor/accounts/b"
-        ]),
-        want
-    );
-    assert!(ok(&["--ccm-agent", "codex", "--base"]).use_base);
+fn picking_an_account_follows_whether_that_agent_has_accounts() {
+    let dir = "/h/.cc-monitor/accounts/b";
+    let parsed = |a: &[&str]| parse(&v(a));
+    let mut with_accounts = 0;
+    for kind in crate::agents::REGISTRY.iter().map(|a| a.kind) {
+        let by_name = parsed(&["--", "--ccm-agent", kind, "--account", "b"]);
+        let by_dir = parsed(&["--", "--ccm-agent", kind, "--account-dir", dir]);
+        if crate::agents::account_env_of(kind).is_some() {
+            with_accounts += 1;
+            match by_name {
+                Ok(Parsed::Opts(o)) => assert_eq!(o.account, "b", "{kind}"),
+                other => panic!("{kind} 有账号面，--account 该收下：{other:?}"),
+            }
+            match by_dir {
+                Ok(Parsed::Opts(o)) => assert_eq!(o.account_dir, dir, "{kind}"),
+                other => panic!("{kind} 有账号面，--account-dir 该收下：{other:?}"),
+            }
+        } else {
+            let said = crate::agents::family_said_among(crate::agents::REGISTRY, kind);
+            let want = copy_core::copy_text("beArgv.validate.agentNoAccounts", &[("agent", &said)]);
+            for got in [by_name, by_dir] {
+                match got {
+                    Err(Die(m)) => assert_eq!(m, want, "{kind}"),
+                    other => panic!("{kind} 没有账号面，选号该被拒：{other:?}"),
+                }
+            }
+        }
+        assert!(ok(&["--ccm-agent", kind, "--base"]).use_base, "{kind}");
+    }
+    // 不说是哪一家 ⇒ 默认那一家（有账号面）照收。
     assert_eq!(ok(&["--account", "b"]).account, "b");
+    assert!(
+        with_accounts > 0,
+        "注册表里一家声明了账号面的都没有 —— 上面收下那一半空转着绿"
+    );
 }
 
 /// `--attach <名>` 取值时不许把下一个旗标吞成名字。
@@ -270,27 +284,47 @@ fn ccm_flag_literals_live_only_in_argv_rs() {
     );
 }
 
-/// 〔`INVARIANTS §47` ①〕`--ccm-sid` 是标识符：进容器路那条 shell 串之前先过
-/// `shell_quote_core::session_id_ok`（全仓唯一一份）——**正反各一格**（§47「拒过头也算违反」）。
-/// 要求住址：`INVARIANTS §47` ①「字符集白名单（闭集，默认拒）＋ 不许 `-` 开头（选项注入）＋ 有长度上界的就钉上界」。
-/// `--resume <sid>` / `--model` 不再是 ccm 的，它们的值交给 claude 自己判（直路不过 shell，容器路走唯一的 quote）。
+/// 透传里找一个旗标的位置（全仓一份）：`<旗标> <值>` ⇒ 值那一格；`<旗标>=<值>` ⇒ 那一个词；写了几次认最后一个；那一家自己的 `--` 之后不看；
+/// 旗标在末尾没给值也算（值读不出）。
 #[test]
-fn a_session_id_is_judged_before_it_goes_anywhere() {
+fn a_passthru_flag_is_found_last_and_never_past_the_agents_end() {
+    let w = |a: &[&str]| v(a);
+    let at = |a: &[&str]| flag_at(&w(a), &["--settings"]);
+    assert_eq!(
+        at(&["--settings", "a", "--settings", "b"]),
+        Some(FlagAt::Next(3))
+    );
+    assert_eq!(
+        at(&["--settings", "a", "--settings=b"]),
+        Some(FlagAt::Inline(2))
+    );
+    assert_eq!(
+        at(&["--settings", "a", "--", "--settings", "b"]),
+        Some(FlagAt::Next(1))
+    );
+    assert_eq!(at(&["--", "--settings", "b"]), None);
+    assert_eq!(at(&["x", "--settings"]), Some(FlagAt::Next(2)));
+    assert_eq!(FlagAt::Next(2).value(&w(&["x", "--settings"])), None);
+    assert_eq!(FlagAt::Inline(0).value(&w(&["--settings=q"])), Some("q"));
+    // 几个写法同一个意思（`--resume` 与 `-r`）：认最后写的那一个。
+    assert_eq!(
+        flag_at(&w(&["-r", "a", "--resume", "b"]), &["--resume", "-r"]),
+        Some(FlagAt::Next(3))
+    );
+}
+
+/// ccm 不再收 `--ccm-sid`：建会话不写身份（`@ccm_sid` 只由后端认过会话文件才打），这个词没有用处 ⇒ 当不认识的选项报。
+/// `--resume <sid>` / `--model` 不是 ccm 的，它们的值交给 claude 自己判（直路不过 shell，容器路走唯一的 quote）。
+#[test]
+fn the_session_id_flag_is_gone() {
     let uuid = "0473c3a0-1111-2222-3333-444455556666";
-    assert_eq!(ok(&["--ccm-sid", uuid]).ccm_sid, uuid);
-    // 拒的那一句按文案键断言，不钉原文。
-    let refused = |sid: &str| {
-        copy_text(
-            "beArgv.validate.badCcmSid",
-            &[("sid", &format!("{:?}", sid))],
-        )
-    };
-    for bad in ["a_b", "a;b", "a.b"] {
-        let arg = format!("--ccm-sid={bad}");
-        assert_eq!(err(&[&arg]), refused(bad), "坏 sid {bad:?} 放行了");
+    for word in ["--ccm-sid", "--ccm-sid=x"] {
+        let got = match parse(&v(&["--", word, uuid])) {
+            Err(Die(m)) => m,
+            other => panic!("{word} 该当不认识的选项报，实得 {other:?}"),
+        };
+        assert_eq!(got, copy_text("beArgv.parse.unknownRight", &[("w", word)]));
     }
-    let long = "a".repeat(65);
-    assert_eq!(err(&["--ccm-sid", &long]), refused(&long));
 }
 
 /// 〔`INVARIANTS §47` ①〕`--account`：与建账号的那个工具逐字同的那一份判（`shell_quote_core::account_name_ok`），**正反各一格**。
@@ -383,5 +417,65 @@ fn the_hosted_entry_takes_a_as_attach() {
         let said = hosted_entry(&short);
         assert!(matches!(said, Some(Err(_))), "{short:?} 该说清：{said:?}");
         assert_eq!(said, hosted_entry(&long), "{short:?} 说的该同 {long:?}");
+    }
+}
+
+/// 「这一家有没有账号这一维」只问注册表那一格：喂一行没声明号载体的替身 ⇒ `--account` · `--account-dir` 都明说不行；
+/// 同一行声明了号载体 ⇒ 照收。今天两家都有账号面，这一支只有替身跑得到。
+#[test]
+fn a_stand_in_without_an_account_carrier_refuses_picking_an_account() {
+    let kind = crate::agents::fake::AGENT_KIND;
+    let with = crate::agents::fake::full_row(|| None);
+    let bare = crate::agents::Adapter {
+        account_env: None,
+        ..crate::agents::fake::full_row(|| None)
+    };
+    assert!(with.account_env.is_some(), "替身那一行声明了号载体");
+    assert!(
+        bare.accounts.is_some(),
+        "只去掉号载体，账号面照留：判的只是号载体那一格"
+    );
+    // 那一句说的是那一家的叫法（替身行头上的），不是 kind。
+    let said = crate::agents::family_said_among(std::slice::from_ref(&bare), kind);
+    assert_ne!(said, kind);
+    let want = copy_core::copy_text("beArgv.validate.agentNoAccounts", &[("agent", &said)]);
+    for (name, dir) in [("b", ""), ("", "/h/.cc-monitor/accounts/b")] {
+        let mut o = blank_opts(&[]);
+        o.agent = kind.to_string();
+        o.account = name.to_string();
+        o.account_dir = dir.to_string();
+        match finish_among(std::slice::from_ref(&bare), o.clone()) {
+            Err(Die(m)) => assert_eq!(m, want, "{name:?} {dir:?}"),
+            other => panic!("没有号载体的替身选号该被拒：{other:?}"),
+        }
+        let ok = finish_among(std::slice::from_ref(&with), o).expect("声明了号载体 ⇒ 照收");
+        assert_eq!((ok.account.as_str(), ok.account_dir.as_str()), (name, dir));
+    }
+}
+
+/// 不带 `--agent` ⇒ 起的是默认那一家；它不认先定会话ID、又要不轮换 ⇒ 拒，那一句说默认那一家的叫法（用户没敲那个码，不回显 kind）。
+#[test]
+fn without_an_agent_the_refusal_says_the_default_familys_name() {
+    let row = crate::agents::fake::family_row("fake", "CCM_FAKE_A", "fakea", true, || None);
+    let row = crate::agents::Adapter {
+        launch: row.launch.map(|l| crate::agents::LaunchFace {
+            preset_sid: None,
+            ..l
+        }),
+        ..row
+    };
+    let mut o = blank_opts(&[]);
+    // 不带 `--agent`：那一格空（`blank_opts` 预填的是生产默认那一家）。
+    o.agent = String::new();
+    o.no_rotation = true;
+    match finish_among(std::slice::from_ref(&row), o) {
+        Err(Die(m)) => assert_eq!(
+            m,
+            copy_core::copy_text(
+                "beArgv.validate.noRotationNoSid",
+                &[("agent", crate::agents::fake::said_of("fake"))],
+            )
+        ),
+        other => panic!("不认先定会话ID的默认那一家不轮换该被拒：{other:?}"),
     }
 }

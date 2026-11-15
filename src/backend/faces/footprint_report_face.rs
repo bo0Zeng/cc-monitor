@@ -51,7 +51,7 @@ pub struct ChoresMergeReq {
     pub(crate) client: Option<crate::footprint::FootprintClient>,
 }
 
-/// `chores-merge` 的回包：各台的件数合成的那一份（设置窗角标 · 「文件与数据」顶上 · 主窗口状态栏读它）· 每台那一份（照问的先后）。
+/// `chores-merge` 的回包：各台的件数合成的那一份（设置窗角标 · 「文件与数据」顶上 · 主窗口状态栏读它）· 每台那一份：机器表里每一台必在（问的那几台照问的先后，没问的那几台——不连这台——跟在后面、带离线那一句）。
 #[derive(Debug, Clone, serde::Serialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
@@ -147,7 +147,7 @@ pub(crate) async fn chores_merge_with(
             .filter_map(|(_, r)| r.as_ref().ok().map(|d| d.counts))
             .collect(),
     );
-    let machines = got
+    let mut machines: Vec<ChoresAt> = got
         .into_iter()
         .map(|(origin, r)| match r {
             Ok(report) => ChoresAt {
@@ -162,6 +162,17 @@ pub(crate) async fn chores_merge_with(
             },
         })
         .collect();
+    // 机器表里没问的那几台（不连这台）也列上：不去问、带那台离线那一句 —— 界面照回包画，不自己补哪台、不自己写字。
+    for h in table.hosts().into_iter().filter(|h| !h.connect) {
+        let origin = cmd_wire::Machine::named(h.name());
+        if !machines.iter().any(|m| m.origin == origin) {
+            machines.push(ChoresAt {
+                said: Some(copy_core::offline(h.name())),
+                origin,
+                report: None,
+            });
+        }
+    }
     Ok(ChoresMerged { total, machines })
 }
 

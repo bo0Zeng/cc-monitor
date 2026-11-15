@@ -3,4 +3,4 @@
 /**
  * 切档的结局。
  */
-export type ModeSwitchResult = "done" | "unsure" | "refused";
+export type ModeSwitchResult = "done" | "unsure" | "refused" | "sent";

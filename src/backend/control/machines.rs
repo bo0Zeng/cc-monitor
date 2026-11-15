@@ -93,7 +93,7 @@ pub(crate) struct ElemKey {
 )]
 pub(crate) enum MachineEdit {
     /// 只改认出的那一台的 `field` 那一格；`value` 是 `null` ⇒ 拿掉那一格（回缺省）。
-    #[serde(rename = "setin", rename_all = "camelCase")]
+    #[serde(rename_all = "camelCase")]
     SetIn {
         r#where: Vec<ElemKey>,
         field: String,
@@ -101,14 +101,12 @@ pub(crate) enum MachineEdit {
         value: Value,
     },
     /// 加一台：已有满足 `where` 的 ⇒ 整批拒；否则追加到末尾。
-    #[serde(rename = "insertin")]
     InsertIn {
         r#where: Vec<ElemKey>,
         #[cfg_attr(any(test, feature = "ts"), ts(type = "unknown"))]
         value: Value,
     },
     /// 删一台：认出恰好一台才删。
-    #[serde(rename = "removein")]
     RemoveIn { r#where: Vec<ElemKey> },
 }
 

@@ -160,10 +160,13 @@ async fn one_line(input: &str) -> Vec<String> {
     // （那种测试**可能因为错误的原因通过**）。
     while let Some(f) = rx.recv().await {
         out.push(
-            crate::wire::to_line(&f)
-                .expect("serialize")
-                .trim_end()
-                .to_string(),
+            crate::wire::to_line(&crate::wire::FrameExit::stamp(
+                f.clone(),
+                &Default::default(),
+            ))
+            .expect("serialize")
+            .trim_end()
+            .to_string(),
         );
     }
     out
@@ -440,9 +443,12 @@ async fn an_oversized_line_does_not_grow_memory() {
     // 顺带确认它确实**报了**超限，而不是悄悄吞掉。
     let mut saw = false;
     while let Ok(f) = rx.try_recv() {
-        if crate::wire::to_line(&f)
-            .unwrap_or_default()
-            .contains("line_too_long")
+        if crate::wire::to_line(&crate::wire::FrameExit::stamp(
+            f.clone(),
+            &Default::default(),
+        ))
+        .unwrap_or_default()
+        .contains("line_too_long")
         {
             saw = true;
         }
@@ -479,7 +485,6 @@ fn req(id: &str, cmd: &str) -> Request {
 fn every_registered_command_is_reachable_through_the_real_dispatch() {
     let (tx, _rx) = mpsc::channel::<Frame>(4);
     let running: Running = Arc::new(Mutex::new(HashMap::new()));
-    let xfers = crate::control::transfer::Desk::new(tx.clone(), crate::platform::fs::Face::issue());
     let follows = crate::control::terminal_follow::Desk::new(tx.clone());
     assert!(
         REGISTRY.len() >= 4,
@@ -491,7 +496,7 @@ fn every_registered_command_is_reachable_through_the_real_dispatch() {
         .map(|spec| spec.name)
         .filter(|name| {
             matches!(
-                dispatch(req("x", name), &tx, &running, &xfers, &follows, &given_for_tests(crate::stream::inbound::WatchDesk::new(|_| tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>().1)), 0),
+                dispatch(req("x", name), &tx, &running, &follows, &given_for_tests(crate::stream::inbound::WatchDesk::new(|_| tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>().1)), 0),
                 Disposition::Reply(Frame::Reply(crate::wire::Reply { code: Some(ref c), .. }))
                     if c == "unknown_command"
             )
@@ -502,13 +507,13 @@ fn every_registered_command_is_reachable_through_the_real_dispatch() {
         "这些命令在注册表里，而 `dispatch` 到不了它们的处理器：{unreachable:?}\n\
              ⇒ `hello.commands` 会把它们报给客户端，客户端照报的发过来，收到的是 \
              `unknown_command` —— 两边各自看都「对」。\n\
-             今天这一形只有两种成因：① 有人给它写了 `Run::Builtin` 却没在 `dispatch` 里\n\
+             今天这一形只有两种成因：① 有人给它登记成帧面硬臂（`How::Frame`）却没在 `dispatch` 里\n\
              加那条硬臂；② 有人收窄了 `lookup`。两种都得回来重判，别改本条。"
     );
     // ★ 反向自检：这把尺子真的会说「够不到」—— 不然上面那一批是空真。
     assert!(
         matches!(
-            dispatch(req("x", "no-such-command-kr104"), &tx, &running, &xfers, &follows, &given_for_tests(crate::stream::inbound::WatchDesk::new(|_| tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>().1)), 0),
+            dispatch(req("x", "no-such-command-kr104"), &tx, &running, &follows, &given_for_tests(crate::stream::inbound::WatchDesk::new(|_| tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>().1)), 0),
             Disposition::Reply(Frame::Reply(crate::wire::Reply { code: Some(ref c), .. })) if c == "unknown_command"
         ),
         "喂一个根本不存在的命令进去，本条居然认为它够得到 —— 那上面那一批证不了任何事"
@@ -521,7 +526,6 @@ fn every_registered_command_is_reachable_through_the_real_dispatch() {
 fn the_uncancellable_list_is_exactly_what_dispatch_runs_blocking() {
     let (tx, _rx) = mpsc::channel::<Frame>(64);
     let running: Running = Arc::new(Mutex::new(HashMap::new()));
-    let xfers = crate::control::transfer::Desk::new(tx.clone(), crate::platform::fs::Face::issue());
     let follows = crate::control::terminal_follow::Desk::new(tx.clone());
     let blocking: Vec<String> = REGISTRY
         .iter()
@@ -532,7 +536,6 @@ fn the_uncancellable_list_is_exactly_what_dispatch_runs_blocking() {
                     req("x", name),
                     &tx,
                     &running,
-                    &xfers,
                     &follows,
                     &given_for_tests(crate::stream::inbound::WatchDesk::new(|_| {
                         tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>().1
@@ -576,19 +579,22 @@ async fn cancelling_a_blocking_command_says_not_cancellable_instead_of_lying() {
             let _ = release_rx.await;
             Ok(None)
         },
-        false, // ← 不可取消
+        // ← 握着退出票 ⇔ 不可取消（替身闸，不碰进程那一个）
+        Some(Arc::new(
+            Box::leak(Box::new(Drain::new()))
+                .enter("terminal-end（id=blk）".into())
+                .expect("替身闸没关，取得到票"),
+        )),
         views::Plan::default(),
     )
     .await;
 
     // 对它发 cancel。
-    let xfers = crate::control::transfer::Desk::new(tx.clone(), crate::platform::fs::Face::issue());
     let follows = crate::control::terminal_follow::Desk::new(tx.clone());
     handle_line(
         br#"{"id":"c1","cmd":"cancel","args":{"target":"blk"}}"#,
         &tx,
         &running,
-        &xfers,
         &follows,
         &given_for_tests(crate::stream::inbound::WatchDesk::new(|_| {
             tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>().1
@@ -641,7 +647,7 @@ async fn the_running_table_never_leaks_finished_handles() {
             tx.clone(),
             running.clone(),
             |_r| async move { Ok(None) },
-            true,
+            None,
             views::Plan::default(),
         )
         .await;
@@ -680,7 +686,7 @@ async fn a_duplicate_id_is_rejected_instead_of_silently_overwriting() {
             let _ = held.await;
             Ok(None)
         },
-        true,
+        None,
         views::Plan::default(),
     )
     .await;
@@ -690,7 +696,7 @@ async fn a_duplicate_id_is_rejected_instead_of_silently_overwriting() {
         tx.clone(),
         running.clone(),
         |_r| async move { Ok(None) },
-        true,
+        None,
         views::Plan::default(),
     )
     .await;
@@ -701,7 +707,11 @@ async fn a_duplicate_id_is_rejected_instead_of_silently_overwriting() {
     let first = rx
         .try_recv()
         .expect("通道里没有应答 —— 重复 id 被静默吞了？");
-    let line = crate::wire::to_line(&first).expect("serialize");
+    let line = crate::wire::to_line(&crate::wire::FrameExit::stamp(
+        first.clone(),
+        &Default::default(),
+    ))
+    .expect("serialize");
     assert!(
         line.contains("duplicate_id"),
         "重复 id 没被拒绝，被静默覆盖了：{line}"
@@ -726,14 +736,20 @@ async fn a_panicking_handler_still_answers_the_client() {
         |_r| async {
             panic!("处理器炸了");
         },
-        true,
+        None,
         views::Plan::default(),
     )
     .await;
     drop(tx);
     let mut lines = Vec::new();
     while let Some(f) = rx.recv().await {
-        lines.push(crate::wire::to_line(&f).expect("serialize"));
+        lines.push(
+            crate::wire::to_line(&crate::wire::FrameExit::stamp(
+                f.clone(),
+                &Default::default(),
+            ))
+            .expect("serialize"),
+        );
     }
     assert!(
         lines.iter().any(|l| l.contains("handler_panicked")),
@@ -800,10 +816,10 @@ async fn a_failed_reply_carries_a_detail_with_the_facts_below_the_sentence() {
     );
 }
 
-/// 硬臂那几条（传输 · 终端订阅：`Run::Builtin`，就地回应答）被拒：复制详情里也有「命令」那一项（同处理器回的失败）。
+/// 硬臂那几条（终端订阅：帧面硬臂 `How::Frame`，就地回应答）被拒：复制详情里也有「命令」那一项（同处理器回的失败）。
 #[tokio::test]
 async fn a_builtin_refusal_names_its_command_in_the_detail() {
-    let cmds = ["transfer-start", "terminal-follow-ack", "terminal-unfollow"];
+    let cmds = ["terminal-follow-ack", "terminal-unfollow"];
     let input: String = cmds
         .iter()
         .enumerate()
@@ -858,10 +874,13 @@ async fn a_files_read_failure_puts_the_system_words_into_the_detail() {
         said,
         copy_core::copy_text(
             "beFilesRead.ls.unreadable",
-            &[(
-                "kind",
-                &copy_core::io_reason(std::io::ErrorKind::NotADirectory)
-            )]
+            &[
+                ("name", "f.txt"),
+                (
+                    "kind",
+                    &copy_core::io_reason(std::io::ErrorKind::NotADirectory)
+                ),
+            ]
         )
     );
     let raw_label = format!("{}：", copy_core::copy_text("detail.label.raw", &[]));
@@ -912,8 +931,15 @@ async fn stream_watch_hands_the_list_to_this_connections_watcher_and_returns_its
     h.await.expect("reader task");
     let mut got = std::collections::BTreeMap::new();
     while let Some(f) = rx.recv().await {
-        let v: serde_json::Value =
-            serde_json::from_str(crate::wire::to_line(&f).unwrap().trim()).unwrap();
+        let v: serde_json::Value = serde_json::from_str(
+            crate::wire::to_line(&crate::wire::FrameExit::stamp(
+                f.clone(),
+                &Default::default(),
+            ))
+            .unwrap()
+            .trim(),
+        )
+        .unwrap();
         got.insert(v["id"].as_str().unwrap().to_string(), v);
     }
     assert_eq!(
@@ -971,7 +997,7 @@ async fn needs_ask_blocks_until_answered_and_is_withdrawn_when_the_hook_side_lea
     };
     let until_pending = |sid: &'static str| async move {
         for _ in 0..10_000 {
-            if let Some(a) = crate::control::asks::pending(sid).pop() {
+            if let Some(a) = crate::control::asks::pending(sid).pop().map(|a| a.ask) {
                 return a;
             }
             tokio::task::yield_now().await;
@@ -994,7 +1020,7 @@ async fn needs_ask_blocks_until_answered_and_is_withdrawn_when_the_hook_side_lea
         .await
         .unwrap();
     let a = until_pending("t-inbound-1").await;
-    crate::control::asks::answer(
+    crate::control::asks::answer_needs(
         crate::wire::typed::take(
             &serde_json::json!({"sid": "t-inbound-1", "ask": a.id, "choice": "allow"}),
         )
@@ -1002,7 +1028,14 @@ async fn needs_ask_blocks_until_answered_and_is_withdrawn_when_the_hook_side_lea
     )
     .unwrap();
     let f = rx.recv().await.expect("应答");
-    let line: serde_json::Value = serde_json::from_str(&crate::wire::to_line(&f).unwrap()).unwrap();
+    let line: serde_json::Value = serde_json::from_str(
+        &crate::wire::to_line(&crate::wire::FrameExit::stamp(
+            f.clone(),
+            &Default::default(),
+        ))
+        .unwrap(),
+    )
+    .unwrap();
     assert_eq!(line["id"], "h");
     assert_eq!(
         line["data"]["decision"]["hookSpecificOutput"]["decision"]["behavior"],
@@ -1030,7 +1063,7 @@ async fn needs_ask_blocks_until_answered_and_is_withdrawn_when_the_hook_side_lea
     h.await.unwrap();
     assert!(crate::control::asks::pending("t-inbound-2").is_empty());
     assert_eq!(
-        crate::control::asks::answer(
+        crate::control::asks::answer_needs(
             crate::wire::typed::take(
                 &serde_json::json!({"sid": "t-inbound-2", "ask": a.id, "choice": "allow"})
             )
@@ -1144,14 +1177,14 @@ fn the_account_reads_keep_their_wire_bytes() {
     };
     assert_eq!(
         wire("machine-interrupts", serde_json::json!({})),
-        r#"{"forwards":0,"liveStreams":0,"relayedMaybe":0,"relayedSessions":0}"#
+        r#"{"forwards":0,"liveStreams":0,"relayedMaybe":0,"relayedSessions":0,"rows":[]}"#
     );
     assert_eq!(
         wire(
             "machine-interrupts",
-            serde_json::json!({ "machine": "box", "appExit": true })
+            serde_json::json!({ "machine": "box", "appExit": true, "files": { "unsaved": 0, "running": 0 } })
         ),
-        r#"{"forwards":0,"liveStreams":0,"relayedMaybe":0,"relayedSessions":0}"#
+        r#"{"forwards":0,"liveStreams":0,"relayedMaybe":0,"relayedSessions":0,"rows":[]}"#
     );
 }
 
@@ -1381,7 +1414,7 @@ fn the_session_family_refuses_what_its_request_types_do_not_have() {
         ("session-commands", serde_json::json!({})),
         (
             "session-model",
-            serde_json::json!({ "sid": "s-1", "model": "opus", "effort": "high" }),
+            serde_json::json!({ "sid": "s-1", "model": "opus", "extra": 1 }),
         ),
         ("session-model", serde_json::json!({ "sid": "s-1" })),
         (

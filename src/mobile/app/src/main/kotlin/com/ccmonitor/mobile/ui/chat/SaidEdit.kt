@@ -65,7 +65,7 @@ import java.util.UUID
 
 /**
  * 一句编辑的草稿：改到一半的字；确认过、还没回执 ⇒ [sent] 带待发编号与选的怎么退（被杀回来照同一个编号带 `rewind` 再交）。
- * 待发表没有 `rewind` 一格，编辑那一句的待发只落在这里。
+ * 待发表没有 `rewind` 一格，编辑那一句的待发只落在这里；点了撤、那台还没答成 ⇒ [Sent.withdrawing]（被杀回来不再交，照同一个编号接着问撤没撤成）。
  */
 data class EditDraft(
     val uuid: String,
@@ -76,6 +76,7 @@ data class EditDraft(
         val localId: String,
         val how: RewindHow,
         val `when`: RewindWhen,
+        val withdrawing: Boolean = false,
     )
 }
 
@@ -89,20 +90,32 @@ internal object EditDrafts {
     fun encode(all: List<EditDraft>): String =
         all.joinToString(RECORD.toString()) { d ->
             val s = d.sent
-            listOf(d.uuid, d.text, s?.localId ?: "", s?.how?.wire ?: "", s?.`when`?.wire ?: "").joinToString(FIELD.toString())
+            listOf(d.uuid, d.text, s?.localId ?: "", s?.how?.wire ?: "", s?.`when`?.wire ?: "", if (s?.withdrawing == true) WITHDRAWING else "").joinToString(FIELD.toString())
         }
 
-    fun decode(s: String?): List<EditDraft> =
-        s.orEmpty().split(RECORD).mapNotNull { r ->
-            val f = r.split(FIELD)
-            if (f.size != FIELDS || f[0].isEmpty()) return@mapNotNull null
-            val how = RewindHow.entries.firstOrNull { it.wire == f[3] }
-            val whn = RewindWhen.entries.firstOrNull { it.wire == f[4] }
-            val sent = if (f[2].isNotEmpty() && how != null && whn != null) EditDraft.Sent(f[2], how, whn) else null
-            EditDraft(f[0], f[1], sent)
-        }
+    fun decode(s: String?): List<EditDraft> = read(s).first
 
-    private const val FIELDS = 5
+    /** 读回那一格：读得出的那几句 ＋ 有没有读不出、丢掉的（格数不对 · 没有 uuid）。空的不算读不出。 */
+    fun read(s: String?): Pair<List<EditDraft>, Boolean> {
+        if (s.isNullOrEmpty()) return emptyList<EditDraft>() to false
+        val records = s.split(RECORD)
+        val read = records.mapNotNull(::record)
+        return read to (read.size < records.size)
+    }
+
+    private fun record(r: String): EditDraft? {
+        val f = r.split(FIELD)
+        if (f.size != FIELDS || f[0].isEmpty()) return null
+        val how = RewindHow.entries.firstOrNull { it.wire == f[3] }
+        val whn = RewindWhen.entries.firstOrNull { it.wire == f[4] }
+        val sent = if (f[2].isNotEmpty() && how != null && whn != null) EditDraft.Sent(f[2], how, whn, f[5] == WITHDRAWING) else null
+        return EditDraft(f[0], f[1], sent)
+    }
+
+    private const val FIELDS = 6
+
+    /** 第六格：撤着那一句写它，别的空着。 */
+    private const val WITHDRAWING = "w"
 }
 
 /**
@@ -117,22 +130,36 @@ internal class SaidEdits(
     private val sid: () -> String?,
     /** 编辑那几句进待发、交出去（同普通那一句，[ChatSession] 做）。 */
     private val pend: (List<Outgoing>) -> Unit,
-    private val shown: (Map<String, String>) -> Unit,
+    /** 框下那一句（编辑草稿读不出、丢掉了）。 */
+    private val said: (String) -> Unit,
+    /** 交给界面：uuid ⇒ 字；上一版还撤着的那几句的 uuid（退法抽屉主按钮灰着）。 */
+    private val shown: (Map<String, String>, Set<String>) -> Unit,
 ) {
     private var all: List<EditDraft> = emptyList()
+
+    private fun show() {
+        shown(all.associate { it.uuid to it.text }, all.filter { it.sent?.withdrawing == true }.map { it.uuid }.toSet())
+    }
 
     private fun keep() {
         val s = sid() ?: return
         val now = all
-        shown(now.associate { it.uuid to it.text })
+        show()
         scope.launch { cache.saveDraft(EditDrafts.key(s), EditDrafts.encode(now)) }
     }
 
-    /** 开屏读回；确认过、还没回执的那几句照同一个编号带 `rewind` 回到待发（接上那台再交）。 */
+    /**
+     * 开屏读回；确认过、还没回执的那几句照同一个编号带 `rewind` 回到待发（接上那台再交；撤着的不再交，接上照同一个编号接着问撤没撤成）。
+     * 有读不出的（格数不对 · 没有 uuid）⇒ 丢掉、写回读得出的那几句，框下照实说一句。
+     */
     suspend fun load(s: String) {
-        all = EditDrafts.decode(cache.draft(EditDrafts.key(s)))
-        shown(all.associate { it.uuid to it.text })
-        pend(all.mapNotNull { d -> d.sent?.let { outgoingOf(it.localId, d.uuid, d.text, it.how, it.`when`) } })
+        val (read, dropped) = EditDrafts.read(cache.draft(EditDrafts.key(s)))
+        // 先写回再上屏：上屏之后才改得了字，写回不会盖掉刚改的。
+        if (dropped) cache.saveDraft(EditDrafts.key(s), EditDrafts.encode(read))
+        all = read
+        show()
+        if (dropped) said(copyText("mobSaidEdit.draft.unreadable"))
+        pend(all.mapNotNull { d -> d.sent?.let { outgoingOf(it.localId, d.uuid, d.text, it.how, it.`when`).also { o -> o.withdrawing = it.withdrawing } } })
     }
 
     /** 编辑框里的字变了。 */
@@ -144,7 +171,7 @@ internal class SaidEdits(
         keep()
     }
 
-    /** 确认那一下：铸那一句待发的编号、随草稿记下，进待发交出去；还没有会话 ⇒ 不动。 */
+    /** 确认那一下：铸那一句待发的编号、随草稿记下，进待发交出去；还没有会话 · 上一回确认的那一句还撤着（那台可能已退过、送过；抽屉里主按钮灰着）⇒ 不动。 */
     fun send(
         uuid: String,
         text: String,
@@ -152,6 +179,7 @@ internal class SaidEdits(
         whn: RewindWhen,
     ) {
         sid() ?: return
+        if (all.any { it.uuid == uuid && it.sent?.withdrawing == true }) return
         val o = outgoingOf("local-${UUID.randomUUID()}", uuid, text, how, whn)
         all = all.filterNot { it.uuid == uuid } + EditDraft(uuid, text, EditDraft.Sent(o.localId, how, whn))
         keep()
@@ -163,6 +191,13 @@ internal class SaidEdits(
         val r = o.rewind ?: return
         if (!o.receipt) return
         all = all.filterNot { it.uuid == r.to }
+        keep()
+    }
+
+    /** 点了撤编辑的那一句：记成撤着（落盘；被杀回来不再交、接着问），答了照结局 [unsent] · [landed]。 */
+    fun withdrawing(localId: String) {
+        if (all.none { it.sent?.localId == localId && !it.sent.withdrawing }) return
+        all = all.map { d -> d.sent?.takeIf { it.localId == localId }?.let { d.copy(sent = it.copy(withdrawing = true)) } ?: d }
         keep()
     }
 
@@ -253,6 +288,8 @@ internal fun saidHooks(
         RewindSheet(
             pick = pick,
             target = u.text,
+            held = u.sourceUuid in state.editHeld,
+            rewindHeld = state.rewindHeld,
             onRetry = { asks++ },
             onConfirm = { how, whn ->
                 u.sourceUuid?.let { said.send(it, text, how, whn) }
@@ -290,7 +327,7 @@ internal fun SaidMenu(
         if (recorded) {
             listOf(SheetAction(Ph.PencilSimple, copyText("rsFilewinEditor.label.edit"), onClick = onEdit), SheetAction(Ph.Copy, copyText("render.codeBlock.copy"), onClick = onCopy))
         } else {
-            listOf(SheetAction(Ph.ArrowCounterClockwise, copyText("mobChat.outbox.cancel"), onClick = onRecall))
+            listOf(SheetAction(Ph.ArrowCounterClockwise, copyText("kit.act.revert"), onClick = onRecall))
         }
     ActionSheet(title = null, actions = actions, onDismiss = onDismiss)
 }
@@ -338,15 +375,23 @@ sealed interface RewindPick {
 /** 退法抽屉底下那几颗：［取消］·［回退并发送］（主按钮）·［重试］（贴在问不到那一句右边）·［关闭］。 */
 internal enum class SheetAct { CANCEL, CONFIRM, RETRY, CLOSE }
 
-/** 退法抽屉此刻摆什么：在问 ⇒ 两行骨架（不跳高）；[acts] 先后照摆；[confirm] 主按钮能不能点。 */
+/** 退法抽屉此刻摆什么：在问 ⇒ 两行骨架（不跳高）；[acts] 先后照摆；[confirm] 主按钮能不能点；[why] 主按钮为什么灰着（上一版还撤着）。 */
 internal data class SheetFace(
     val skeleton: Boolean,
     val acts: List<SheetAct>,
     val confirm: Boolean,
+    val why: String? = null,
 )
 
-/** 在问 ⇒ 骨架 ＋［取消］＋ 灰着的主按钮；有能选的 ⇒［取消］＋ 主按钮；一项都不能选 ⇒［关闭］；问不到 ⇒［重试］＋［取消］。 */
-internal fun sheetFace(pick: RewindPick): SheetFace =
+/**
+ * 在问 ⇒ 骨架 ＋［取消］＋ 灰着的主按钮；有能选的 ⇒［取消］＋ 主按钮；一项都不能选 ⇒［关闭］；问不到 ⇒［重试］＋［取消］。
+ * [held]：编辑的那一句上一版还撤着（那台可能已退过、送过）⇒ 主按钮灰着，抽屉里照摆 [rewindHeld]（那台成品写的那一句；还没有 ⇒ 只灰着）。
+ */
+internal fun sheetFace(
+    pick: RewindPick,
+    held: Boolean = false,
+    rewindHeld: String? = null,
+): SheetFace =
     when (pick) {
         RewindPick.Asking -> SheetFace(skeleton = true, acts = listOf(SheetAct.CANCEL, SheetAct.CONFIRM), confirm = false)
         is RewindPick.Failed -> SheetFace(skeleton = false, acts = listOf(SheetAct.RETRY, SheetAct.CANCEL), confirm = false)
@@ -356,7 +401,7 @@ internal fun sheetFace(pick: RewindPick): SheetFace =
             } else {
                 SheetFace(skeleton = false, acts = listOf(SheetAct.CANCEL, SheetAct.CONFIRM), confirm = true)
             }
-    }
+    }.let { if (held) it.copy(confirm = false, why = rewindHeld) else it }
 
 /**
  * 退法抽屉（已有的底部抽屉样式）：标题「回退并发送」＋ 退到哪一句之前（[target] 那句原文，截一行）；照那台交的选项摆「怎么退」·「什么时候退」，
@@ -367,12 +412,14 @@ internal fun sheetFace(pick: RewindPick): SheetFace =
 internal fun RewindSheet(
     pick: RewindPick,
     target: String,
+    held: Boolean,
+    rewindHeld: String?,
     onRetry: () -> Unit,
     onConfirm: (RewindHow, RewindWhen) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val tokens = LocalAppTokens.current
-    val face = sheetFace(pick)
+    val face = sheetFace(pick, held, rewindHeld)
     val got = (pick as? RewindPick.Got)?.options
     val first = got?.let(::defaultsOf)
     var how by remember(got) { mutableStateOf(first?.first) }
@@ -389,6 +436,7 @@ internal fun RewindSheet(
                     }
                 is RewindPick.Got -> Choices(pick.options, first != null, how, whn, { how = it }) { whn = it }
             }
+            face.why?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             SheetButtons(face.acts, face.confirm, onDismiss) {
                 val h = how
                 val w = whn

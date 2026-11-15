@@ -1,4 +1,4 @@
-//! 文件窗口的**选中态** · **键位** · **右键菜单那张表**。
+//! 文件窗口的**选中态** · **键位** · **右键菜单上每一项的图标与快捷键**。
 //!
 //! 那两行 ——
 //! FW1「方向键 · 回车 · Delete · F2 · Ctrl+A · 打字跳转」，
@@ -9,9 +9,9 @@
 //! 三件事问的是**同一个问题**：「现在选中的是哪几行、能对它们做什么」。
 //!
 //! - **选中态**（[`Selection`]）回答「哪几行」；
-//! - **菜单那张表**（[`MENU_TABLE`]，经 [`menu_groups`] · [`actions_for`]）回答「能做什么」——
-//!   🔴 它是**唯一**的判定：右键菜单画哪几项、键盘那几个键准不准做，问的都是它
-//!   （窗口那一侧的执行口是 `shell.rs` 里那一个 `perform`）。
+//! - **能做什么**由本机后端照桌面那张表答（`files-menu` 的成品，`shell.rs` 的 `ask_menu` 问）——
+//!   🔴 它是**唯一**的判定：右键菜单画哪几项、键盘那几个键准不准做，读的都是那一份成品
+//!   （窗口那一侧的执行口是 `shell.rs` 里那一个 `perform`）；这里只有每一项的图标 · 快捷键 · 危险色。
 //!   分成两份的症状是具体的：菜单上没有「改名」，按 F2 却改得了 —— 或者反过来。
 //! - **键位**（[`intents`]）只把 egui 那一帧的事件**翻**成意图，一个动作都不做。
 //!
@@ -42,7 +42,6 @@
 //! 点一个就等于选中两个 —— 删一个删掉两个。⇒ 选中态的键走 [`pick_key`]：无损名 = 名字本身；
 //! 有损名 = `\0b16:<十六进制>`（名字里不可能有 NUL，与任何真名字都撞不上）。
 
-use copy_core::copy_text;
 use std::collections::BTreeSet;
 
 use super::source::Listed;
@@ -314,7 +313,7 @@ pub fn scroll_for(i: usize, first: usize, last: usize, pitch: f32) -> Option<f32
 // 键位
 // ═══════════════════════════════════════════════════════════════════════
 
-/// 一个按键想干什么。**只是意图**，做不做、能不能做由窗口问 [`actions_for`]。
+/// 一个按键想干什么。**只是意图**，做不做、能不能做由窗口照菜单成品判（`shell.rs` 的 `perform`）。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Intent {
     /// ↑ / ↓（Shift 按着 ⇒ 扩选）。
@@ -488,57 +487,20 @@ fn starts_with_ignoring_case(name: &str, prefix: &str) -> bool {
     }
     true
 }
-
 // ═══════════════════════════════════════════════════════════════════════
-// 能做什么：菜单与键盘共用的**唯一**判定
+// 菜单上的一项在窗口上长什么样
 // ═══════════════════════════════════════════════════════════════════════
 
-use pick_core::Outlet;
-/// 能做什么那一套（种类 · 两个出口的表 · 做不了的为什么）住共用的 `pick-core`（手机嵌的核心同一份）；这里只接上窗口那一行与图标 · 快捷键 · 字。
-pub use pick_core::{Action, Item, Picked};
+/// 一件事 · 菜单上的一项：闭集住契约。能做什么（哪几组 · 每项的字 · 灰着的为什么）由本机后端照桌面那张表答
+/// （`files-menu` 的成品，`FileWindow::ask_menu` 问）；这里只有窗口那一侧的图标 · 快捷键 · 危险色。
+pub use cmd_wire::files::{Action, Item};
 
-/// 「打开」那一项的字。另外六项**复用**行上那几颗按钮的字（各自的唯一住址），
-/// 不在这儿另写一份 —— 两份字漂开的症状是「菜单上叫一个名字，行上叫另一个」。
-pub static OPEN_LABEL: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| copy_text("mobTerms.row.attach", &[]));
-/// 右键菜单最后那一格。
-pub static PROPS_LABEL: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| copy_text("rsFilewinSelect.label.properties", &[]));
+/// 一件事在窗口上的图标。
+pub trait ActionFace {
+    fn icon(self) -> &'static str;
+}
 
 impl ActionFace for Action {
-    /// 菜单上那一项的字。`n` = 选中了几项（只有「删除」对多项说话时要它）。
-    fn label(self, n: usize) -> String {
-        match self {
-            Action::Open => OPEN_LABEL.to_string(),
-            Action::Edit => super::editor::EDIT_LABEL.to_string(),
-            Action::View => super::imgview::VIEW_LABEL.to_string(),
-            Action::Copy => super::copy::COPY_LABEL.to_string(),
-            Action::Download if n > 1 => copy_text(
-                "rsFilewinSelect.label.downloadMany",
-                &[("n", &n.to_string())],
-            ),
-            Action::Download => super::download::DOWNLOAD_LABEL.to_string(),
-            Action::Size => super::size::SIZE_LABEL.to_string(),
-            Action::Extract => super::extract::EXTRACT_LABEL.to_string(),
-            Action::CrossCopy if n > 1 => {
-                copy_text("rsFilewinSelect.label.crossMany", &[("n", &n.to_string())])
-            }
-            Action::CrossCopy => super::cross_copy::CROSS_LABEL.to_string(),
-            Action::Across => copy_text("rsFilewinWorkspace.drag.hint", &[("n", &n.to_string())]),
-            Action::Rename => super::writeops::RENAME_LABEL.to_string(),
-            Action::Chmod if n > 1 => {
-                copy_text("rsFilewinSelect.label.chmodMany", &[("n", &n.to_string())])
-            }
-            Action::Chmod => super::writeops::CHMOD_LABEL.to_string(),
-            Action::Properties => PROPS_LABEL.to_string(),
-            Action::CopyTo => copy_text("mobFiles.menu.copyTo", &[]),
-            Action::Delete if n > 1 => {
-                copy_text("rsFilewinSelect.label.deleteMany", &[("n", &n.to_string())])
-            }
-            Action::Delete => super::writeops::DELETE_LABEL.to_string(),
-        }
-    }
-
     /// 这一件的图标（菜单左格 · 命令栏那一颗同一个）。
     fn icon(self) -> &'static str {
         use egui_phosphor::regular as ph;
@@ -561,46 +523,11 @@ impl ActionFace for Action {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// 菜单那张表：选中的是哪一种 ⇒ 给哪几项（分几组）—— 表与判法在 `pick-core`，这里按窗口那一行问它
-// ═══════════════════════════════════════════════════════════════════════
-
-fn picks<'a>(picked: &[&'a Listed]) -> Vec<pick_core::Pick<'a>> {
-    picked.iter().map(|r| r.pick()).collect()
-}
-
-/// 这几项是哪一种。
-pub fn picked_kind(picked: &[&Listed]) -> Picked {
-    pick_core::picked_kind(&picks(picked))
-}
-
-/// 这一种选中的菜单：桌面那张表里那几组；`planned` ⇒ 危险那一组之前多 [`pick_core::PLAN_GROUP`]。
-pub fn menu_groups(kind: Picked, planned: bool) -> Vec<Vec<Item>> {
-    pick_core::menu_groups(Outlet::Desk, kind, planned)
-}
-
-/// 表里有、但**这一份**做不了的那一件 ⇒ 为什么（菜单上灰着、悬停说哪几项为什么；键盘按了说同一句）。
-pub fn blocked(a: Action, picked: &[&Listed]) -> Option<String> {
-    pick_core::blocked(a, &picks(picked))
-}
-
-/// 🔴 **对这几项能做什么** —— 键盘准不准做、命令栏灰不灰、预览头给哪几颗问的都是它。顺序同表。空 ⇒ 什么都做不了。
-pub fn actions_for(picked: &[&Listed]) -> Vec<Action> {
-    pick_core::actions_for(Outlet::Desk, &picks(picked))
-}
-
-/// 窗口那一侧的图标 · 快捷键 · 危险色 · 字（表与判法在 `pick-core`）。
+/// 菜单上的一项在窗口上的图标 · 快捷键 · 危险色（字与灰着的为什么照成品）。
 pub trait ItemFace {
     fn icon(self) -> &'static str;
     fn shortcut(self) -> Option<egui::KeyboardShortcut>;
     fn danger(self) -> bool;
-    fn label(self, n: usize, plan: Option<&str>) -> String;
-}
-
-/// 一件事在窗口上的图标与字。
-pub trait ActionFace {
-    fn icon(self) -> &'static str;
-    fn label(self, n: usize) -> String;
 }
 
 impl ItemFace for Item {
@@ -635,46 +562,6 @@ impl ItemFace for Item {
     /// 危险的那一件（字与图标 `--error-text`）。
     fn danger(self) -> bool {
         self == Item::Act(Action::Delete)
-    }
-
-    /// 菜单上那一项的字。`n` = 选中了几项；`plan` =「在计划里看」那一项的字（[`super::plan::menu_label`]）。
-    /// 要先问一句才做的那几件（改权限 · 删除）字后带「…」。
-    fn label(self, n: usize, plan: Option<&str>) -> String {
-        match self {
-            Item::Act(Action::Delete) if n > 1 => {
-                copy_text("rsFilewinSelect.menu.deleteMany", &[("n", &n.to_string())])
-            }
-            Item::Act(Action::Delete) => copy_text("history.menu.delete", &[]),
-            Item::Act(Action::Chmod) => copy_text("rsFilewinSelect.menu.chmod", &[]),
-            Item::Act(a) => a.label(n),
-            Item::InPlan => plan.unwrap_or_default().to_string(),
-            // 空白处那个菜单上没有「新建 ▾」那一层，字写全。
-            Item::Mkdir => copy_text("rsFilewinWriteops.inline.newDir", &[]),
-            Item::NewFile => copy_text("rsFilewinSelect.menu.newFile", &[]),
-            Item::Upload => super::upload::UPLOAD_LABEL.to_string(),
-            Item::Term => super::chrome::TERMINAL_LABEL.to_string(),
-            Item::SelectAll => copy_text("mobFiles.menu.selectAll", &[]),
-        }
-    }
-}
-
-/// 某一件做不了时，屏幕上说的那一句（**不许静默**：按了 F2 没反应与「改完了」同形）。
-pub fn refusal(action: Action, n: usize) -> String {
-    match (action, n) {
-        (_, 0) => copy_text("rsFilewinSelect.refusal.none", &[]),
-        (Action::Delete, _) => copy_text("rsFilewinSelect.refusal.deleteBadNames", &[]),
-        (Action::Chmod, _) if n > 1 => copy_text("rsFilewinSelect.refusal.chmodBadNames", &[]),
-        (Action::Open | Action::Edit | Action::View, _) => {
-            copy_text("rsFilewinSelect.refusal.openOne", &[("n", &n.to_string())])
-        }
-        (Action::Rename, _) if n > 1 => copy_text(
-            "rsFilewinSelect.refusal.renameOne",
-            &[("n", &n.to_string())],
-        ),
-        (a, _) => copy_text(
-            "rsFilewinSelect.refusal.cannot",
-            &[("label", &(a.label(n)).to_string())],
-        ),
     }
 }
 

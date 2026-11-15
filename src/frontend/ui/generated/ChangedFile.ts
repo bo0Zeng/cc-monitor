@@ -8,4 +8,9 @@ export type ChangedFile = { path: string, what: string,
 /**
  * 撤回在哪（设置窗的页 · 栏 · 锚点）；没有 ⇒ `null`。
  */
-undo: UndoAt | null, };
+undo: UndoAt | null, 
+/**
+ * 这一行就地有「撤回」：cc-monitor 改过的项目级 MCP 配置，整份回到改之前的原文（帧命令 `mcp-project-revert {file: path}`）。
+ * 没有 ⇒ 线上不出这一格（足迹那几行的线上形不变）。
+ */
+revert?: boolean, };

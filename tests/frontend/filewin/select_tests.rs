@@ -377,6 +377,22 @@ fn jumping_finds_the_first_name_with_that_prefix_ignoring_case() {
 // 能做什么
 // ════════════════════════════════════════════════════════════════════════
 
+// 这几条判的是窗口交出去的原行（`Listed::ls_row`）连着本机后端那张表（`backend_files::menu::desk_menu`，
+// 真函数）一起答出来的：窗口把链接 · 断链 · 名字字节交错了，或者表里多 / 少一项，都红。
+// 名字有损的行恒带原始字节（`files-ls` 的行就是字节）⇒ 「名字寻址不到」那几种窗口里交不出来，不在这里。
+use crate::find::testing::{can_do, menu_for, menu_items};
+
+/// 名字有损、照真行那样带着原始字节的一行。
+fn lossy_row(name: &str, is_dir: bool) -> Listed {
+    crate::find::testing::gated_raw(Listed::plain(Row {
+        name: name.to_string(),
+        path: format!("/srv/sel/{name}"),
+        is_dir,
+        size: if is_dir { 0 } else { 3 },
+        lossy_name: true,
+    }))
+}
+
 /// 🔴 **「能做什么」逐格手写**（异源）：单选的几种行 · 多选全可写 · 多选混着有损名 · 空。
 ///
 /// 10-11 起照菜单那张表：算大小只给目录与多选 · 解压只给压缩包 · 查看给图片 · 编辑给文本；
@@ -388,8 +404,6 @@ fn what_can_be_done_matches_a_hand_written_table() {
     let file = row("f.txt", false, 3, false);
     let dir = row("d", true, 0, false);
     let huge = row("h.bin", false, big, false);
-    let lossy = row("\u{FFFD}x", false, 3, true);
-    let lossy_dir = row("\u{FFFD}d", true, 0, true);
     let png = row("logo.png", false, 3, false);
     let code = row("main.rs", false, 3, false);
     let tgz = row("release.tar.gz", false, 3, false);
@@ -399,11 +413,8 @@ fn what_can_be_done_matches_a_hand_written_table() {
         link_broken: true,
         ..row("gone", false, 0, false)
     };
-    // 有损名**带着原始字节**（后端 `files-ls` 送的就是字节）⇒ 三件写操作放开。
-    let lossy_raw = Listed {
-        raw_name: Some(b"\xffx".to_vec()),
-        ..row("\u{FFFD}x", false, 3, true)
-    };
+    let lossy = lossy_row("\u{FFFD}x.txt", false);
+    let lossy_dir = lossy_row("\u{FFFD}d", true);
     let text = vec![
         Edit, Download, CrossCopy, Copy, Rename, Chmod, Properties, Delete,
     ];
@@ -445,17 +456,12 @@ fn what_can_be_done_matches_a_hand_written_table() {
             vec![&broken],
             vec![Rename, Properties, Delete],
         ),
-        ("一个有损名文件（没有原始字节）", vec![&lossy], vec![]),
+        // 带着字节 ⇒ 编辑 / 复制 / 下载也放开（线上走字节；下载是一组 `transfer-copy`，源照原始字节）。
+        ("一个有损名文件", vec![&lossy], text.clone()),
         (
-            "一个有损名目录（没有原始字节）",
+            "一个有损名目录",
             vec![&lossy_dir],
-            vec![Open],
-        ),
-        (
-            "一个有损名文件（带原始字节）",
-            vec![&lossy_raw],
-            // 带着字节 ⇒ 编辑 / 复制 / 下载也放开（线上走字节；下载在远端按字节拷进暂存区再下，`lossy_pull.rs`）。
-            text.clone(),
+            vec![Open, Copy, Size, Rename, Chmod, Properties, Delete],
         ),
         // 有目录 ⇒ 下载灰着（下载只收文件）；跨机复制目录整棵逐个文件 ⇒ 给。
         (
@@ -468,22 +474,21 @@ fn what_can_be_done_matches_a_hand_written_table() {
             vec![&file, &dir, &huge],
             vec![CrossCopy, Across, Size, Chmod, Delete],
         ),
-        ("两项混着有损名", vec![&file, &lossy], vec![]),
         // 名字只有原始字节的那一项 ⇒ 跨机灰着（那一条按路径串寻址）。
         (
-            "两项混着带字节的有损名",
-            vec![&file, &lossy_raw],
+            "两项混着有损名",
+            vec![&file, &lossy],
             vec![Download, Across, Size, Chmod, Delete],
         ),
     ];
     for (what, picked, want) in cases {
-        assert_eq!(actions_for(&picked), want, "「{what}」那一格不对");
+        assert_eq!(can_do(&picked), want, "「{what}」那一格不对");
     }
 }
 
 /// 🔴 **菜单那张表逐种手写**（异源）：每一种选中给的恰好是这几组、这个顺序。
 ///
-/// 行从真名字造（`logo.png` · `main.rs` · `release.tar.gz` …），先过「这是哪一种」那一跳，再查表 ——
+/// 行从真名字造（`logo.png` · `main.rs` · `release.tar.gz` …），交出去的原行先过后端「这是哪一种」那一跳，再查表 ——
 /// 两跳一起判：分错了种，或者表里多 / 少一项，都红。
 #[test]
 fn each_kind_of_selection_gets_exactly_the_groups_in_the_table() {
@@ -505,18 +510,15 @@ fn each_kind_of_selection_gets_exactly_the_groups_in_the_table() {
     let to_dir = link("deploy", true, false);
     let to_log = link("latest.log", false, false);
     let gone = link("old", false, true);
-    let lossy = row("\u{FFFD}x", false, 3, true);
-    let lossy_dir = row("\u{FFFD}d", true, 0, true);
     let text_groups = vec![
         vec![I(Edit), I(Download), I(CrossCopy), I(Copy)],
         vec![I(Rename), I(Chmod), I(Properties)],
         vec![I(Delete)],
     ];
-    let cases: Vec<(&str, Vec<&Listed>, Picked, Vec<Vec<Item>>)> = vec![
+    let cases: Vec<(&str, Vec<&Listed>, Vec<Vec<Item>>)> = vec![
         (
             "空白处",
             vec![],
-            Picked::Here,
             vec![
                 vec![Item::Mkdir, Item::NewFile, Item::Upload],
                 vec![Item::Term],
@@ -525,7 +527,6 @@ fn each_kind_of_selection_gets_exactly_the_groups_in_the_table() {
         (
             "一个目录",
             vec![&dir],
-            Picked::Dir,
             vec![
                 vec![I(Open), I(Copy)],
                 vec![I(Size), I(Rename), I(Chmod), I(Properties)],
@@ -535,36 +536,23 @@ fn each_kind_of_selection_gets_exactly_the_groups_in_the_table() {
         (
             "指向目录的链接",
             vec![&to_dir],
-            Picked::DirLink,
             vec![
                 vec![I(Open), I(Copy)],
                 vec![I(Rename), I(Chmod), I(Properties)],
                 vec![I(Delete)],
             ],
         ),
-        ("一份代码", vec![&code], Picked::Text, text_groups.clone()),
-        (
-            "没有扩展名的",
-            vec![&env],
-            Picked::Text,
-            text_groups.clone(),
-        ),
-        (
-            "指向文本的链接",
-            vec![&to_log],
-            Picked::Text,
-            text_groups.clone(),
-        ),
+        ("一份代码", vec![&code], text_groups.clone()),
+        ("没有扩展名的", vec![&env], text_groups.clone()),
+        ("指向文本的链接", vec![&to_log], text_groups.clone()),
         (
             "窗口解不开的图（svg）照旧当文本",
             vec![&svg],
-            Picked::Text,
             text_groups.clone(),
         ),
         (
             "一张图片",
             vec![&png],
-            Picked::Image,
             vec![
                 vec![I(View), I(Download), I(CrossCopy), I(Copy)],
                 vec![I(Rename), I(Chmod), I(Properties)],
@@ -574,7 +562,6 @@ fn each_kind_of_selection_gets_exactly_the_groups_in_the_table() {
         (
             "一个压缩包",
             vec![&tgz],
-            Picked::Archive,
             vec![
                 vec![I(Download), I(CrossCopy), I(Copy)],
                 vec![I(Extract), I(Rename), I(Chmod), I(Properties)],
@@ -584,7 +571,6 @@ fn each_kind_of_selection_gets_exactly_the_groups_in_the_table() {
         (
             "PDF",
             vec![&pdf],
-            Picked::File,
             vec![
                 vec![I(Download), I(CrossCopy), I(Copy)],
                 vec![I(Rename), I(Chmod), I(Properties)],
@@ -594,50 +580,34 @@ fn each_kind_of_selection_gets_exactly_the_groups_in_the_table() {
         (
             "断了的链接",
             vec![&gone],
-            Picked::BrokenLink,
             vec![vec![I(Rename), I(Properties)], vec![I(Delete)]],
         ),
         (
-            "名字读不出的目录",
-            vec![&lossy_dir],
-            Picked::NamelessDir,
-            vec![vec![I(Open)]],
-        ),
-        ("名字读不出的文件", vec![&lossy], Picked::Nameless, vec![]),
-        (
             "多选",
             vec![&dir, &code, &tgz],
-            Picked::Many,
             vec![
                 vec![I(Download), I(CrossCopy), I(Across)],
                 vec![I(Size), I(Chmod)],
                 vec![I(Delete)],
             ],
         ),
-        (
-            "多选混着读不出的",
-            vec![&code, &lossy],
-            Picked::ManyNameless,
-            vec![],
-        ),
     ];
-    for (what, picked, kind, want) in cases {
-        assert_eq!(picked_kind(&picked), kind, "「{what}」分错了种");
-        assert_eq!(menu_groups(kind, false), want, "「{what}」那一种的菜单不对");
+    for (what, picked, want) in cases {
+        assert_eq!(
+            menu_items(&menu_for(&picked, None)),
+            want,
+            "「{what}」那一种的菜单不对"
+        );
     }
-    // 带计划：危险那一组之前多「在计划里看」一组；没有危险组的那种接在最后。
+    // 带计划：危险那一组之前多「在计划里看」一组。
     assert_eq!(
-        menu_groups(Picked::Text, true),
+        menu_items(&menu_for(&[&code], Some("第一片"))),
         vec![
             vec![I(Edit), I(Download), I(CrossCopy), I(Copy)],
             vec![I(Rename), I(Chmod), I(Properties)],
             vec![Item::InPlan],
             vec![I(Delete)],
         ]
-    );
-    assert_eq!(
-        menu_groups(Picked::NamelessDir, true),
-        vec![vec![I(Open)], vec![Item::InPlan]]
     );
 }
 
@@ -681,40 +651,22 @@ fn every_shortcut_on_the_menu_is_the_key_that_does_that_item() {
     }
 }
 
-/// 菜单上的字**复用**行上那几颗按钮的字（各自的唯一住址）；只有「删除」对多项另说。
+/// 命令栏 · 菜单上那几件的字（成品 `acts` 里那一行）**就是**行上那几颗按钮的字（各自的唯一住址）。
 #[test]
 fn menu_labels_are_the_row_buttons_labels() {
     use Action::*;
-    assert_eq!(Edit.label(1), crate::editor::EDIT_LABEL.as_str());
-    assert_eq!(Copy.label(1), crate::copy::COPY_LABEL.as_str());
-    assert_eq!(Download.label(1), crate::download::DOWNLOAD_LABEL.as_str());
-    assert_eq!(Rename.label(1), crate::writeops::RENAME_LABEL.as_str());
-    assert_eq!(Chmod.label(1), crate::writeops::CHMOD_LABEL.as_str());
-    assert_eq!(Delete.label(1), crate::writeops::DELETE_LABEL.as_str());
+    let file = row("f.txt", false, 3, false);
+    let m = menu_for(&[&file], None);
+    let text = |a: Action| m.act(a).expect("十四件每件一行").text.clone();
+    assert_eq!(text(Edit), crate::editor::EDIT_LABEL.as_str());
+    assert_eq!(text(Copy), crate::copy::COPY_LABEL.as_str());
+    assert_eq!(text(Download), crate::download::DOWNLOAD_LABEL.as_str());
+    let many = [&file, &file, &file];
+    let m = menu_for(&many, None);
     assert_eq!(
-        Delete.label(3),
-        copy_core::copy_text("rsFilewinSelect.label.deleteMany", &[("n", "3")])
+        m.act(Download).unwrap().text,
+        copy_core::copy_text("rsFilewinSelect.label.downloadMany", &[("n", "3")])
     );
-    assert_eq!(
-        Chmod.label(3),
-        copy_core::copy_text("rsFilewinSelect.label.chmodMany", &[("n", "3")])
-    );
-    assert_eq!(Open.label(1), OPEN_LABEL.as_str());
-}
-
-/// 做不了的每一形都有一句话（非空、互不相同的几档各说各的）。
-#[test]
-fn every_refusal_says_something() {
-    use Action::*;
-    let said: Vec<String> = [(Delete, 0), (Delete, 2), (Open, 3), (Rename, 2), (Chmod, 2)]
-        .into_iter()
-        .map(|(a, n)| refusal(a, n))
-        .collect();
-    for s in &said {
-        assert!(!s.trim().is_empty());
-    }
-    let uniq: std::collections::BTreeSet<&String> = said.iter().collect();
-    assert_eq!(uniq.len(), said.len(), "几种做不了说的是同一句话：{said:?}");
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -764,7 +716,7 @@ fn a_link_to_a_directory_opens_and_a_link_to_a_file_edits() {
     };
     let to_dir = link("bin", true);
     let to_file = link("conf", false);
-    let got = actions_for(&[&to_dir]);
+    let got = can_do(&[&to_dir]);
     assert!(
         got.contains(&Action::Open),
         "指向目录的链接没有「打开」：{got:?}"
@@ -777,7 +729,7 @@ fn a_link_to_a_directory_opens_and_a_link_to_a_file_edits() {
     ] {
         assert!(!got.contains(&no), "指向目录的链接给了 {no:?}：{got:?}");
     }
-    let got = actions_for(&[&to_file]);
+    let got = can_do(&[&to_file]);
     assert!(
         got.contains(&Action::Edit) && !got.contains(&Action::Open),
         "{got:?}"
@@ -789,10 +741,9 @@ fn a_link_to_a_directory_opens_and_a_link_to_a_file_edits() {
 fn the_many_menu_offers_download_cross_and_across_by_the_table() {
     let rows = five();
     let picked: Vec<&Listed> = vec![&rows[0], &rows[1], &rows[2]];
-    assert_eq!(picked_kind(&picked), Picked::Many);
-    let g = menu_groups(Picked::Many, false);
+    let m = menu_for(&picked, None);
     assert_eq!(
-        g,
+        menu_items(&m),
         vec![
             vec![
                 Item::Act(Action::Download),
@@ -803,10 +754,12 @@ fn the_many_menu_offers_download_cross_and_across_by_the_table() {
             vec![Item::Act(Action::Delete)],
         ]
     );
-    assert_eq!(Action::Download.label(3), "下载 3 项");
-    assert_eq!(Action::CrossCopy.label(3), "复制 3 项到另一台…");
-    assert_eq!(Action::Across.label(3), "复制 3 项到另一栏");
-    let can = actions_for(&picked);
+    let first: Vec<&str> = m.groups[0].iter().map(|e| e.text.as_str()).collect();
+    assert_eq!(
+        first,
+        ["下载 3 项", "复制 3 项到另一台…", "复制 3 项到另一栏"]
+    );
+    let can = can_do(&picked);
     for a in [Action::Download, Action::CrossCopy, Action::Across] {
         assert!(can.contains(&a), "{a:?} 没给");
     }
@@ -816,24 +769,34 @@ fn the_many_menu_offers_download_cross_and_across_by_the_table() {
 #[test]
 fn a_many_item_that_cannot_go_is_greyed_naming_which_ones() {
     let rows = five();
+    let why = |picked: &[&Listed], a: Action| {
+        menu_for(picked, None)
+            .groups
+            .into_iter()
+            .flatten()
+            .find(|e| e.item == Item::Act(a))
+            .unwrap_or_else(|| panic!("菜单上没有 {a:?}"))
+            .why
+    };
     let with_dir: Vec<&Listed> = vec![&rows[0], &rows[3]];
-    let why = blocked(Action::Download, &with_dir).expect("有目录 ⇒ 下载灰着");
     assert_eq!(
-        why,
-        copy_core::copy_text("rsFilewinSelect.why.dirDownload", &[("names", "dir")])
+        why(&with_dir, Action::Download),
+        Some(copy_core::copy_text(
+            "rsFilewinSelect.why.dirDownload",
+            &[("names", "dir")]
+        )),
+        "有目录 ⇒ 下载灰着、说是哪一项"
     );
-    assert!(
-        blocked(Action::CrossCopy, &with_dir).is_none(),
+    assert_eq!(
+        why(&with_dir, Action::CrossCopy),
+        None,
         "目录能复制到另一台"
     );
-    assert!(!actions_for(&with_dir).contains(&Action::Download));
-    let mut lossy = row("q?", false, 1, true);
-    lossy.raw_name = Some(b"q\xff".to_vec());
+    let lossy = lossy_row("q\u{FFFD}", false);
     let with_lossy: Vec<&Listed> = vec![&rows[0], &lossy];
-    assert_eq!(picked_kind(&with_lossy), Picked::Many);
-    let why = blocked(Action::CrossCopy, &with_lossy).expect("名字读不出 ⇒ 跨机灰着");
-    assert!(why.contains("q?"), "{why}");
-    assert!(blocked(Action::Download, &with_lossy).is_none());
+    let said = why(&with_lossy, Action::CrossCopy).expect("名字读不出 ⇒ 跨机灰着");
+    assert!(said.contains("q\u{FFFD}"), "{said}");
+    assert_eq!(why(&with_lossy, Action::Download), None);
 }
 
 /// 框选：框到的那几行选中；按着 Ctrl ⇒ 加进按下之前的选中；框里一行都没有 ⇒ 不按 Ctrl 时清空。

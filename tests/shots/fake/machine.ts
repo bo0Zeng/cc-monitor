@@ -6,7 +6,11 @@ import { copyText } from "../../../src/frontend/ui/copy-table";
 import EXT_GOLDEN from "../../__fixtures__/ext-flow.golden.json";
 import type { AliasListing } from "../../../src/frontend/ui/generated/AliasListing";
 import type { BackendStatus } from "../../../src/frontend/ui/generated/BackendStatus";
+import type { ExtBring } from "../../../src/frontend/ui/generated/ExtBring";
+import type { ExtCell } from "../../../src/frontend/ui/generated/ExtCell";
 import type { FootprintClient } from "../../../src/frontend/ui/generated/FootprintClient";
+import type { ForwardRow } from "../../../src/frontend/ui/generated/ForwardRow";
+import type { Forwards } from "../../../src/frontend/ui/generated/Forwards";
 import type { CommandHandler } from "./commands";
 import type { OpHandler, World } from "./types";
 
@@ -33,22 +37,29 @@ function extList(w: World): unknown {
   // 再两台：gpu-01 断开（那一列是上次同步的样子）· win-laptop；外加一条 MCP「github」，本机装了、devbox 内容不同、另两台没装。
   const rows = (g as unknown as { rows: { cells: unknown[] }[] }).rows;
   const more = [
-    { here: false, key: "gpu-01", name: "gpu-01", projects: [], reachable: !w.unseenMachines.includes("gpu-01") },
-    { here: false, key: "win-laptop", name: "win-laptop", projects: [], reachable: !w.unseenMachines.includes("win-laptop") },
+    { here: false, key: "gpu-01", name: "gpu-01", reachable: !w.unseenMachines.includes("gpu-01") },
+    { here: false, key: "win-laptop", name: "win-laptop", reachable: !w.unseenMachines.includes("win-laptop") },
   ];
   g.machines.push(...(more as never[]));
-  const missingCell = (bring: unknown) => ({ bring, note: null, places: [{ at: { level: "user" }, dir: null, note: null, state: "missing", uninstall: false }], state: "missing" });
-  for (const r of rows) r.cells.push(missingCell(null), missingCell(null));
-  const bring = { from: null, fromName: "本机", scope: { from: { level: "user" }, to: { level: "user" } }, targets: [{ at: { level: "user" }, note: null, ok: true }] };
+  // 照线上类型 `ExtCell` / `ExtPlace`：点与每一处那一句（`said`）由那台写好（`assets/ext.rs::state_said`）。
+  const SAID: Record<"same" | "differs" | "missing", string> = {
+    same: copyText("beExt.legend.same"),
+    differs: copyText("beExt.state.differs"),
+    missing: copyText("reason.spawn.notInstalled"),
+  };
+  const cell = (state: "same" | "differs" | "missing", bring: ExtBring | null): ExtCell => ({
+    bring,
+    note: null,
+    said: SAID[state],
+    places: [{ at: { level: "user" }, dir: null, note: null, state, said: SAID[state], uninstall: state !== "missing" }],
+    state,
+  });
+  for (const r of rows) r.cells.push(cell("missing", null), cell("missing", null));
+  const bring: ExtBring = { from: null, scope: { from: { level: "user" }, to: { level: "user" } }, targets: [{ at: { level: "user" }, note: null, ok: true }] };
   rows.push({
     about: "读写 GitHub 上的仓库与 issue",
     known: null,
-    cells: [
-      { bring: null, note: null, places: [{ at: { level: "user" }, dir: null, note: null, state: "same", uninstall: true }], state: "same" },
-      { bring, note: null, places: [{ at: { level: "user" }, dir: null, note: null, state: "differs", uninstall: true }], state: "differs" },
-      missingCell(bring),
-      missingCell(bring),
-    ],
+    cells: [cell("same", null), cell("differs", bring), cell("missing", bring), cell("missing", bring)],
     detail: [],
     kind: "mcp",
     name: "github",
@@ -78,28 +89,16 @@ export function machineOps(): Record<string, OpHandler> {
         })),
       };
     },
-    // 停 / 重启 / 更新 / 卸载之前「会打断什么」（形状同 `tests/__fixtures__/machine-interrupts.golden.json`）：
-    //   devbox 上两个会话的请求经它、一个活着；本机账上通往 devbox 的转发一条；别的台什么都不断。
-    //   界面只问本机后端（它问到那台、并好再答）：`machine` = 停的那台；`appExit` ＋ `fleet` ⇒ 它照自己的机器表问各台。
-    "machine-interrupts": (_origin, req, w) => {
-      const devbox = req.machine === "devbox" || (req.appExit === true && req.fleet === true && w.machines.includes("devbox"));
-      return {
-        relayedSessions: devbox ? 2 : 0,
-        relayedMaybe: 0,
-        liveStreams: devbox ? 2 : 0,
-        forwards: req.machine === "devbox" ? 1 : 0,
-      };
-    },
     // 共用 MCP：两条共用；issue-tracker 在 personal 号里也改了一版（两边都改，等人选）。
     "accounts-mcp-read": () => ({
       enabled: true,
       sync: true,
-      servers: ["docs-search", "issue-tracker"],
+      servers: [{ name: "docs-search" }, { name: "issue-tracker" }],
       conflicts: [{ name: "issue-tracker", choices: [{ from: null, holders: ["work", "api"], gone: false }, { from: "personal", holders: ["personal"], gone: false }] }],
       changed: [],
       notes: [],
     }),
-    "accounts-mcp-sync": (_o, req) => ({ enabled: true, sync: req.on === true, servers: ["docs-search", "issue-tracker"], conflicts: [], changed: [], notes: [] }),
+    "accounts-mcp-sync": (_o, req) => ({ enabled: true, sync: req.on === true, servers: [{ name: "docs-search" }, { name: "issue-tracker" }], conflicts: [], changed: [], notes: [] }),
     "drift-report": (origin) => driftOf(origin),
     // 起新会话要的三格那台推：源会话在跑 ⇒ 号与终端都知道；已结束 ⇒ 号与终端说不出（码同真后端）。
     "session-fork": (_o, req, w) => {
@@ -117,12 +116,19 @@ export function machineOps(): Record<string, OpHandler> {
         },
       };
     },
-    "forward-list": () => ({
-      forwards: [
-        { id: "fwd-1", origin: "devbox", localPort: 15432, remoteHost: "localhost", remotePort: 5432, state: "running", connCount: 2 },
-        { id: "fwd-2", origin: "gpu-01", localPort: 16006, remoteHost: "localhost", remotePort: 6006, state: "running", connCount: 0 },
-      ],
-    }),
+    // 照线上类型 `Forwards`：那一行给人看的字（`said`）由那台写好（`dial/forwards.rs::list_with`）。
+    "forward-list": (): Forwards => {
+      const row = (id: string, origin: string, localPort: number, remotePort: number, connCount: number): ForwardRow => ({
+        id,
+        origin,
+        localPort,
+        remoteHost: "localhost",
+        remotePort,
+        state: "running",
+        said: copyText("portForward.reload.row", { origin, localPort, remoteHost: "localhost", remotePort, connCount }),
+      });
+      return { forwards: [row("fwd-1", "devbox", 15432, 5432, 2), row("fwd-2", "gpu-01", 16006, 6006, 0)] };
+    },
     // 接入那一格：~/.bashrc 已接上（第 40 行），你在第 125 / 129 行自己写了 cc · cct（链接那一条恒是你写的生效）。
     "aliases-read": () => ({
       shell: "posix",
@@ -158,7 +164,6 @@ export function machineOps(): Record<string, OpHandler> {
       if (w.unseenMachines.includes(o)) throw new Error(`${o} unreachable`);
       const todo = o === "devbox" ? DEVBOX_CHORES : o === "<local>" ? LOCAL_CHORES : [];
       return {
-        home: HOME,
         changedFiles: [
           BASHRC_CHANGED,
           { path: "~/.claude/skills/cc-bus", what: "cc-bus", undo: { page: "ext" } },
@@ -167,20 +172,34 @@ export function machineOps(): Record<string, OpHandler> {
         tmux: o !== "win-laptop",
         counts: choreCounts(todo),
         rank: ((n) => (n.badge > 0 ? 0 : n.open > 0 ? 1 : 2))(choreCounts(todo)),
+        // 显示名与绝对路径是那台后端写好的两格（`footprint/data.rs`）：台架照它的写法补上。
         own: [
-          { id: "bin", what: "台架编的一句 · bin", path: "~/.cc-monitor/bin", dir: true, class: "cache", exists: true, size_text: null },
-          { id: "relayKey", what: "台架编的一句 · relayKey", path: "~/.cc-monitor/relay-key", dir: false, class: "truth", exists: true, size_text: "64 B" },
-          { id: "policy", what: "台架编的一句 · policy", path: "~/.cc-monitor/backend.json", dir: false, class: "truth", exists: false, size_text: null },
-          { id: "profiles", what: "台架编的一句 · profiles", path: "~/.cc-monitor/profiles.toml", dir: false, class: "truth", exists: true, size_text: "1.8 KB" },
-          { id: "aliasesPosix", what: "台架编的一句 · aliasesPosix", path: "~/.cc-monitor/aliases.sh", dir: false, class: "truth", exists: true, size_text: "512 B" },
-          { id: "chores", what: "台架编的一句 · chores", path: "~/.cc-monitor/chores.json", dir: false, class: "truth", exists: true, size_text: "96 B" },
-          { id: "quota", what: "台架编的一句 · quota", path: "~/.cc-monitor/quota.json", dir: false, class: "truth", exists: true, size_text: "3.1 KB" },
-          { id: "accounts", what: "台架编的一句 · accounts", path: "~/.cc-monitor/accounts", dir: true, class: "truth", exists: true, size_text: null },
-          { id: "knownHosts", what: "台架编的一句 · knownHosts", path: "~/.cc-monitor/known_hosts", dir: false, class: "cache", exists: true, size_text: "802 B" },
-        ],
+          { id: "bin", what: "台架编的一句 · bin", path: "~/.cc-monitor/bin", dir: true, class: "cache", exists: true, absent_said: null, size_text: null },
+          { id: "relayKey", what: "台架编的一句 · relayKey", path: "~/.cc-monitor/relay-key", dir: false, class: "truth", exists: true, absent_said: null, size_text: "64 B" },
+          { id: "policy", what: "台架编的一句 · policy", path: "~/.cc-monitor/backend.json", dir: false, class: "truth", exists: false, absent_said: "台架编的一句 · 未创建", size_text: null },
+          { id: "profiles", what: "台架编的一句 · profiles", path: "~/.cc-monitor/profiles.toml", dir: false, class: "truth", exists: true, absent_said: null, size_text: "1.8 KB" },
+          { id: "aliasesPosix", what: "台架编的一句 · aliasesPosix", path: "~/.cc-monitor/aliases.sh", dir: false, class: "truth", exists: true, absent_said: null, size_text: "512 B" },
+          { id: "chores", what: "台架编的一句 · chores", path: "~/.cc-monitor/chores.json", dir: false, class: "truth", exists: true, absent_said: null, size_text: "96 B" },
+          { id: "quota", what: "台架编的一句 · quota", path: "~/.cc-monitor/quota.json", dir: false, class: "truth", exists: true, absent_said: null, size_text: "3.1 KB" },
+          { id: "accounts", what: "台架编的一句 · accounts", path: "~/.cc-monitor/accounts", dir: true, class: "truth", exists: true, absent_said: null, size_text: null },
+          { id: "knownHosts", what: "台架编的一句 · knownHosts", path: "~/.cc-monitor/known_hosts", dir: false, class: "cache", exists: true, absent_said: null, size_text: "802 B" },
+          // 本机那一问：本机后端连界面自己那几样一起答。
+          ...(o === "<local>"
+            ? [
+                { id: "config", what: "台架编的一句 · config", path: "~/.cc-monitor/config.json", dir: false, class: "truth", exists: true, absent_said: null, size_text: "4.0 KB" },
+                { id: "logs", what: "台架编的一句 · logs", path: "~/.cc-monitor/logs", dir: true, class: "cache", exists: true, absent_said: null, size_text: null },
+              ]
+            : []),
+        ].map(shownAt),
       };
     },
   };
+}
+
+/** `data-report` 的 `own` 一行补上后端写好的显示名（`.cc-monitor/` 底下那一段，目录带尾 `/`）与绝对路径（台架家目录 `HOME`）。 */
+function shownAt<T extends { path: string; dir: boolean }>(o: T): T & { label: string; abs: string } {
+  const tail = o.path.replace(/^~\/\.cc-monitor\/?/, "");
+  return { ...o, label: o.dir ? `${tail}/` : tail, abs: o.path.replace(/^~/, HOME) };
 }
 
 /** 一台各类的件数（照 `footprint/chores::counts` 的分法；`data-report` 还是合成的那几条之一）。 */
@@ -226,14 +245,6 @@ export function machineCommands(): Record<string, CommandHandler> {
         why: null,
         detail: null,
       },
-    }),
-    get_data_paths: () => ({
-      monitorDataDir: `${HOME}/.cc-monitor`,
-      entries: [
-        { label: "配置", class: "truth", path: `${HOME}/.cc-monitor/config.json`, kind: "file", description: "界面的偏好与机器列表", exists: true, sizeText: "4.0 KB" },
-        { label: "日志", class: "cache", path: `${HOME}/.cc-monitor/logs`, kind: "dir", description: "运行日志（按天滚动）", exists: true },
-      ],
-      webviewUserDataDir: null,
     }),
     get_diagnostics_config: () => ({ log_enabled: true, log_level: "info", error_toast: true, max_files: 7 }),
     set_diagnostics_config: () => "needs_restart",
@@ -284,7 +295,7 @@ const DEVBOX_CHORES = [
     ],
     copy: '    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8788/k/9f3c2a71/claude",',
     whole: WHOLE,
-    wholeCovers: ["relay:claude-code", "cc-bus-hooks"],
+    wholeCovers: ["relay:claude-code", "cc-bus-hooks:claude"],
     file: SETTINGS,
   }),
   chore({
@@ -303,7 +314,7 @@ const DEVBOX_CHORES = [
     wholeCovers: ["relay:codex"],
     file: `${HOME}/.codex/config.toml`,
   }),
-  chore({ id: "cc-bus-hooks", name: copyText("beChore.hooks.name"), loc: "~/.claude/settings.json · hooks", said: copyText("beChore.hooks.said"), why: copyText("beChore.hooks.why"), steps: ["打开 ~/.claude/settings.json", "在第 5 行后面加下面 12 行", copyText("beChore.step.save")], copy: '"hooks": {}', whole: WHOLE, wholeCovers: ["relay:claude-code", "cc-bus-hooks"], file: SETTINGS }),
+  chore({ id: "cc-bus-hooks:claude", name: copyText("beChore.hooks.name"), loc: "~/.claude/settings.json · hooks", said: copyText("beChore.hooks.said"), why: copyText("beChore.hooks.why"), steps: ["打开 ~/.claude/settings.json", "在第 5 行后面加下面 12 行", copyText("beChore.step.save")], copy: '"hooks": {}', whole: WHOLE, wholeCovers: ["relay:claude-code", "cc-bus-hooks:claude"], file: SETTINGS }),
 ];
 const LOCAL_CHORES = [
   chore({ id: "install:xdg-terminal-exec", kind: "installOptional", name: "xdg-terminal-exec", loc: "xdg-terminal-exec", said: copyText("beChore.install.saidOptional"), action: "how", howUrl: "https://gitlab.freedesktop.org/terminal-wg/specifications", tag: { text: copyText("dataPage.install.kindOptional"), kind: "installOptional" } }),

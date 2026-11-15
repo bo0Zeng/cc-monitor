@@ -1,4 +1,4 @@
-//! 手机写字的那几样（取文 ＋ 插值 · 短时长 · 距今；大小由后端写好交来）直接调 `copy-core`，Kotlin 只剩 `CopyCore` 那几个 JNI 口。
+//! 手机写字的那几样（取文 ＋ 插值 · 短时长；大小由后端写好交来）直接调 `copy-core`，Kotlin 那一侧是 `Core.copyTextFlat` · `Core.shortDuration`。
 
 use jni::objects::{JClass, JObjectArray, JString};
 use jni::sys::{jlong, jstring};
@@ -20,8 +20,8 @@ fn ms(v: jlong) -> u64 {
     u64::try_from(v).unwrap_or(0)
 }
 
-fn out(env: &JNIEnv, s: Option<String>) -> jstring {
-    s.and_then(|s| env.new_string(s).ok())
+fn out(env: &JNIEnv, s: String) -> jstring {
+    env.new_string(s)
         .map(|s| s.into_raw())
         .unwrap_or(std::ptr::null_mut())
 }
@@ -38,9 +38,9 @@ pub(crate) fn strings(env: &mut JNIEnv, arr: &JObjectArray) -> Vec<String> {
         .collect()
 }
 
-/// `CopyCore.text(key, args)`。
+/// `Core.copyTextFlat(key, args)`。
 #[no_mangle]
-pub extern "system" fn Java_com_ccmonitor_mobile_core_copy_CopyCore_text<'l>(
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_copyTextFlat<'l>(
     mut env: JNIEnv<'l>,
     _class: JClass<'l>,
     key: JString<'l>,
@@ -49,30 +49,18 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_copy_CopyCore_text<'l>(
     guarded(std::ptr::null_mut(), || {
         let key = string(&mut env, &key).unwrap_or_default();
         let flat = strings(&mut env, &args);
-        out(&env, Some(text(&key, &flat)))
+        out(&env, text(&key, &flat))
     })
 }
 
-/// `CopyCore.shortDuration(ms)`。
+/// `Core.shortDuration(ms)`。
 #[no_mangle]
-pub extern "system" fn Java_com_ccmonitor_mobile_core_copy_CopyCore_shortDuration<'l>(
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_shortDuration<'l>(
     env: JNIEnv<'l>,
     _class: JClass<'l>,
     v: jlong,
 ) -> jstring {
     guarded(std::ptr::null_mut(), || {
-        out(&env, Some(copy_core::short_duration(ms(v))))
-    })
-}
-
-/// `CopyCore.relDuration(aheadMs)`：已到 ⇒ `null`。
-#[no_mangle]
-pub extern "system" fn Java_com_ccmonitor_mobile_core_copy_CopyCore_relDuration<'l>(
-    env: JNIEnv<'l>,
-    _class: JClass<'l>,
-    ahead: jlong,
-) -> jstring {
-    guarded(std::ptr::null_mut(), || {
-        out(&env, copy_core::rel_duration(ahead))
+        out(&env, copy_core::short_duration(ms(v)))
     })
 }

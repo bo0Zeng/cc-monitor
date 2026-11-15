@@ -68,7 +68,7 @@ pub trait ItemSink: Send + Sync {
 pub const SESSION_LINES_KIND: &str = "session-lines";
 
 /// 本文件认的第二种流：一台机器上的活卡（体是 [`crate::ui_contract::SessionLiveCardsPayload`]：某会话某运行此刻整份的卡，
-/// 或某张卡只换了尾巴；壳照端核心的活卡板折好）。
+/// 或某张卡只换了尾巴；每台的都由本机后端折好交来，壳不折）。
 ///
 /// 与 `session-lines` 同一张订阅表、同一套 credit 与 `Gap`（一条帧路 ＋ `subscribe`），差别只有三处：
 /// ① **没有留存**：活卡不进留存，订阅当场就是实时的（没有就绪点、没有重放）；
@@ -207,8 +207,6 @@ struct Inner {
     snapshot_level: u32,
     /// 留存里「哪几条有行」变了（多了 · 少了一条）还没告诉名单那一侧（[`EventReplay::kept`]）。
     kept_moved: bool,
-    /// 每台的活卡板（共享核心那一份折法，键 = origin 线上串）：界面收的是折好的整份或尾巴。那台看不见了 ⇒ 清空。
-    live: HashMap<String, face_core::live::Board>,
 }
 
 /// 退订那一问的期限（就地做完的记账；远端多一趟往返）。
@@ -261,7 +259,11 @@ struct Sub {
     /// 最后一次告诉它的「那台看不看得见」。
     told_seen: bool,
     /// `session-live-card` 那一形：丢过格（没 credit）、还没再交过整份的那几处（会话 · 运行）—— 那一处下一格交整份，不交尾巴。
-    live_stale: HashSet<face_core::live::Where>,
+    live_stale: HashSet<cmd_wire::live::Where>,
+    /// `session-live-card` 那一形：那台流上丢过一格、说不准是哪一处（[`EventReplay::live_gap`]）⇒ 每一处下一格交整份；
+    /// 那之后已经交过的那几处记在 `live_fresh`（照旧交尾巴）。
+    live_blind: bool,
+    live_fresh: HashSet<cmd_wire::live::Where>,
 }
 
 /// 一条订阅订的是哪一种流 —— 两路各加了一个布尔（活卡 / `lines`），合并时收成这一个枚举。
@@ -619,7 +621,6 @@ impl EventReplay {
                 main_kept: BTreeSet::new(),
                 snapshot_level: 0,
                 kept_moved: false,
-                live: HashMap::new(),
             }),
             credit_changed: tokio::sync::Notify::new(),
             watch_tick: tokio::sync::watch::channel(0).0,
@@ -1065,6 +1066,8 @@ impl EventReplay {
                 live: immediate,
                 told_seen: seen,
                 live_stale: HashSet::new(),
+                live_blind: false,
+                live_fresh: HashSet::new(),
             };
             let job = (immediate && kind == SubKind::Lines).then(|| {
                 let mine = held_for(&inner.tails, &sub);
@@ -1180,65 +1183,37 @@ impl EventReplay {
         }
     }
 
-    /// 那台后端发来的一帧活卡（核心拼好的成品；分派第一层 `stream_source::route` 直接交来，本机远端同一处）：**不进留存**，
-    /// 交那台的活卡板折（共享核心 `face_core::live`，手机核心同一份），变了的那一处（某会话某运行）带上哪台，
-    /// 交给订了那台机器 `session-live-card` 的每一条订阅 —— 一段字只换了一张卡的尾巴 ⇒ 交尾巴（前几块不变 ＋ 新的一两块），
-    /// 别的交那一处整份。有 credit 当场交；没有 ⇒ 丢、位置照占、下一次交之前原位 `Gap`（与会话行实时那一份同一个 [`plan_live`]）。
-    /// **不等 credit、不攒**：一条订阅丢过某一处的格 ⇒ 那一处下一格交整份（界面从不在缺了一格的底子上接尾巴）。
-    /// 对账 · 缺口 · 覆盖都在后端（`observe/live.rs`），界面只照画。
-    pub fn on_live_card(&self, origin: &crate::origin::Origin, card: cmd_wire::live::LiveCard) {
-        use face_core::live::LiveChange;
-        let origin_s = origin.to_string();
+    /// 本机后端折好的一处活卡（变了的那一处 ＋ 那一处整份：本机那一台 `live_now`，分派第一层 `stream_source::route` 直接交；别台 `relayed` 的 `live`，
+    /// 收的那一头交）：**不折、不进留存**，原样交订了那台机器 `session-live-card` 的每一条订阅（[`plan_live_cards`]）。
+    pub fn on_live_now(&self, origin: &crate::origin::Origin, live: cmd_wire::frame::LiveNow) {
         let (sink, plans) = {
             let mut guard = self.inner.lock();
             let inner = &mut *guard;
-            let board = inner.live.entry(origin_s.clone()).or_default();
-            let Some(change) = board.apply(&card) else {
-                return;
-            };
-            let at = change.at();
-            let body_of = |live: LiveChange| {
-                let payload = crate::ui_contract::SessionLiveCardsPayload {
-                    origin: origin.clone(),
-                    live,
-                };
-                Body(serde_json::to_vec(&payload).unwrap_or_default())
-            };
-            let is_tail = matches!(change, LiveChange::Tail { .. });
-            let body = body_of(change);
-            let mut whole: Option<Body> = None;
             let sink = Arc::clone(&inner.sink);
-            let mut plans: Vec<(String, u64, Vec<Item>)> = Vec::new();
-            for sub in inner
-                .subs
-                .iter_mut()
-                .filter(|s| s.kind == SubKind::LiveCard && s.live && s.origin == origin_s)
-            {
-                let b = if is_tail && sub.live_stale.contains(&at) {
-                    whole
-                        .get_or_insert_with(|| {
-                            body_of(LiveChange::Whole {
-                                whole: board.cards_of(&at.0, at.1.as_deref()),
-                            })
-                        })
-                        .clone()
-                } else {
-                    body.clone()
-                };
-                let items = plan_live(sub, vec![b]);
-                if items.iter().any(|i| matches!(i, Item::Frame { .. })) {
-                    sub.live_stale.remove(&at);
-                } else {
-                    sub.live_stale.insert(at.clone());
-                }
-                if !items.is_empty() {
-                    plans.push((sub.label.clone(), sub.id, items));
-                }
-            }
-            (sink, plans)
+            let whole = live.whole;
+            (
+                sink,
+                plan_live_cards(&mut inner.subs, origin, live.change, || whole),
+            )
         };
         for (label, id, items) in plans {
             sink.deliver(&label, id, items);
+        }
+    }
+
+    /// 那台那条流上丢过一格（别台 `relayed` 的 `gap` · 本机那条流整行丢了）：丢的可能是一格活卡成品、说不准是哪一处 ⇒ 订了那台活卡的每一条订阅，
+    /// 每一处下一格先交整份（[`plan_live_cards`]），之后照旧交尾巴。
+    pub fn live_gap(&self, origin: &crate::origin::Origin) {
+        let origin_s = origin.to_string();
+        for sub in self
+            .inner
+            .lock()
+            .subs
+            .iter_mut()
+            .filter(|s| s.kind == SubKind::LiveCard && s.origin == origin_s)
+        {
+            sub.live_blind = true;
+            sub.live_fresh.clear();
         }
     }
 
@@ -1285,10 +1260,6 @@ impl EventReplay {
         let (sink, told) = {
             let mut inner = self.inner.lock();
             inner.seen.insert(origin.to_string(), seen);
-            // 看不见了 ⇒ 那台的活卡不会再有下文（界面收到 `Unseen` 自己全撤）；接回来那台给名单里的会话补整卡。
-            if !seen {
-                inner.live.remove(origin);
-            }
             let sink = Arc::clone(&inner.sink);
             let told: Vec<(String, u64)> = inner
                 .subs
@@ -1484,10 +1455,6 @@ impl EventReplay {
         for k in keys {
             drop_tail(&mut inner, &k);
         }
-        // tab 关了 ⇒ 它的活卡也不留（界面那一侧同一刻摘掉）。
-        for board in inner.live.values_mut() {
-            board.drop_session(session_id);
-        }
         self.tell_kept(&mut inner);
     }
 
@@ -1525,7 +1492,56 @@ impl Default for EventReplay {
     }
 }
 
-/// 留存里这条订阅要的那些行：订的那台上的各条（只要一个会话的只取那一条），按键序、每条内到达序。
+/// 一处活卡变了（`change`；那一处此刻整份由 `whole` 现取，只在要交整份时取）⇒ 交给订了那台机器 `session-live-card` 的每一条订阅的那几格：
+/// 一段字只换了一张卡的尾巴 ⇒ 交尾巴（前几块不变 ＋ 新的一两块），别的交那一处整份。有 credit 当场交；没有 ⇒ 丢、位置照占、
+/// 下一次交之前原位 `Gap`（与会话行实时那一份同一个 [`plan_live`]）。**不等 credit、不攒**：一条订阅丢过某一处的格 ⇒ 那一处下一格交整份；
+/// 那台流上丢过一格（[`EventReplay::live_gap`]，说不准丢的是哪一处）⇒ 每一处下一格都先交整份 —— 界面从不在缺了一格的底子上接尾巴。
+/// 对账 · 缺口 · 覆盖都在后端（`observe/live.rs`），界面只照画。
+fn plan_live_cards(
+    subs: &mut [Sub],
+    origin: &crate::origin::Origin,
+    change: cmd_wire::live::LiveChange,
+    whole: impl FnOnce() -> cmd_wire::live::LiveCards,
+) -> Vec<(String, u64, Vec<Item>)> {
+    use cmd_wire::live::LiveChange;
+    let origin_s = origin.to_string();
+    let at = change.at();
+    let body_of = |live: LiveChange| {
+        let payload = crate::ui_contract::SessionLiveCardsPayload {
+            origin: origin.clone(),
+            live,
+        };
+        Body(serde_json::to_vec(&payload).unwrap_or_default())
+    };
+    let is_tail = matches!(change, LiveChange::Tail { .. });
+    let mine = |s: &Sub| s.kind == SubKind::LiveCard && s.live && s.origin == origin_s;
+    let owes_whole =
+        |s: &Sub| s.live_stale.contains(&at) || (s.live_blind && !s.live_fresh.contains(&at));
+    let whole_body = (is_tail && subs.iter().any(|s| mine(s) && owes_whole(s)))
+        .then(|| body_of(LiveChange::Whole { whole: whole() }));
+    let body = body_of(change);
+    let mut plans: Vec<(String, u64, Vec<Item>)> = Vec::new();
+    for sub in subs.iter_mut().filter(|s| mine(s)) {
+        let b = match &whole_body {
+            Some(w) if owes_whole(sub) => w.clone(),
+            _ => body.clone(),
+        };
+        let items = plan_live(sub, vec![b]);
+        if items.iter().any(|i| matches!(i, Item::Frame { .. })) {
+            sub.live_stale.remove(&at);
+            if sub.live_blind {
+                sub.live_fresh.insert(at.clone());
+            }
+        } else {
+            sub.live_stale.insert(at.clone());
+        }
+        if !items.is_empty() {
+            plans.push((sub.label.clone(), sub.id, items));
+        }
+    }
+    plans
+}
+
 /// 那台手上留着的（[`EventReplay::kept`]）：留存里那台有行的 ∪ 主窗口那台上的 tab。
 fn kept_of(
     tails: &BTreeMap<TailKey, Tail>,
@@ -1541,6 +1557,7 @@ fn kept_of(
         .collect()
 }
 
+/// 留存里这条订阅要的那些行：订的那台上的各条（只要一个会话的只取那一条），按键序、每条内到达序。
 fn held_for(tails: &BTreeMap<TailKey, Tail>, sub: &Sub) -> Vec<JsonlLinePayload> {
     if sub.kind != SubKind::Lines {
         return Vec::new();
@@ -1744,7 +1761,7 @@ fn build_chunks(snapshot: &[JsonlLinePayload]) -> Vec<Vec<JsonlLinePayload>> {
 #[path = "../../../../tests/frontend/shell/event_replay_tests.rs"]
 mod tests;
 
-// 本文件那几个流名，连同 `ui_contract::events` 的事件名与 `data_paths::LOGS_DIR_LABEL`，生成进 `src/frontend/ui/generated/shell-names.ts`（界面读那一份）。
+// 本文件那几个流名，连同 `ui_contract::events` 的事件名，生成进 `src/frontend/ui/generated/shell-names.ts`（界面读那一份）。
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/shell_names_export.rs"]
 mod shell_names_export;

@@ -1,17 +1,17 @@
-//! 枢纽问各台的那 8 条内层命令（typed）：每条 `impl Command`（线上名只写这一处，枢纽问的那一侧也照它），
-//! 本体在 `skill_install` · `skill_flow` · `mcp_sync_flow` · `cc_bus_install`。写的那三条（两条装 · cc-bus 装）走「文件管理面 ＋ 写句柄」那一档：
-//! 写用户的文件经文件管理面、写装记录经写句柄；其余几条只读（要读 MCP 配置的那两条经文件管理面读）。
+//! 枢纽问各台的那 9 条内层命令（typed）：每条 `impl Command`（线上名只写这一处，枢纽问的那一侧也照它），
+//! 本体在 `skill_install` · `skill_flow` · `mcp_sync_flow` · `cc_bus_install` · `plugin_exec`。写的那三条（两条装 · cc-bus 装）走「文件管理面 ＋ 写句柄」那一档：
+//! 写用户的文件经文件管理面、写装记录经写句柄；装插件那一条不经这台写文件，跑那一家自己的命令；其余几条只读（要读 MCP 配置的那两条经文件管理面读）。
 
 use crate::assets::hub_wire as wire;
 // 标记类型住 `assets::hub_wire`（枢纽按它们问）；命令表从这里认它们（`impl Command` 在这份文件里）。
 pub use crate::assets::hub_wire::{
-    CcBusInstallCmd, CcBusStateCmd, McpApplyCmd, McpPreviewCmd, McpSourceCmd, SkillApplyCmd,
-    SkillPlanCmd, SkillReadCmd,
+    CcBusInstallCmd, CcBusStateCmd, McpApplyCmd, McpPreviewCmd, McpSourceCmd, PluginInstallCmd,
+    SkillApplyCmd, SkillPlanCmd, SkillReadCmd,
 };
 use crate::common::said::Said;
 use crate::wire::typed::{self, codes, Codes, Command};
 
-/// 枢纽问得到的内层命令（来源那台读 · 被写那台判 / 写）：就是本文件那 8 条，枢纽问这台自己那一跳只放它们（`stream::inbound::doors::LocalFrames`）。
+/// 枢纽问得到的内层命令（来源那台读 · 被写那台判 / 写）：就是本文件那 9 条，枢纽问这台自己那一跳只放它们（`stream::inbound::doors::LocalFrames`）。
 pub const NAMES: &[&str] = &[
     CcBusStateCmd::NAME,
     CcBusInstallCmd::NAME,
@@ -21,6 +21,7 @@ pub const NAMES: &[&str] = &[
     SkillReadCmd::NAME,
     SkillPlanCmd::NAME,
     SkillApplyCmd::NAME,
+    PluginInstallCmd::NAME,
 ];
 
 /// 下层那一份失败收进这一条的码表（码不在表里 ⇒ `fallback`）。
@@ -135,7 +136,7 @@ impl crate::wire::typed::Handle for SkillApplyCmd {
             crate::assets::skill_flow::answer_install(
                 files,
                 &crate::assets::mcp_sync::Live::from_env(),
-                None,
+                crate::assets::skill_install::Roots::HERE,
                 &record(own),
                 &req,
             )
@@ -147,7 +148,7 @@ impl crate::wire::typed::Handle for SkillApplyCmd {
 codes! {
     /// `mcp-sync-source` 的码。
     pub enum McpSourceErr {
-        /// 那份配置不是 JSON / 形状不对。
+        /// 那份配置读不懂（照那一家的读法）/ 形状不对。
         BadFile = "bad_file",
         /// 项目目录不是这台上的绝对路径。
         BadPath = "bad_path",
@@ -178,12 +179,16 @@ impl crate::wire::typed::Handle for McpSourceCmd {
         async move {
             let files = needs;
 
-            crate::assets::mcp_sync_flow::answer_source(
-                files,
-                crate::assets::ext::Env::here().user_mcp.as_deref(),
-                &req,
+            // 用户级读请求那一家那一份（没写家照请求的规整；认不出的家由 `answer_source` 那一下拒）。
+            let user_mcp = crate::assets::skill_install::family_among(
+                crate::agents::REGISTRY,
+                req.agent.as_ref().map(cmd_wire::AgentKind::as_str),
             )
-            .map_err(own_err(McpSourceErr::Refused))
+            .ok()
+            .flatten()
+            .and_then(crate::accounts::manage::mcp_share_exec::user_mcp_file);
+            crate::assets::mcp_sync_flow::answer_source(files, user_mcp.as_deref(), &req)
+                .map_err(own_err(McpSourceErr::Refused))
         }
     }
 }
@@ -191,7 +196,7 @@ impl crate::wire::typed::Handle for McpSourceCmd {
 codes! {
     /// `mcp-sync-preview` 的码。
     pub enum McpPreviewErr {
-        /// 这台那份配置不是 JSON / 形状不对。
+        /// 这台那份配置读不懂（照那一家的读法）/ 形状不对。
         BadFile = "bad_file",
         /// 项目目录不是这台上的绝对路径。
         BadPath = "bad_path",
@@ -231,7 +236,7 @@ impl crate::wire::typed::Handle for McpPreviewCmd {
 codes! {
     /// `mcp-sync-apply` 的码。
     pub enum McpApplyErr {
-        /// 这台那份配置不是 JSON / 形状不对。
+        /// 这台那份配置读不懂（照那一家的读法）/ 形状不对。
         BadFile = "bad_file",
         /// 项目目录不是这台上的绝对路径。
         BadPath = "bad_path",
@@ -326,5 +331,42 @@ impl crate::wire::typed::Handle for CcBusInstallCmd {
             crate::assets::cc_bus_install::answer_install(files, &record(own))
                 .map_err(own_err(CcBusInstallErr::Refused))
         }
+    }
+}
+
+codes! {
+    /// `plugin-install` 的码。
+    /// （家认不出那一形回 `bad_args`，每条命令都有、不在这里列。）
+    pub enum PluginInstallErr {
+        /// 那条命令过了期限没结束（已杀整组）。
+        ChildTimedOut = "child_timed_out",
+        /// 那条命令起不来 · 退出码非 0。
+        IoFailed = "io_failed",
+        /// 这一家没声明插件那一格（这台只读）。
+        Refused = "refused",
+    }
+}
+
+impl Command for PluginInstallCmd {
+    const NAME: &'static str = "plugin-install";
+    type Req = wire::PluginInstallReq;
+    type Reply = crate::assets::ext::ExtDone;
+    type Err = PluginInstallErr;
+}
+
+impl crate::wire::typed::Handle for PluginInstallCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    async fn run(
+        req: wire::PluginInstallReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> Result<crate::assets::ext::ExtDone, PluginInstallErr> {
+        // `req.name` 装的是那一家自己的写法（枢纽照来源那台目录里那一条的 `summary.key` 填），原样交那一家的装那一行，这里不拆不拼。
+        crate::assets::plugin_exec::install(
+            crate::agents::REGISTRY,
+            req.agent.as_ref(),
+            &req.name,
+            &crate::assets::plugin_exec::run_here,
+        )
+        .map_err(own_err(PluginInstallErr::IoFailed))
     }
 }

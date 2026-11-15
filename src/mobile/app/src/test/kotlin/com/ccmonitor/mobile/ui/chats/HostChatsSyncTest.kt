@@ -110,7 +110,7 @@ class HostChatsSyncTest {
         link: FakeCoreLink,
         cache: ListCache,
         groupsChanged: Flow<Unit> = emptyFlow(),
-    ) = HostChats("h1", "a", link, emptyFlow(), groupsChanged, MutableStateFlow(null), {}, cache, backgroundScope)
+    ) = HostChats("h1", "a", link, emptyFlow(), groupsChanged, MutableStateFlow(null), {}, cache, backgroundScope) { 1L }
 
     private fun HostChats.labels() = ((state.value.list as? Fetched.Got)?.value?.rows ?: state.value.cached?.rows).orEmpty().map { it.label }
 

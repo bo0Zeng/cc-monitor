@@ -94,7 +94,6 @@ const NODE_ENV_FILES = [
   "tests/frontend/ui/port-forward-reads.vitest.ts",
   "tests/frontend/ui/profiles-reads.vitest.ts",
   "tests/frontend/ui/pubkey-push.vitest.ts",
-  "tests/frontend/ui/quit-now.vitest.ts",
   "tests/frontend/ui/quota-read-golden.vitest.ts",
   "tests/frontend/ui/record-file-notice.vitest.ts",
   "tests/frontend/ui/record-reads.vitest.ts",

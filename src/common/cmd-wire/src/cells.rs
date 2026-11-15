@@ -59,10 +59,10 @@ pub enum Tone {
     any(test, feature = "ts"),
     ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
+#[serde(rename_all = "camelCase")]
 pub struct SeenAt {
     /// 记下的时刻（毫秒）。
-    #[serde(rename = "atMs")]
-    #[cfg_attr(any(test, feature = "ts"), ts(rename = "atMs", type = "number"))]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub at_ms: u64,
     /// 「采样于 12:03」（后端照文案表与那一台的钟写）。
     pub said: Words,

@@ -1,16 +1,16 @@
 /**
  * `src/frontend/ui/resume-menu.ts` 的判据：「恢复」那一组选项（标签页「恢复 ▸」与历史页「恢复 ▾」同一个组件）。
  *
- * 1. 账号组：那台可选的号 ＋ 基座；上次的号标「上次」，跟随时勾在它上面；每个号后面 5h 那一格读额度账的显示态。
- * 2. 这一家没有账号这一维 ⇒ 账号组灰着一行；那台没开多账号 ⇒ 账号组不出。
+ * 1. 账号组：照那条会话的那一家问那台，那台说进选号表的号 ＋ 基座；上次的号标「上次」，跟随时勾在它上面；每个号后面 5h 那一格读额度账的显示态。
+ * 2. 这一家没有账号这一维 ⇒ 账号组灰着一行；这一家一个号也没有 ⇒ 只剩基座；那台没开多账号 ⇒ 账号组不出。
  * 3. 点单选只改勾着的那一组（菜单开关归 kit）；有 `run` ⇒ 最上面一行「恢复」按勾着的那一组起。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("../../../src/frontend/ui/account-reads", () => ({ fetchAccounts: vi.fn() }));
+vi.mock("../../../src/frontend/ui/account-reads", () => ({ fetchAccounts: vi.fn(), fetchAccountsOf: vi.fn() }));
 
 import { defaultPick, pickAsk, resumeAccounts, resumeHint, resumeMenuItems, type ResumeAccounts, type ResumePick } from "../../../src/frontend/ui/resume-menu";
-import { fetchAccounts } from "../../../src/frontend/ui/account-reads";
+import { fetchAccounts, fetchAccountsOf } from "../../../src/frontend/ui/account-reads";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 
 /** 那台 `accounts-list` 的一行：号名（`label`）与额度格（`slots`）都是那台写好的。 */
@@ -26,50 +26,69 @@ const acct = (name: string, selectable = true, over: Record<string, unknown> = {
   authKind: "subscription",
   authReady: true,
   selectable,
+  newSession: true,
   slots: [],
   ...over,
 });
 
 beforeEach(() => {
   vi.mocked(fetchAccounts).mockReset();
+  vi.mocked(fetchAccountsOf).mockReset();
 });
 
 describe("账号组的事实", () => {
-  it("★ 那台可选的号 ＋ 基座；号名与号旁那一格照那一行（label · 第一格）；上次的号标出来；基座不带格", async () => {
-    vi.mocked(fetchAccounts).mockResolvedValue({
+  it("★ 照那条会话的那一家问那台（不问账号库那一家）；只列那台说进选号表、选得了的号 ＋ 基座；号名与号旁那一格照那一行（label · 第一格）；上次的号标出来；基座不带格", async () => {
+    vi.mocked(fetchAccountsOf).mockResolvedValue({
       available: true,
-      accounts: [acct("work", true, { label: "后端·work", slots: [{ slot: "5h", text: "后端·5h 41% ↻13:00", tone: "plain" }, { slot: "7d", text: "后端·7d", tone: "plain" }] }), acct("home"), acct("old", false)],
+      meta: { enabled: true },
+      accounts: [
+        acct("work", true, { label: "后端·work", slots: [{ slot: "5h", text: "后端·5h 41% ↻13:00", tone: "plain" }, { slot: "7d", text: "后端·7d", tone: "plain" }] }),
+        acct("home"),
+        acct("old", false),
+        acct("other-family", true, { newSession: false }),
+      ],
     } as never);
-    const got = await resumeAccounts("devbox", "claude", { hasAccounts: true, agentName: "claude", last: "work" });
+    const got = await resumeAccounts("devbox", { agent: "codex", hasAccounts: true, agentName: "Codex", last: "work" });
+    expect(fetchAccountsOf).toHaveBeenCalledWith("devbox", "codex");
+    expect(fetchAccounts).not.toHaveBeenCalled();
     expect(got).toEqual({
       kind: "list",
       items: [
         { name: "work", label: "后端·work", quota: "后端·5h 41% ↻13:00", last: true },
         { name: "home", label: "home", quota: null, last: false },
-        { name: null, label: copyText("resumeMenu.account.base"), quota: null, last: false },
+        { name: null, label: copyText("sessionOpen.account.useBase"), quota: null, last: false },
       ],
       origin: "devbox",
     });
   });
 
   it("只有一个可选号也照出（不整组藏）", async () => {
-    vi.mocked(fetchAccounts).mockResolvedValue({ available: true, accounts: [acct("solo", true, { slots: [{ slot: "5h", text: "后端·5h 7%", tone: "plain" }] })] } as never);
-    const got = await resumeAccounts("dev", "claude", { hasAccounts: true, agentName: "claude" });
+    vi.mocked(fetchAccountsOf).mockResolvedValue({ available: true, meta: { enabled: true }, accounts: [acct("solo", true, { slots: [{ slot: "5h", text: "后端·5h 7%", tone: "plain" }] })] } as never);
+    const got = await resumeAccounts("dev", { agent: "claude", hasAccounts: true, agentName: "Claude" });
     expect(got.kind === "list" && got.items.map((a) => [a.name, a.quota])).toEqual([
       ["solo", "后端·5h 7%"],
       [null, null],
     ]);
   });
 
-  it("这一家没有账号这一维 ⇒ none（不问那台）；没开多账号 / 一个可选号也没有 / 问不到 ⇒ off", async () => {
-    expect(await resumeAccounts("devbox", "codex", { hasAccounts: false, agentName: "Codex" })).toEqual({ kind: "none", agentName: "Codex" });
-    expect(fetchAccounts).not.toHaveBeenCalled();
-    vi.mocked(fetchAccounts).mockResolvedValueOnce({ available: false, accounts: [] } as never);
-    expect((await resumeAccounts("devbox", "claude", { hasAccounts: true, agentName: "claude" })).kind).toBe("off");
-    vi.mocked(fetchAccounts).mockResolvedValueOnce({ available: true, accounts: [acct("x", false)] } as never);
-    expect((await resumeAccounts("devbox", "claude", { hasAccounts: true, agentName: "claude" })).kind).toBe("off");
-    vi.mocked(fetchAccounts).mockRejectedValueOnce(new Error("断了"));
-    expect((await resumeAccounts("devbox", "claude", { hasAccounts: true, agentName: "claude" })).kind).toBe("off");
+  it("★ 那台开了账号库、这一家一个可选号也没有（号全是别家的）⇒ 只剩基座（不拿别家的号顶）", async () => {
+    vi.mocked(fetchAccountsOf).mockResolvedValue({ available: true, meta: { enabled: true }, accounts: [acct("work", true, { newSession: false }), acct("x", false)] } as never);
+    expect(await resumeAccounts("devbox", { agent: "codex", hasAccounts: true, agentName: "Codex" })).toEqual({
+      kind: "list",
+      items: [{ name: null, label: copyText("sessionOpen.account.useBase"), quota: null, last: false }],
+      origin: "devbox",
+    });
+  });
+
+  it("这一家没有账号这一维 ⇒ none（不问那台）；没开账号库 / 问不到 ⇒ off", async () => {
+    expect(await resumeAccounts("devbox", { agent: "x", hasAccounts: false, agentName: "Codex" })).toEqual({ kind: "none", agentName: "Codex" });
+    expect(fetchAccountsOf).not.toHaveBeenCalled();
+    vi.mocked(fetchAccountsOf).mockResolvedValueOnce({ available: false, meta: null, accounts: [] } as never);
+    expect((await resumeAccounts("devbox", { agent: "claude", hasAccounts: true, agentName: "Claude" })).kind).toBe("off");
+    vi.mocked(fetchAccountsOf).mockResolvedValueOnce({ available: true, meta: { enabled: false }, accounts: [acct("x", false)] } as never);
+    expect((await resumeAccounts("devbox", { agent: "claude", hasAccounts: true, agentName: "Claude" })).kind).toBe("off");
+    vi.mocked(fetchAccountsOf).mockRejectedValueOnce(new Error("断了"));
+    expect((await resumeAccounts("devbox", { agent: "claude", hasAccounts: true, agentName: "Claude" })).kind).toBe("off");
   });
 });
 
@@ -78,7 +97,7 @@ const LIST: ResumeAccounts = {
   items: [
     { name: "work", label: "work", quota: "5h 41%", last: true },
     { name: "home", label: "home", quota: null, last: false },
-    { name: null, label: copyText("resumeMenu.account.base"), quota: null, last: false },
+    { name: null, label: copyText("sessionOpen.account.useBase"), quota: null, last: false },
   ],
 };
 const shape = (items: ReturnType<typeof resumeMenuItems>): string[] =>
@@ -91,7 +110,7 @@ describe("菜单怎么摆", () => {
       `[${copyText("beProfile.slot.account")}]`,
       `✓work|${copyText("resumeMenu.account.quotaLast", { quota: "5h 41%" })}`,
       "home",
-      copyText("resumeMenu.account.base"),
+      copyText("sessionOpen.account.useBase"),
       "—",
       `[${copyText("resumeMenu.group.run")}]`,
       copyText("resumeMenu.run.managed"),
@@ -114,7 +133,7 @@ describe("菜单怎么摆", () => {
     expect(pick).toEqual({ run: "tmux", account: undefined, useBase: true });
     expect(seen.length).toBe(3);
     expect(resumeHint(LIST, pick)).toBe(
-      copyText("resumeMenu.hint.pick", { pick: copyText("resumeMenu.pick.account", { account: copyText("resumeMenu.account.base"), run: copyText("resumeMenu.hint.tmux") }) }),
+      copyText("resumeMenu.hint.pick", { pick: copyText("resumeMenu.pick.account", { account: copyText("sessionOpen.account.useBase"), run: copyText("resumeMenu.hint.tmux") }) }),
     );
   });
 
@@ -131,8 +150,7 @@ describe("菜单怎么摆", () => {
 
   it("没有账号这一维 ⇒ 账号组灰一行「Codex · 无账号维」；没开多账号 ⇒ 账号组不出、悬停只说方式", () => {
     const none = resumeMenuItems({ accounts: { kind: "none", agentName: "Codex" }, pick: defaultPick() });
-    expect(none[1]).toMatchObject({ label: copyText("history.resume.noAccounts", { agent: "Codex" }), enabled: false });
-    const off = resumeMenuItems({ accounts: { kind: "off" }, pick: defaultPick(), machineRun: "tmux" });
+    expect(none[1]).toMatchObject({ label: copyText("history.resume.noAccounts", { agent: "Codex" }), enabled: false });    const off = resumeMenuItems({ accounts: { kind: "off" }, pick: defaultPick(), machineRun: "tmux" });
     expect(shape(off)).toEqual([`[${copyText("resumeMenu.group.run")}]`, copyText("resumeMenu.run.managed"), `✓${copyText("resumeMenu.run.tmux")}`, copyText("resumeMenu.run.direct")]);
     expect(resumeHint({ kind: "off" }, defaultPick(), "direct")).toBe(copyText("resumeMenu.hint.pick", { pick: copyText("resumeMenu.run.direct") }));
   });

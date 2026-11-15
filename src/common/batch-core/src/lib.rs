@@ -12,10 +12,13 @@
 use std::collections::BTreeMap;
 use std::future::Future;
 
-use cmd_wire::batch::{BatchOutcome, BatchReply, Conflict, Conflicts, Decide, ItemState};
+use cmd_wire::batch::{
+    BatchOutcome, BatchReply, ClashChoice, Conflict, Conflicts, Decide, ItemState,
+};
 use cmd_wire::failed::Failed;
-use cmd_wire::files::{CopyItem, FilesCopyReq, WirePath};
-use cmd_wire::phone::ClashChoice;
+use cmd_wire::files::{
+    ChmodItem, CopyItem, DeleteItem, FilesChmodReq, FilesCopyReq, FilesDeleteReq, WirePath,
+};
 use cmd_wire::Call;
 use copy_core::copy_text;
 
@@ -80,29 +83,18 @@ pub enum Verb {
     Copy,
     Delete,
     Chmod,
+    /// 下载：桌面是落到本机的一组 `transfer-copy`；手机是逐项拉进手机本机那一棵（每项一个本机描述符）。
     Download,
     Upload,
-    /// 下到手机本机：逐项拉在手机那一侧（每项一个本机描述符），回的是一组的结局，不是开了哪几单；字同下载。
-    Pull,
 }
 
 impl Verb {
-    /// 后端按票记这一种吗（下载 · 上传开单不记：开了单的每一项各是传输台里的一单）。
-    pub fn ticketed(self) -> bool {
-        !matches!(self, Verb::Download | Verb::Upload)
-    }
-
-    /// 回包是开了哪几单（下载 · 上传），不是一组的结局。
-    pub fn opens(self) -> bool {
-        matches!(self, Verb::Download | Verb::Upload)
-    }
-
     pub fn text(self) -> String {
         match self {
             Verb::Copy => copy_text("render.codeBlock.copy", &[]),
             Verb::Delete => copy_text("rsFilewinWriteops.label.delete", &[]),
             Verb::Chmod => copy_text("beFiles.batch.verbChmod", &[]),
-            Verb::Download | Verb::Pull => copy_text("rsFilewinDownload.label.download", &[]),
+            Verb::Download => copy_text("rsFilewinDownload.label.download", &[]),
             Verb::Upload => copy_text("rsFilewinUpload.label.upload", &[]),
         }
     }
@@ -134,8 +126,6 @@ pub enum Phase {
     Failed(Failed),
     /// 同名那一问答了「取消」：一项都没做。
     Dropped,
-    /// 回包不是一组的结局（下载 · 上传一组回的是开了哪几单）：交给调用方接着看。
-    Opened,
 }
 
 /// 一组的进度（`files_batch` 帧那一格）。
@@ -239,14 +229,80 @@ pub fn whole(conflicts: &[Conflict]) -> Vec<ClashChoice> {
     choices(&given)
 }
 
+/// 同名的那一项能怎么答（同名清单里那一格，两端照画）：两头有一头是目录 ⇒ 目录不合并、不给覆盖；
+/// `skip` ⇒ 这条命令收不收「跳过」（只一项的上传提交不收：跳过就是什么都不交）。后端探同名 · 手机本机同名都照它。
+pub fn answers_of(dir_into: bool, skip: bool) -> Vec<Decide> {
+    let mut a = Vec::with_capacity(3);
+    if !dir_into {
+        a.push(Decide::Overwrite);
+    }
+    if skip {
+        a.push(Decide::Skip);
+    }
+    a.push(Decide::KeepBoth);
+    a
+}
+
+/// 保留两份另起名时最多往后试到第几个。
+pub const MINT_TRIES: u32 = 999;
+
+/// 保留两份另起的名：`名 (k).ext`（拆法照 [`split_ext`]）；`k` 从 2 起由调用方往后试。
+pub fn minted(name: &str, k: u32) -> String {
+    let (stem, ext) = split_ext(name);
+    format!("{stem} ({k}){ext}")
+}
+
+fn same_name(a: &str, b: &str, fold_case: bool) -> bool {
+    if fold_case {
+        a.to_lowercase() == b.to_lowercase()
+    } else {
+        a == b
+    }
+}
+
+/// `name` 在已有的名字里撞的那一个（`fold_case` ⇒ 不分大小写：手机的共享存储不分）。
+pub fn taken_as<'a>(name: &str, here: &'a [String], fold_case: bool) -> Option<&'a str> {
+    here.iter()
+        .find(|h| same_name(h, name, fold_case))
+        .map(String::as_str)
+}
+
+/// 本机那一侧的同名清单：要放的名字（按序号）里撞了已有的那几项 ⇒ 后端同名那一形（键是序号，两头都是文件，答法照 [`answers_of`]）。
+/// 只知道名字、不知道大小与时刻的那一侧（手机下到本机）照它问。
+pub fn local_clashes(names: &[String], here: &[String], fold_case: bool) -> Vec<Conflict> {
+    names
+        .iter()
+        .enumerate()
+        .filter(|(_, n)| taken_as(n, here, fold_case).is_some())
+        .map(|(i, n)| Conflict {
+            key: i.to_string(),
+            name: WirePath(n.as_bytes().to_vec()),
+            kind: cmd_wire::files::FileKind::File,
+            size: None,
+            size_text: None,
+            mtime_text: None,
+            there: cmd_wire::files::FileKind::File,
+            there_size_text: None,
+            there_mtime_text: None,
+            answers: answers_of(false, true),
+        })
+        .collect()
+}
+
+/// 保留两份那一项落成的名：从「名 (2).ext」起往后试，头一个不撞已有的；试满 [`MINT_TRIES`] ⇒ `None`。
+pub fn keep_both_name(name: &str, here: &[String], fold_case: bool) -> Option<String> {
+    (2..=MINT_TRIES)
+        .map(|k| minted(name, k))
+        .find(|n| taken_as(n, here, fold_case).is_none())
+}
+
 /// 🔴 **一组的全过程**：发（带票）→ 同名就问一次、带 `decide` 再发 → 断了就等连回来、同一张票再问 → 结局。
 ///
 /// - `ask`：发一次（入参里已有票，答过同名之后多 `decide`）；
 /// - `wait_up`：等那台连回来（断开那一支）。
 ///
-/// 结局落在看板上（[`Phase::Ended`] · [`Phase::Failed`] · [`Phase::Dropped`] · [`Phase::Opened`]）；
-/// 回包不是一组的结局（下载开单）⇒ 原样交回给调用方。
-pub async fn run<B, C, CF, U, UF>(board: &B, ask: C, wait_up: U) -> Option<serde_json::Value>
+/// 结局落在看板上（[`Phase::Ended`] · [`Phase::Failed`] · [`Phase::Dropped`]）。
+pub async fn run<B, C, CF, U, UF>(board: &B, ask: C, wait_up: U)
 where
     B: Board,
     C: Fn(serde_json::Value) -> CF,
@@ -256,17 +312,11 @@ where
 {
     let plan = board.plan();
     let mut args = plan.args.clone();
-    if plan.verb.ticketed() {
-        args["ticket"] = serde_json::Value::String(board.ticket());
-    }
+    args["ticket"] = serde_json::Value::String(board.ticket());
     let mut cuts = 0usize;
     loop {
         match ask(args.clone()).await {
             Ok(v) => {
-                if plan.verb.opens() {
-                    board.set(Phase::Opened);
-                    return Some(v);
-                }
                 let phase = match serde_json::from_value::<BatchReply>(v) {
                     Ok(r) => Phase::Ended(r),
                     Err(e) => Phase::Failed(Failed {
@@ -275,7 +325,7 @@ where
                     }),
                 };
                 board.set(phase);
-                return None;
+                return;
             }
             Err(r) if r.failed.code == EXISTS && r.failed.data.is_some() => {
                 let conflicts = r
@@ -287,7 +337,7 @@ where
                     .unwrap_or_default();
                 if conflicts.is_empty() {
                     board.set(Phase::Failed(r.failed));
-                    return None;
+                    return;
                 }
                 board.set(Phase::Asking);
                 match board.ask(conflicts).await {
@@ -304,7 +354,7 @@ where
                     }
                     None => {
                         board.set(Phase::Dropped);
-                        return None;
+                        return;
                     }
                 }
             }
@@ -317,7 +367,7 @@ where
             }
             Err(r) => {
                 board.set(Phase::Failed(r.failed));
-                return None;
+                return;
             }
         }
     }
@@ -565,47 +615,17 @@ pub fn said_of(verb: &str, outcomes: &[BatchOutcome], into: Option<&str>) -> Str
     parts.join(&copy_text("kit.text.sep", &[]))
 }
 
-/// 两条路径（字节）按段比的公共上级目录（没有 ⇒ `/`）。
-pub fn common_dir_bytes(a: &[u8], b: &[u8]) -> Vec<u8> {
-    let segs = |x: &[u8]| -> Vec<Vec<u8>> {
-        x.split(|c| *c == b'/')
-            .filter(|s| !s.is_empty())
-            .map(<[u8]>::to_vec)
-            .collect()
-    };
-    let (sa, sb) = (segs(a), segs(b));
-    let mut out = Vec::new();
-    for (x, y) in sa.iter().zip(sb.iter()) {
-        if x != y {
-            break;
-        }
-        out.push(b'/');
-        out.extend_from_slice(x);
-    }
-    if out.is_empty() {
-        out.push(b'/');
-    }
-    out
-}
-
-fn parent_bytes(p: &[u8]) -> Vec<u8> {
-    let t = p.strip_suffix(b"/").unwrap_or(p);
-    match t.iter().rposition(|c| *c == b'/') {
-        Some(0) | None => b"/".to_vec(),
-        Some(i) => t[..i].to_vec(),
-    }
-}
-
-/// 复制一组 → 一条 `files-copy`：根 ＝ 所有源与目标的公共上级（按**字节**按段比），各项 `from` / `to` 是根底下的相对段。
+/// 复制一组 → 一条 `files-copy`：根 ＝ 所有源与目标的公共上级（[`WirePath::parent`] · [`WirePath::common_dir`]），
+/// 各项 `from` / `to` 是根底下的相对段。
 /// 同名缺省问（后端先探整组，有同名回 `exists` 带同名清单）。某一条不在根底下 ⇒ 那一句（不发）。
 pub fn copy_req(pairs: &[(Vec<u8>, Vec<u8>)]) -> Result<FilesCopyReq, String> {
     let mut root: Option<Vec<u8>> = None;
     for (f, t) in pairs {
         for p in [f, t] {
-            let up = parent_bytes(p);
+            let up = WirePath::parent(p).0;
             root = Some(match root {
                 None => up,
-                Some(r) => common_dir_bytes(&r, &up),
+                Some(r) => WirePath::common_dir(&r, &up).0,
             });
         }
     }
@@ -643,35 +663,93 @@ pub fn copy_req(pairs: &[(Vec<u8>, Vec<u8>)]) -> Result<FilesCopyReq, String> {
     })
 }
 
-/// 把 `from_dir` 底下的这几项复制进 `to_dir`（同名）：手机「复制到…」那一组（[`copy_req`] 照算公共根）。
-pub fn copy_plan(
-    from_dir: &[u8],
-    names: &[Vec<u8>],
-    to_dir: &[u8],
-    machine: &str,
-) -> Result<Plan, String> {
-    let join = |d: &[u8], n: &[u8]| {
-        let mut p = d.strip_suffix(b"/").unwrap_or(d).to_vec();
-        p.push(b'/');
-        p.extend_from_slice(n);
-        p
-    };
-    let pairs: Vec<(Vec<u8>, Vec<u8>)> = names
-        .iter()
-        .map(|n| (join(from_dir, n), join(to_dir, n)))
-        .collect();
-    let req = copy_req(&pairs)?;
-    Ok(Plan {
-        verb: Verb::Copy,
-        cmd: <FilesCopyReq as Call>::NAME,
-        args: serde_json::to_value(&req).map_err(|e| e.to_string())?,
-        names: names
+/// 删当前目录 `root` 底下的这几项（相对段 · 给人看的名字 · 是不是目录：目录 ⇒ 连同里面全部，`recursive`）⇒ 一条 `files-delete`。
+pub fn delete_plan(root: WirePath, items: &[(WirePath, String, bool)], machine: &str) -> Plan {
+    let req = FilesDeleteReq {
+        root,
+        items: items
             .iter()
-            .map(|n| String::from_utf8_lossy(n).into_owned())
+            .map(|(rel, _, dir)| DeleteItem {
+                rel: rel.clone(),
+                recursive: dir.then_some(true),
+                expect: None,
+            })
             .collect(),
-        into: Some(String::from_utf8_lossy(to_dir).into_owned()),
+        ticket: None,
+    };
+    Plan {
+        verb: Verb::Delete,
+        cmd: <FilesDeleteReq as Call>::NAME,
+        args: serde_json::to_value(&req).unwrap_or_default(),
+        names: items.iter().map(|(_, n, _)| n.clone()).collect(),
+        into: None,
         machine: machine.to_string(),
-    })
+    }
+}
+
+/// 把 `root` 底下这几项（相对段 · 名字）改成 `mode`（八进制串原样，由那台解）⇒ 一条 `files-chmod`。
+pub fn chmod_plan(root: WirePath, items: &[(WirePath, String)], mode: &str, machine: &str) -> Plan {
+    let req = FilesChmodReq {
+        root,
+        items: items
+            .iter()
+            .map(|(rel, _)| ChmodItem { rel: rel.clone() })
+            .collect(),
+        mode: mode.to_string(),
+        ticket: None,
+    };
+    Plan {
+        verb: Verb::Chmod,
+        cmd: <FilesChmodReq as Call>::NAME,
+        args: serde_json::to_value(&req).unwrap_or_default(),
+        names: items.iter().map(|(_, n)| n.clone()).collect(),
+        into: None,
+        machine: machine.to_string(),
+    }
+}
+
+/// 改权限那一框的标题：一项 ⇒ 带它的名字；几项 ⇒ 按件数（不拼名字）。
+pub fn chmod_title(names: &[String]) -> String {
+    match names {
+        [one] => copy_text("rsFilewinWriteops.heading.chmodOne", &[("name", one)]),
+        _ => copy_text(
+            "rsFilewinSelect.label.chmodMany",
+            &[("n", &names.len().to_string())],
+        ),
+    }
+}
+
+/// 改权限那一框底下那一行与要不要预填。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ModeLine {
+    pub line: String,
+    /// 预填进那一栏的八进制串；`None` ＝ 不预填。
+    pub prefill: Option<String>,
+}
+
+/// 逐项读回来的权限位（`None` ＝ 那一项没读到）⇒ 那一行：全读到且都一样 ⇒ 「现在是 644」、预填；
+/// 不一样 ⇒ 「这几项现在的权限不一样」、不预填（填哪一个都是替用户挑）；有一项没读到 · 空 ⇒ 「读不到」、不预填（不猜）。
+pub fn mode_line(modes: &[Option<u32>]) -> ModeLine {
+    let unreadable = ModeLine {
+        line: copy_text("rsFilewinWriteops.mode.unreadable", &[]),
+        prefill: None,
+    };
+    let Some(all) = modes.iter().copied().collect::<Option<Vec<u32>>>() else {
+        return unreadable;
+    };
+    let Some(&m) = all.first() else {
+        return unreadable;
+    };
+    if all.iter().any(|x| *x != m) {
+        return ModeLine {
+            line: copy_text("rsFilewinWriteops.mode.mixed", &[]),
+            prefill: None,
+        };
+    }
+    ModeLine {
+        line: copy_text("rsFilewinWriteops.mode.now", &[("mode", &format!("{m:o}"))]),
+        prefill: Some(format!("{m:o}")),
+    }
 }
 
 #[cfg(test)]

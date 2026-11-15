@@ -19,10 +19,6 @@ pub struct WinFact {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
     pub resets: Option<u64>,
-    /// `resets` 写给人看的样子（按看的那一台的时区；后端写行用，不上线）。
-    #[serde(skip)]
-    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
-    pub resets_text: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub rate: Option<f64>,
@@ -48,6 +44,8 @@ pub enum FactWhy {
     Login,
     /// 按量号这台没有 key。
     Key,
+    /// 那一家不归我方续的账号 0、令牌快过期 / 过期了（不是要重新登录，等那一家自己续）。
+    BaseUntouched,
 }
 
 /// 用不了：为什么 · 几点回来（说不出 ⇒ 缺）· 写好的那一句。
@@ -79,10 +77,6 @@ pub struct Fact {
     #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<bool>"))]
     pub weekly: bool,
     pub login: LoginState,
-    /// 额度账上最后一次看到它（没出过数 ⇒ 缺；后端自己用，不上线）。
-    #[serde(skip)]
-    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
-    pub seen_at: Option<u64>,
     /// 事实上用不了 ⇒ 有；能用 ⇒ 缺。
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
@@ -106,9 +100,8 @@ pub enum RotFormKind {
     Minutes,
     /// 开 / 关。
     Toggle,
-    /// 几个里选一个（线上 `choice`）。
-    #[serde(rename = "choice")]
-    OneOf,
+    /// 几个里选一个。
+    Choice,
     /// 24 小时条上的分段：每个窗口一组 `[{from, to, v}]`（一天里的分钟）。
     DaySegments,
 }
@@ -185,7 +178,7 @@ pub struct FormCell {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lead: Option<StrategyText>,
     /// 只在另一格取某个值时出。
-    #[serde(default, rename = "showIf", skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub show_if: Option<FormShowIf>,
     /// 只对 `daySegments`：排在后面的窗没另设 ⇒ 同第一窗。
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -476,10 +469,6 @@ pub struct RotStrategyItem {
     /// 能不能删（与 `rotation-strategy-delete` 拒的同一处判）。
     pub remove: RotRemove,
     pub for_new: bool,
-    /// 这份的设置说明写法不合文案规矩（设置照样能用）：只用来出 `RotHint::WordsBad` 那一条提示，不上线。
-    #[serde(skip)]
-    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
-    pub words_bad: bool,
     /// 文件头里没写时区（分时段按 UTC 算）。
     pub tz_unknown: bool,
     /// 不是照编辑器那一份存出来的（代码或声明跟它此刻的不一样）。
@@ -524,14 +513,6 @@ pub enum RotHint {
         #[serde(skip_serializing_if = "Option::is_none")]
         #[cfg_attr(any(test, feature = "ts"), ts(optional))]
         account: Option<String>,
-        /// 停到的那一刻的钟面（`HH:MM`，看的那一台的时区；不在今天带日期）：后端写提示那一句用，不上线。
-        #[serde(skip)]
-        #[cfg_attr(any(test, feature = "ts"), ts(skip))]
-        until_text: Option<String>,
-        /// 距停到的那一刻还有多久（已过 ⇒ 缺）：后端写提示那一句用，不上线。
-        #[serde(skip)]
-        #[cfg_attr(any(test, feature = "ts"), ts(skip))]
-        left_text: Option<String>,
     },
     /// 策略出错（这一判走了兜底：此刻的号发得出去就照用，否则照号列表的先后）。`path` ＝ 那份文件在那台上的路径（文件不在 ⇒ 缺）：「看代码」照它开。
     StrategyError {
@@ -618,6 +599,9 @@ pub struct RotLogRow {
     #[cfg_attr(any(test, feature = "ts"), ts(flatten))]
     pub log: RotLog,
     pub because: String,
+    /// 「从哪个号 → 到哪个号」那一截（照号名写好，界面照抄）。
+    #[serde(default)]
+    pub moved: String,
 }
 
 /// `rotation-view` 的应答。

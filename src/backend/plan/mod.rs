@@ -111,6 +111,8 @@ pub enum Whose {
     /// 是一个会话自己的 id。
     Session {
         sid: String,
+        /// 那条会话叫什么（与标签页 · 会话列表同一条规则，后端写好）。
+        title: String,
         /// 此刻活着就有：在跑 · 等你 · 闲着（说不清 ⇒ 活着但 `None`）。
         live: Option<Live>,
     },
@@ -131,6 +133,8 @@ pub struct Live {
     pub activity: Option<crate::agents::SessionActivity>,
     /// 在等你时等的是哪一类（批准 · 回答 · 计划 · 说不清）。
     pub needs: Option<cmd_wire::needs::NeedsKind>,
+    /// 它住在哪（名单里挂着它的那一行，`host::Housing::of`）；哪行都不挂 ⇒ `None`（不知道，不说「不在宿主里」）。
+    pub housed: Option<crate::wire::SessionContainer>,
 }
 
 /// 加工一份 dump 时问「这个 id 是谁」的口：生产由帧面宿主拼（会话表 ＋ 记录树），判据喂一张表。

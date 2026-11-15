@@ -42,15 +42,17 @@ impl crate::wire::typed::Handle for SessionCommandsCmd {
 }
 
 fn answer(req: &SessionCommandsReq) -> Result<SessionCommands, Said> {
-    let home = crate::history::listing::agent_home();
-    let record = crate::observe::query::locate::session_record(&home, &req.sid).map_err(|_| {
+    let home = crate::agents::local_homes();
+    let at = crate::observe::query::locate::session_at(&home, &req.sid).map_err(|_| {
         crate::wire::spec::fail(
             "no_such_session",
             copy_text("beSessionCommands.session.noRecord", &[]),
         )
     })?;
-    let kind = crate::agents::record_kind_of(&record).unwrap_or_default();
-    let Some(face) = crate::agents::asset_face(kind) else {
+    let registry = crate::agents::REGISTRY;
+    let (kind, face) = asset_face_of(registry, &at);
+    let record = at.file;
+    let Some(face) = face else {
         let (compact, clear) = one_shots(kind);
         return Ok(SessionCommands {
             commands: Vec::new(),
@@ -60,11 +62,12 @@ fn answer(req: &SessionCommandsReq) -> Result<SessionCommands, Said> {
             clear,
         });
     };
-    let project = crate::agents::project_dir_of(&record).map(PathBuf::from);
+    let project = crate::agents::project_dir_among(registry, &record).map(PathBuf::from);
     let root = config_root_of(
         super::launch_account_face::last_of(&req.sid).as_deref(),
         &super::launch_account_face::list_of(kind),
         crate::agents::home_of_kind(kind).as_deref(),
+        &cmd_wire::AgentKind::new(kind),
     );
     let mut out = match root {
         Some(root) => commands_of(&face, project.as_deref(), &root),
@@ -74,24 +77,29 @@ fn answer(req: &SessionCommandsReq) -> Result<SessionCommands, Said> {
     Ok(out)
 }
 
-/// 这条会话用哪个号的配置目录（同起会话「跟随」那一序）：上次用的号 → 这台默认号 → 账号 0（那一家自己的家，`zero`）。
-/// 号在库里却没有配置目录 ⇒ 往下一级退。
+/// 按 sid 找到的那一条（`at`）那一家与它在 `registry` 里的资产面（没申报 ⇒ `None`）。
+pub(crate) fn asset_face_of(
+    registry: &[crate::agents::Adapter],
+    at: &crate::agents::SessionAt,
+) -> (&'static str, Option<AssetFace>) {
+    (at.kind, crate::agents::asset_face_among(registry, at.kind))
+}
+
+/// 这条会话用哪个号的配置目录：照起会话「跟随」那一判（[`crate::control::launch_account::pick`]，只认 `agent` 那一家的号）——
+/// 上次用的号 → 这台默认号 → 账号 0（那一家自己的家，`zero`）。上次的号选不了 ⇒ 照没有上次的号再判一次
+/// （这里只是挑扫哪份配置、不起会话，不拒）。
 pub(crate) fn config_root_of(
     last: Option<&str>,
     list: &cmd_wire::accounts::AccountsList,
     zero: Option<&Path>,
+    agent: &cmd_wire::AgentKind,
 ) -> Option<PathBuf> {
-    let dir_of = |name: &str| {
-        list.accounts
-            .iter()
-            .find(|a| a.scanned.name == name)
-            .and_then(|a| a.scanned.config_dir.as_deref())
-            .filter(|d| !d.is_empty())
-            .map(PathBuf::from)
-    };
-    last.and_then(dir_of)
-        .or_else(|| list.meta.effective_default.as_deref().and_then(dir_of))
-        .or_else(|| zero.map(Path::to_path_buf))
+    use crate::control::launch_account::{pick, AccountAsk, Settled};
+    let follow = |last| pick(&AccountAsk::Follow, list, last, agent);
+    match follow(last).or_else(|_| follow(None)) {
+        Ok(Settled::Account(a)) if !a.config_dir.is_empty() => Some(PathBuf::from(a.config_dir)),
+        _ => zero.map(Path::to_path_buf),
+    }
 }
 
 /// 本体：内置 ＋ 那两处现扫的，写好字。

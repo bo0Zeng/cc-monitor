@@ -5,4 +5,8 @@ import type { HistoryRow } from "./HistoryRow";
 /**
  * 这一列的一项。
  */
-export type HistoryLine = { "kind": "group", group: HistoryGroup, open: boolean, } | { "kind": "row", row: HistoryRow, child: boolean, forks: number, forksOpen: boolean, orphan: boolean, };
+export type HistoryLine = { "kind": "group", group: HistoryGroup, open: boolean, } | { "kind": "row", row: HistoryRow, child: boolean, forks: number, forksOpen: boolean, orphan: boolean, 
+/**
+ * 「分叉 N」那颗的字（没有分叉 ⇒ 缺），界面照抄。
+ */
+forksText: string | null, };

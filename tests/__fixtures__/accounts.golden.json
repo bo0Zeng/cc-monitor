@@ -2,6 +2,7 @@
   "accounts-list": {
     "accounts": [
       {
+        "agent": "claude",
         "authKind": "subscription",
         "authReady": false,
         "badge": {
@@ -28,6 +29,7 @@
         "newSession": false
       },
       {
+        "agent": "claude",
         "authKind": "subscription",
         "authReady": true,
         "badge": {
@@ -55,6 +57,7 @@
         "newSession": true
       },
       {
+        "agent": "claude",
         "authKind": "api-key",
         "authReady": true,
         "badge": {

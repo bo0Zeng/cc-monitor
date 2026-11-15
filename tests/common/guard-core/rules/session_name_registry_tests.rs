@@ -10,7 +10,7 @@ const REGISTERED: &[(&str, &str, &str)] = &[
     //   `src/frontend/ui/fork-launch.ts`（`forkTmuxName` 的 `-fork-cc`，原 `producer-duplicate` 退役归 U11）随派生 ＋ 避让一起搬进后端。
     //   ⇒ 前端零产名点（起会话时那台自己铸）；后端那一份从「副本」翻成**唯一本体**。
     (
-        // 🔴 住址从 `shared/ccm` 换到这里：〔用@09-11 `K33`〕那个 bash 脚本删了，`derive_tmux_name` 搬进了后端本体。
+        // 产名的唯一本体在后端（`derive_tmux_name`）。
         "src/backend/control/ccm/plan.rs",
         "producer-target",
         "本体：`derive_tmux_name`（cwd 派生 `<项目名>-cc`，空 ⇒ `session-cc`）＋ `fork_tmux_base`（分叉 `<源名>-fork-cc`）。\
@@ -85,7 +85,7 @@ fn scan_files() -> Vec<PathBuf> {
     files.extend(rs);
     files.sort();
     files.dedup();
-    // 🔴 `shared/ccm` 删了 ⇒ 换成后端那份原生实现。
+    // 产名的本体在后端。
     //    上面的 Rust 人群只到壳与 `src/common/`，够不着 `src/backend/` ⇒ 仍按 extra 点名。
     for extra in [
         "src/backend/control/ccm/plan.rs",

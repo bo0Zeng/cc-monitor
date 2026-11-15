@@ -39,10 +39,12 @@ fn all_working(id: &str) -> Whose {
     let live = Some(Live {
         activity: Some(crate::agents::SessionActivity::Working),
         needs: None,
+        housed: None,
     });
     match id {
         MAIN => Whose::Session {
             sid: MAIN.into(),
+            title: "甲会话".into(),
             live,
         },
         SUB => Whose::Subagent {
@@ -59,6 +61,7 @@ fn all_ended(id: &str) -> Whose {
     match id {
         MAIN => Whose::Session {
             sid: MAIN.into(),
+            title: "甲会话".into(),
             live: None,
         },
         SUB => Whose::Subagent {
@@ -92,7 +95,6 @@ fn a_fully_signed_top_level_is_one_need_keyed_by_the_rev_it_got_there() {
     assert_eq!(top[0]["key"], "top:r7");
     assert_eq!(top[0]["block"], "project");
     assert_eq!(top[0]["cell"], "project");
-    assert_eq!(top[0]["acked"], false);
     // 那一次的 rev 没给（还不知道）⇒ 不出这一条，不拿空键凑。
     assert!(ofs(&sl, None).iter().all(|x| x["kind"] != "top"));
 }
@@ -193,24 +195,30 @@ fn an_owner_waiting_for_you_is_an_ask_need_at_the_cell_the_block_stands_on() {
 }
 
 #[test]
-fn acks_mark_needs_and_the_count_skips_acked_ones_and_asks() {
+fn acks_drop_needs_and_the_count_skips_acked_ones_and_asks() {
     let d = dump_top_signed("/w");
     let mut doc = made_with(&d, &crate::plan::fixture::who);
     doc.slices[0].needs = of_slice(&doc.slices[0], Some("r1"), &main_waits);
     // top · red · ask×2。
     assert_eq!(count(&doc), 2, "问人那两条由会话那一侧数");
     mark_acked(&mut doc, &|slice, key| slice == "alpha" && key == "top:r1");
-    let n = &doc.slices[0].needs;
-    assert!(n.iter().find(|x| x.kind == "top").unwrap().acked);
-    assert!(!n.iter().find(|x| x.kind == "red").unwrap().acked);
-    assert_eq!(count(&doc), 1);
-    // 问人那一种不收认可：键对上了也不标。
-    mark_acked(&mut doc, &|_, k| k.starts_with("ask:"));
-    assert!(doc.slices[0]
+    let kinds: Vec<&str> = doc.slices[0]
         .needs
         .iter()
-        .filter(|x| x.kind == "ask")
-        .all(|x| !x.acked));
+        .map(|x| x.kind.as_str())
+        .collect();
+    assert_eq!(kinds, ["red", "ask", "ask"], "认可过的那一条不出成品");
+    assert_eq!(count(&doc), 1);
+    // 问人那一种不收认可：键对上了也留着。
+    mark_acked(&mut doc, &|_, k| k.starts_with("ask:"));
+    assert_eq!(
+        doc.slices[0]
+            .needs
+            .iter()
+            .filter(|x| x.kind == "ask")
+            .count(),
+        2
+    );
 }
 
 #[test]
@@ -316,9 +324,8 @@ fn each_need_still_open_lands_on_its_cell_labelled_by_the_backend() {
     // 停了：红灯三条（第三条认可过）· project 停了（顶块的根不是图上的格）· A2 停了。
     let mut sl = slice_with(&d, &all_ended);
     sl.needs = of_slice(&sl, None, &nobody_waits);
-    for x in &mut sl.needs {
-        x.acked = x.key == "red:又一条@A2";
-    }
+    // 认可过的那一条已由 `mark_acked` 摘掉（同成品那一份）。
+    sl.needs.retain(|x| x.key != "red:又一条@A2");
     let got = open_cells(&sl);
     assert_eq!(
         got,
@@ -402,10 +409,10 @@ fn each_need_carries_its_written_title_lines_and_position() {
     let ask = sl.needs.iter().find(|x| x.kind == "ask").unwrap();
     assert_eq!(ask.title, t("plan.review.ask", &[]));
     assert!(ask.lines.is_empty());
-    // 位置：认可之后照先后写，认可过的不带；问人那一种照样带。
+    // 位置：认可之后留下的照先后写；问人那一种照样带。
     mark_acked(&mut doc, &|_, key| key == "top:r1");
-    let n = &doc.slices[0].needs;
-    let open: Vec<&PlanNeed> = n.iter().filter(|x| !x.acked).collect();
+    let open: Vec<&PlanNeed> = doc.slices[0].needs.iter().collect();
+    assert!(open.iter().all(|x| x.key != "top:r1"));
     for (i, x) in open.iter().enumerate() {
         assert_eq!(
             x.pos.as_deref(),
@@ -418,7 +425,6 @@ fn each_need_carries_its_written_title_lines_and_position() {
             )
         );
     }
-    assert_eq!(n.iter().find(|x| x.kind == "top").unwrap().pos, None);
     // 负责人的会话停了：agent 负责的那一块多一句「负责人是 agent · 主会话也已结束」。
     let mut d = dump("/w");
     d["repos"][0]["check"]["failures"] = json!([]);
@@ -435,4 +441,101 @@ fn each_need_carries_its_written_title_lines_and_position() {
         .find(|x| x.block.as_deref() == Some("project"))
         .unwrap();
     assert!(!main.lines.contains(&t("plan.review.endedSub", &[])));
+}
+
+/// 负责人停了那一条头一行：根格原因是「底下 d/m」⇒ 底下签了几格（照成品里子格的状态数）；等上一级 · 叶子没签 ⇒ 还没签。
+#[test]
+fn an_ended_need_says_how_many_are_signed_under_its_root() {
+    let t = |k: &str, a: &[(&str, &str)]| copy_core::copy_text(k, a);
+    let first = |d: &Value| {
+        let sl = slice_with(d, &all_ended);
+        of_slice(&sl, None, &nobody_waits)
+            .into_iter()
+            .find(|x| x.kind == "ended" && x.block.as_deref() == Some("A2"))
+            .unwrap()
+            .lines[0]
+            .clone()
+    };
+    let mut d = dump("/w");
+    d["repos"][0]["check"]["failures"] = json!([]);
+    // A2 在等上一级收下 ⇒ 不数底下。
+    assert_eq!(first(&d), t("plan.review.endedOpen", &[]));
+    // 交回那一条执行不了的原因不是「等上一级」⇒ 底下 1/1。
+    d["repos"][0]["pending_sets"][1]["blocked_code"] = json!("rule");
+    assert_eq!(
+        first(&d),
+        t("plan.review.endedWhat", &[("done", "1"), ("of", "1")])
+    );
+}
+
+/// ★ 负责人那一行只在问人 · 负责人停了两种上，后端写好（出口不再按种类挂、不再自己兜底）：
+/// 子 agent ⇒ 它的 `label`（「{主会话} 的 agent」）；会话本身没有 `label` ⇒ 会话 id 截短（同认不出那一句的截法）；顶层 · 不通过 ⇒ `null`。
+#[test]
+fn ask_and_ended_needs_carry_the_owner_line_and_the_others_do_not() {
+    let mut doc = made_with(&dump_top_signed("/w"), &all_working);
+    doc.slices[0].needs = of_slice(&doc.slices[0], Some("r1"), &main_waits);
+    let sl = &doc.slices[0];
+    for x in sl
+        .needs
+        .iter()
+        .filter(|x| x.kind == "top" || x.kind == "red")
+    {
+        assert_eq!(x.who, None, "{} 不带负责人那一行", x.kind);
+    }
+    let ask = sl
+        .needs
+        .iter()
+        .find(|x| x.kind == "ask")
+        .expect("问人那一条");
+    let owner = sl
+        .blocks
+        .iter()
+        .find(|b| Some(b.id.as_str()) == ask.block.as_deref())
+        .and_then(|b| b.owner.clone())
+        .expect("负责人");
+    assert_eq!(ask.who.as_deref(), Some(who_name(&owner).as_str()));
+    let mut d = dump("/w");
+    d["repos"][0]["check"]["failures"] = json!([]);
+    let sl = slice_with(&d, &all_ended);
+    let ended = of_slice(&sl, None, &nobody_waits);
+    let sub = ended
+        .iter()
+        .find(|x| x.block.as_deref() == Some("A2"))
+        .unwrap();
+    let sub_owner = sl
+        .blocks
+        .iter()
+        .find(|b| b.id == "A2")
+        .and_then(|b| b.owner.clone())
+        .unwrap();
+    assert_eq!(
+        sub.who,
+        Some(sub_owner.label),
+        "子 agent ⇒ 后端写的「… 的 agent」"
+    );
+    let main = ended
+        .iter()
+        .find(|x| x.block.as_deref() == Some("project"))
+        .unwrap();
+    assert_eq!(
+        main.who.as_deref(),
+        Some("甲会话"),
+        "会话本身 ⇒ 那条会话的标题（后端写好，不截 id）"
+    );
+}
+
+/// 负责人名字只照后端写好的 `label`：会话 ⇒ 标题 · 子 agent ⇒「… 的 agent」· 认不出 ⇒ 认不出那一句；不另兜底。
+#[test]
+fn the_owner_name_is_only_the_label() {
+    let sl = slice_with(&dump("/w"), &all_ended);
+    let owner = |id: &str| {
+        sl.blocks
+            .iter()
+            .find(|b| b.id == id)
+            .and_then(|b| b.owner.clone())
+            .unwrap()
+    };
+    assert_eq!(who_name(&owner("project")), "甲会话");
+    let sub = owner("A2");
+    assert_eq!(who_name(&sub), sub.label);
 }

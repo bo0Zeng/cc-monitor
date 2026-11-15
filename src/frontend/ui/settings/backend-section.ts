@@ -8,7 +8,7 @@
  * 不知道那台机器上是什么就不替它说，更不拿本地缺省值画一个看起来能用的勾。
  */
 
-import { commands, type StopAnswer } from "../ipc/commands";
+import { commands } from "../ipc/commands";
 import { budgetWithin, callTyped } from "../ipc/chan-caller";
 import { readMachineNames } from "../machine-feed";
 import type { ExitPolicy } from "../generated/ExitPolicy";
@@ -26,9 +26,10 @@ import { emit } from "@tauri-apps/api/event";
 import { RESYNC_DONE_EVENT } from "./events";
 import { makeInfoIcon } from "./info-icon";
 import { copyText } from "../copy-table";
-import { confirmDialog, type ConfirmFn } from "../kit/dialog";
+import { confirmDialog, type ConfirmFn, type DialogRow } from "../kit/dialog";
+import type { InterruptAct } from "../generated/InterruptAct";
 import { machineName } from "../control-said";
-import { askInterrupts, interruptRows, type Interrupts } from "./interrupts";
+import { askInterruptRows } from "./interrupts";
 import { button } from "../kit/button";
 import { toggleSwitch } from "../kit/switch";
 import { readRecordDrift } from "../record-reads";
@@ -36,18 +37,6 @@ import { ccRow } from "./cc-row";
 import type { MachineState } from "./machine-state";
 import { sayFailure, sayWithDetail } from "../kit/detail";
 
-/** 「停」的结局说一句（三个词各一句，穷举 —— 多一个词 tsc 就红）；机器页那一行照它说。 */
-export function stopSaid(a: StopAnswer): string {
-  const pid = a.pid === null ? "" : String(a.pid);
-  switch (a.stopped) {
-    case "graceful":
-      return copyText("backend.stopSaid.graceful", { pid });
-    case "killed":
-      return copyText("backend.stopSaid.killed", { pid });
-    case "not_running":
-      return copyText("backend.stopSaid.notRunning");
-  }
-}
 
 /** 后端 `exit-policy-read` / `exit-policy-set` 回的那一份里，本区要用的三格（`said` 是成品那一句）。 */
 interface ExitAnswer {
@@ -141,14 +130,14 @@ export class BackendSection {
 
   /** 停之前那一问 · 数会话那一问（注入缝：判据换成同步答 / 假数据）。 */
   private readonly confirm: ConfirmFn;
-  private readonly interrupts: (origin: Machine) => Promise<Interrupts | null>;
+  private readonly interrupts: (origin: Machine, act: InterruptAct) => Promise<DialogRow[]>;
 
   constructor(
     opts: {
       headless?: boolean;
       hosted?: boolean;
       confirm?: ConfirmFn;
-      interrupts?: (origin: Machine) => Promise<Interrupts | null>;
+      interrupts?: (origin: Machine, act: InterruptAct) => Promise<DialogRow[]>;
       /** 状态格每写一次（「这台上的 cc-monitor」折叠头照摆同一句，不另拼）。 */
       onSummary?: (origin: string, text: string) => void;
       /** 那台手上最新那一份成品（各台含本机由本机后端推，`backend_status` 不带）。 */
@@ -159,7 +148,7 @@ export class BackendSection {
     this.stateOf = opts.stateOf;
     this.hosted = opts.hosted ?? false;
     this.confirm = opts.confirm ?? confirmDialog;
-    this.interrupts = opts.interrupts ?? askInterrupts;
+    this.interrupts = opts.interrupts ?? askInterruptRows;
     this.element = document.createElement("div");
     this.element.className = "settings-section backend-section";
     if (!opts.headless) {
@@ -410,7 +399,7 @@ export class BackendSection {
     sp.className = "machine-head-sp";
     ops.append(log, realign, sp);
     if (extra.trailing) ops.appendChild(extra.trailing);
-    // 上一次「停」的结局（`stopSaid`）；没停过就空着。
+    // 上一次「停」的结局（壳写好的 `said`）；没停过就空着。
     const said = document.createElement("div");
     said.className = "settings-hint";
     said.dataset.stopSaid = "";
@@ -498,7 +487,7 @@ export class BackendSection {
 
   /**
    * 起 / 停 / 重启一台：两条命令都是发出去就返回 ⇒ 操作期间禁用本行按钮、轮询到状态落定（或超时）再放开；超时不是失败。
-   * 停：那台上一次性的 `--resident-stop` 先 SIGTERM、宽限期内等它收尾、还在才强杀，等完才返回；结局在这一行说一句（`stopSaid`）。
+   * 停：那台上一次性的 `--resident-stop` 先 SIGTERM、宽限期内等它收尾、还在才强杀，等完才返回；结局在这一行照抄壳写好的那一句（`said`）。
    */
   private async act(origin: string, what: "start" | "stop" | "restart"): Promise<void> {
     const cells = this.cellHosts.get(origin);
@@ -507,7 +496,7 @@ export class BackendSection {
     // 停 / 重启之前：问一次会打断什么（经它的会话请求 · 开着看的会话 · 端口转发）；有才弹框。
     if (what !== "start") {
       const restart = what === "restart";
-      const rows = interruptRows(await this.interrupts(origin), machineName(origin), restart ? "restart" : "stop");
+      const rows = await this.interrupts(origin, restart ? "restart" : "stop");
       if (
         rows.length > 0 &&
         !(await this.confirm({
@@ -528,7 +517,7 @@ export class BackendSection {
     try {
       if (what !== "start") {
         const end = await commands.backend_stop({ origin });
-        if (said && what === "stop") said.textContent = stopSaid(end);
+        if (said && what === "stop") said.textContent = end.said;
         console.info(`[P2s] ${origin} stop: ${end.stopped} ${end.pid ?? ""}`);
       }
       if (what !== "stop") await commands.backend_start({ origin });
@@ -561,14 +550,12 @@ export class BackendSection {
     }
   }
 
-  /** 那台后端记下的认不出的会话流：几种；读不到 ⇒ 说读不到。 */
+  /** 那台后端记下的认不出的会话流：照抄那台写好的那一句；读不到 ⇒ 说读不到。 */
   private async paintDrift(origin: string): Promise<void> {
     const el = this.cellHosts.get(origin)?.querySelector<HTMLElement>(".backend-row-drift");
     if (!el) return;
     try {
-      const records = await readRecordDrift(origin);
-      const n = records.reduce((k, f) => k + f.entries.length, 0);
-      el.textContent = n > 0 ? copyText("backend.cc.driftSome", { n }) : copyText("hostKey.compare.none");
+      el.textContent = await readRecordDrift(origin);
     } catch {
       el.textContent = copyText("acct.val.unreadable");
     }

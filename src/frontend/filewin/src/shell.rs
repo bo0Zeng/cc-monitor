@@ -35,12 +35,9 @@
 //!   🔴 **写操作一条新路都没长**：键盘与菜单做的每一件，都落回行上那几颗按钮已经在走的
 //!   那几个 `begin_*`（以及删除那一摞的 `start_writes`）⇒ 一次问完 · 只经通道说 `call`
 //!   这几道闸一道都没绕开。
-//!   ⚠ **拖放从这一条里划出去了**：第二刀做了「拖入本机文件 → 上传到当前远端目录」
-//!   那一半（见 [`FileWindow::start_drop`] 与 [`super::transfer`]）；
-//!   往外拖（下载）做了（[`super::download`]）；窗口之间互拖没做。
+//!   ⚠ **拖放从这一条里划出去了**：拖入本机文件 ⇒ 上传到当前目录（[`FileWindow::start_drop`]），
+//!   下载（[`super::download`]）都是一组寻址本机的 `transfer-copy`（[`super::transfer`]）；窗口之间互拖没做。
 //! - （大文件编辑改流式）**仍然没做**。
-//! - （拖入多文件先一次问完再并行）做了：整组一条开单（同名由后端在落点那台探、冲突框问一次），
-//!   开了单的并行传，住 [`super::transfer::run_drop`]；判据钉的是开单一次与并行度。
 
 use comms_inward::chan::wire::Budget;
 use copy_core::copy_text;
@@ -55,7 +52,6 @@ use super::grep::{self, GrepBoard, GrepTally};
 use super::rows::{show_hit_rows, HitTally, RenderTally};
 use super::select::{self, Action, Intent, Item, ItemFace, Selection, TypeAhead};
 use super::source::{Line, Listed, Sort, Source};
-use super::transfer::{DropBoard, Pending};
 use super::writeops::{is_writable, PromptKind, WriteBoard, WriteOp, WritePrompt};
 
 mod cross;
@@ -142,8 +138,6 @@ pub struct FileWindow {
     pub line: Option<Line>,
     /// 这台机器的能力事实（接上通道时问一次，`chan::wire::Offer`）：做不到的那几件在菜单上置灰并说为什么。
     pub offer: std::sync::Arc<std::sync::Mutex<Option<comms_inward::chan::wire::Offer>>>,
-    /// 拖入的样板：这一窗记着的两样（那台的 `$HOME` · 改走后端链路那一句）。每一摞从它 `fresh_like` 一块新看板。
-    pub board: DropBoard,
     /// 🔴 **这个标签页起的、还没收场的那几趟**（「进度」表里那几行的号）。
     ///
     /// 每一趟的状态只住它那块看板里、结局只在 [`super::progress::Job::landing`] 判一次；这里只记号，
@@ -214,10 +208,8 @@ pub struct FileWindow {
     seen_write_rounds: u64,
     /// 「存到哪儿 / 盖掉它吗」那两问。`None` = 没在问。
     /// **UI 线程自己的**（同 [`Self::write_prompt`] 的理由：它是一个正在被编辑的草稿）。
-    /// 系统存盘框开着时要下的那一项：`(远端整条路径, 名字)`（选完落点就起下载；取消 ⇒ 什么都不做）。
-    pull_want: Option<(String, String)>,
-    /// 那一问摆着的那一行，若整条路径不是 UTF-8：`(整条路径的字节, 显示名, 名字的字节)`。
-    pull_raw: Option<(Vec<u8>, String, Vec<u8>)>,
+    /// 系统存盘框开着时要下的那一项：`(那台上整条路径的原始字节, 显示名)`（选完落点就起下载；取消 ⇒ 什么都不做）。
+    pull_want: Option<(Vec<u8>, String)>,
     /// 🔴编辑那一趟的共享落点（读到货 · 存结局）。
     pub edits: super::editor::EditBoard,
     /// 打开着的那一份文本。`None` = 没在编辑。**UI 线程自己的**。
@@ -280,6 +272,15 @@ pub struct FileWindow {
     key_scroll: Option<usize>,
     /// 摆着的那个右键菜单（`None` = 没摆）。
     menu: Option<MenuAt>,
+    /// 右键了、成品还没回来：菜单摆在哪 · 第几次开（成品到了 [`Self::settle_menu`] 照它摆）。
+    menu_wait: Option<(egui::Pos2, u64)>,
+    /// 此刻这份选中的菜单成品（本机后端 `files-menu` 答的；[`Self::ask_menu`] 问、回来的写进这一格）。
+    pub(crate) menu_now: Arc<Mutex<MenuNow>>,
+    /// 上一次照什么问的那几样（选中 · 第几趟列目录 · 几行 · 那台的样子 · 有没有计划反查）：没变就不重拼入参（拼一次要扫一遍整摞行）。
+    menu_seen: Option<MenuSeen>,
+    /// 成品还没回来时按下的那一件 ＋ 当时问出去的那一份入参（只记最后一件）：成品到了照它做或说为什么；
+    /// 回来之前又问了另一份（选中变了）⇒ 作废（[`Self::settle_key`]）。
+    key_wait: Option<(Action, cmd_wire::files::FilesMenuReq)>,
     /// 键盘 / 菜单那一下**做不了**时说的那句话（`None` = 没话说）。
     ///
     /// ⚠ 刻意不写进 `listing.error`：那一格只在下一趟列目录时才清，
@@ -342,25 +343,90 @@ pub struct EditWant {
 
 /// 一个摆着的右键菜单：**在哪儿 · 列哪几项（分几组）· 对几项说话**。
 ///
-/// 🔴 那几项是**开菜单那一刻**按菜单那张表（[`select::menu_groups`]）算好的快照 ——
-/// 每帧重算要扫一遍整摞行找选中（64 万行那一档每帧一趟 O(n)）。
-/// 快照不会过时：菜单摆着的时候键盘不接（[`FileWindow::apply_keys`] 的闸），
-/// 点别处菜单先关；而点菜单上那一项时 [`FileWindow::perform`] **再问一次**那张表。
+/// 🔴 那几项照本机后端答的那一份成品（`files-menu` 的 [`DeskMenu::groups`]）抄：哪几组 · 每项的字 · 灰着说什么都是后端写的，
+/// 窗口只筛掉单栏时的「复制到另一栏」、配图标与快捷键。成品回来之前不摆（[`FileWindow::settle_menu`]）；
+/// 与 cc-monitor 断开（问不到）⇒ 只摆断开那一句。点菜单上那一项时 [`FileWindow::perform`] 再照此刻那一份成品判。
 #[derive(Clone, Debug, PartialEq)]
 pub struct MenuAt {
     pub at: egui::Pos2,
-    /// 表里这一种选中的那几组；每一项带着「这一份做不了」那一句（[`select::blocked`]；做得了 ⇒ `None`）。
-    pub groups: Vec<Vec<(Item, Option<String>)>>,
-    /// 这一刻真做得了的那几件（[`select::actions_for`]；判据与键盘那一侧对账用）。
-    pub actions: Vec<Action>,
-    pub n: usize,
-    /// 单选的那一份归某一格 ⇒ 菜单多一项「在计划里看 · {标题}」（那一项的字；不归 ⇒ `None`）。
-    pub plan: Option<String>,
+    /// 成品里那几组（单栏时去掉「复制到另一栏」）。
+    pub groups: Vec<Vec<cmd_wire::files::DeskEntry>>,
+    /// 一项都没有时摆的那一句（断开 ⇒ 断开那一句；什么都做不了 ⇒ [`MENU_EMPTY`]）。
+    pub note: Option<String>,
     /// 🔴 第几次开菜单。egui 的弹层按「上一帧有没有这个 id 的响应」判「刚打开」：
     ///   摆着一个菜单时在另一行上再右键一下，同一个 id 会被当成「开着时有人点了别处」
     ///   当场关掉 ⇒ 右键第二下只关不开。每次开菜单换一个 id 就没有这一形。
     pub serial: u64,
 }
+
+/// 此刻这份选中的菜单成品：问出去的那一份入参 · 回来的那一份（照哪一份入参答的 ＋ 成品）。
+#[derive(Debug, Default)]
+pub struct MenuNow {
+    asked: Option<cmd_wire::files::FilesMenuReq>,
+    got: Option<(cmd_wire::files::FilesMenuReq, cmd_wire::files::DeskMenu)>,
+    /// 问没问成：照哪一份入参问的 ＋ 那一趟为什么没成（本机后端写好的那一句）。
+    failed: Option<(cmd_wire::files::FilesMenuReq, String)>,
+}
+
+impl MenuNow {
+    /// 回来的那一份正是照最后问出去的那一份答的 ⇒ 它；还没回来 / 回来的是旧的 ⇒ `None`。
+    pub fn current(&self) -> Option<&cmd_wire::files::DeskMenu> {
+        match (&self.asked, &self.got) {
+            (Some(a), Some((g, m))) if a == g => Some(m),
+            _ => None,
+        }
+    }
+
+    /// 最后问出去的那一份没问成 ⇒ 为什么（菜单上摆这一句、按键说这一句，不干等）。
+    pub fn failure(&self) -> Option<&str> {
+        match (&self.asked, &self.failed) {
+            (Some(a), Some((f, why))) if a == f => Some(why),
+            _ => None,
+        }
+    }
+
+    /// 最近回来的那一份（可能是上一份选中的）：命令栏那几颗的字在新的一份回来之前照它写，位置不跳。
+    pub fn latest(&self) -> Option<&cmd_wire::files::DeskMenu> {
+        self.got.as_ref().map(|(_, m)| m)
+    }
+
+    /// 照 `req` 问的那一趟回来了：成品 ⇒ 记进 `got`，没成 ⇒ 记进 `failed`。
+    /// 前后脚问的几趟谁先写回不定：照最后问出去那一份答的已经在了 ⇒ 晚到的旧的那一趟丢掉，不盖它；
+    /// 同一份入参一趟成、一趟没成 ⇒ 成品算数（成品到了清掉没成那一句，有成品时没成的那一趟丢掉）。
+    pub(crate) fn land(
+        &mut self,
+        req: cmd_wire::files::FilesMenuReq,
+        got: Result<cmd_wire::files::DeskMenu, String>,
+    ) {
+        if self.current().is_some() {
+            return;
+        }
+        match got {
+            Ok(m) => {
+                if self.asked.as_ref() == Some(&req) {
+                    self.failed = None;
+                }
+                self.got = Some((req, m));
+            }
+            Err(why) if self.failure().is_none() => self.failed = Some((req, why)),
+            Err(_) => {}
+        }
+    }
+}
+
+/// 照什么问的那几样（[`FileWindow::ask_menu`] 比它决定要不要重拼入参）。
+#[derive(Clone, Debug, PartialEq)]
+struct MenuSeen {
+    selection: Selection,
+    epoch: u64,
+    landed: u64,
+    rows: usize,
+    here: cmd_wire::files::Here,
+    plan: bool,
+}
+
+/// 问一份菜单成品的时限（本机往返）。
+const MENU_WITHIN: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// 菜单上一项都没有时摆的那一句（有损名那一档：什么都做不了，但要说出来）。
 pub static MENU_EMPTY: std::sync::LazyLock<String> =
@@ -381,11 +447,14 @@ impl FileWindow {
             });
         }
         self.line = Some(line);
+        // 换了一条线 ⇒ 菜单成品照这条线重问（没接上时落的是「没接上」那一句）。
+        *self.menu_now.lock().unwrap() = MenuNow::default();
+        self.menu_seen = None;
     }
 
-    /// 这一件此刻做不到 ⇒ 为什么（这台不支持 · 离线 · 只读；菜单 · 命令栏悬停 · 键盘按了的回话同一句）：判法在 `pick-core`，手机同一份。
-    pub fn refused_here(&self, a: Action) -> Option<String> {
-        let here = pick_core::Here {
+    /// 此刻那一台的样子：断在哪一段 · 那台说做不到的那几条命令（接上时问到的能力事实）。
+    fn here(&self) -> cmd_wire::files::Here {
+        cmd_wire::files::Here {
             offline: self.gate.cut(),
             unavailable: self
                 .offer
@@ -394,17 +463,175 @@ impl FileWindow {
                 .as_ref()
                 .map(|o| o.unavailable_ops())
                 .unwrap_or_default(),
+        }
+    }
+
+    /// 🔴 **问本机后端要此刻这份选中的菜单成品**（`files-menu`，寻址本机）：选中 · 列出来的那一屏 · 那台的样子 · 计划归属
+    /// 任一变了 ⇒ 照此刻拼一份入参（选中那几项的原行 ＋ 那台的样子 ＋ 归的那一格的标题）；跟上一次问出去的一样 ⇒ 不再问。
+    /// 回来的写进 [`Self::menu_now`]，只在仍是最后问的那一份时算数（[`MenuNow::current`]）。没通道 · 没运行时 ⇒ 不问。
+    pub fn ask_menu(&mut self, ctx: Option<egui::Context>) {
+        let seen = MenuSeen {
+            selection: self.selection.clone(),
+            epoch: self.listing.epoch.load(Ordering::SeqCst),
+            landed: self.listing.landed.load(Ordering::SeqCst),
+            rows: self.listing.rows.lock().unwrap().len(),
+            here: self.here(),
+            plan: self.listing.plan.lock().unwrap().is_some(),
         };
-        pick_core::refused_here(a, &here)
+        if self.menu_seen.as_ref() == Some(&seen) {
+            return;
+        }
+        let req = cmd_wire::files::FilesMenuReq {
+            picked: self.picked_rows().iter().map(Listed::ls_row).collect(),
+            here: seen.here.clone(),
+            plan: self.picked_owner().map(|(_, o)| o.label),
+        };
+        self.menu_seen = Some(seen);
+        {
+            let mut now = self.menu_now.lock().unwrap();
+            if now.asked.as_ref() == Some(&req) {
+                return;
+            }
+            now.asked = Some(req.clone());
+            now.failed = None;
+        }
+        let (Some(h), Some(line)) = (&self.rt, &self.line) else {
+            // 问不出去 ⇒ 这一份就是没问成：说没接上那一句，键盘 · 菜单不干等。
+            self.menu_now.lock().unwrap().failed = Some((req, NO_LINE.to_string()));
+            return;
+        };
+        let (line, slot) = (line.clone(), self.menu_now.clone());
+        h.spawn(async move {
+            let origin = super::source::Origin::local();
+            let got = super::source::ask_typed(&line, &origin, &req, MENU_WITHIN).await;
+            slot.lock().unwrap().land(req, got.map_err(|f| f.said));
+            if let Some(c) = ctx {
+                c.request_repaint();
+            }
+        });
+    }
+
+    /// 此刻这份选中的菜单成品（还没回来 ⇒ `None`）。
+    pub fn menu_product(&self) -> Option<cmd_wire::files::DeskMenu> {
+        self.menu_now.lock().unwrap().current().cloned()
+    }
+
+    /// 选中的那一件此刻做不了 ⇒ 为什么，照成品 `acts` 里那一行读：与 cc-monitor 断开 ⇒ 断开那一句（问不到）；
+    /// 那一份没问成 ⇒ 没成的那一句；成品还没回来 ⇒ `Err(())`（命令栏灰着说「正在查询」，键盘记下这一键）。
+    pub fn act_why(&self, a: Action) -> Result<Option<String>, ()> {
+        if self.gate.cut() == Some(cmd_wire::files::Cut::Monitor) {
+            return Ok(self.gate.write_refused());
+        }
+        let now = self.menu_now.lock().unwrap();
+        if let Some(why) = now.failure() {
+            return Ok(Some(why.to_string()));
+        }
+        let m = now.current().ok_or(())?;
+        Ok(m.acts
+            .iter()
+            .find(|s| s.action == a)
+            .and_then(|s| s.why.clone()))
+    }
+
+    /// 选中的那一件的字（成品 `acts` 里那一行；新的一份还没回来 ⇒ 最近那一份的，一份都没有 ⇒ 空）。
+    pub fn act_text(&self, a: Action) -> String {
+        let now = self.menu_now.lock().unwrap();
+        now.current()
+            .or(now.latest())
+            .and_then(|m| m.acts.iter().find(|s| s.action == a))
+            .map(|s| s.text.clone())
+            .unwrap_or_default()
+    }
+
+    /// 成品还没回来时按下的那一键：问出去的那一份已换（选中变了）⇒ 作废；那一份回来了（或没问成 · 断开）⇒ 照它做或说为什么。
+    pub(super) fn settle_key(&mut self, ctx: Option<egui::Context>) {
+        let Some((a, req)) = self.key_wait.take() else {
+            return;
+        };
+        if self.menu_now.lock().unwrap().asked.as_ref() != Some(&req) {
+            return;
+        }
+        if self.act_why(a).is_err() {
+            self.key_wait = Some((a, req));
+            return;
+        }
+        self.perform(a, ctx);
+    }
+
+    /// 判据：没接通道的窗口照此刻的入参当场拿一份成品（`answer` ＝ 合成后端那一份，调本机后端的真函数）。
+    #[cfg(test)]
+    pub(crate) fn seed_menu(
+        &mut self,
+        answer: impl FnOnce(&cmd_wire::files::FilesMenuReq) -> cmd_wire::files::DeskMenu,
+    ) {
+        self.ask_menu(None);
+        let mut now = self.menu_now.lock().unwrap();
+        if let Some(req) = now.asked.clone() {
+            let m = answer(&req);
+            now.got = Some((req, m));
+            now.failed = None;
+        }
+    }
+
+    /// 右键了在等成品 ⇒ 成品到了照它摆菜单（单栏去掉「复制到另一栏」）；与 cc-monitor 断开（问不到）⇒ 只摆断开那一句。
+    /// 每一帧先问一遍（[`Self::ask_menu`]）再收。
+    pub fn settle_menu(&mut self, ctx: Option<egui::Context>) {
+        self.ask_menu(ctx.clone());
+        self.settle_key(ctx);
+        let Some((at, serial)) = self.menu_wait else {
+            return;
+        };
+        if self.gate.cut() == Some(cmd_wire::files::Cut::Monitor) {
+            self.menu_wait = None;
+            self.menu = Some(MenuAt {
+                at,
+                groups: Vec::new(),
+                note: self.gate.write_refused(),
+                serial,
+            });
+            return;
+        }
+        let failed = self.menu_now.lock().unwrap().failure().map(str::to_string);
+        if let Some(why) = failed {
+            self.menu_wait = None;
+            self.menu = Some(MenuAt {
+                at,
+                groups: Vec::new(),
+                note: Some(why),
+                serial,
+            });
+            return;
+        }
+        let Some(m) = self.menu_product() else {
+            return;
+        };
+        let dual = self.dual;
+        let groups: Vec<Vec<cmd_wire::files::DeskEntry>> = m
+            .groups
+            .into_iter()
+            .map(|g| {
+                g.into_iter()
+                    .filter(|e| dual || e.item != Item::Act(Action::Across))
+                    .collect::<Vec<_>>()
+            })
+            .filter(|g| !g.is_empty())
+            .collect();
+        self.menu_wait = None;
+        self.menu = Some(MenuAt {
+            at,
+            note: groups.is_empty().then(|| MENU_EMPTY.to_string()),
+            groups,
+            serial,
+        });
     }
 
     /// 断线时命令栏那几颗哪颗做不了：要碰那台机器的（新建 · 上传 · 终端 · 复制到另一栏）⇒ 「离线 · 只读」；
-    /// 只改这一扇窗怎么看的（左栏 · 显示隐藏文件 · 双栏 · 预览）照常。选中项上的那几件问 [`Self::refused_here`]。
+    /// 只改这一扇窗怎么看的（左栏 · 显示隐藏文件 · 双栏 · 预览）照常。选中项上的那几件照菜单成品（[`Self::command_blocked`]）。
     pub fn offline_cmd(&self, c: super::chrome::Cmd) -> Option<String> {
         use super::chrome::Cmd;
         let needs_machine = match c {
             Cmd::Sidebar | Cmd::Hidden | Cmd::Split | Cmd::Preview => false,
-            Cmd::Act(a) => return self.refused_here(a),
+            Cmd::Act(a) => return self.command_blocked(a),
             Cmd::Mkdir | Cmd::NewFile | Cmd::Upload | Cmd::Term | Cmd::Across => true,
         };
         needs_machine.then(|| self.gate.write_refused()).flatten()
@@ -436,7 +663,6 @@ impl FileWindow {
             rt,
             line: None,
             offer: Default::default(),
-            board: DropBoard::default(),
             trips: Vec::new(),
             edit_raw: None,
             picker: super::picker::native(),
@@ -468,7 +694,6 @@ impl FileWindow {
             inline_failed_text: None,
             seen_write_rounds: 0,
             pull_want: None,
-            pull_raw: None,
             edits: super::editor::EditBoard::default(),
             editing: None,
             asking_discard: false,
@@ -495,6 +720,10 @@ impl FileWindow {
             type_ahead: TypeAhead::default(),
             key_scroll: None,
             menu: None,
+            menu_wait: None,
+            menu_now: Default::default(),
+            menu_seen: None,
+            key_wait: None,
             key_notice: None,
             shelf: None,
             focused: true,
@@ -539,7 +768,7 @@ impl FileWindow {
             Some(h) => {
                 // 🔴有运行时但没连上通道 ⇒ 出声（`D11`：不退回 SFTP）。
                 let Some(line) = self.line.clone() else {
-                    store_if_current(&l, mine, Err(NO_LINE.to_string().into()));
+                    store_listed_if_current(&l, mine, Err(NO_LINE.to_string().into()));
                     return;
                 };
                 let origin = self.source.origin();
@@ -555,13 +784,8 @@ impl FileWindow {
                         held,
                     )
                     .await;
-                    // 打不开（后端说是哪一种）⇒ 记下那一种，列表顶上画那一条 ＋ 出路。
-                    let fail = r.as_ref().err().and_then(|f| {
-                        super::source::OpenFail::of_code(&f.code).map(|k| (k, f.said.clone()))
-                    });
-                    if store_listed_if_current(&l, mine, r) {
-                        *l.open_fail.lock().unwrap() = fail;
-                    }
+                    // 打不开那一句由落地那一处在判号那把锁里记（`store_listed_if_current`）。
+                    store_listed_if_current(&l, mine, r);
                 });
                 self.reload_plan(h, mine);
             }
@@ -570,8 +794,9 @@ impl FileWindow {
             // 🔴 窗口只有远端一侧（`source.rs` 头注「只有远端一侧」那一节）⇒ 只有「出声」这一种结局。
             // ⚠ **不许**把它改回「静默交一个空列表」：那与「这个目录真的是空的」
             //    在屏幕上分不开，而那正是本仓的头号病形。
+            // 问不成的三支（没通道 · 没运行时 · 那台拒了）同一个落点：手上那一份连同头上各格一起作废。
             None => {
-                store_if_current(
+                store_listed_if_current(
                     &l,
                     mine,
                     Err(copy_text("rsFilewinShell.reload.noRuntime", &[]).into()),
@@ -583,6 +808,17 @@ impl FileWindow {
     /// 换到 `path` 并重列。**在飞的那几趟从此全部作废**（见 [`Listing::epoch`]）。
     pub fn navigate_to(&mut self, path: String) {
         self.navigate_to_at(super::source::RemotePath::plain(&path));
+    }
+
+    /// 列成了 ⇒ 当前目录换成那台写好的那一级（回包面包屑最后一段：手输的 `~/x` · `/a//b/` 落成绝对、切好的形）；不记历史、不重列。
+    /// 有损名那一级（`cwd_raw` 在）不换：那一串本来就寻址不到。
+    pub(crate) fn adopt_landed_dir(&mut self) {
+        let landed = self.listing.landed_dir.lock().unwrap().take();
+        if let Some(d) = landed {
+            if self.cwd_raw.is_none() && d != self.cwd {
+                self.cwd = d;
+            }
+        }
     }
 
     /// 〔有损名全寻址〕当前目录（显示串 ＋ 可能有的字节）。
@@ -664,9 +900,8 @@ impl FileWindow {
         true
     }
 
-    /// 上一级。已经在顶上就什么都不做（[`parent_dir`] 到顶回原值）。
+    /// 上一级（按字节切，`WirePath::parent`）。已经在顶上就什么都不做（根的上一级是根）。
     pub fn navigate_up(&mut self) {
-        // 按字节切（合法 UTF-8 时与 `parent_dir` 逐字节同）。
         let up = self.cwd_path().parent();
         self.navigate_to_at(up);
     }

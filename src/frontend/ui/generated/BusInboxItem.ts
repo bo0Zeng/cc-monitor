@@ -10,6 +10,10 @@ export type BusInboxItem = {
  */
 act_said: string, 
 /**
+ * 收件箱里那一行给人看的字（时刻 · 发件人 · 动作词 · 标题 · 正文；缺的那格写「—」），界面照抄。
+ */
+line: string, 
+/**
  * 消息 id（`re` · `msg:` 引的就是它）。
  */
 id: string, 

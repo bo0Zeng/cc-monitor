@@ -1739,7 +1739,7 @@ def walk():
             if not wait(t("link.machine.offline", machine=MACHINE), 60):
                 raise Step.Fail("断了网，文件页 60 秒没顶出那台离线那一条")
             pick_act(ro, t("rsFilewinWriteops.label.delete"))
-            said = t("acctPage.offline.hover")
+            said = t("link.machine.readOnly")
             if not wait(said, 10):
                 raise Step.Fail(f"断着点删除，底部没说「{said}」")
             shot("8c-只读那一句")

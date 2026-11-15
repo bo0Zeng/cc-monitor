@@ -812,18 +812,26 @@ impl Workspace {
             self.notice = Some(copy_text("rsFilewinWorkspace.copyToOther.needSplit", &[]).into());
             return false;
         }
-        let from = self.pane_on(self.focus);
-        let rows = from.picked_rows();
-        if rows.is_empty() {
+        if self.pane_on(self.focus).picked_rows().is_empty() {
             self.notice = Some(copy_text("rsFilewinSelect.refusal.none", &[]));
             return false;
         }
-        if let Some(r) = rows.iter().find(|r| !r.pick().copyable()) {
-            self.notice = Some(copy_text(
-                "rsFilewinWorkspace.copyToOther.unaddressable",
-                &[("name", &r.name.to_string())],
-            ));
-            return false;
+        // 照此刻这份选中问（选中刚变、还没跑过一帧时手上那一份是上一份选中的）。
+        let focus = self.focus;
+        self.pane_on_mut(focus).ask_menu(ctx.clone());
+        let from = self.pane_on(self.focus);
+        let rows = from.picked_rows();
+        // 这一摞能不能复制到另一栏：照那一栏此刻这份选中的成品（`files-menu` 的 `acts` 里「复制到另一栏」那一行）。
+        match from.act_why(super::select::Action::Across) {
+            Ok(None) => {}
+            Ok(Some(why)) => {
+                self.notice = Some(why);
+                return false;
+            }
+            Err(()) => {
+                self.notice = Some(copy_text("rsFilewinSelect.menu.asking", &[]));
+                return false;
+            }
         }
         let other = 1 - self.focus;
         let dest_path = self.pane_on(other).cwd_path();
@@ -1221,7 +1229,7 @@ impl Workspace {
         true
     }
 
-    /// 「进度」表上按下的那一颗：停 ⇒ 拨那一趟的撤单；重试 / 接着传 ⇒ 在焦点那一栏起一趟新的（同一台机器、同一条线；下载那一趟顶替按下的那一行）。
+    /// 「进度」表上按下的那一颗：停 ⇒ 拨那一趟的撤单；重试 ⇒ 没成的那几项另起一组（看着同一台的那一栏）。
     pub fn apply_progress_act(
         &mut self,
         a: super::progress::Act,
@@ -1231,18 +1239,6 @@ impl Workspace {
         let f = self.focus;
         match a {
             Act::Stop(id) => self.progress.stop(id),
-            Act::RetryUpload(items) | Act::Resume(items) => {
-                self.pane_on_mut(f).start_drop_items(items, ctx)
-            }
-            Act::RetryDownload { row, src, dest } => {
-                match self.pane_on_mut(f).start_pull(&src, &dest, false, ctx) {
-                    Some(new) => {
-                        self.progress.supersede(row, new);
-                        true
-                    }
-                    None => false,
-                }
-            }
             // 另起的那一组寻址同一台：落在看着那台的那一栏（焦点那一栏优先）；那台已经没有标签页开着 ⇒ 做不了。
             Act::RetryBatch {
                 plan,

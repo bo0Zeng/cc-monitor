@@ -190,13 +190,6 @@ pub(crate) const LEDGER: &[(&str, &str, Side, Own, &str)] = &[
         "本机 monitor 配置",
     ),
     (
-        "get_data_paths",
-        "app.data-paths",
-        Side::Both,
-        Own::Log,
-        "设置页「数据」区列 monitor 自己的持久路径",
-    ),
-    (
         "forget_session",
         "session.forget",
         Side::Both,
@@ -229,7 +222,7 @@ pub(crate) const LEDGER: &[(&str, &str, Side, Own, &str)] = &[
         "audit.monitor-own",
         Side::Local,
         Own::Footprint,
-        "足迹里 monitor 自己那台那几行（`HostScope::Client`）只有 monitor 知道的事实：它自己进程的家目录 · agent 家 · PATH（stat 与判定在本机后端 `data-report`）",
+        "足迹里 monitor 自己那台那几行（`HostScope::Client`）只有 monitor 知道的事实：它自己进程的家目录 · PATH · 网页引擎的数据目录（stat 与判定在本机后端 `data-report`）",
     ),
     (
         "open_file_window",
@@ -257,14 +250,7 @@ pub(crate) const LEDGER: &[(&str, &str, Side, Own, &str)] = &[
         "chat.attach.stage",
         Side::Both,
         Own::Channel,
-        "聊天附件逐块送进那台暂存区：循环是 `chunk_core::stage`，每一问与 `chan_call` 同一条路（`call_via` ＋ 注入的句柄）",
-    ),
-    (
-        "attach_stage_stop",
-        "chat.attach.stage",
-        Side::Both,
-        Own::Channel,
-        "✕ 那一份：撤单只拨 monitor 进程里那一单的旗，下一块不再送",
+        "聊天附件那一份的字节（webview 只给 File、没有本机路径）放进本机暂存区、回路径；分块 · 问那台由本机后端编排（`attach-draft-put`），壳不碰后端",
     ),
     (
         "chan_subscribe",
@@ -608,7 +594,7 @@ fn local_or_both_commands_take_no_remote_only_parameter() {
     //
     // `LEDGER` 里一行进出 `Local` / `Both`（新增、删掉、`Side` 改了），这个数就跟着变；
     //   同一条命令两侧收成一条路（`Remote` 改成 `Both`）也算，命令总数不动、这个数照样变。
-    const EXPECTED_LOCAL_OR_BOTH: usize = 36;
+    const EXPECTED_LOCAL_OR_BOTH: usize = 34;
     assert_eq!(
         checked, EXPECTED_LOCAL_OR_BOTH,
         "检到 {checked} 条 Local/Both 命令（Local {n_local} + Both {n_both}），\
@@ -723,12 +709,7 @@ enum FrameVerdict {
 /// `src/frontend/shell/src`），扫描面里根本没有本文件。
 ///
 /// ⚠ `scan_tree!` 的自摘在这一处恒空转，别把它算成一道保险。
-const REMOTE_ONLY_MARKS: &[&str] = &[
-    "remote_only(",
-    "stream_source::",
-    "refuse_local_write(",
-    "transfer_relay::",
-];
+const REMOTE_ONLY_MARKS: &[&str] = &["remote_only(", "stream_source::", "refuse_local_write("];
 
 /// 生产段里「走 origin 无关帧面」的标记。
 const FRAME_PLANE_MARKS: &[&str] = &[

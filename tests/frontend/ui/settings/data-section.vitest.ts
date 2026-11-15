@@ -1,15 +1,14 @@
 /**
- * 「数据位置」那一块：**给路径，不给删 / 清空**（要求：「数据位置那一页要不要，不要，给路径」
+ * 「数据位置」那几行：**给路径，不给删 / 清空**（要求：「数据位置那一页要不要，不要，给路径」
  * —— 答的是「要不要给删 / 清空按钮」）。
  *
- * 头注那条红线（「纯展示，不做删除 / 清空操作 —— 避免误点」）此前**没有判据看着**。
- * 本文件立两条：
+ * 数据位置的每一行（本机后端家里那几样 · monitor 数据目录里界面自己那几样 · 网页引擎目录）都照那台后端 `data-report` 的 `own` 画
+ * （`own-block.ts`）；界面自己的这一块（`data-section.ts`）只剩本地存储与卸载说明。本文件立：
  *
- * ① **效应面两向相等**：这一块源码里调到的壳命令 == {`get_data_paths`, `os_open`}；
- *    `os_open` 只是用系统程序打开；从外面拿进来的「会动东西」的函数 == {`revealInFolder`}（打开 / 在文件管理器里选中，都不改盘）；
+ * ① **效应面两向相等**：`data-section.ts` 源码里调到的壳命令 == {`os_open`}（只是用系统程序打开）；
+ *    从外面拿进来的「会动东西」的函数一个都没有（「在文件窗口里打开」那一颗住 `own-block.ts`，怎么开由数据页交给它）；
  *    `localStorage` 上一个写 / 删的调用都没有。量具是 TS 语法树，注释不算。
- * ② **路径真的上屏**：后端给的每一条（持久化 / WebView2 / profile 备份）的 `path`
- *    都以纯文本出现在那一行里；按钮上没有「删 / 清」。
+ * ② **照后端那一份画**：不在盘上那一句照 `absent_said` 抄；远端断开时按钮的提示照那台 `said` 抄（界面不另取字）。
  *
  * 〔射程〕盖不到：`os_open` 打开之后用户在文件管理器里自己删 —— 那是用户的手，不是这一块的按钮。
  */
@@ -17,21 +16,23 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import ts from "typescript";
 import { readFileSync } from "node:fs";
 
-const { paths } = vi.hoisted(() => ({ paths: { value: null as unknown } }));
-const { revealed } = vi.hoisted(() => ({ revealed: [] as unknown[] }));
+const { revealed, fileWin } = vi.hoisted(() => ({ revealed: [] as unknown[], fileWin: [] as { host: unknown; at: unknown }[] }));
 vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
   commands: {
-    get_data_paths: () => Promise.resolve(paths.value),
     os_open: (what: { kind: string; path?: string }) => {
       if (what.kind === "reveal") revealed.push(what.path);
       return Promise.resolve();
     },
   },
 }));
+vi.mock("../../../../src/frontend/ui/file-window", () => ({
+  openFileWindow: (host: unknown, at: unknown) => (fileWin.push({ host, at }), Promise.resolve(true)),
+}));
 vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 
-import { DataSection, describeDataClass } from "../../../../src/frontend/ui/settings/data-section";
-import { LOGS_DIR_LABEL } from "../../../../src/frontend/ui/generated/shell-names";
+import { DataSection, describeDataClass, systemOpenButton } from "../../../../src/frontend/ui/settings/data-section";
+import { ownBlock, openCell } from "../../../../src/frontend/ui/settings/own-block";
+import type { OwnItem } from "../../../../src/frontend/ui/settings/data-reads";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { nonEmpty } from "../../../test-support/non-empty";
 import { stripComments } from "../../../test-support/strip-comments";
@@ -68,8 +69,16 @@ function effectFace(src: string): { commands: string[]; imports: Record<string, 
   return { commands: [...commands].sort(), imports, storageWrites };
 }
 
+/** 一样东西（后端 `data-report` 的 `own` 那一形）。 */
+function item(id: string, path: string, over: Partial<OwnItem> = {}): OwnItem {
+  return { id, what: `${id} 是什么`, path, label: `台架名·${id}`, abs: `/台架绝对/${id}`, dir: false, class: "truth", exists: true, absent_said: null, size_text: null, ...over };
+}
+
 describe("数据位置：给路径，不给删 / 清空", () => {
-  beforeEach(() => document.body.replaceChildren());
+  beforeEach(() => {
+    document.body.replaceChildren();
+    localStorage.clear();
+  });
 
   it("🔴 正控：同一个量具认得出「删」的形状（否则下面的相等可能是空转）", () => {
     const bad = effectFace(
@@ -83,59 +92,31 @@ describe("数据位置：给路径，不给删 / 清空", () => {
     expect(bad.storageWrites).toEqual(["removeItem"]);
   });
 
-  it("① 效应面两向相等：只读一条命令、另一条只会「打开」，localStorage 零写", () => {
+  it("① 效应面两向相等：只有「打开」那一条命令，localStorage 零写；壳那份数据位置（`get_data_paths`）不再问", () => {
     const face = effectFace(readFileSync(SRC, "utf8"));
-    expect(face.commands).toEqual(["get_data_paths", "os_open"]);
+    expect(face.commands).toEqual(["os_open"]);
     expect(face.imports).toEqual({
       "../ipc/commands": ["commands"],
-      "../reveal-in-folder": ["revealInFolder"],
       "../kit/toast": ["failToast"],
-      "../kit/detail": ["sayFailure"], // 读失败那一句 ＋ 它的［复制详情］：只取那一句与详情、排版，不是效应
       "../local-storage": ["enumeratePrefix"],
-      "./skeleton": ["holdSkeletonHeight", "makeSkeleton"],
       "../copy-table": ["copyText"], // 取文口：只读一张表，不是效应
       "../kit/icon": ["icon"], // 画图标：不是效应
-      "../generated/shell-names": ["LOGS_DIR_LABEL"], // 壳生成过来的一个串：不是效应
     });
     expect(face.storageWrites).toEqual([]);
   });
 
-  it("② 每一条的路径都以纯文本上屏；按钮上没有「删 / 清」", async () => {
-    const item = (label: string, path: string) => ({
-      label,
-      class: "truth" as const,
-      path,
-      kind: "file",
-      description: `${label} 是什么`,
-      exists: true,
-      sizeText: "台架写的大小",
-    });
-    const entries = [
-      item("config.json", "/h/.cc-monitor/config.json"),
-      item("history-metadata.json", "/h/.cc-monitor/history-metadata.json"),
-    ];
-    const webview = item("EBWebView", "/h/AppData/EBWebView");
-    // 本机后端家里那几样不在这一块（「文件与数据」页照本机后端 `data-report` 的 `own` 画，`data-page.vitest.ts`）。
-    paths.value = {
-      monitorDataDir: "/h/.cc-monitor",
-      entries,
-      webviewUserDataDir: webview,
-    };
+  it("② 本地存储每个 `cc-monitor.` 键一行（键 · 值），别的键不列；按钮上没有「删 / 清」；卸载说明照旧", () => {
+    localStorage.setItem("cc-monitor.b", "2");
+    localStorage.setItem("cc-monitor.a", "1");
+    localStorage.setItem("someone-else", "x");
     const sec = new DataSection({ headless: true });
     document.body.appendChild(sec.element);
     sec.loadNow();
-    await new Promise((r) => setTimeout(r, 0));
-    const shown = [...sec.element.querySelectorAll(".settings-data-item-path")].map(
-      (e) => e.textContent,
-    );
-    // 「PowerShell profile 备份」那张卡片搬去了本机「足迹」栏 ⇒ 这里不再有它。
-    expect(shown).toEqual([...entries, webview].map((e) => e.path));
-    // 大小是壳写好的字，界面照抄（台架故意给一个不是换算得出来的字）。
-    const metas = [...sec.element.querySelectorAll(".settings-data-item-meta")].map((e) => e.textContent);
-    expect(metas).toEqual([...entries, webview].map(() => "台架写的大小"));
-    // `get_data_paths` 不再带备份那一格（界面经通道问本机后端）⇒ 「备份目录不在数据位置里」结构上成立。
+    const keys = [...sec.element.querySelectorAll(".settings-data-ls-key")].map((e) => e.textContent);
+    expect(keys).toEqual(["cc-monitor.a", "cc-monitor.b"]);
+    const values = [...sec.element.querySelectorAll(".settings-data-ls-value")].map((e) => e.textContent);
+    expect(values).toEqual(["1", "2"]);
     const buttons = [...sec.element.querySelectorAll("button")].map((b) => b.textContent ?? "");
-    nonEmpty(buttons);
     expect(buttons.filter((t) => /删|清/.test(t))).toEqual([]);
     // 卸载说明那张卡开头是代码画的 info 图标，不是字符（C-W1）。
     const note = sec.element.querySelector<HTMLElement>(".settings-data-note");
@@ -144,42 +125,35 @@ describe("数据位置：给路径，不给删 / 清空", () => {
   });
 });
 
-describe("数据位置「真相 / 缓存」那一格", () => {
+describe("数据位置那几行照后端那一份画", () => {
   beforeEach(() => document.body.replaceChildren());
 
-  const mk = (label: string, cls: string) => ({
-    label,
-    class: cls,
-    path: `/h/.cc-monitor/${label}`,
-    kind: "file",
-    description: `${label} 是什么`,
-    exists: true,
-    sizeText: "1 B",
+  it("★★ 不在盘上那一行说的是后端写好的那一句（照抄），界面源码不自己取「未创建」", () => {
+    const items = [
+      item("config", "~/.cc-monitor/config.json", { size_text: "台架写的大小" }),
+      item("policy", "~/.cc-monitor/backend.json", { exists: false, absent_said: "台架写的不在盘上那一句" }),
+    ];
+    const block = ownBlock(items, openCell({ open: () => {} }, systemOpenButton));
+    const metas = [...block.querySelectorAll(".settings-data-item-meta")].map((e) => e.textContent);
+    expect(metas).toEqual(["台架写的大小", "台架写的不在盘上那一句"]);
+    const paths = [...block.querySelectorAll(".settings-data-item-path")].map((e) => e.textContent);
+    expect(paths).toEqual(items.map((i) => i.path));
+    const labels = [...block.querySelectorAll(".settings-data-item-label")].map((e) => e.textContent);
+    expect(labels, "显示名照抄后端的 label，界面不自己剥家那一段").toEqual(["台架名·config", "台架名·policy"]);
+    const titles = [...block.querySelectorAll<HTMLElement>(".settings-data-item-path")].map((e) => e.title);
+    expect(titles, "悬停照抄后端拼好的绝对路径").toEqual(["/台架绝对/config", "/台架绝对/policy"]);
+    for (const f of ["src/frontend/ui/settings/own-block.ts", SRC]) {
+      expect(stripComments(readFileSync(f, "utf8"), "ts"), f).not.toContain("data.item.notCreated");
+    }
   });
 
-  it("★★ 每一行都说得出删了会怎样，且说的是**它自己那一类**（两向：行 ↔ 类）", async () => {
-    const entries = [
-      mk("config.json", "truth"),
-      mk("history-metadata.json", "truth"),
-      mk("last-seen.json", "cache"),
-      mk("logs/", "cache"),
-    ];
-    paths.value = { monitorDataDir: "/h", entries, webviewUserDataDir: null };
-    const sec = new DataSection({ headless: true });
-    document.body.appendChild(sec.element);
-    sec.loadNow();
-    await new Promise((r) => setTimeout(r, 0));
-    const rows = [...sec.element.querySelectorAll<HTMLElement>(".settings-data-item[data-class]")];
-    expect(rows.length, "一行都没挂上类 —— 下面的逐行比在空人群上恒绿").toBe(entries.length);
-    const got = rows.map((r) => [
-      r.querySelector(".settings-data-item-label")!.textContent,
-      r.querySelector<HTMLElement>("[data-data-class]")!.textContent,
-    ]);
-    expect(got).toEqual([
-      ["config.json", copyText("data.class.keep")],
-      ["history-metadata.json", copyText("data.class.keep")],
-      ["last-seen.json", copyText("data.class.disposable")],
-      ["logs/", copyText("data.class.disposable")],
+  it("★★ 每一行都说得出删了会怎样，且说的是**它自己那一类**（两向：行 ↔ 类）", () => {
+    const items = [item("config", "~/.cc-monitor/config.json"), item("logs", "~/.cc-monitor/logs", { dir: true, class: "cache" })];
+    const rows = [...ownBlock(items, () => []).querySelectorAll<HTMLElement>(".settings-data-item[data-class]")];
+    expect(rows.length, "一行都没挂上类 —— 下面的逐行比在空人群上恒绿").toBe(items.length);
+    expect(rows.map((r) => r.querySelector<HTMLElement>("[data-data-class]")!.textContent)).toEqual([
+      copyText("data.class.keep"),
+      copyText("data.class.disposable"),
     ]);
   });
 
@@ -188,88 +162,65 @@ describe("数据位置「真相 / 缓存」那一格", () => {
     expect(describeDataClass("cache")).toBe(copyText("data.class.disposable"));
     expect(describeDataClass("archive" as never)).toBe(copyText("data.class.unknown", { kind: "archive" }));
   });
-});
 
-describe("〔ST2 · 步 15〕logs/ 那一行指向「日志」、不再自带 [打开]", () => {
-  beforeEach(() => document.body.replaceChildren());
-
-  it("★★ logs/ 那一行：路径照给、没有 [打开]、说去「日志」页；别的行照旧有 [打开]（两向）", async () => {
-    const mk = (label: string) => ({
-      label,
-      class: "cache",
-      path: `/h/.cc-monitor/${label}`,
-      kind: "dir",
-      description: `${label} 是什么`,
-      exists: true,
-    });
-    paths.value = {
-      monitorDataDir: "/h",
-      // 后端那一份错误输出在 `logs/backend/`（住数据目录、同一份枚举里）：同样指向「日志」页
-      entries: [mk("ps-registry/"), mk(LOGS_DIR_LABEL), mk(`${LOGS_DIR_LABEL}backend/`)],
-      webviewUserDataDir: null,
-    };
-    const sec = new DataSection({ headless: true });
-    document.body.appendChild(sec.element);
-    sec.loadNow();
-    await new Promise((r) => setTimeout(r, 0));
-    const rows = [...sec.element.querySelectorAll<HTMLElement>(".settings-data-item[data-class]")];
-    expect(rows.length).toBe(3);
-    const byLabel = (l: string) =>
-      rows.find((r) => r.querySelector(".settings-data-item-label")!.textContent === l)!;
-    const logs = byLabel(LOGS_DIR_LABEL);
-    expect(logs.querySelector("button"), "logs/ 那一行还自带按钮 —— 与「日志」页的「打开日志目录」重复").toBeNull();
-    expect(logs.querySelector('[data-see-also="logs"]')?.textContent).toBe(copyText("data.item.inLogsPage"));
-    expect(logs.querySelector(".settings-data-item-path")?.textContent).toBe("/h/.cc-monitor/logs/");
-    const backendLogs = byLabel(`${LOGS_DIR_LABEL}backend/`);
-    expect(backendLogs.querySelector("button"), "logs/backend/ 那一行也不该自带按钮").toBeNull();
-    expect(backendLogs.querySelector('[data-see-also="logs"]')).not.toBeNull();
-    // 反向对照：别的行照旧能打开（否则「logs/ 没按钮」可能是整张表都没按钮）。
-    expect(byLabel("ps-registry/").querySelector("button")?.textContent).toBe(copyText("mobTerms.row.attach"));
+  it("★★ 远端那台断开：按钮置灰，提示是那台没问到的那一句原文（本机后端给的），界面不另取字", () => {
+    const items = [item("bin", "~/.cc-monitor/bin", { dir: true })];
+    const said = "台架：devbox 够不着的那一句";
+    const b = ownBlock(items, openCell({ offline: said })).querySelector<HTMLButtonElement>("button")!;
+    expect(b.disabled).toBe(true);
+    expect(b.title).toBe(said);
+    expect(stripComments(readFileSync("src/frontend/ui/settings/own-block.ts", "utf8"), "ts")).not.toContain("link.machine.readOnly");
+    // 反向对照：连着的那台照常能点、点了交出的是后端写好的那条绝对路径。
+    const got: string[] = [];
+    const live = ownBlock(items, openCell({ open: (abs) => void got.push(abs) })).querySelector<HTMLButtonElement>("button")!;
+    expect(live.disabled).toBe(false);
+    live.click();
+    expect(got).toEqual(["/台架绝对/bin"]);
   });
 });
 
-
-describe("「在文件夹中显示」：每一条在盘上的路径都有，点了交给系统文件管理器选中它", () => {
+describe("「在文件窗口里打开」：在盘上的那一样有，点了文件窗口开进本机、定位到它", () => {
   beforeEach(() => {
     document.body.replaceChildren();
     revealed.length = 0;
+    fileWin.length = 0;
   });
 
-  it("★ 有这颗按钮的行 == 在盘上、且不是 logs/ 的行（两向）；点了选中的正是那一行的路径", async () => {
-    const mk = (label: string, exists: boolean, kind = "file") => ({
-      label,
-      class: "truth" as const,
-      path: `/h/.cc-monitor/${label}`,
-      kind,
-      description: `${label} 是什么`,
-      exists,
-      sizeText: exists ? "1 B" : undefined,
-    });
-    paths.value = {
-      monitorDataDir: "/h/.cc-monitor",
-      entries: [mk("config.json", true), mk("history-metadata.json", false), mk(LOGS_DIR_LABEL, true, "dir"), mk("apikey-credentials.json", true)],
-      webviewUserDataDir: mk("EBWebView", true, "dir"),
-    };
-    const sec = new DataSection({ headless: true });
-    document.body.appendChild(sec.element);
-    sec.loadNow();
+  it("★ 在盘上 ⇒［打开］＋「在文件窗口里打开」，点了交出展开过家目录的那条路径", async () => {
+    const got: string[] = [];
+    const [open, reveal] = openCell({ open: (abs) => got.push(abs) }, systemOpenButton)(item("config", "~/.cc-monitor/config.json"), "/h/.cc-monitor/config.json");
+    expect(open.textContent).toBe(copyText("mobTerms.row.attach"));
+    expect(reveal.textContent).toBe(copyText("data.item.reveal"));
+    reveal.click();
     await new Promise((r) => setTimeout(r, 0));
-    const rows = [...sec.element.querySelectorAll<HTMLElement>(".settings-data-item[data-class]")];
-    const label = (r: HTMLElement) => r.querySelector(".settings-data-item-label")!.textContent;
-    const withReveal = rows.filter((r) => r.querySelector("button[data-reveal]")).map(label);
-    expect(withReveal).toEqual(["config.json", "apikey-credentials.json", "EBWebView"]);
-    for (const r of rows) {
-      const b = r.querySelector<HTMLButtonElement>("button[data-reveal]");
-      if (!b) continue;
-      expect(b.textContent).toBe(copyText("data.item.reveal"));
-      b.click();
+    expect(got).toEqual(["/h/.cc-monitor/config.json"]);
+    expect(revealed, "不交系统文件管理器").toEqual([]);
+  });
+
+  it("★★ 不在盘上：本机格与远端格同一颗「在文件窗口里打开」，都置灰、原因都是后端写的那一句", () => {
+    const said = "台架：gone.json 不在盘上那一句";
+    const gone = [item("gone", "~/.cc-monitor/gone.json", { exists: false, absent_said: said })];
+    const revealOf = (block: HTMLElement) =>
+      [...block.querySelectorAll<HTMLButtonElement>("button")].filter((b) => b.textContent === copyText("data.item.reveal"));
+    const reach = { open: () => void fileWin.push({ host: "devbox", at: null }) };
+    const local = ownBlock(gone, openCell(reach, systemOpenButton));
+    const remote = ownBlock(gone, openCell(reach));
+    for (const [side, block] of [["local", local], ["remote", remote]] as const) {
+      const r = revealOf(block);
+      expect(r.length, side).toBe(1);
+      expect(r[0].disabled, side).toBe(true);
+      expect(r[0].title, side).toBe(said);
+      r[0].click();
     }
-    await new Promise((r) => setTimeout(r, 0));
-    expect(revealed).toEqual(["config.json", "apikey-credentials.json", "EBWebView"].map((l) => `/h/.cc-monitor/${l}`));
+    expect(fileWin, "置灰的点了不开").toEqual([]);
+    // 本机那颗［打开］同样置灰、原因同一句；界面源码不自己取「不在」那一句。
+    const open = [...local.querySelectorAll<HTMLButtonElement>("button")].find((b) => b !== revealOf(local)[0])!;
+    expect([open.disabled, open.title]).toEqual([true, said]);
+    expect(stripComments(readFileSync(SRC, "utf8"), "ts")).not.toContain("data.item.missing");
   });
 });
 
-describe("每一行的每一格都在网格里认领了一个区（本机后端那一块 · 远端那一块 · 界面那张卡同一套行）", () => {
+describe("每一行的每一格都在网格里认领了一个区（本机远端同一个 ownBlock）", () => {
   beforeEach(() => document.body.replaceChildren());
 
   /** `settings.css` 里 `.settings-data-item` 的模板声明的区名 ＋「类名 → 它认领的区」。 */
@@ -311,26 +262,15 @@ describe("每一行的每一格都在网格里认领了一个区（本机后端�
     expect(unclaimed([li])).toEqual([" · 第 2 格"]);
   });
 
-  it("★★ 界面那张卡（连同「在「日志」页打开」那一行）", async () => {
-    const mk = (label: string, cls: string) => ({ label, class: cls, path: `/h/.cc-monitor/${label}`, kind: "file", description: `${label} 是什么`, exists: true, sizeText: "1 B" });
-    paths.value = { monitorDataDir: "/h", entries: [mk("config.json", "truth"), mk(LOGS_DIR_LABEL, "cache")], webviewUserDataDir: null };
-    const sec = new DataSection({ headless: true });
-    document.body.appendChild(sec.element);
-    sec.loadNow();
-    await new Promise((r) => setTimeout(r, 0));
-    const rows = [...sec.element.querySelectorAll<HTMLElement>(".settings-data-item[data-class]")];
-    expect(rows.length).toBe(2);
-    expect(unclaimed(rows)).toEqual([]);
-  });
-
-  it("★★ 那台后端家里那一块（本机 · 远端同一个 ownBlock）", async () => {
-    const { ownBlock, remoteOpen } = await import("../../../../src/frontend/ui/settings/own-block");
+  it("★★ 本机那一块（打开 · 在文件窗口里打开）与远端那一块（断开）", () => {
     const items = [
-      { id: "bin", what: "编的一句", path: "~/.cc-monitor/bin", dir: true, class: "cache" as const, exists: true, size_text: null },
-      { id: "policy", what: "编的一句", path: "~/.cc-monitor/backend.json", dir: false, class: "truth" as const, exists: false, size_text: null },
+      item("bin", "~/.cc-monitor/bin", { dir: true, class: "cache" }),
+      item("policy", "~/.cc-monitor/backend.json", { exists: false, absent_said: "不在" }),
     ];
-    const rows = [...ownBlock(items, "/h", remoteOpen(null)).querySelectorAll<HTMLElement>(".settings-data-item")];
-    expect(rows.length).toBe(2);
-    expect(unclaimed(rows)).toEqual([]);
+    for (const actions of [openCell({ open: () => {} }, systemOpenButton), openCell({ offline: "断开" })]) {
+      const rows = [...ownBlock(items, actions).querySelectorAll<HTMLElement>(".settings-data-item")];
+      expect(rows.length).toBe(2);
+      expect(unclaimed(rows)).toEqual([]);
+    }
   });
 });

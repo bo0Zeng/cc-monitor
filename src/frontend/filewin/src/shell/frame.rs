@@ -16,6 +16,7 @@ impl FileWindow {
     /// 那一句委派今天住 [`crate::workspace::Workspace`]（它才是 `eframe::App`）：
     /// 每个标签页的正文就是这里，外面只多了标签栏 · 双栏 · 预览那一层。
     pub fn frame_body(&mut self, ui: &mut egui::Ui) {
+        self.adopt_landed_dir();
         self.font_frame(ui);
         if self.edit_frame(ui) {
             return;
@@ -110,40 +111,28 @@ impl FileWindow {
         if let Some(said) = self.plan_notice() {
             crate::kit::banner(ui, crate::kit::Tone::Warn, &said, &[]);
         }
-        // 目录打不开：哪一种（后端的码）说一句 ＋ 出路「回上一级」「回主目录」；系统原话进「复制详情」。
+        // 目录打不开：后端那一句照画 ＋ 出路「回上一级」「回主目录」；「复制详情」里是整条路径 ＋ 那台排好的那几行（同一颗按钮，§5.3）。
         let open_fail = self.listing.open_fail.lock().unwrap().clone();
-        if let Some((kind, raw)) = open_fail {
-            let name = crate::source::remote_basename(&self.cwd).to_string();
-            let key_text = match kind {
-                crate::source::OpenFail::NotFound => {
-                    copy_text("rsFilewinShell.open.notFound", &[("name", &name)])
-                }
-                crate::source::OpenFail::Denied => {
-                    copy_text("rsFilewinShell.open.denied", &[("name", &name)])
-                }
-                crate::source::OpenFail::NotDir => {
-                    copy_text("rsFilewinShell.open.notDir", &[("name", &name)])
-                }
-                crate::source::OpenFail::Other => {
-                    copy_text("rsFilewinShell.open.other", &[("name", &name)])
-                }
-            };
-            // 〔复制详情条带 §5.3〕同一颗按钮（错误条最右）：复制出去的首行是屏上那句，下面是路径与原话。
-            let lines = copy_core::detail::Detail::new()
-                .item(copy_core::detail::Label::Path, &self.cwd)
-                .item(copy_core::detail::Label::Raw, &raw)
-                .render();
-            let body = format!("{key_text}\n{lines}");
+        if let Some(f) = open_fail {
             let detail_id = ui.id().with("open-fail-detail");
-            match crate::kit::banner_with_detail(
+            let path = copy_core::detail::Detail::new()
+                .item(copy_core::detail::Label::Path, &self.cwd)
+                .render();
+            let detail = [path.as_str(), f.detail.as_str()]
+                .into_iter()
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+                .join("\n");
+            match crate::kit::failure_banner(
                 ui,
                 crate::kit::Tone::Error,
-                &key_text,
+                &f.said,
                 &[
                     copy_text("rsFilewinShell.open.up", &[]),
                     copy_text("rsFilewinShell.open.home", &[]),
                 ],
-                Some((detail_id, &body)),
+                &detail,
+                detail_id,
             ) {
                 Some(0) => self.navigate_up(),
                 Some(1) => self.want_home = true,
@@ -228,7 +217,9 @@ impl FileWindow {
             0.0
         };
         // 表头：点一列排序（再点反向），拖分隔线改列宽。
-        if let Some(by) = crate::rows::show_header(ui, &mut self.cols, self.sort) {
+        // 箭头画在哪一列、朝哪照那台上一趟答的（`LsHead.by` · `descending`），不照本窗 `sort.by`（它只用来发下一趟）。
+        let caret = *self.listing.caret.lock().unwrap();
+        if let Some(by) = crate::rows::show_header(ui, &mut self.cols, caret) {
             self.click_header(by);
         }
         let rows = self.listing.rows.lock().unwrap();

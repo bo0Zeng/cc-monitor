@@ -1,29 +1,24 @@
 /**
- * 设置「数据位置」：界面这一侧自己的持久化数据（monitor 数据目录里那几份）＋ WebView2 用户数据目录 ＋ localStorage 键，
- * 每项［打开］与「在文件夹中显示」。本机后端家里那几样不在这里：「文件与数据」页照本机后端 `data-report` 的 `own` 画（`own-block.ts`）。
+ * 设置「数据位置」里界面这一侧自己的那一块：本地存储（localStorage 的 `cc-monitor.` 键）＋ 卸载说明。
+ * 数据位置的每一行（本机后端家里那几样 · monitor 数据目录里界面自己那几样 · 网页引擎目录）不在这里：
+ * 「文件与数据」页照那台后端 `data-report` 的 `own` 画（`own-block.ts`），本机那一问由本机后端连界面那几样一起答。
  * 纯展示，不做删除 / 清空（用户要的是路径）；
- * `data-section.vitest.ts` 钉着：效应面两向相等（只读 `get_data_paths`、只会打开 / 显示、localStorage 零写）＋ 路径以纯文本上屏。
- * 不存在的灰显标「尚未创建」；卸载不清 `~/.cc-monitor/`。
+ * `data-section.vitest.ts` 钉着：效应面两向相等（只会打开 / 显示、localStorage 零写）。
+ * 卸载不清 `~/.cc-monitor/`。
  */
 
 import { commands } from "../ipc/commands";
 import { failToast } from "../kit/toast";
 import { enumeratePrefix } from "../local-storage";
-import { holdSkeletonHeight, makeSkeleton } from "./skeleton";
-import { revealInFolder } from "../reveal-in-folder";
 
-// 类型由 `data_paths.rs` 的 `#[derive(ts_rs::TS)]` 生成（`src/frontend/ui/generated/`）。
-import type { DataClass } from "../generated/DataClass";
-import type { DataPathInfo } from "../generated/DataPathInfo";
-import type { DataPathsResponse } from "../generated/DataPathsResponse";
+// 类型由后端 `footprint/data.rs` 的 `#[derive(ts_rs::TS)]` 生成（`src/frontend/ui/generated/`）。
+import type { OwnClass } from "../generated/OwnClass";
+import type { OwnItem } from "./data-reads";
 import { copyText } from "../copy-table";
-import { sayFailure } from "../kit/detail";
 import { icon } from "../kit/icon";
-// 日志目录那一行的名字（壳 `data_paths.rs::LOGS_DIR_LABEL` 生成过来）：这一行不自带［打开］，指向「日志」那一页。
-import { LOGS_DIR_LABEL } from "../generated/shell-names";
 
-/** 每一行那一格「删了会怎样」（后端 `DataPathInfo.class`）：看得出哪个删了会丢东西。后端加了第三类不许整页炸、原样说出来。 */
-export function describeDataClass(c: DataClass): string {
+/** 每一行那一格「删了会怎样」（后端 `OwnItem.class`）：看得出哪个删了会丢东西。后端加了第三类不许整页炸、原样说出来。 */
+export function describeDataClass(c: OwnClass): string {
   switch (c) {
     case "truth":
       return copyText("data.class.keep");
@@ -35,10 +30,10 @@ export function describeDataClass(c: DataClass): string {
 }
 
 /**
- * 「删了会怎样」那一格（界面那张卡 · 本机后端那一块 · 远端那一块同一个）：类别进 DOM（`data-data-class`），判据与用户看的是同一份值；
+ * 「删了会怎样」那一格（本机那一块 · 远端那一块同一个）：类别进 DOM（`data-data-class`），判据与用户看的是同一份值；
  * 排在行头、名字与大小之间（`settings.css` 的 `class` 区）。
  */
-export function dataClassCell(c: DataClass): HTMLElement {
+export function dataClassCell(c: OwnClass): HTMLElement {
   const cell = document.createElement("span");
   cell.className = "settings-data-item-class";
   cell.dataset.dataClass = c;
@@ -57,7 +52,6 @@ export class DataSection {
   private root: HTMLElement;
   private headless: boolean;
   private mainBody: HTMLElement;
-  private loaded = false;
 
   /** `headless: true` 时不渲染外层 settings-group 容器（嵌进别的分组时用）。 */
   constructor(opts: { headless?: boolean } = {}) {
@@ -75,82 +69,31 @@ export class DataSection {
 
     this.mainBody = document.createElement("div");
     this.mainBody.className = "settings-data-body";
-    // 容器先钉住高度，与骨架同一个数（住址只有 `skeleton.ts`）：等数据回来再钉，那一跳已经发生过了。
-    holdSkeletonHeight(this.mainBody, "data-places");
     this.root.appendChild(this.mainBody);
-
-    this.renderPlaceholder();
-    // 构造期不发 I/O：宿主（`panel.ts`）在该页首次可见时调 `loadNow()`。
+    // 构造期不读：宿主（`panel.ts`）在该页首次可见时调 `loadNow()`。
   }
 
   get element(): HTMLElement {
     return this.root;
   }
 
-  /** 宿主在「这一页首次可见」时调。幂等由宿主保证（`panel.ts::pagesLoaded`）：这里再记一份，重开设置想重读时会被旧标记挡住。 */
+  /** 宿主在「这一页首次可见」时调：照此刻的 localStorage 画（同步，不发 I/O）。 */
   loadNow(): void {
-    this.loaded = false;
-    this.renderPlaceholder();
-    void this.load();
+    this.render();
   }
 
-  /** 重新拉取（设置每次 open 时调，大小 / 存在性要最新）。 */
+  /** 重新画（设置每次 open 时调，本地存储要最新）。 */
   refresh(): void {
     this.loadNow();
   }
 
-  private renderPlaceholder(): void {
-    this.mainBody.replaceChildren();
-    // 加载态是与渲染态同高的骨架（不重排）。类名沿用 `settings-data-loading`（`styles.css` 那条规则的读者）；多出来的高度、身份走 `data-*`。
-    this.mainBody.appendChild(
-      makeSkeleton("data-places", copyText("kit.state.reading"), "settings-data-loading"),
-    );
-  }
-
-  private async load(): Promise<void> {
-    try {
-      const data = await commands.get_data_paths();
-      this.loaded = true;
-      this.render(data);
-    } catch (e) {
-      this.mainBody.replaceChildren();
-      const err = document.createElement("div");
-      err.className = "settings-data-error";
-      sayFailure(err, copyText("data.load.failed"), e);
-      this.mainBody.appendChild(err);
-    }
-  }
-
-  private render(data: DataPathsResponse): void {
-    if (!this.loaded) return;
+  private render(): void {
     this.mainBody.replaceChildren();
 
-    // 卡片 1：monitor 持久化数据
-    this.mainBody.appendChild(
-      this.buildBlock({
-        title: copyText("data.card.own"),
-        subtitle: data.monitorDataDir,
-        subtitlePath: data.monitorDataDir,
-        items: data.entries,
-      }),
-    );
-
-    // 卡片 2：WebView2 用户数据
-    if (data.webviewUserDataDir) {
-      this.mainBody.appendChild(
-        this.buildBlock({
-          title: copyText("data.card.webview"),
-          subtitle: copyText("data.card.webviewHint"),
-          items: [data.webviewUserDataDir],
-        }),
-      );
-    }
-
-
-    // 卡片 4：浏览器 localStorage
+    // 浏览器 localStorage
     this.mainBody.appendChild(this.buildLocalStorageBlock());
 
-    // 卡片 5：卸载说明（纯文字；`<strong>` 由 DOM 建，不拼 innerHTML）
+    // 卸载说明（纯文字；`<strong>` 由 DOM 建，不拼 innerHTML）
     const note = document.createElement("div");
     note.className = "settings-data-note";
     const info = icon("info", "compact");
@@ -165,97 +108,6 @@ export class DataSection {
       copyText("data.note.classes"),
     );
     this.mainBody.appendChild(note);
-  }
-
-  private buildBlock(opts: {
-    title: string;
-    subtitle?: string;
-    subtitlePath?: string;
-    items: DataPathInfo[];
-  }): HTMLElement {
-    const block = document.createElement("div");
-    block.className = "settings-data-block";
-
-    const head = document.createElement("div");
-    head.className = "settings-data-block-head";
-    const titleEl = document.createElement("span");
-    titleEl.className = "settings-data-block-title";
-    titleEl.textContent = opts.title;
-    head.appendChild(titleEl);
-
-    if (opts.subtitle) {
-      const sub = document.createElement("span");
-      sub.className = "settings-data-block-subtitle";
-      sub.textContent = opts.subtitle;
-      if (opts.subtitlePath) {
-        sub.title = opts.subtitlePath;
-        sub.classList.add("clickable");
-        sub.addEventListener("click", () => void openItem(opts.subtitlePath!));
-      }
-      head.appendChild(sub);
-    }
-    block.appendChild(head);
-
-    const list = document.createElement("ul");
-    list.className = "settings-data-list";
-    for (const it of opts.items) {
-      list.appendChild(this.buildItemRow(it));
-    }
-    block.appendChild(list);
-    return block;
-  }
-
-  private buildItemRow(info: DataPathInfo): HTMLElement {
-    const li = document.createElement("li");
-    // 条目种类是有限枚举 ⇒ 走 `data-kind`（全仓 `kind` 这个状态名只用这一种载体），不再拼 `kind-<值>` 类名。
-    li.className = `settings-data-item ${info.exists ? "exists" : "absent"}`;
-    li.dataset.kind = info.kind;
-
-    const label = document.createElement("span");
-    label.className = "settings-data-item-label";
-    label.textContent = info.label;
-    li.appendChild(label);
-
-    const desc = document.createElement("span");
-    desc.className = "settings-data-item-desc";
-    desc.textContent = info.description;
-    li.appendChild(desc);
-
-    li.dataset.class = info.class;
-    li.appendChild(dataClassCell(info.class));
-
-    const meta = document.createElement("span");
-    meta.className = "settings-data-item-meta";
-    if (info.exists) {
-      // 大小是壳写好的字（`data_paths.rs`），照抄；目录不给大小。
-      meta.textContent = info.sizeText ?? copyText("data.item.created");
-    } else {
-      meta.textContent = copyText("data.item.notCreated");
-    }
-    li.appendChild(meta);
-
-    if (info.label.startsWith(LOGS_DIR_LABEL)) {
-      // 日志目录（连同后端那一份 `logs/backend/`）：这一行只给路径，打开去「日志」那一页（见 `LOGS_DIR_LABEL` 头注）。
-      const see = document.createElement("span");
-      see.className = "settings-data-item-see";
-      see.dataset.seeAlso = "logs";
-      see.textContent = copyText("data.item.inLogsPage");
-      li.appendChild(see);
-    } else {
-      // [打开] 与「在文件夹中显示」并排住同一格（这一格是网格里的一个区，两颗按钮装进一个盒子）。
-      const actions = document.createElement("span");
-      actions.className = "settings-data-item-actions";
-      actions.append(...localOpenButtons(info.path, info.exists));
-      li.appendChild(actions);
-    }
-
-    // 完整路径单独一行（小字 + ellipsis）
-    const pathRow = document.createElement("div");
-    pathRow.className = "settings-data-item-path";
-    pathRow.textContent = info.path;
-    li.appendChild(pathRow);
-
-    return li;
   }
 
   private buildLocalStorageBlock(): HTMLElement {
@@ -308,25 +160,18 @@ export class DataSection {
 }
 
 /**
- * 本机一条路径打开那一格：［打开］（默认程序打开它本身）＋「在文件夹中显示」（系统文件管理器选中它）。
- * 不在盘上 ⇒［打开］置灰写「—」，不给「在文件夹中显示」（没有可选中的那一项）。本机后端家里那一块（`own-block.ts`）用同一对。
+ * 本机一条路径的［打开］（默认程序打开它本身）：本机那一格排在「在文件窗口里打开」前面（`own-block.ts` 的 `openCell`）。
+ * 不在盘上 ⇒ 置灰、提示是后端写的 `absent_said`。
  */
-export function localOpenButtons(path: string, exists: boolean): HTMLElement[] {
+export function systemOpenButton(o: OwnItem, path: string): HTMLElement {
   const open = document.createElement("button");
   open.type = "button";
   open.className = "settings-data-item-open";
-  open.textContent = exists ? copyText("mobTerms.row.attach") : copyText("acct.val.none");
-  open.disabled = !exists;
-  open.title = exists ? copyText("beChore.step.open", { path }) : copyText("data.item.missing");
-  if (!exists) return [open];
-  open.addEventListener("click", () => void openItem(path));
-  const reveal = document.createElement("button");
-  reveal.type = "button";
-  reveal.className = "settings-data-item-open";
-  reveal.dataset.reveal = "";
-  reveal.textContent = copyText("data.item.reveal");
-  reveal.addEventListener("click", () => void revealInFolder(path));
-  return [open, reveal];
+  open.textContent = o.exists ? copyText("mobTerms.row.attach") : copyText("acct.val.none");
+  open.disabled = !o.exists;
+  open.title = o.exists ? copyText("beChore.step.open", { path }) : (o.absent_said ?? "");
+  if (o.exists) open.addEventListener("click", () => void openItem(path));
+  return open;
 }
 
 function collectMonitorLocalStorageKeys(): { key: string; value: string }[] {

@@ -27,7 +27,7 @@
 //! - [`open`]：起会话那两条（`session-open` · `session-open-facts`）的入参；
 //! - [`phone`]：手机嵌的 Rust 核心与 Kotlin 之间那一层（JNI 交上来的几样事 · 几个口的回值；Kotlin 读从这里生成的类）；
 //! - [`plan`]：计划读面那一族（`plan-*`）的回包与计划反查 `plan-files` 的回包（界面 · 文件窗口 · 手机核心都按它解）；
-//! - [`transfer`]：传输台开单那两条（`transfer-upload` · `-download`）：窗口说给 monitor 的 · monitor 补上拨号转给本机后端的，两层入参各一个类型；
+//! - [`transfer`]：`transfer-copy` 那一条的入参（一组从这一台搬到另一台；两台都可以是本机）与手机内嵌核心分块传那两样回值；
 //! - [`shapes`]：每条 typed 命令（入参 · 回包 · 错误码都从 Rust 类型来的那几条）的形状指纹。
 //!   后端在 hello 里交出它自己那一份，客户端拿自己编进来的这一份比：对得上就直接按类型用，对不上就说「那台后端版本不同」。
 //!   表由后端的判据从类型现算、写进 `src/shapes.rs`（过期即红），这里只是那份表本身。
@@ -100,6 +100,19 @@ pub use sid::Sid;
 
 /// 两端形状指纹对不上的那条 op 当「这台做不到」时用的码（客户端事前就拒、一个字节不发；给人看的那一句 `peerVersion.said.differs`）。
 pub const SHAPE_DIFFERS: &str = "backend_differs";
+
+/// 那台后端不认这条命令（客户端照 `hello.commands` 事前就拒，或那台收到后答不认）。给人看的那一句 `copy_core::backend_old`。
+pub const UNKNOWN_COMMAND: &str = "unknown_command";
+
+/// 问一台失败、失败不是那台交来的那几种的码（`comms_inward::backend_route::CallError::code`，桌面 · 手机 · 常驻转发同读）：
+/// 同一条连接上在等的已顶到上限，没发。
+pub const TOO_MANY_PENDING: &str = "too_many_pending";
+/// 见 [`TOO_MANY_PENDING`]：连接没了。
+pub const DISCONNECTED: &str = "disconnected";
+/// 见 [`TOO_MANY_PENDING`]：等到期限那台还没回。
+pub const TIMEOUT: &str = "timeout";
+/// 见 [`TOO_MANY_PENDING`]：撤了（那台确认了撤单）。
+pub const CANCELLED: &str = "cancelled";
 
 /// 后端自己那一份设置文件此刻什么样（偏好 · 机器表同这一形）：没设过 · 读得懂 · 读不懂（读不懂也照答缺省那一份，不是失败）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

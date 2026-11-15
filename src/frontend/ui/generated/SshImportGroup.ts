@@ -16,4 +16,16 @@ jump: string | null, members: Array<SshImportMember>,
 /**
  * 这一组已在机器表里（组里任一地址 ＋ 用户 ＋ 端口与表里某台的拨号地址相同；表是本机后端自己那一张）。
  */
-inList: boolean, };
+inList: boolean, 
+/**
+ * 预览那一行给人看的说明：地址 · 用户（空 ⇒「无用户名」）· 经跳板 · 备用地址几个（[`words_of`] 写，界面照抄）。
+ */
+summary: string, 
+/**
+ * 拆开之后那一行：列各成员的别名。
+ */
+splitInto: string, 
+/**
+ * 「按地址拆成 ×N」那颗的字；成员只有一个 ⇒ 缺（不出那颗）。
+ */
+splitAction: string | null, };

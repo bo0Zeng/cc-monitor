@@ -29,7 +29,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.Login
+import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.icon.BackButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
@@ -40,6 +42,8 @@ import com.ccmonitor.mobile.core.wire.gen.MachineFix
 import com.ccmonitor.mobile.core.wire.gen.MachineFixButton
 import com.ccmonitor.mobile.core.wire.gen.Tone
 import com.ccmonitor.mobile.link.HostBackends
+import com.ccmonitor.mobile.link.problem
+import com.ccmonitor.mobile.link.unreadableReply
 import com.ccmonitor.mobile.ui.chat.newsession.AccountBadge
 import com.ccmonitor.mobile.ui.chat.newsession.DefaultTag
 import com.ccmonitor.mobile.ui.chat.newsession.PickRow
@@ -52,6 +56,7 @@ import com.ccmonitor.mobile.ui.common.rememberHostLink
 import com.ccmonitor.mobile.ui.login.LoginFlow
 import com.ccmonitor.mobile.ui.login.LoginSheet
 import com.ccmonitor.mobile.ui.nav.settingsGroupScreenInsets
+import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 
 /**
@@ -75,6 +80,7 @@ fun AccountsScreen(
     var open by remember { mutableStateOf<String?>(null) }
     var model by remember { mutableStateOf<String?>(null) }
     var login by remember { mutableStateOf<LoginFlow?>(null) }
+    var said by remember { mutableStateOf<String?>(null) } // 退出 · 状态那一下那台答的那一句（标题下一行）
     Box(Modifier.fillMaxSize().settingsGroupScreenInsets()) {
         Column(Modifier.fillMaxSize()) {
             AccountsHead(here, onBack)
@@ -92,6 +98,7 @@ fun AccountsScreen(
                 ui.note?.let {
                     Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp))
                 }
+                said?.let { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp)) }
                 if (look.loading) repeat(SKELETON_ROWS) { SkeletonRow() }
                 look.rows.forEach { a -> AccountLine(a, a.name == ui.defaultAccount, ui, look.stale) { open = a.name } }
             }
@@ -100,8 +107,8 @@ fun AccountsScreen(
     ui.accounts.firstOrNull { it.name == open }?.let { a ->
         AccountSheet(a, a.name == ui.defaultAccount, ui, onDismiss = { open = null }, onLogin = {
             open = null
-            login = LoginFlow(feed, here.hostId, here.machine, Login.account(ui.agent?.kind.orEmpty(), a.name), scope).also { it.start() }
-        }, onSetDefault = {
+            login = LoginFlow(feed, here.hostId, here.machine, Login.account(a.name), scope).also { it.start() }
+        }, onOnce = { cmd -> scope.launch { said = loginOnce(feed, here.machine, cmd, a.name).also { if (cmd == Login.OUT) board.reloadAccounts() } } }, onSetDefault = {
             open = null
             board.setDefault(a.name)
         }, onModel = {
@@ -191,6 +198,9 @@ private fun SkeletonRow() {
     }
 }
 
+/** 号名那一行在「默认」· 要人动手的那一枚之后照摆的几句（那台写好的：MCP 登录不在号之间同步 ⇒ `mcpLogins`）；缺 ⇒ 不出。 */
+internal fun accountLineOneNotes(a: AccountRow): List<String> = listOfNotNull(a.mcpLogins)
+
 /** 一个号一行：号牌 · 名 ·「默认」/ 要人动手的那一枚 · 类型；右边用量那一格（色照语气；上次所知 ⇒「—」）。 */
 @Composable
 private fun AccountLine(
@@ -216,6 +226,7 @@ private fun AccountLine(
                 Text(a.label, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
                 if (isDefault) DefaultTag()
                 if (a.badge.warn) WarnTag(a.badge.text)
+                accountLineOneNotes(a).forEach { NoteTag(it) }
             }
             Text(a.kindLine, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -225,6 +236,18 @@ private fun AccountLine(
             ui.usage(a.name)?.let { UsageText(it.text, it.tone) }
         }
     }
+}
+
+/** 那台写好的一句事实（不要人动手）：中性色。 */
+@Composable
+private fun NoteTag(text: String) {
+    val c = MaterialTheme.colorScheme.onSurfaceVariant
+    Text(
+        text,
+        style = MaterialTheme.typography.labelSmall,
+        color = c,
+        modifier = Modifier.background(c.copy(alpha = TAG_BG), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp),
+    )
 }
 
 /** 要人动手的那一枚（需登录 · 没配端点 …，那台写的字）：琥珀。 */
@@ -246,6 +269,8 @@ private fun AccountSheet(
     ui: MachineSettingsUi,
     onDismiss: () -> Unit,
     onLogin: () -> Unit,
+    /** 退出 · 状态：交 [Login.OUT] 或 [Login.STATUS]（那一行的 `signOut` · `status` 才给，不认哪一家）。 */
+    onOnce: (String) -> Unit,
     onSetDefault: () -> Unit,
     onModel: () -> Unit,
     onUsage: () -> Unit,
@@ -271,8 +296,33 @@ private fun AccountSheet(
         }
         PickRow(copyText("acctPage.detail.model"), AccountsTags.MODEL, second = modelText(ui, ui.model(a.name)), onClick = onModel)
         PickRow(copyText("acct.hover.usage"), AccountsTags.USAGE, second = ui.usage(a.name)?.text, onClick = onUsage)
+        // 退出 · 状态：先收起这一张，再问那台。
+        val once: (String) -> Unit = { cmd ->
+            onDismiss()
+            onOnce(cmd)
+        }
+        if (a.status == true) PickRow(copyText("acctPage.menu.status"), AccountsTags.STATUS, onClick = { once(Login.STATUS) })
+        if (a.signOut == true) PickRow(copyText("acctPage.menu.signOut"), AccountsTags.SIGN_OUT, onClick = { once(Login.OUT) })
     }
 }
+
+/**
+ * 退出 · 问状态（[Login.OUT] · [Login.STATUS]）问那台一次 ⇒ 屏上那一句：成了 ⇒ 那台写好的那一句（已退出 · 已登录 · 未登录）；
+ * 没成 ⇒ 那台那一句（够不着 · 拒了 · 读不出都照它）。
+ */
+internal suspend fun loginOnce(
+    link: CoreLink,
+    machine: String,
+    cmd: String,
+    account: String,
+): String {
+    val r = link.call(cmd, Login.once(account), ONCE_MS)
+    (r as? Reply.Ok)?.let { ok -> Login.saidOf(cmd, ok.data)?.let { return it } }
+    return (r.problem(machine, cmd, link.offline.value) ?: unreadableReply(machine, cmd, r.toString())).text
+}
+
+/** 退出 · 问状态那一条至多等这么久（那台至多跑 30 秒）。 */
+private const val ONCE_MS = 40_000L
 
 /** 默认模型那一层：第一项「跟随」（那一家的默认），再是那一家的清单；勾在那台存的那一条上。 */
 @Composable
@@ -316,6 +366,8 @@ object AccountsTags {
     const val MODEL = "accounts-model"
     const val MODEL_PICK = "accounts-model-pick"
     const val USAGE = "accounts-usage"
+    const val STATUS = "accounts-status"
+    const val SIGN_OUT = "accounts-sign-out"
 }
 
 private const val TAG_BG = 0.12f

@@ -5,7 +5,6 @@ import com.ccmonitor.mobile.core.wire.gen.QuotaCell
 import com.ccmonitor.mobile.core.wire.gen.QuotaKind
 import com.ccmonitor.mobile.core.wire.gen.QuotaReadState
 import com.ccmonitor.mobile.core.wire.gen.QuotaVerdict
-import com.ccmonitor.mobile.core.wire.gen.SlotShow
 import com.ccmonitor.mobile.core.wire.gen.Usage
 import com.ccmonitor.mobile.core.wire.gen.QuotaRead as QuotaReadReply
 
@@ -26,8 +25,8 @@ data class UsageUi(
 
 /**
  * 一张卡。卡头 [head] 是那台写好的第一行（名 · 类型 · 需登录）；号牌对上账号库那一行（对不上 ⇒ `null`，不画号牌）。
- * 收起时画 [bars]（订阅号出过数）或 [usage]（按量号那一格）或 [plain]（没出过数的那几行）；最后 [seen] 采样那一行。
- * 点开画 [detail]（第一行之后的全部行）；没有可展开的 ⇒ 空。
+ * 收起时画 [bars]（那台写好的每个窗口那一行一条）或 [usage]（按量号那一格）或 [plain]（没出过数的那几行）。
+ * 点开画 [detail]（第一行之后、没画成条也没在收起时画过的行）＋ [sampled]（几点采的，不成行）；都没有 ⇒ 不可展开。
  */
 data class UsageCard(
     val account: String,
@@ -38,29 +37,29 @@ data class UsageCard(
     val bars: List<UsageBar>,
     val usage: Usage?,
     val plain: List<List<QuotaCell>>,
-    val seen: List<QuotaCell>?,
     val detail: List<List<QuotaCell>>,
-)
-
-/** 一条计量条：位名 · 条长（0..1；那台说不出百分比 ⇒ `null`，不当 0）· 那一格 · 数旧（斜纹）。 */
-data class UsageBar(
-    val label: String,
-    val fill: Float?,
-    val slot: SlotShow,
-    val stale: Boolean,
+    val sampled: String?,
 )
 
 /**
- * 回包 ⇒ 要画的那一份：只按号名对上两份回包（号牌 · 默认），次序 · 字 · 语气全照回包。
- * 位名照同一份回包的 `names.slots`；有一格的语义位不在里面 ⇒ 两端契约对不上，交 `null`（由屏照「回包读不出」画），不拿码当名字。
+ * 一条计量条 ＝ 那台写好的一个窗口那一行（[cells]：名 · 用量 · 几点重置 · 还剩多久，或名 · 读取中 / 已重置）
+ * ＋ 那一窗的条长（0..1；那台说不出百分比 ⇒ `null`，不当 0）· 「1% ≈ 多少」· 数旧（斜纹）。
  */
+data class UsageBar(
+    val cells: List<QuotaCell>,
+    val fill: Float?,
+    val perPct: String?,
+    val stale: Boolean,
+) {
+    val label: String get() = cells.firstOrNull()?.text.orEmpty()
+}
+
+/** 回包 ⇒ 要画的那一份：只按号名对上两份回包（号牌 · 默认），次序 · 字 · 语气全照回包；条照每个窗口指着的那一行（`row`）画。 */
 fun usageView(
     reply: QuotaReadReply,
     accounts: List<AccountRow>,
     defaultAccount: String?,
-): UsageUi? {
-    val names = reply.names.slots
-    if (reply.accounts.any { q -> q.slots.any { it.slot !in names } }) return null
+): UsageUi {
     val byName = accounts.associateBy { it.name }
 
     fun card(
@@ -70,22 +69,34 @@ fun usageView(
     ): UsageCard {
         val a = byName[account]
         return build(
-            UsageCard(account, a?.plate, a?.color, rows.firstOrNull().orEmpty(), account == defaultAccount, emptyList(), null, emptyList(), null, emptyList()),
+            UsageCard(account, a?.plate, a?.color, rows.firstOrNull().orEmpty(), account == defaultAccount, emptyList(), null, emptyList(), emptyList(), null),
         )
     }
     val seen =
         reply.accounts.map { q ->
             card(q.account, q.rows) { c ->
                 val more = q.rows.drop(1)
+                val bars =
+                    q.windows.orEmpty().mapNotNull { w ->
+                        w.row?.let { i -> q.rows.getOrNull(i) }?.let { r ->
+                            UsageBar(r, w.pct?.let { p -> p.coerceIn(0, FULL) / FULL.toFloat() }, w.perPctText, q.stale)
+                        }
+                    }
+                // 点开只列条外的行（超额那一行之类），不把画成条的行再画一遍。
+                val drawn =
+                    q.windows
+                        .orEmpty()
+                        .mapNotNull { it.row }
+                        .toSet()
+                val rest =
+                    q.rows
+                        .withIndex()
+                        .filter { (i, _) -> i > 0 && i !in drawn }
+                        .map { it.value }
                 when {
-                    q.kind == QuotaKind.API -> c.copy(usage = q.usage, detail = more)
-                    q.slots.isEmpty() -> c.copy(plain = more, detail = more)
-                    else ->
-                        c.copy(
-                            bars = q.slots.map { UsageBar(names.getValue(it.slot), it.pct?.let { p -> p.coerceIn(0, FULL) / FULL.toFloat() }, it, q.stale) },
-                            seen = more.lastOrNull(),
-                            detail = more,
-                        )
+                    q.kind == QuotaKind.API -> c.copy(usage = q.usage, detail = more, sampled = q.sampled)
+                    bars.isEmpty() -> c.copy(plain = more, sampled = q.sampled)
+                    else -> c.copy(bars = bars, detail = rest, sampled = q.sampled)
                 }
             }
         }

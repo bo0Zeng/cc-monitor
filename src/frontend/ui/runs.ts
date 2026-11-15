@@ -9,6 +9,8 @@
  * - 「最近」优先用它此刻在生成的那一块（流里的归一事件），没有就用记录给的最近一件事。
  */
 import { copyText } from "./copy-table";
+import { machineName } from "./ipc/chan-caller";
+import type { Machine } from "./ipc/origin";
 import { clockNow } from "./duration-format";
 import { icon, type IconName } from "./kit/icon";
 import { statusDot } from "./kit/status-dot";
@@ -93,11 +95,11 @@ export function runLineNow(l: RunLine, now: number): string {
   return l.from === undefined ? l.text : clockNow({ text: l.text, from: l.from }, now);
 }
 
-/** 系统标题：`{标签} · {状态} · {会话}`，远端再加 `· {机器}`（标题里不放符号）。 */
-export function agentWindowTitle(r: RunInfo, session: string, machine: string | null): string {
+/** 系统标题：`{标签} · {状态} · {会话} · {机器}`，本机远端同一句（那台怎么称呼照成品，`machineName`；标题里不放符号）。 */
+export function agentWindowTitle(r: RunInfo, session: string, origin: Machine): string {
   const label = runLabel(r);
   const state = runStateText(r);
-  return machine ? copyText("agentWindow.title.remote", { label, state, session, machine }) : copyText("agentWindow.title.local", { label, state, session });
+  return copyText("agentWindow.title.remote", { label, state, session, machine: machineName(origin) });
 }
 
 /** 它派出的那几个（运行表里 `parent` 是它的，按开始的先后）。 */

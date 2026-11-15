@@ -9,7 +9,7 @@
 //!
 //! 这张表原来前三行是本地围栏那三条（踩线的不问不做 · 改名两条路径各过一遍 · 普通路径的阴性对照），
 //! 靶子（本地预判）删了，三条一起退役。
-//! | [`the_real_adapter_speaks_the_backend_write_face_with_root_and_rel`] | 四件各发哪条命令、参数切成 `(root, rel)`（读线上真到的那几行） | 发错命令 / 切错路径，后端那一侧落在别处 |
+//! | [`the_real_adapter_speaks_the_backend_write_face_with_root_and_rel`] | 新建目录 · 改名各发哪条命令、参数切成 `(root, rel)`（读线上真到的那几行） | 发错命令 / 切错路径，后端那一侧落在别处 |
 //! | [`the_question_is_asked_exactly_once_for_the_whole_batch`] | N 件只问一次，且顺序是 问 → 做 | 每件弹一次（旧面板 `uploadDropped` 那一形） |
 //! | [`nothing_is_touched_when_the_answer_is_no`] | 「问过了」与「做了」分得开 | 「问了但照做」在读数上看不出来 |
 //!
@@ -40,6 +40,13 @@ impl WriteBoard {
     pub(crate) fn last(&self) -> Option<WriteOutcome> {
         self.inner.lock().unwrap().last.clone()
     }
+}
+
+/// 框里那几个字 ⇒ 恰好一件（新建目录 · 改名 · 单项改权限那几格要的那一形；多一件少一件都算拒）。
+fn one_op(p: &WritePrompt) -> Result<WriteOp, String> {
+    let mut ops = p.to_ops()?;
+    assert_eq!(ops.len(), 1, "这一框出了 {} 件", ops.len());
+    Ok(ops.remove(0))
 }
 
 /// 一条会话记录形状的路径（`projects/` 下恰两段、以 `.jsonl` 收尾）。
@@ -192,14 +199,14 @@ async fn a_refusal_from_the_backend_fence_comes_back_as_a_sentence() {
     use crate::find::testing::{wire_up, Declared, FakeBackend};
     let wired = wire_up(
         "writeops-refuse",
-        FakeBackend::new(&["files-mkdir", "files-delete"], Declared::default()),
+        FakeBackend::new(&["files-mkdir"], Declared::default()),
     )
     .await;
     let origin = comms_inward::origin::Origin::named(wired.origin.clone());
     let e = super::apply_remote_coded(
         &wired.line,
         &origin,
-        &WriteOp::Mkdir {
+        &SingleOp::Mkdir {
             dir: "/srv/refuse".into(),
             name: "newdir".into(),
         },
@@ -216,7 +223,7 @@ async fn a_refusal_from_the_backend_fence_comes_back_as_a_sentence() {
     super::apply_remote_coded(
         &wired.line,
         &origin,
-        &WriteOp::Mkdir {
+        &SingleOp::Mkdir {
             dir: "/srv/data".into(),
             name: "newdir".into(),
         },
@@ -229,16 +236,16 @@ async fn a_refusal_from_the_backend_fence_comes_back_as_a_sentence() {
     let e = super::apply_remote_coded(
         &wired.line,
         &origin,
-        &WriteOp::Chmod {
-            path: "/srv/data/x".into(),
-            mode: "644".into(),
+        &SingleOp::Rename {
+            from: "/srv/data/x".into(),
+            name: "y".into(),
             raw: None,
         },
         None,
     )
     .await
     .map_err(|f| f.said)
-    .expect_err("后端没声明 `files-chmod`，却成了");
+    .expect_err("后端没声明 `files-rename`，却成了");
     // 按文案键断言，不按原文：「是哪条命令」由下面线上那张单子认（没上线），不靠句子点名。
     assert_eq!(
         e,
@@ -253,7 +260,7 @@ async fn a_refusal_from_the_backend_fence_comes_back_as_a_sentence() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 🔴 正题二：一次问完（照 `run_drop` 的形状办）
+// 🔴 正题二：一次问完
 // ════════════════════════════════════════════════════════════════════════
 
 /// 🔴 **N 件只问一次**，而且那一问拿到的是**全部**要问的那几件（相等断言），
@@ -366,7 +373,7 @@ async fn nothing_is_touched_when_the_answer_is_no() {
     assert_eq!(out.ok, 1);
 }
 
-/// 一件要问的都没有 ⇒ **不问**。弹一个空框是噪音，不是慎重（同 `run_drop`）。
+/// 一件要问的都没有 ⇒ **不问**。弹一个空框是噪音，不是慎重。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_batch_with_nothing_dangerous_asks_nobody() {
     let asked = AtomicUsize::new(0);
@@ -575,7 +582,7 @@ fn the_box_turns_what_you_typed_into_an_op_in_this_very_directory() {
     let mut p = WritePrompt::for_mkdir("/srv/data");
     p.text = "  sub  ".into(); // 两头的空白要被吃掉
     assert_eq!(
-        p.to_op().unwrap(),
+        one_op(&p).unwrap(),
         WriteOp::Mkdir {
             dir: "/srv/data".into(),
             name: "sub".into(),
@@ -589,7 +596,7 @@ fn the_box_turns_what_you_typed_into_an_op_in_this_very_directory() {
     );
     p.text = "b.bin".into();
     assert_eq!(
-        p.to_op().unwrap(),
+        one_op(&p).unwrap(),
         WriteOp::Rename {
             from: "/srv/data/a.bin".into(),
             name: "b.bin".into(),
@@ -605,7 +612,7 @@ fn the_box_turns_what_you_typed_into_an_op_in_this_very_directory() {
     );
     p.text = "755".into();
     assert_eq!(
-        p.to_op().unwrap(),
+        one_op(&p).unwrap(),
         WriteOp::Chmod {
             path: "/srv/data/a.bin".into(),
             mode: "755".into(),
@@ -623,7 +630,7 @@ fn typed_names_and_modes_go_to_the_far_side_as_typed() {
         let mut p = WritePrompt::for_mkdir("/srv/data");
         p.text = format!(" {typed} ");
         assert_eq!(
-            p.to_op().expect("名字交给那台判，窗口不拒"),
+            one_op(&p).expect("名字交给那台判，窗口不拒"),
             WriteOp::Mkdir {
                 dir: "/srv/data".into(),
                 name: typed.into(),
@@ -633,13 +640,13 @@ fn typed_names_and_modes_go_to_the_far_side_as_typed() {
     // 改名成原名 ⇒ 拒（没有要改的东西，而 SFTP 那侧会当成一次真 rename）。
     let mut p = WritePrompt::for_rename("/srv/data", &r);
     p.text = " a.bin ".into();
-    assert!(p.to_op().is_err(), "改名成原名竟然过了");
+    assert!(one_op(&p).is_err(), "改名成原名竟然过了");
 
     for typed in ["", "abc", "899", "10000", "0x644", "0755"] {
         let mut p = WritePrompt::for_chmod_many("/srv/data", &[&r]);
         p.text = format!(" {typed} ");
         assert_eq!(
-            p.to_op().expect("权限位交给那台判，窗口不拒"),
+            one_op(&p).expect("权限位交给那台判，窗口不拒"),
             WriteOp::Chmod {
                 path: "/srv/data/a.bin".into(),
                 mode: typed.into(),
@@ -666,7 +673,7 @@ fn every_box_says_what_it_is_asking() {
 // 哪几行能写
 // ════════════════════════════════════════════════════════════════════════
 
-/// 🔴 目录能写；有损名只有带着原始字节才能写（复制 · 下载两道门在 `pick-core`）。
+/// 🔴 目录能写；有损名只有带着原始字节才能写（复制 · 下载照本机后端那一份菜单成品）。
 #[test]
 fn a_directory_can_be_written_and_a_lossy_name_only_with_its_bytes() {
     let dir = row("adir", true, false);
@@ -683,6 +690,7 @@ fn a_directory_can_be_written_and_a_lossy_name_only_with_its_bytes() {
         !is_writable(&lossy),
         "有损名能写 —— 那个名字寻址不到真字节，删中的是另一个文件"
     );
+    assert!(is_writable(&lossy_raw), "带着原始字节的有损名不能写");
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -758,119 +766,76 @@ fn a_board_with_no_window_still_records_and_does_not_panic() {
 // 🔴 委派：这一层**一行自己的写代码都没有**
 // ════════════════════════════════════════════════════════════════════════
 
-/// 🔴[`super::apply_remote_coded`] 发的是**后端写面那四条**，参数切成 `(root, rel)`。
+/// 🔴[`super::apply_remote_coded`] 发的是**后端写面那两条**（新建目录 · 改名），参数切成 `(root, rel)`。
+/// 删除 · 改权限不经它：一组一条、照 `batch_core::delete_plan` · `chmod_plan` 出（[`super::apply_all`]；
+/// 线上那几行由 `shell_keys_tests` 的多选删除 · 改权限那几条读）。
 ///
-/// **行为判据**（不扫源码）：挂一台合成后端，四件各发一次，读它收到了什么。
+/// **行为判据**（不扫源码）：挂一台合成后端，两件各发一次，读它收到了什么。
 /// 两侧不同源：期望是按「当前目录 ＋ 名字」手写的，实得是线上真到了后端的那几行。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_real_adapter_speaks_the_backend_write_face_with_root_and_rel() {
     use crate::find::testing::{wire_up, Declared, FakeBackend};
     let wired = wire_up(
         "writeops-face",
-        FakeBackend::new(
-            &["files-mkdir", "files-delete", "files-rename", "files-chmod"],
-            Declared::default(),
-        ),
+        FakeBackend::new(&["files-mkdir", "files-rename"], Declared::default()),
     )
     .await;
     let origin = comms_inward::origin::Origin::named(wired.origin.clone());
     let ops = [
-        WriteOp::Mkdir {
+        SingleOp::Mkdir {
             dir: "/srv/data".into(),
             name: "新目录".into(),
         },
-        WriteOp::Delete {
-            path: "/srv/data/x.bin".into(),
-            is_dir: false,
-            raw: None,
-        },
-        WriteOp::Rename {
+        SingleOp::Rename {
             from: "/srv/data/x.bin".into(),
             name: "y.bin".into(),
-            raw: None,
-        },
-        WriteOp::Chmod {
-            path: "/srv/data/y.bin".into(),
-            mode: "640".into(),
             raw: None,
         },
     ];
     for op in &ops {
         super::apply_remote_coded(&wired.line, &origin, op, None)
             .await
-            .unwrap_or_else(|f| panic!("{} 没成：{}", op.label(), f.said));
+            .unwrap_or_else(|f| panic!("{op:?} 没成：{}", f.said));
     }
     let got: Vec<serde_json::Value> = wired.log.lock().unwrap().clone();
     let want = vec![
         serde_json::json!({ "cmd": "files-mkdir", "args": { "root": "/srv/data", "rel": "新目录", "single": true } }),
-        serde_json::json!({ "cmd": "files-delete", "args": { "root": "/srv/data", "items": [{ "rel": "x.bin" }] } }),
         serde_json::json!({ "cmd": "files-rename", "args": { "root": "/srv/data", "from": "x.bin", "to": "y.bin", "single": true } }),
-        serde_json::json!({ "cmd": "files-chmod", "args": { "root": "/srv/data", "items": [{ "rel": "y.bin" }], "mode": "640" } }),
     ];
-    assert_eq!(got, want, "线上那四行与期望不等");
+    assert_eq!(got, want, "线上那两行与期望不等");
 }
 
 // ════════════════════════════════════════════════════════════════════════
 // 删目录 = 连同里面全部内容 · 乱码名走 b16 · 批量改权限
 // ════════════════════════════════════════════════════════════════════════
 
-/// 🔴 **线上那几行逐字**：删**目录**带 `recursive: true`、删文件不带；有损名的相对段是 `{"b16": …}`
-/// （改名的 `from` 同样），`to` 照旧是框里敲的字符串。
+/// 🔴 **线上那一行逐字**：有损名改名的 `from` 是 `{"b16": …}`，`to` 照旧是框里敲的字符串。
+/// （删目录带 `recursive` · 删 / 改权限的有损名走 b16，由 `shell_keys_tests` 的多选那一条读线上。）
 ///
-/// 期望手写（异源）：读的是合成后端真收到的那几行。
+/// 期望手写（异源）：读的是合成后端真收到的那一行。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_directory_delete_recurses_and_a_lossy_name_is_addressed_by_its_bytes() {
+async fn a_lossy_rename_is_addressed_by_its_bytes() {
     use crate::find::testing::{wire_up, Declared, FakeBackend};
     let wired = wire_up(
         "writeops-fw5",
-        FakeBackend::new(
-            &["files-delete", "files-rename", "files-chmod"],
-            Declared::default(),
-        ),
+        FakeBackend::new(&["files-rename"], Declared::default()),
     )
     .await;
     let origin = comms_inward::origin::Origin::named(wired.origin.clone());
-    let raw = b"caf\xe9.txt".to_vec();
-    let ops = [
-        WriteOp::Delete {
-            path: "/srv/data/build".into(),
-            is_dir: true,
-            raw: None,
-        },
-        WriteOp::Delete {
-            path: "/srv/data/caf\u{FFFD}.txt".into(),
-            is_dir: false,
-            raw: Some(raw.clone()),
-        },
-        WriteOp::Rename {
-            from: "/srv/data/caf\u{FFFD}.txt".into(),
-            name: "cafe.txt".into(),
-            raw: Some(raw.clone()),
-        },
-        WriteOp::Chmod {
-            path: "/srv/data/caf\u{FFFD}.txt".into(),
-            mode: "600".into(),
-            raw: Some(raw.clone()),
-        },
-    ];
-    for op in &ops {
-        super::apply_remote_coded(&wired.line, &origin, op, None)
-            .await
-            .unwrap_or_else(|f| panic!("{} 没成：{}", op.label(), f.said));
-    }
+    let op = SingleOp::Rename {
+        from: "/srv/data/caf\u{FFFD}.txt".into(),
+        name: "cafe.txt".into(),
+        raw: Some(b"caf\xe9.txt".to_vec()),
+    };
+    super::apply_remote_coded(&wired.line, &origin, &op, None)
+        .await
+        .unwrap_or_else(|f| panic!("{op:?} 没成：{}", f.said));
     let got: Vec<serde_json::Value> = wired.log.lock().unwrap().clone();
     let b16 = serde_json::json!({ "b16": "636166e92e747874" });
     let want = vec![
-        serde_json::json!({ "cmd": "files-delete", "args": { "root": "/srv/data", "items": [{ "rel": "build", "recursive": true }] } }),
-        serde_json::json!({ "cmd": "files-delete", "args": { "root": "/srv/data", "items": [{ "rel": b16 }] } }),
         serde_json::json!({ "cmd": "files-rename", "args": { "root": "/srv/data", "from": b16, "to": "cafe.txt", "single": true } }),
-        serde_json::json!({ "cmd": "files-chmod", "args": { "root": "/srv/data", "items": [{ "rel": b16 }], "mode": "600" } }),
     ];
-    assert_eq!(got, want, "线上那几行与期望不等");
-    // 往返上限：删目录那一件放宽，其余照旧。
-    assert_eq!(super::budget_for(&ops[0]), super::TREE_BUDGET);
-    assert_eq!(super::budget_for(&ops[1]), super::WRITE_BUDGET);
-    assert!(super::TREE_BUDGET > super::WRITE_BUDGET);
+    assert_eq!(got, want, "线上那一行与期望不等");
 }
 
 /// 🔴 有损名**只有带着原始字节**才能写；两个显示串相同、字节不同的有损名是**两件**不同的操作。
@@ -897,7 +862,7 @@ fn a_lossy_name_is_writable_only_with_its_bytes_and_two_lookalikes_stay_two_ops(
     assert_eq!(p.text, "a\u{FFFD}");
     p.text = "a\u{FFFD}".into();
     assert!(
-        p.to_op().is_ok(),
+        one_op(&p).is_ok(),
         "有损名改成它的显示串被当成了「没改」—— 那一下其实把乱码名改成了一个合法 UTF-8 名"
     );
 }
@@ -938,7 +903,6 @@ fn one_chmod_box_for_many_rows_yields_one_op_per_row() {
             },
         ]
     );
-    assert!(p.to_op().is_err(), "三件的框被 `to_op` 当成了一件");
     // 空摞 ⇒ 拒，不出零件却说「做完了」。
     let mut empty = WritePrompt::for_chmod_many("/srv/data", &[]);
     empty.text = "644".into();
@@ -1025,7 +989,7 @@ fn gp1_the_chmod_box_says_the_current_mode_and_prefills_only_what_it_really_read
 #[test]
 fn gp1_the_mode_is_read_from_the_stat_reply_or_not_at_all() {
     let st = |mode: Option<u32>| {
-        let mut v = serde_json::json!({"path": "/a", "up": "/", "kind": "file", "size": 1, "readonly": false});
+        let mut v = serde_json::json!({"path": "/a", "up": "/", "kind": "file", "size": 1, "size_text": "1 B", "readonly": false});
         if let Some(m) = mode {
             v["mode"] = serde_json::json!(m);
         }
@@ -1060,7 +1024,7 @@ fn gp1_the_current_mode_is_prefilled_at_most_once_and_never_over_what_you_typed(
     // 读回来的值原样确认 ⇒ 出的那一件就是原值（点确认 = 不变，不会静默改坏）。
     p.text = "640".into();
     assert_eq!(
-        p.to_op().expect("合法"),
+        one_op(&p).expect("合法"),
         WriteOp::Chmod {
             path: "/srv/data/a.bin".into(),
             mode: "640".into(),
@@ -1209,7 +1173,7 @@ fn the_inline_cell_selects_the_stem_and_a_same_name_rename_is_no_op() {
     assert_eq!(n.select_chars(), 5);
     assert_eq!(
         n.to_inline(),
-        Ok(Some(InlineGo::Op(WriteOp::Mkdir {
+        Ok(Some(InlineGo::Op(SingleOp::Mkdir {
             dir: "/srv/data".into(),
             name: copy_core::copy_static!("rsFilewinWriteops.inline.newDir").into(),
         })))

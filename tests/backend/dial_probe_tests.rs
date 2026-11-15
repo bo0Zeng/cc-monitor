@@ -443,7 +443,7 @@ async fn a_dial_nobody_answers_says_the_machine_is_unreached() {
     let (r, cells) = cells_of(&args(), &fake).await;
     let last = copy_text("beProbe.stage.dial", &[("endpoint", "192.0.2.2:22")]);
     assert_eq!(cells, vec![step(&last, "now", ["wait"; 4])]);
-    let offline = comms_inward::chan::said::offline("devbox");
+    let offline = copy_core::offline("devbox");
     assert_eq!(
         r["said"],
         copy_text("beProbe.test.sshFailed", &[("why", &offline)])
@@ -538,7 +538,16 @@ async fn a_hello_that_answers_ping_is_all_green() {
     assert!(dur.starts_with(|c: char| c.is_ascii_digit()), "{hello}");
     assert_eq!(
         r["backendGaps"],
-        json!([{"code": "no_tmux", "count": 1, "said": copy_core::unavailable("no_tmux", "devbox")}])
+        json!([{
+            "code": "no_tmux",
+            "count": 1,
+            "said": copy_core::unavailable("no_tmux", "devbox"),
+            // 全表里那一行（那一句 · 不可用几项）由后端写好，界面照抄。
+            "row": copy_text(
+                "machineCard.test.gapRow",
+                &[("reason", &copy_core::unavailable("no_tmux", "devbox")), ("n", "1")]
+            ),
+        }])
     );
     assert!(is_not_a_log_line(hello), "机器页那一行又是日志行：{hello}");
     assert_eq!(fake.words(), vec!["--resident-attach"]);

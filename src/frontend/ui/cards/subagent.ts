@@ -105,9 +105,9 @@ export function markRunWindow(card: HTMLElement, open: boolean): void {
 /**
  * 派出那一方拿到的那次结果：交回的结果（几个字）或报错，收在卡里、可展开。是这种卡 ⇒ `true`。
  * 画不画、画成什么照核心那一格（`results[id].kind`）：后台派出当场回的回执（`launched`）不是交回，卡上不写结果（收场看运行表）；
- * 核心没说是交回的也不写「交回结果」。`chars` 是核心出的那一格（`results[id].chars`）—— 出口省掉结果正文时 `text` 只是预览，字数不从它数。
+ * 核心没说是交回的也不写「交回结果」。`done` 是核心写好的那一句（`results[id].resultText`「交回结果 · N 字」）—— 出口省掉结果正文时 `text` 只是预览，字数不从它数。
  */
-export function settleRunCard(card: HTMLElement, text: string, failed: boolean, chars: number, kind: ResultKind | undefined): boolean {
+export function settleRunCard(card: HTMLElement, text: string, failed: boolean, done: string, kind: ResultKind | undefined): boolean {
   const st = cardState.get(card);
   if (!st) return false;
   if (!failed && kind !== "handback") return true;
@@ -117,7 +117,7 @@ export function settleRunCard(card: HTMLElement, text: string, failed: boolean, 
   d.dataset.role = "run-result";
   d.dataset.failed = failed ? "1" : "0";
   const sum = document.createElement("summary");
-  sum.textContent = failed ? copyText("runCard.result.failed") : copyText("runCard.result.done", { n: chars });
+  sum.textContent = failed ? copyText("runCard.result.failed") : done;
   d.appendChild(sum);
   // 正文展开时才建（交回的结果可能很长；收着的卡不为它付排版）。
   d.addEventListener("toggle", () => {

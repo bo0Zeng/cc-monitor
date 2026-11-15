@@ -85,6 +85,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // 这台的偏好（`~/.cc-monitor/prefs.json`：启动命令 · 恢复进不进 tmux · 每号模型 · 上下文上限表）：住这台，前端只经这两条读写。
     super::typed::blocking::<crate::control::machine_prefs::PrefsRead>("读这台的偏好"),
     super::typed::blocking::<crate::control::machine_prefs::PrefsSetCmd>("改这台的偏好，写完读回"),
+    // 偏好页状态行那一格的预览：照这台最近起的那个托管终端现算（模板 · 字段表住 `host/managed/status.rs`）。
+    super::typed::blocking::<crate::faces::status_line_face::StatusLinePreviewCmd>(
+        "照这台此刻的托管终端预览一条状态行模板",
+    ),
     // 这一端的机器表（`~/.cc-monitor/machines.json`：连各台用的名字 · 地址 · 钥匙 · 跳板 · 连不连）：住拨号那一端，monitor 只经这几条读写。
     super::typed::blocking::<crate::control::machines::MachinesRead>("读这一端的机器表"),
     super::typed::blocking::<crate::control::machines::MachinesTry>(
@@ -114,7 +118,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         ),
     // 〔「后端持有全部 SSH」〕测试连接：
     //   真异步（拨号 · 读 hello · 控制通道往返；本后端零定时器，期限归发起方），`cancel` 能在 await 点打断；短命探活、不进连接池。
-    // 进度边拨边推（`probe` 帧，走本连接的应答通道）⇒ `Run::Builtin`：只在帧面，分派在 `dispatch` 那条硬臂。
+    // 进度边拨边推（`probe` 帧，走本连接的应答通道）⇒ 帧面硬臂（`How::Frame`）：只在帧面，分派在 `dispatch` 那条硬臂。
     super::typed::frame::<crate::dial::probe::RemoteProbe>("测试连接"),
     super::typed::asynchronous::<crate::dial::forwards::ForwardStop>("停一条转发").stream_only(
         "同 `forward-start`：转发账住常驻进程，一次性进程里的账恒空，只会回 `not_found`。",

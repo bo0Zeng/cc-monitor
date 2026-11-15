@@ -4,94 +4,29 @@
 //! - **醒**：活会话表发布一份（[`crate::history::live_table::on_publish`] 那一声）· 队动了（本进程投进一条 · watcher 看见别的进程写了队目录，
 //!   都经 [`crate::history::session_queue::moved`]）·
 //!   有等着的期限（送出后等那一轮起来 [`CONFIRM_MS`] · 收着的等够了 · 送那一下回了「等」之后再试 [`WAITING_RETRY_MS`]）到点。别的时候一直睡。
-//! - **判**（[`step`]，纯函数）：不看会话在不在跑、也不分来源（人发的 · cc-bus 投的 · 斜杠命令 · 计划审面退回一样），agent 自己处理插进来的话。
-//!   - 不活：这一段队里有东西时看见它活过 ⇒ 会话结束，没送的标未送达；没看见过 ⇒ 送（送字本体恢复它，那一句当第一句）。
-//!   - 屏上正有批准框 · 问答框（在等人）⇒ 压着：这时送字带回车会被当成对框的回答、可能误批；框答完就送。
-//!   - 别的（闲着 · 在跑 · 后台在跑 · 说不清）⇒ 送。一次一条：上一条送出之后那一态没换过（那一态起始不晚于送出那一刻）、又没过
-//!     [`CONFIRM_MS`] ⇒ 下一条先等，免得几句粘成一行。
-//!   - 编辑已发的那一句、选了「等这一轮完」⇒ 在跑时不送（回退要走的那几步不插在一轮中间）；选「现在停」照送（停下这一轮是回退那一串的第一步，
-//!     [`crate::control::rewind`]）。
-//!   - 那台离线不归这里：发件端留着待发，接上之后照同一个编号补交。
-//! - **送**：照送字本体（`faces/session_send.rs`：同一道身份门 · 只剩 shell 不送 · 终端没了按记下的号恢复）。结局：送到 · 不知道送没送到 ⇒ 摘掉
+//! - **判**：排在最前那一条此刻送不送是纯函数 [`q::step`]（住队旁 `history/session_queue.rs`，判法写在它头上），agent 自己处理插进来的话。
+//! - **送**：先在队那一把锁里把那一条标成在送（[`q::take`]：名单不列、撤不了；那一刻已被撤 ⇒ 不送；进程在送时没了 ⇒ 下次起来当已送），再照送字本体（`faces/session_send.rs`：同一道身份门 · 只剩 shell 不送 · 终端没了按记下的号恢复）。结局：送到 · 不知道送没送到 ⇒ 摘掉
 //!   （不重送）；送那一下回「等」（框开着 · 回退那一串要等）⇒ 照排着，最晚 [`WAITING_RETRY_MS`] 再试；别的被拒 ⇒ 那一条标未送达（留给发件人看、撤；旧版托管进程不认「说一句」⇒ 那一条写明要重开那个终端）；命令级错 ⇒ 照排着，下一次醒再试。
 //!   编辑已发的那一句（带 `rewind`）⇒ 先在会话里退到那一句之前再说它（[`super::session_rewind_face::walk_here`]）：成了 ⇒ 摘掉；
-//!   等 ⇒ 照排着；没退成 · 退了没送进 ⇒ 标未送达、那一条写上为什么；送进了、记录里还没读到 ⇒ 摘掉（不重送）。
+//!   等（屏上在出字 · 选的是等这一轮完）⇒ 照排着，名单那一条记下在等这一轮（[`q::mark_turn`]）；没退成 · 退了没送进 ⇒ 标未送达、那一条写上为什么；送进了、记录里还没读到 ⇒ 摘掉（不重送）。
 //! - 终端输入行里有没有没提交的字：投递不看。
+//!
+//! # 为什么住 faces
+//!
+//! 送那一下要两边的东西：送字本体（`session_send`）走 control 的送键 · 恢复，恢复那一支经 `session_open_face::resume_of` 要 observe 的定位
+//! （`observe::query::locate`）；编辑已发的那一句走 [`super::session_rewind_face::walk_here`]（observe 的定位 · 记录里读回那几行）。control 与 observe 互不引用（ARCHITECTURE §2.3），
+//! 挪进 control 只能成环或另开注入口；faces 是唯一同时看得见两边的接线点。不碰盘、不送字的纯判定（[`q::step`] · [`q::Look`] · [`q::Memo`]）住队旁。
 
 use super::session_send::Delivery;
 use crate::agents::SessionActivity;
 use crate::common::said::Said;
 use crate::history::session_queue as q;
+use crate::history::session_queue::{
+    settled, step, Look, Memos, Step, CONFIRM_MS, WAITING_RETRY_MS,
+};
 use crate::platform::fs::Own;
 use crate::wire::typed::Files;
 use cmd_wire::queue::QueueItem;
-use std::collections::BTreeMap;
-
-/// 送出一条之后，那一态一直没换（那一句没起一轮：`/clear` 一类）最多等多久就送下一条（毫秒，这台的钟）。
-pub(crate) const CONFIRM_MS: i64 = 15_000;
-
-/// 送那一下回「等」（框开着 · 回退那一串要等）之后，最晚多久再试一次（毫秒）：等的那一样了结时不一定有事件来，
-/// 不到点再试那一条就一直排着。
-pub(crate) const WAITING_RETRY_MS: i64 = 5_000;
-
-/// 一条会话此刻的样子（活会话表那一份）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Look {
-    /// 活着 ⇒ `Some(那一态)`（说不清 ⇒ `Some(None)`）；不活 ⇒ `None`。
-    pub(crate) doing: Option<Option<SessionActivity>>,
-    /// 那一态从何时起（epoch ms，这台的钟）。
-    pub(crate) since_ms: Option<u64>,
-}
-
-/// 投递线程替一条会话记着的（不落盘：重启之后从头看）。
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) struct Memo {
-    /// 上一条送出的时刻（等那一轮起来）；确认过 · 过了期限 ⇒ 清掉。
-    sent_ms: Option<i64>,
-    /// 这一段队里有东西时看见它活过（队空了就清掉）。
-    live: bool,
-    /// 上一回送那一下回了「等」：最晚这一刻再试（[`WAITING_RETRY_MS`]）；之后送成 · 被拒 · 队空了 ⇒ 清掉。
-    retry_ms: Option<i64>,
-}
-
-/// 每条会话一份 [`Memo`]。
-pub(crate) type Memos = BTreeMap<String, Memo>;
-
-/// 这一步做什么。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Step {
-    Send,
-    Wait,
-    End,
-}
-
-/// 上一条送出之后那一轮起来过没有：那一态换过（起始晚于送出那一刻）· 过了期限 ⇒ 算过了。
-fn settled(look: &Look, sent_ms: i64, now_ms: i64) -> bool {
-    let moved = look
-        .since_ms
-        .and_then(|s| i64::try_from(s).ok())
-        .is_some_and(|s| s > sent_ms);
-    moved || now_ms >= sent_ms.saturating_add(CONFIRM_MS)
-}
-
-/// 排在最前那一条此刻送不送（见头注）。
-pub(crate) fn step(look: &Look, memo: &Memo, item: &QueueItem, now_ms: i64) -> Step {
-    let waiting_turn = memo.sent_ms.is_some_and(|t| !settled(look, t, now_ms));
-    match look.doing {
-        None if memo.live => Step::End,
-        None => {
-            if waiting_turn {
-                Step::Wait
-            } else {
-                Step::Send
-            }
-        }
-        Some(Some(SessionActivity::NeedsYou)) => Step::Wait,
-        Some(Some(SessionActivity::Working)) if after_turn(item) => Step::Wait,
-        Some(_) if waiting_turn => Step::Wait,
-        Some(_) => Step::Send,
-    }
-}
 
 /// 投递那一遍要的：队在哪个家 · 一条会话此刻的样子 · 送一条。
 pub(crate) struct Deps<'a> {
@@ -100,21 +35,8 @@ pub(crate) struct Deps<'a> {
     pub(crate) send: &'a dyn Fn(&str, &QueueItem) -> Result<Delivery, Said>,
 }
 
-/// 编辑已发的那一句、选了等这一轮完：在跑时不送（回退要走的那几步不能插在一轮中间；选「现在停」的照送）。
-fn after_turn(item: &QueueItem) -> bool {
-    item.rewind
-        .as_ref()
-        .is_some_and(|r| r.when == cmd_wire::rewind::RewindWhen::AfterTurn)
-}
-
-/// 送的结局怎么落：摘掉 · 照排着 · 标未送达。
-fn landed(d: &Delivery) -> Option<bool> {
-    match d {
-        Delivery::In { .. } => Some(true),
-        Delivery::Waiting => None,
-        Delivery::No(_) => Some(false),
-    }
-}
+/// 送那一下回的命令级错里「请求本身不合」那一个码：同一句再送也一样被拒，不重试。
+const MALFORMED: &str = "bad_args";
 
 /// 走一遍这台有队的每条会话，各判一步、照做；回下一次该醒的时刻（没有要等到点的 ⇒ `None`，一直睡到有事）。
 pub(crate) fn pass(deps: &Deps<'_>, memos: &mut Memos, now_ms: i64) -> Option<i64> {
@@ -128,7 +50,7 @@ pub(crate) fn pass(deps: &Deps<'_>, memos: &mut Memos, now_ms: i64) -> Option<i6
             Err(f) => {
                 tracing::warn!(
                     "[session-queue] {sid} 读不出队：{} {}",
-                    f.code_or_fallback(),
+                    &cmd_wire::failed::Failed::code_or_fallback(f.code.clone()),
                     f.said
                 );
                 continue;
@@ -147,7 +69,7 @@ pub(crate) fn pass(deps: &Deps<'_>, memos: &mut Memos, now_ms: i64) -> Option<i6
         ) {
             tracing::warn!(
                 "[session-queue] {sid} 记开框没成：{} {}",
-                f.code_or_fallback(),
+                &cmd_wire::failed::Failed::code_or_fallback(f.code.clone()),
                 f.said
             );
         }
@@ -163,51 +85,28 @@ pub(crate) fn pass(deps: &Deps<'_>, memos: &mut Memos, now_ms: i64) -> Option<i6
             memo.retry_ms = None;
             continue;
         };
-        match step(&look, memo, &item, now_ms) {
+        match step(&look, memo, now_ms) {
             Step::Wait => {}
             Step::End => {
                 if let Err(f) = q::end(deps.own, sid, now_ms) {
                     tracing::warn!(
                         "[session-queue] {sid} 标未送达没成：{} {}",
-                        f.code_or_fallback(),
+                        &cmd_wire::failed::Failed::code_or_fallback(f.code.clone()),
                         f.said
                     );
                 }
                 memo.live = false;
                 continue;
             }
-            Step::Send => match (deps.send)(sid, &item) {
-                Ok(sent) => match landed(&sent) {
-                    None => {
-                        memo.retry_ms = Some(now_ms.saturating_add(WAITING_RETRY_MS));
-                    }
-                    Some(true) => {
-                        memo.retry_ms = None;
-                        noted(q::delivered(deps.own, sid, &item.id), sid, After::Delivered);
-                        memo.sent_ms = Some(now_ms);
-                    }
-                    Some(false) => {
-                        memo.retry_ms = None;
-                        tracing::warn!(
-                            "[session-queue] {sid} 那一条送不进去（{:?}），标未送达",
-                            sent
-                        );
-                        use super::session_send::Undeliverable as U;
-                        use crate::control::terminals::Refused;
-                        let why = match &sent {
-                            Delivery::No(U::NotRewound(s)) => Some(s.clone()),
-                            // 旧托管进程：笼统的「未送进会话」说不出该做什么，写明要重开那个终端。
-                            Delivery::No(U::Refused(s)) if s.why == Some(Refused::HostOutdated) => {
-                                s.said.clone()
-                            }
-                            _ => None,
-                        };
-                        noted(q::give_up(deps.own, sid, &item.id, why), sid, After::GaveUp);
-                    }
-                },
+            // 认定要送：先在队那一把锁里把它标成在送（名单不再列它、撤不了）；那一刻已被撤 ⇒ 不送。
+            Step::Send => match q::take(deps.own, sid, &item.id) {
+                Ok(true) => send_one(deps, memo, sid, &item, now_ms),
+                Ok(false) => {
+                    tracing::info!("[session-queue] {sid} 要送的那一条已不在排着（撤了），不送")
+                }
                 Err(f) => tracing::warn!(
-                    "[session-queue] {sid} 送没成，下次再试：{} {}",
-                    f.code_or_fallback(),
+                    "[session-queue] {sid} 标在送没成，下次再试：{} {}",
+                    &cmd_wire::failed::Failed::code_or_fallback(f.code.clone()),
                     f.said
                 ),
             },
@@ -225,6 +124,70 @@ pub(crate) fn pass(deps: &Deps<'_>, memos: &mut Memos, now_ms: i64) -> Option<i6
     wake
 }
 
+/// 送已标成在送的那一条、照结局落：送到 · 不知道 ⇒ 摘掉；等 · 命令级错 ⇒ 收回成排着；送不进 ⇒ 照它那一句标未送达。
+fn send_one(deps: &Deps<'_>, memo: &mut q::Memo, sid: &str, item: &QueueItem, now_ms: i64) {
+    match (deps.send)(sid, item) {
+        Ok(Delivery::Waiting) => {
+            memo.retry_ms = Some(now_ms.saturating_add(WAITING_RETRY_MS));
+            untaken(deps, sid, item);
+            // 编辑已发的那一句：回退那一串读屏见在出字 ⇒ 名单照实说在等这一轮（久了改说久未结束）。走到这里 step 已判过没开框；
+            // 两次读表之间恰好开了框 ⇒ 名单那一句照框说（`boxed` 先于在等这一轮），框合上下一遍照屏再判。
+            if item.rewind.is_some() {
+                if let Err(f) = q::mark_turn(deps.own, sid, &item.id, now_ms) {
+                    tracing::warn!(
+                        "[session-queue] {sid} 记在等这一轮没成：{} {}",
+                        &cmd_wire::failed::Failed::code_or_fallback(f.code.clone()),
+                        f.said
+                    );
+                }
+            }
+        }
+        Ok(Delivery::In { .. }) => {
+            memo.retry_ms = None;
+            noted(q::delivered(deps.own, sid, &item.id), sid, After::Delivered);
+            memo.sent_ms = Some(now_ms);
+        }
+        Ok(Delivery::No(no)) => {
+            memo.retry_ms = None;
+            tracing::warn!("[session-queue] {sid} 那一条送不进去（{no:?}），标未送达");
+            noted(
+                q::give_up(deps.own, sid, &item.id, no.said()),
+                sid,
+                After::GaveUp,
+            );
+        }
+        // 请求本身不合（`payload` 超长这一类）：同一句每次必错 ⇒ 照那一句标未送达，不再重试。
+        Err(f) if f.code.as_deref() == Some(MALFORMED) => {
+            memo.retry_ms = None;
+            tracing::warn!(
+                "[session-queue] {sid} 那一条每次都会被拒（{MALFORMED} {}），标未送达",
+                f.said
+            );
+            let why = copy_core::copy_text("beQueue.no.failed", &[("why", &f.said)]);
+            noted(q::give_up(deps.own, sid, &item.id, why), sid, After::GaveUp);
+        }
+        Err(f) => {
+            tracing::warn!(
+                "[session-queue] {sid} 送没成，下次再试：{} {}",
+                &cmd_wire::failed::Failed::code_or_fallback(f.code.clone()),
+                f.said
+            );
+            untaken(deps, sid, item);
+        }
+    }
+}
+
+/// 交出去的那一条收回成排着（送那一下回「等」· 命令级错）。
+fn untaken(deps: &Deps<'_>, sid: &str, item: &QueueItem) {
+    if let Err(f) = q::untake(deps.own, sid, &item.id) {
+        tracing::warn!(
+            "[session-queue] {sid} 收回成排着没成：{} {}",
+            &cmd_wire::failed::Failed::code_or_fallback(f.code.clone()),
+            f.said
+        );
+    }
+}
+
 /// 送完之后改队那一下没成（那一条已不在排着 · 写不进）：只留一行日志，下一遍照盘上此刻的样子再判。
 fn noted(r: Result<bool, Said>, sid: &str, what: After) {
     match r {
@@ -232,7 +195,7 @@ fn noted(r: Result<bool, Said>, sid: &str, what: After) {
         Ok(false) => tracing::info!("[session-queue] {sid} {what:?}：那一条已不在排着（撤了）"),
         Err(f) => tracing::warn!(
             "[session-queue] {sid} {what:?} 没成：{} {}",
-            f.code_or_fallback(),
+            &cmd_wire::failed::Failed::code_or_fallback(f.code.clone()),
             f.said
         ),
     }
@@ -270,7 +233,7 @@ pub fn start(own: Own, files: Files) {
     let spawned = std::thread::Builder::new()
         .name("session-queue-deliver".into())
         .spawn(move || {
-            let home = crate::history::listing::agent_home();
+            let home = crate::agents::local_homes();
             let look = |sid: &str| {
                 let t = crate::history::live_table::now(&home);
                 Look {
@@ -284,6 +247,16 @@ pub fn start(own: Own, files: Files) {
                 look: &look,
                 send: &send,
             };
+            // 上一个投递进程在送的那一刻没了：盘上留着在送的当已送（不知道送没送到 ⇒ 不重送）。
+            for sid in q::sids(&own) {
+                if let Err(f) = q::settle_sending(&own, &sid) {
+                    tracing::warn!(
+                        "[session-queue] {sid} 收拾上次在送的没成：{} {}",
+                        &cmd_wire::failed::Failed::code_or_fallback(f.code.clone()),
+                        f.said
+                    );
+                }
+            }
             let mut memos = Memos::default();
             loop {
                 let now = crate::common::time::now_ms() as i64;
@@ -340,7 +313,9 @@ pub(crate) fn rewound(w: crate::control::rewind::Walked) -> Delivery {
         Walked::Done | Walked::Unsure(Why::NotReadBack) => Delivery::In { resumed: false },
         Walked::Wait => Delivery::Waiting,
         Walked::No(_) | Walked::Unsure(_) => {
-            Delivery::No(Undeliverable::NotRewound(w.said().unwrap_or_default()))
+            Delivery::No(Undeliverable::NotRewound(w.said().unwrap_or_else(|| {
+                copy_core::copy_text("beQueue.no.notRewound", &[])
+            })))
         }
     }
 }

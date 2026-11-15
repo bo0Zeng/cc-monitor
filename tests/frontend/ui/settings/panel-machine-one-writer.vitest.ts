@@ -183,6 +183,8 @@ const state = (over: Partial<MachineState> = {}): MachineState => ({
   said: "核心·那台要更新",
   offlineSaid: "核心·devbox 离线",
   heldSaid: "夹具·离线",
+  withdrawHeld: "夹具·撤着",
+  rewindHeld: "夹具·上一版撤着",
   fixes: [],
   seenHostKey: null,
   expectedHostKey: null,

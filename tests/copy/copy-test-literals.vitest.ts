@@ -22,6 +22,7 @@
  * - 只认整条相等：`toContain("某句的一截")` 这种半句断言、带占位符的模板串不在人群里（按半句认，噪声大过信号）。
  * - 截图场景（`tests/shots/scenes/` 与同类的组件总览 `tests/shots/kit-gallery.ts`：合成数据画组件）、
  *   文案表自己的判据（`tests/copy/`）、取文口自测（`tests/common/copy-core/`）不进人群。
+ * - 开发调度的判据（`tests/devsched/`）不进人群：开发调度不出产品界面、没有文案表，它的字无键可取（普查同一理由排除 `src/devsched`）。
  * - 按行用正则抠字面量，不是编译器；整行注释跳过，行尾注释里的引号会被当成字面量（注释里引原文用「」）。
  */
 import { execFileSync } from "node:child_process";
@@ -34,7 +35,7 @@ import { TABLE_PATH } from "./copy-support.ts";
 import { nonEmpty } from "../test-support/non-empty.ts";
 
 const EXEMPT_PATH = resolve(REPO_ROOT, "tests", "copy", "test-literal-exempt.json");
-const OUT_OF_SCOPE = [/^tests\/shots\/scenes\//, /^tests\/shots\/kit-gallery\.ts$/, /^tests\/copy\//, /^tests\/common\/copy-core\//];
+const OUT_OF_SCOPE = [/^tests\/shots\/scenes\//, /^tests\/shots\/kit-gallery\.ts$/, /^tests\/copy\//, /^tests\/common\/copy-core\//, /^tests\/devsched\//];
 
 /** 豁免的用途闭集：这几类字面量本来就不该换成键。 */
 export const USES = {

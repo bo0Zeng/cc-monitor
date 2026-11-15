@@ -1,4 +1,4 @@
-//! 这台书签那份后端自有文件：切换 / 删 / 加的列表逐格 · 两个写者同时加都在 · 读不懂不覆盖 · 不在 ⇒ 空。
+//! 这台书签那份后端自有文件：切换 / 删 / 加的列表逐格 · 两个写者同时加都在 · 读不懂不覆盖 · 不在 ⇒ 空 · 目录归一（逐格 · 生成语料对拍）。
 //!
 //! ⚠ 家目录一律是临时目录（`Own::issue_at`），真 `~/.cc-monitor/` 一个字节都不碰。
 
@@ -224,4 +224,67 @@ fn a_newer_file_is_said_and_never_overwritten() {
     .unwrap_err();
     assert_eq!(e.code.as_deref(), Some("bookmarks_unreadable"));
     assert_eq!(std::fs::read(&f).unwrap(), newer, "比这一版新 ⇒ 不覆盖");
+}
+
+// ── 目录归一（`normalize_dir`，本文件的被测那一份私有）────────────
+
+/// 书签路径 `normalize` 的原样例，外加几格手推。
+#[test]
+fn normalize_matches_the_old_panel_case_by_case() {
+    let cases: &[(&str, &str)] = &[
+        ("/a//b/", "/a/b"),
+        ("/", "/"),
+        ("//", "/"),
+        ("/home/pi", "/home/pi"),
+        ("/home/pi/", "/home/pi"),
+        ("///srv///data///", "/srv/data"),
+        ("", ""),
+        ("rel/dir/", "rel/dir"),
+        ("/文档/项目/", "/文档/项目"),
+    ];
+    for (input, want) in cases {
+        assert_eq!(normalize_dir(input), *want, "normalize_dir({input:?})");
+    }
+}
+
+/// 两步替换的对照写法（反复 `replace` 到不动为止、再去尾）：与生产那一趟扫描刻意不同写法。
+fn old_two_step(path: &str) -> String {
+    let mut c = path.to_string();
+    while c.contains("//") {
+        c = c.replace("//", "/");
+    }
+    if c == "/" {
+        return c;
+    }
+    c.strip_suffix('/').map(str::to_string).unwrap_or(c)
+}
+
+fn corpus() -> Vec<String> {
+    let alphabet = ['/', 'a', '文', '.'];
+    (0..4096u32)
+        .map(|n| {
+            let mut s = String::new();
+            let mut k = n;
+            for _ in 0..6 {
+                s.push(alphabet[(k % 4) as usize]);
+                k /= 4;
+            }
+            s
+        })
+        .collect()
+}
+
+#[test]
+fn normalize_agrees_with_the_two_step_rewrite_on_a_generated_corpus() {
+    let all = corpus();
+    for s in &all {
+        assert_eq!(normalize_dir(s), old_two_step(s), "路径 {s:?}");
+    }
+    assert_eq!(all.len(), 4096);
+    // 语料自检：三种要紧的形都真在人群里，否则这条对拍是空转的。
+    assert!(all.iter().any(|s| s.contains("//")));
+    assert!(all
+        .iter()
+        .any(|s| s.len() > 1 && s.ends_with('/') && !s.ends_with("//")));
+    assert!(all.iter().any(|s| s.chars().all(|c| c == '/')));
 }

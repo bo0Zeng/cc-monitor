@@ -104,7 +104,4 @@ fn the_face_is_registered_for_the_claude_route() {
     assert_eq!(f.dir_env, "CLAUDE_CONFIG_DIR");
     assert!(f.env_set.contains(&("TZ", "UTC")));
     assert!(f.env_remove.contains(&"ANTHROPIC_API_KEY"));
-    assert!(crate::agents::route_named("codex")
-        .and_then(crate::agents::usage_of)
-        .is_none());
 }

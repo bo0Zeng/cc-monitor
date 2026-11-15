@@ -74,7 +74,7 @@ describe("托管那一形：谁在输入 · 接管 · 交还", () => {
 
   it("★★ 别的一端持有 ⇒ 写后端那一句、给［接管输入］；点了交 `terminal-take-input`，回的那一格就地换上 ⇒［交还］", async () => {
     const { page, holds } = rig([row({ terminal: "%7", name:"billing-2", input: "held", holder: { said: "S-in-phone", mine: false } })]);
-    holds.take.mockResolvedValue({ kind: "held", holder: { who: "desktop", mine: true, said: "S-here" } });
+    holds.take.mockResolvedValue({ kind: "held", holder: { mine: true, said: "S-here" } });
     page.sessionChanged();
     page.setVisible(true);
     await flush();
@@ -84,7 +84,7 @@ describe("托管那一形：谁在输入 · 接管 · 交还", () => {
     expect(holds.take).toHaveBeenCalledWith("devbox", "%7");
     expect(page.el.textContent).toContain("S-here");
     expect(button(page, copyText("terminal.input.release")), "这一端持有 ⇒［交还］").toBeDefined();
-    holds.release.mockResolvedValue({ kind: "held", holder: { who: "none", mine: false, said: "S-none" } });
+    holds.release.mockResolvedValue({ kind: "held", holder: { mine: false, said: "S-none" } });
     button(page, copyText("terminal.input.release"))?.click();
     await flush();
     expect(holds.release).toHaveBeenCalledWith("devbox", "%7");
@@ -93,7 +93,7 @@ describe("托管那一形：谁在输入 · 接管 · 交还", () => {
 
   it("★［接管输入］/［交还］是描边紧凑那一档（接管不是主操作，也不是一行字）", async () => {
     const { page, holds } = rig([row({ terminal: "%7", name: "billing-2", input: "held", holder: { said: "S-in-window", mine: false } })]);
-    holds.take.mockResolvedValue({ kind: "held", holder: { who: "desktop", mine: true, said: "S-here" } });
+    holds.take.mockResolvedValue({ kind: "held", holder: { mine: true, said: "S-here" } });
     page.sessionChanged();
     page.setVisible(true);
     await flush();

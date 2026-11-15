@@ -2,7 +2,6 @@
 
 use super::locate;
 use super::{jlen, Pager};
-use std::path::Path;
 
 /// `history-user-inputs` 的入参。
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -41,7 +40,13 @@ pub struct UserInputs {
 }
 
 /// `history-user-inputs` 的一页，上限是参数。一律从扫描图上切（同 [`super::index::index_page`]）。
-pub fn user_inputs_page(home: &Path, req: UserInputsReq, cap: usize) -> Result<UserInputs, String> {
+pub fn user_inputs_page(
+    home: impl crate::agents::IntoHomes,
+    req: UserInputsReq,
+    cap: usize,
+) -> Result<UserInputs, String> {
+    let home_v = crate::agents::IntoHomes::into_homes(home);
+    let home: &[crate::agents::AgentHome] = &home_v;
     let from = req.from.unwrap_or(0);
     let fixed = jlen(&UserInputs {
         from: u64::MAX,

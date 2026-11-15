@@ -218,17 +218,12 @@ pub struct StopFaces<'a> {
 
 /// 这台名单里带着它的那一行 ⇒ 会话脸要的容器那一格（命中多个取第一个；哪行都不带着 ⇒ 不在任何宿主里）。
 pub(crate) fn container_of(rows: &[TermEntry], sid: &str) -> crate::wire::SessionContainer {
-    use crate::wire::{SessionContainer, TerminalHost};
     let at = match carriers(rows, sid) {
         Standing::Running(e) | Standing::Idle(e) => e,
         Standing::Ambiguous(es) => es[0],
-        Standing::None => return SessionContainer::None,
+        Standing::None => return crate::wire::SessionContainer::None,
     };
-    let terminal = Some(at.terminal.clone());
-    match at.host {
-        TerminalHost::Tmux => SessionContainer::Tmux { terminal },
-        TerminalHost::Managed => SessionContainer::Managed { terminal },
-    }
+    crate::host::container(at.host, at.terminal.clone())
 }
 
 /// `sessions-where` 的应答：逐个结果，与入参同序。
@@ -482,7 +477,7 @@ fn stop_one(sid: &str, listed: &Listed, deps: &Deps, faces: &StopFaces) -> Answe
             ..Answer::done()
         },
         Err(f) => {
-            let code = f.code_or_fallback().to_string();
+            let code = cmd_wire::failed::Failed::code_or_fallback(f.code.clone());
             Answer {
                 session: Some(name),
                 ..Answer::failed((&code, f.logged()))

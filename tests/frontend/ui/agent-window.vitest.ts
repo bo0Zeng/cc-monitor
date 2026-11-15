@@ -67,6 +67,8 @@ vi.mock("../../../src/frontend/ui/events", () => ({
 
 import { AgentWindow } from "../../../src/frontend/ui/views/agent-window";
 import { copyText } from "../../../src/frontend/ui/copy-table";
+import { noteMachine } from "../../../src/frontend/ui/ipc/chan-caller";
+import { LOCAL } from "../../../src/frontend/ui/ipc/origin";
 
 const T0 = Date.parse("2026-10-01T10:00:00Z");
 
@@ -128,12 +130,13 @@ beforeEach(() => {
 });
 
 describe("agent 窗口", () => {
-  it("系统标题 ＝ 标签 · 状态 · 会话，状态变了跟着改；收场 ⇒ 说明 ＋ 报错原话 ＋ 结束线", async () => {
+  it("系统标题 ＝ 标签 · 状态 · 会话 · 机器（本机也带，称呼照那台成品的名字），状态变了跟着改；收场 ⇒ 说明 ＋ 报错原话 ＋ 结束线", async () => {
+    noteMachine(LOCAL, { name: "这台（夹具）", offlineSaid: "" });
     h.pages = [{ rows: [brief("查一下"), say("c1", "先读代码")] }, { rows: [] }];
     const { root } = await open();
     frame([RUN]);
     await settle();
-    expect(h.titles.at(-1)).toBe(`审交互 · ${copyText("runs.state.running")} · 主会话`);
+    expect(h.titles.at(-1)).toBe(`审交互 · ${copyText("runs.state.running")} · 主会话 · 这台（夹具）`);
     expect(root.querySelector('[data-role="new-content"]')?.hasAttribute("hidden")).toBe(true);
     frame([
       {
@@ -148,7 +151,7 @@ describe("agent 窗口", () => {
       },
     ]);
     await settle();
-    expect(h.titles.at(-1)).toBe(`审交互 · ${copyText("runs.state.failed")} · 主会话`);
+    expect(h.titles.at(-1)).toBe(`审交互 · ${copyText("runs.state.failed")} · 主会话 · 这台（夹具）`);
     // 事实 · 说明 · 结束线都照抄运行表写好的字（会走的钟那一截按此刻填），界面不按 `state` 挑字。
     expect(root.textContent).toContain(["核心·10:00 起", "核心·用时 2m"].join(copyText("kit.text.sep")));
     expect(root.textContent).toContain("核心·失败说明");

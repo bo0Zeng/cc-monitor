@@ -38,7 +38,7 @@ export function noteHistoryArrived(): void {
   const perf = window.__ccmPerf;
   if (!perf) return;
   noteFirstBatch();
-  perf.firstPayloadDrained ??= performance.now();
+  notePayloadDispatched(perf);
   if (coldProbe && !coldProbeOn && !coldSaid) {
     coldProbeOn = true;
     coldProbe.start();
@@ -50,7 +50,26 @@ export function noteHistoryFed(n: number): void {
   const perf = window.__ccmPerf;
   if (!perf) return;
   coldFed += n;
-  perf.batchDrainEnd ??= performance.now();
+  noteBatchDrained(perf);
+}
+
+// timeline 的几格时刻（首条派发 · drain 完 · 切 live）冷起补读与会话流的批两路都只经下面三处记、只记头一批：
+// 那几行是同一个起点上的启动时刻；页面开久了实时突发再进一次批模式，那一刻不进这几格（读出来就是页龄）。
+
+/** 首条行派发给 tab（会话流的一格 · 补读那一段）。 */
+export function notePayloadDispatched(p: typeof window.__ccmPerf): void {
+  p.firstPayloadDrained ??= performance.now();
+}
+
+/** 一段行 drain 完（会话流的 `batch` 收尾那一格 · 补读那一段喂完）。 */
+export function noteBatchDrained(p: typeof window.__ccmPerf): void {
+  p.batchDrainEnd ??= performance.now();
+}
+
+/** 切回 live（会话流的批 grace 满了 · 冷起补读落地）：记时刻 ＋ timeline 落一次盘（`drained` 是那一路累计的行数）。 */
+export function noteBatchSettled(p: typeof window.__ccmPerf, payloadCount: number): void {
+  p.onBatchEndFired ??= performance.now();
+  emitPerfSummary(p, payloadCount);
 }
 
 /**
@@ -63,8 +82,7 @@ export function noteColdFilled(): void {
   coldSaid = true;
   coldProbe?.stop();
   coldProbeOn = false;
-  perf.onBatchEndFired ??= performance.now();
-  emitPerfSummary(perf, coldFed);
+  noteBatchSettled(perf, coldFed);
 }
 
 /**
@@ -79,7 +97,7 @@ function isCatchable(v: unknown): v is Promise<unknown> {
 }
 
 /** 启动管线 perf timeline 输出（切 live 那一刻调一次：重放批的 onBatchEnd 真正 fire 时 · 冷起补读落地时）。 */
-export function emitPerfSummary(
+function emitPerfSummary(
   p: typeof window.__ccmPerf,
   payloadCount: number,
 ): void {

@@ -644,7 +644,12 @@ fn every_error_and_item_shape_round_trips() {
     let mut errs = Vec::new();
     for (i, tag) in HOP_TAGS.into_iter().enumerate() {
         for reach in [Reach::NotSent, Reach::Sent, Reach::Unknown] {
-            for why in [HopFault::Unreachable, HopFault::Dropped, HopFault::Overrun] {
+            for why in [
+                HopFault::Unreachable,
+                HopFault::Dropped,
+                HopFault::Overrun,
+                HopFault::Full,
+            ] {
                 errs.push(CallError::Hop {
                     at: HopId { idx: i as u8, tag },
                     reach,

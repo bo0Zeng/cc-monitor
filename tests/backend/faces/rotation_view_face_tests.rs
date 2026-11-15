@@ -27,7 +27,7 @@ pub(crate) fn now() -> u64 {
 fn dead_token_endpoint() -> crate::accounts::oauth::TokenEndpoint {
     let port = ssh_dial::refusing_port::refusing_port();
     crate::accounts::oauth::TokenEndpoint {
-        base: crate::relay::Base::parse(&format!("http://127.0.0.1:{port}")).expect("base"),
+        base: crate::relay::base_of(&format!("http://127.0.0.1:{port}")).expect("base"),
         rest: "/v1/oauth/token".into(),
         deadline: std::time::Duration::from_millis(2_000),
     }
@@ -256,7 +256,7 @@ fn the_strategy_list_shows_every_file_with_who_uses_it() {
     let ids: Vec<&str> = got.strategies.iter().map(|s| s.id.as_str()).collect();
     assert_eq!(ids, ["broken", "by-list", "by-reset", "third"]);
     let lo = &got.strategies[1];
-    assert!(lo.for_new && lo.error.is_none() && !lo.words_bad);
+    assert!(lo.for_new && lo.error.is_none());
     assert_eq!(lo.summary, "换号时按账号列表顺序。", "说明的第一行");
     assert_eq!(got.strategies[0].summary, "");
     assert!(got.strategies[0].error.is_some(), "读不懂的没带原因");
@@ -433,7 +433,9 @@ fn a_session_view_carries_everything_the_four_blocks_draw() {
     home.saw(&ctx, TITLED);
     home.load(&ctx, TITLED, None);
     let _tree = crate::history::history_list::test_support::MACHINE_TREE.blocking_lock();
-    let dir = crate::history::listing::records_root(&crate::history::listing::agent_home())
+    let dir = crate::agents::local_homes()
+        .iter()
+        .find_map(crate::agents::AgentHome::records_root)
         .expect("有记录树")
         .join("-p");
     std::fs::create_dir_all(&dir).unwrap();
@@ -587,12 +589,14 @@ fn a_view_writes_every_time_it_carries() {
     // 停发：到几点那一刻也写好。
     seen(&ctx, "a", 1.0, Some(now() + 3600));
     let v = session_view(&ctx, &home, S1);
-    let held = v.hints.iter().find_map(|h| match &h.hint {
-        RotHint::Hold { until_text, .. } => Some((until_text.clone(), h.text.clone())),
-        _ => None,
-    });
-    let (at, said) = held.expect("停发");
-    let at = at.expect("到几点说得出");
+    let said = v
+        .hints
+        .iter()
+        .find_map(|h| matches!(h.hint, RotHint::Hold { .. }).then(|| h.text.clone()))
+        .expect("停发");
+    let at = crate::common::time::TextClock::new(now(), &Default::default())
+        .text(now() + 3600)
+        .0;
     assert!(hm(&at), "{at}");
     let dur = copy_core::rel_duration(3_600_000).expect("一小时说得出");
     assert!(
@@ -785,6 +789,30 @@ fn the_next_line_says_when_from_the_same_simulation() {
             copy_text("beRotation.line.offUse", &[]).as_str()
         )
     );
+}
+
+/// ★ 设置说明写法不合规（标签里写了第二人称）⇒ 那一份的设置页带「说明写法不合规」那一条；合规的那一份不带。
+#[test]
+fn a_strategy_whose_labels_break_the_copy_rules_carries_the_words_hint() {
+    let home = Home::new("view-hint-words");
+    let ctx = home.ctx();
+    let path = home.root.join(shelf::DIR_NAME).join("by-list.rhai");
+    let src = std::fs::read_to_string(path).expect("读");
+    let mut head = crate::accounts::quota::setup::script::parse(&src)
+        .expect("读得懂")
+        .head;
+    head.form[0].label = crate::accounts::quota::setup::script::Text::One("你的上限".into());
+    let text = crate::accounts::quota::setup::script::with_head(&src, &head).expect("头");
+    shelf::write_file(&home.own(), "by-list", &text).expect("写");
+    let words = |id: &str| {
+        strategy_view(&ctx, &home, id)
+            .hints
+            .into_iter()
+            .find(|h| h.hint == RotHint::WordsBad)
+    };
+    let bad = words("by-list").expect("说明写法不合规那一条");
+    assert_eq!(bad.text, copy_core::copy_text("beRotation.hint.words", &[]));
+    assert!(words("by-reset").is_none(), "合规的那一份不带");
 }
 
 /// ★ 「时区不明」总带上一个时区（「设时区」设成它）：信封里说了 ⇒ 那个名；`local` ⇒ 这台系统的时区名；
@@ -1486,4 +1514,70 @@ fn the_board_says_which_cells_can_go_back_to_default() {
         .find(|c| c.key == "smart")
         .expect("smart");
     assert_eq!((smart.from, smart.reset), (form::RotFrom::Own, true));
+}
+
+/// 换号记录那一行「从哪个号 → 到哪个号」由后端照号名写好（界面照抄，不拿号表自己拼）。
+#[test]
+fn a_log_row_carries_its_move_line() {
+    let rows = log_rows(
+        crate::agents::fake::AGENT_KIND,
+        &[book::Log {
+            at: 1,
+            from: "work".into(),
+            to: "home".into(),
+            cause: book::Cause::Order,
+            why: None,
+            saw: None,
+        }],
+    );
+    let account_text = |a: &str| {
+        crate::accounts::quota::name_words::account_text_of(crate::agents::fake::AGENT_KIND, a)
+    };
+    assert_eq!(
+        rows[0].moved,
+        copy_core::copy_text(
+            "rot.strip.move",
+            &[
+                ("from", &account_text("work")),
+                ("to", &account_text("home"))
+            ]
+        )
+    );
+}
+
+/// 号牌与换号记录的号名照那条会话那一家问：账号 0 叫那一家默认家目录的短形：默认那一家有本机布局、写得出短形，替身家不在注册表里、说不出 ⇒ 空串；两家叫法不同，传错家就对不上。
+#[test]
+fn plates_and_log_rows_name_account_zero_after_the_sessions_family() {
+    use crate::accounts::quota::name_words::account_text_of;
+    let (default, fake) = (
+        crate::agents::default_kind(),
+        crate::agents::fake::AGENT_KIND,
+    );
+    assert_ne!(
+        account_text_of(default, "0"),
+        account_text_of(fake, "0"),
+        "两家账号 0 的叫法一样 ⇒ 下面几条分不出是不是照家问的"
+    );
+    let colors = std::collections::BTreeMap::new();
+    let log = [book::Log {
+        at: 1,
+        from: "0".into(),
+        to: "work".into(),
+        cause: book::Cause::Order,
+        why: None,
+        saw: None,
+    }];
+    for agent in [default, fake] {
+        assert_eq!(
+            plate_of(agent, "0", &colors).label.0,
+            account_text_of(agent, "0")
+        );
+        assert_eq!(
+            log_rows(agent, &log)[0].moved,
+            copy_core::copy_text(
+                "rot.strip.move",
+                &[("from", &account_text_of(agent, "0")), ("to", "work")]
+            )
+        );
+    }
 }

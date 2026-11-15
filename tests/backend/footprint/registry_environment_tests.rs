@@ -20,14 +20,19 @@ fn env_tiers_are_exhaustive(t: EnvTier) {
 /// 受管工具 / 手写环境项的**全集**（本表 ＋ 注册表里各家足迹面带来的那一半）—— 判据按全集判。
 static TOOLS: std::sync::LazyLock<Vec<crate::agents::footprint_decl::ToolSpec>> =
     std::sync::LazyLock::new(|| {
-        crate::footprint::registry::tools()
+        crate::footprint::registry::tools_among(crate::agents::REGISTRY)
             .into_iter()
             .cloned()
             .collect()
     });
 #[allow(dead_code)]
 static UNMANAGED_ENV: std::sync::LazyLock<Vec<crate::agents::footprint_decl::UnmanagedEnv>> =
-    std::sync::LazyLock::new(|| unmanaged_on(false).into_iter().cloned().collect());
+    std::sync::LazyLock::new(|| {
+        unmanaged_among(crate::agents::REGISTRY, false)
+            .into_iter()
+            .cloned()
+            .collect()
+    });
 
 /// 下面 ③ 用的抽取器 —— **直接用盘上已有那一把**（`structural_scan::symbol_addresses`），不自己再写一个：
 /// 它还会去全仓解析那个符号今天在不在、在不在原处；抄一份被测逻辑就是两份实现。
@@ -42,7 +47,7 @@ fn addresses_in(why: &str) -> Vec<(usize, String, String, bool)> {
 #[test]
 fn the_environment_is_one_closed_list() {
     // unix 那一台上每一条都有意义（`OnPlatform` 只有「每台」与「只 unix」两形）⇒ 人数是两半之和。
-    let env = environment_on(false);
+    let env = environment_among(crate::agents::REGISTRY, false);
     let ids: BTreeSet<&str> = env.iter().map(|e| e.id).collect();
     assert_eq!(
         ids.len(),
@@ -53,7 +58,7 @@ fn the_environment_is_one_closed_list() {
     assert_eq!(
         env.len(),
         TOOLS.len() + UNMANAGED_ENV.len(),
-        "闭集的人数 ≠ 两半之和 —— environment() 漏了一半还是加了第三份"
+        "闭集的人数 ≠ 两半之和 —— environment_among 漏了一半还是加了第三份"
     );
     for u in UNMANAGED_ENV.iter() {
         assert!(
@@ -71,7 +76,10 @@ fn the_environment_is_one_closed_list() {
 fn a_windows_machine_is_not_asked_for_the_unix_only_tools() {
     const UNIX_ONLY: [&str; 3] = ["terminal-exit", "xdg-open", "login-shell"];
     let ids = |windows: bool| -> BTreeSet<&'static str> {
-        environment_on(windows).iter().map(|e| e.id).collect()
+        environment_among(crate::agents::REGISTRY, windows)
+            .iter()
+            .map(|e| e.id)
+            .collect()
     };
     let (win, unix) = (ids(true), ids(false));
     for id in UNIX_ONLY {
@@ -101,7 +109,7 @@ fn every_tier_has_members_so_absence_never_encodes_a_judgement() {
         "该我们装、而这里装不了的东西今天没有：账号库那一件由后端自己建（`accounts-init`），\
          这一档留给下一件「该由 app 带、实现还没有」的东西",
     )];
-    let env = environment();
+    let env = environment_among(crate::agents::REGISTRY, cfg!(windows));
     for (tier, _) in MAY_BE_EMPTY {
         assert_eq!(
             env.iter().filter(|e| e.tier == *tier).count(),
@@ -181,7 +189,7 @@ fn every_unmanaged_entry_names_a_code_address() {
 /// 三格一起断，缺一格都能装样子：
 ///   ① 它**不在** [`UNMANAGED_ENV`] 里了（留在那儿就没有 `ToolSpec`，也就永远升不到第一档）；
 ///   ② 它在 [`TOOLS`] 里且 `installable` / `uninstallable` **都为真**（装得了也卸得掉）；
-///   ③ [`environment`] 把它算成 [`EnvTier::AppInstalls`]（档是**派生**出来的，不是手填的）。
+///   ③ [`environment_among`] 把它算成 [`EnvTier::AppInstalls`]（档是**派生**出来的，不是手填的）。
 ///
 /// **死值验**：把 `installable` 翻回 `false` ⇒ ②③ 双双红；
 /// 把这一条搬回 `UNMANAGED_ENV` ⇒ ① 红。
@@ -199,11 +207,11 @@ fn posix_rc_aliases_sits_in_the_first_tier_now() {
         .unwrap_or_else(|| panic!("`{ID}` 不在 TOOLS 里 —— 本机 POSIX 那一格没人申报"));
     assert!(
         t.installable,
-        "`{ID}` 申报成装不了 —— 那 `environment()` 会把它算进「app 只查」"
+        "`{ID}` 申报成装不了 —— 那 `environment_among` 会把它算进「app 只查」"
     );
     assert!(t.uninstallable, "`{ID}` 申报成卸不掉 —— 有围栏就必须卸得掉");
     assert!(t.touches().next().is_some(), "`{ID}` 装得了却没申报落点");
-    let tier = environment()
+    let tier = environment_among(crate::agents::REGISTRY, cfg!(windows))
         .into_iter()
         .find(|e| e.id == ID)
         .map(|e| e.tier)
@@ -217,7 +225,7 @@ fn posix_rc_aliases_sits_in_the_first_tier_now() {
 }
 
 // 「手写那一半的档不许是 `AppInstalls`」不另设判据：`tier` 由 [`EnvTier::of`] 派生，
-// 手写那一半的第二格在 [`environment`] 里**恒 `false`** ⇒ `EnvTier::of(_, false)` 返回不了 `AppInstalls`，
+// 手写那一半的第二格在 [`environment_among`] 里**恒 `false`** ⇒ `EnvTier::of(_, false)` 返回不了 `AppInstalls`，
 // 那条断言**在算术上不可能红**，不留永远不会红的钉子。它守的那件事由形状守着：
 // `UnmanagedEnv` 上**没有** `tier` 字段可填。
 
@@ -253,7 +261,7 @@ fn who_should_install_is_not_a_function_of_whether_we_can_install_today() {
             .collect::<Vec<_>>()
     );
     // 人群那一半：闭集里「app 自带」的每一项，档都是从 `(who, 有没有装口)` 派生的那一档。
-    for e in environment()
+    for e in environment_among(crate::agents::REGISTRY, cfg!(windows))
         .iter()
         .filter(|e| e.who == Provisioning::AppShips)
     {
@@ -277,7 +285,7 @@ fn the_tier_for_owed_installers_is_countable_and_not_empty() {
         EnvTier::of(Provisioning::AppShips, false),
         EnvTier::AppShipsNoInstallerYet
     );
-    for e in environment()
+    for e in environment_among(crate::agents::REGISTRY, cfg!(windows))
         .iter()
         .filter(|e| e.tier == EnvTier::AppShipsNoInstallerYet)
     {
@@ -295,7 +303,7 @@ fn the_tier_for_owed_installers_is_countable_and_not_empty() {
 ///
 /// # 人群住哪儿
 ///
-/// 唯一住址是 [`Provisioning::AppShips`]，**现算**：`environment()` 里 `who` 是它的那几项。
+/// 唯一住址是 [`Provisioning::AppShips`]，**现算**：`environment_among` 里 `who` 是它的那几项。
 /// `TOOLS` 那一半由 `destination` 派生，手写那一半显式声明 —— 两侧都不在这条判据里。
 ///
 /// # 下面这张 `NAMED_AS_OURS` **不是自带清单**，别读错
@@ -308,7 +316,7 @@ fn the_tier_for_owed_installers_is_countable_and_not_empty() {
 /// ⚠ 点名清单不等于人群：`pb skill` 不自带（它在 app 的 skill 仓库那条线上，两张表**本来就是不同人群**，
 ///   不许拿相等去守）；点名清单本身也会漏 —— 所以人群必须是数出来的。
 ///
-/// **死值验**：把 `cc-bus` 从「自带」里摘掉（例如在 [`environment`] 里给它硬写
+/// **死值验**：把 `cc-bus` 从「自带」里摘掉（例如在 [`environment_among`] 里给它硬写
 /// `Provisioning::NotAnInstall`）⇒ 本条红。这条判据只有这一条死值验。
 #[test]
 fn everything_the_charter_named_as_ours_is_in_the_shipped_population() {
@@ -320,7 +328,7 @@ fn everything_the_charter_named_as_ours_is_in_the_shipped_population() {
             "用户逐字：「account」—— 账号库由后端自己建（本机远端同一条路）",
         ),
     ];
-    let env = environment();
+    let env = environment_among(crate::agents::REGISTRY, cfg!(windows));
     // ① 人群**现算**，不抄名单。
     let shipped: BTreeSet<&str> = env
         .iter()
@@ -329,7 +337,7 @@ fn everything_the_charter_named_as_ours_is_in_the_shipped_population() {
         .collect();
     assert!(
         !shipped.is_empty(),
-        "「app 自带」这个人群是空的 —— 先查 `Provisioning::of_tool` 与 `environment`，别改断言"
+        "「app 自带」这个人群是空的 —— 先查 `Provisioning::of_tool` 与 `environment_among`，别改断言"
     );
 
     // ② 保鲜自检：定框点过名的 id 必须还在闭集里（改了名 / 删了 ⇒ 本表当场腐）。
@@ -351,7 +359,7 @@ fn everything_the_charter_named_as_ours_is_in_the_shipped_population() {
     assert!(
         missing.is_empty(),
         "用户逐字点名要自带的东西，在「app 自带」这个人群里**找不到**：{missing:?}\n\
-             人群现算于 `environment()` 的 `who == AppShips`，今天是 {shipped:?}。\n\
+             人群现算于 `environment_among` 的 `who == AppShips`，今天是 {shipped:?}。\n\
              ⇒ 要么那几项的申报错了（改申报），要么「谁该装」那一格要重裁（改定框，不是改这里）。"
     );
 
@@ -376,7 +384,7 @@ fn everything_the_charter_named_as_ours_is_in_the_shipped_population() {
 /// 形抄 `config_surface::all_host_scopes_are_really_used`。
 #[test]
 fn every_provisioning_value_is_really_used() {
-    let env = environment();
+    let env = environment_among(crate::agents::REGISTRY, cfg!(windows));
     for w in Provisioning::ALL {
         assert!(
             env.iter().any(|e| e.who == *w),
@@ -414,7 +422,7 @@ fn nobody_declares_an_installer_for_something_we_should_not_install() {
 /// 本条只判申报，别把两条读成一条。
 #[test]
 fn the_prompt_tier_declares_how_it_will_look() {
-    let env = environment();
+    let env = environment_among(crate::agents::REGISTRY, cfg!(windows));
     let mut probeable = 0usize;
     let mut blind = 0usize;
     for e in env
@@ -449,13 +457,13 @@ fn the_prompt_tier_declares_how_it_will_look() {
 
 /// 派生那一半：**`TOOLS` 的每一条都必须进闭集**，一条都不许漏。
 ///
-/// 🔴 **本条不断言「档 == `if installable {…} else {…}`」**：`environment()` 的档就是那个表达式算的，
+/// 🔴 **本条不断言「档 == `if installable {…} else {…}`」**：`environment_among` 的档就是那个表达式算的，
 /// 判据再算一遍等于拿它自己核它自己（把实现整个退掉它仍然绿）—— 不留永远不会红的钉子。
 /// ⇒ 本条守**够得着的那一半**：覆盖。漏掉一条 `TOOLS` ⇒ 本条红。
 /// 而「字段填错了」那一格**不由本条守**，由读字段的那条（它右边钉的是实现，不是同一个表达式）。
 #[test]
 fn every_managed_tool_reaches_the_closed_set() {
-    let env = environment();
+    let env = environment_among(crate::agents::REGISTRY, cfg!(windows));
     for t in TOOLS.iter() {
         let n = env.iter().filter(|e| e.id == t.id).count();
         assert_eq!(

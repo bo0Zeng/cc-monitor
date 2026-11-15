@@ -38,13 +38,15 @@ pub use discard::{Discard, Why};
 pub use duration::{format_duration, format_elapsed, rel_duration, short_duration};
 pub use path::{home_short, home_short_bytes};
 pub use peer::{
-    backend_differs, backend_old, local_machine, peer_machine, reply_unreadable, unavailable,
+    backend_differs, backend_old, local_machine, machine_word, offline, peer_machine,
+    reply_unreadable, unavailable, write_refused,
 };
 pub use reason::{code_reason, io_reason, sftp_status_reason, spawn_reason};
 pub use size::size_text;
 pub use text::{clip, clip_flat, collapse_ws, first_line};
 pub mod detail;
 pub mod discard;
+pub mod machine;
 pub mod reason;
 pub mod said;
 
@@ -60,11 +62,13 @@ fn entries() -> &'static serde_json::Map<String, serde_json::Value> {
 
 /// 取一条文案并填上具名占位符。
 ///
-/// 表里没有这个 key ⇒ 回 ``（走不到：`copy-table.vitest.ts` 把 `.rs` 的每个调用点与表两向对拍；
+/// 表里没有这个 key ⇒ 回 `〔key〕`（走不到：`copy-table.vitest.ts` 把 `.rs` 的每个调用点与表两向对拍；
 /// 但不许 panic —— 一句话缺了不该拖垮它所在的那条路）。
 ///
-/// **单趟**：从左到右扫一遍模板，`{名}` 且这个名给了值 ⇒ 换成值，**值本身不再被扫**；
-/// 没给的原样留 `{名}`（Rust 读口的处置，认可的两读口差异，金样 `_differences` 登记着）。
+/// 表里那一条登记的参数少给了 ⇒ 调试档当场 panic（[`args_short`]；测试都在这一档：判据里少传一个参
+/// 不再出一句带 `{名}` 的半成品混过去）；发行档照填给了的、没给的原样留 `{名}`（金样 `_differences` 登记着）。多给的不用。
+///
+/// **单趟**：从左到右扫一遍模板，`{名}` 且这个名给了值 ⇒ 换成值，**值本身不再被扫**。
 /// 不逐个参数对整串 `replace`：那样前一个参数的值里若含 `{后一个参数名}`，会被后一个再换一遍：插值重新解释了值。
 /// 与前端读口 `copy-table.ts::copyText` 那一趟同形（金样 `tests/__fixtures__/copy-interpolation.golden.json` 两侧各对）。
 ///
@@ -77,6 +81,11 @@ pub fn copy_text(key: &str, args: &[(&str, &str)]) -> String {
     else {
         return format!("〔{key}〕");
     };
+    if cfg!(debug_assertions) {
+        if let Some(why) = args_short(key, args) {
+            panic!("{why}");
+        }
+    }
     // 「字面 · 值 · 字面 · 值 … 字面」交替；没给值的 `{x}` 算字面。
     let mut parts: Vec<String> = vec![String::new()];
     let mut rest = zh;
@@ -107,6 +116,22 @@ pub fn copy_text(key: &str, args: &[(&str, &str)]) -> String {
     }
     parts.last_mut().expect("parts 恒非空").push_str(rest);
     join_seams(&parts)
+}
+
+/// 「少给了参数」只判这一处：表里那一条登记的 `args` 都给了 ⇒ `None`；否则说是哪条、少了哪个。
+/// 多给的不判（共用一套参数的几处照给全集，用不上的那几个不进句子）；表里那一条不在 ⇒ `None`（缺键另有它的处置）。
+fn args_short(key: &str, args: &[(&str, &str)]) -> Option<String> {
+    let short: Vec<&str> = entries()
+        .get(key)?
+        .get("args")
+        .and_then(|a| a.as_array())
+        .map(|a| a.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>())
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|w| !args.iter().any(|(n, _)| n == w))
+        .collect();
+    // 程序员错（调用方是我们自己的代码）⇒ 英文诊断，不进文案表。
+    (!short.is_empty()).then(|| format!("copy_text({key}): missing args {}", short.join(", ")))
 }
 
 fn is_han(c: char) -> bool {

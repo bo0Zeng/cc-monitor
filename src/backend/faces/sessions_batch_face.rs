@@ -136,7 +136,7 @@ async fn note_here(
     let op = req.op;
     let rt = tokio::runtime::Handle::current();
     let (results, undo) = tokio::task::spawn_blocking(move || {
-        let home = crate::history::listing::agent_home();
+        let home = crate::agents::local_homes();
         let notes = notes();
         let patch = match op {
             SessionsOp::Hide => serde_json::json!({"hide": "on"}),
@@ -223,8 +223,11 @@ pub(crate) fn hide_one(
             (o, undo)
         }
         Err(s) => {
-            let f =
-                crate::wire::detail::failed_of("history-annotate", s.code_or_fallback(), s.clone());
+            let f = crate::wire::detail::failed_of(
+                "history-annotate",
+                &cmd_wire::failed::Failed::code_or_fallback(s.code.clone()),
+                s.clone(),
+            );
             o.outcome = SessionState::Failed;
             o.why = Some(f.code);
             o.said = Some(f.said);
@@ -264,7 +267,11 @@ pub(crate) fn pin_one(
         return o;
     }
     if let Err(s) = write() {
-        let f = crate::wire::detail::failed_of("history-annotate", s.code_or_fallback(), s.clone());
+        let f = crate::wire::detail::failed_of(
+            "history-annotate",
+            &cmd_wire::failed::Failed::code_or_fallback(s.code.clone()),
+            s.clone(),
+        );
         o.outcome = SessionState::Failed;
         o.why = Some(f.code);
         o.said = Some(f.said);
@@ -329,20 +336,20 @@ async fn start_here(
     let verb = verb_of(&req.op);
     let rt = tokio::runtime::Handle::current();
     let (results, windows) = tokio::task::spawn_blocking(move || {
-        let home = crate::history::listing::agent_home();
+        let home = crate::agents::local_homes();
         let live = crate::history::live_table::now(&home);
         let notes = notes();
+        let housing = crate::host::Housing::here();
         let mut results = Vec::with_capacity(req.items.len());
         let mut windows = Vec::new();
         for it in &req.items {
             let sid = it.sid.as_str();
             let can = {
-                use crate::wire::{Life, SessionFace, SessionFaceExt as _, WireLife};
-                let life = match live.life_of(sid) {
-                    WireLife::Live { activity } => Life::live(activity, None),
-                    other => Life::of_wire(&other),
-                };
-                SessionFace::of(life).can.resume
+                use crate::wire::{SessionFace, SessionFaceExt as _};
+                let life = live.life_of(sid);
+                SessionFace::listed(&life, housing.live(sid, &life).as_ref())
+                    .can
+                    .resume
             };
             let (o, w) = start_one(&it.sid, title_here(&home, &notes, sid), can, || {
                 let _budget = crate::platform::child::Budget::capped(
@@ -414,7 +421,11 @@ pub(crate) fn start_one(
     }
     match open() {
         Err(s) => {
-            let f = crate::wire::detail::failed_of("session-open", s.code_or_fallback(), s.clone());
+            let f = crate::wire::detail::failed_of(
+                "session-open",
+                &cmd_wire::failed::Failed::code_or_fallback(s.code.clone()),
+                s.clone(),
+            );
             (
                 SessionOutcome {
                     copy_detail: f.detail,
@@ -469,13 +480,13 @@ pub(crate) fn notes() -> cmd_wire::listing::Table {
 
 /// 这台写的称呼：这条会话的整行标题（`search_rules::session_line`，与标签页同一行）。一批会话各样都照它。
 pub(crate) fn title_here(
-    home: &std::path::Path,
+    home: &[crate::agents::AgentHome],
     notes: &cmd_wire::listing::Table,
     sid: &str,
 ) -> String {
     use crate::history::search_rules::LabelFacts;
     let custom = notes.get(sid).and_then(|e| e.custom_title.clone());
-    let facts = match crate::agents::find_session(home, sid) {
+    let facts = match crate::agents::find_session_in(home, sid) {
         Ok(at) => LabelFacts {
             custom,
             ..crate::history::listing::label_facts_of(&at.file)
@@ -606,8 +617,11 @@ fn outcome_of(
         ))),
     };
     let mut o = found.unwrap_or_else(|s| {
-        let f =
-            crate::wire::detail::failed_of(SessionsBatchCmd::NAME, s.code_or_fallback(), s.clone());
+        let f = crate::wire::detail::failed_of(
+            SessionsBatchCmd::NAME,
+            &cmd_wire::failed::Failed::code_or_fallback(s.code.clone()),
+            s.clone(),
+        );
         SessionOutcome {
             machine: it.machine.clone(),
             sid: it.sid.clone(),

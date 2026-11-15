@@ -10,7 +10,7 @@ import { writeClipboard } from "../clipboard";
 import { copyText } from "../copy-table";
 import { saidOf } from "../kit/detail";
 import { returnCell, type PlanCell, type PlanNeed, type PlanReturned, type PlanSlice, type PlanWho } from "../plan-reads";
-import { blockRoots, cellIndex } from "./plan-model";
+import { cellIndex, rootBlock } from "./plan-model";
 import { activityOf, isLive } from "../face-can";
 import s from "./plan-review.module.css";
 
@@ -31,11 +31,6 @@ export interface ReviewHost {
   reread(): void;
 }
 
-/** 这一条在这一页上该不该出：没认可的（agent 提问那一种不收认可，一直出到答了）。 */
-export function openNeeds(slice: PlanSlice): PlanNeed[] {
-  return slice.needs.filter((n) => !n.acked);
-}
-
 /** 一条需手动的那一条横条。`pos` ＝ 第几条 / 共几条（概览与详情同一个次序）。 */
 export function needBar(host: ReviewHost, slice: PlanSlice, need: PlanNeed, pos: { i: number; n: number }): HTMLElement {
   const bar = document.createElement("div");
@@ -47,13 +42,14 @@ export function needBar(host: ReviewHost, slice: PlanSlice, need: PlanNeed, pos:
   const title = document.createElement("span");
   title.className = s.rvTitle;
   title.append(icon(need.kind === "red" ? "warning" : "success", "compact"));
-  // 标题与底下那几行是后端写好的（`need.title` · `need.lines`）；这里只按种类挂按钮、挂负责人那一枚。
+  // 标题 · 底下那几行 · 带不带负责人是后端写好的（`need.title` · `need.lines` · `need.who`）；这里只按种类挂按钮。
   title.append(need.title);
   const body = need.lines;
   const acts: HTMLElement[] = [];
   const blk = slice.blocks.find((b) => b.id === need.block) ?? null;
   const byId = cellIndex(slice);
   const root = need.cell ? (byId.get(need.cell) ?? null) : null;
+  if (need.who !== null && blk?.owner) title.appendChild(host.who(blk.owner));
   const ackBtn = (): HTMLButtonElement => button({ label: copyText("plan.review.ack"), kind: "primary", size: "compact", onClick: () => host.ack(need) });
   if (need.kind === "top") {
     acts.push(ackBtn());
@@ -64,11 +60,9 @@ export function needBar(host: ReviewHost, slice: PlanSlice, need: PlanNeed, pos:
     acts.push(ackBtn());
     if (root) acts.push(button({ label: copyText("plan.review.tell"), icon: "send", size: "compact", onClick: () => openReturn(host, slice, cellTarget(slice, root)) }));
   } else if (need.kind === "ask") {
-    if (blk?.owner) title.appendChild(host.who(blk.owner));
     const sid = need.sid;
     if (sid) acts.push(button({ label: copyText("plan.review.askGo"), kind: "primary", size: "compact", onClick: () => host.switchTo(sid) }));
   } else {
-    if (blk?.owner) title.appendChild(host.who(blk.owner));
     const sid = need.sid;
     if (sid) {
       const r = button({ label: copyText("plan.review.resume"), kind: "primary", size: "compact", onClick: () => host.resume(r, sid) });
@@ -138,11 +132,10 @@ export interface ReturnTarget {
 
 /** 一格的退回对象：管它的那一块从它自己往上找第一个块根格。 */
 export function cellTarget(slice: PlanSlice, cell: PlanCell): ReturnTarget {
-  const roots = blockRoots(slice);
   const byId = cellIndex(slice);
   let up: PlanCell | undefined = cell;
-  while (up && !roots.has(up.id)) up = up.parent ? byId.get(up.parent) : undefined;
-  const blk = up ? (roots.get(up.id) ?? null) : (slice.blocks.find((b) => b.id === "project") ?? null);
+  while (up && up.rootOf === null) up = up.parent ? byId.get(up.parent) : undefined;
+  const blk = up ? rootBlock(slice, up) : (slice.blocks.find((b) => b.id === "project") ?? null);
   return {
     id: cell.id,
     title: cell.title ?? cell.id,

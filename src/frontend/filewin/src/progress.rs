@@ -3,10 +3,10 @@
 //!
 //! - 住**窗口那一级**：所有标签页与两栏共用一份（[`super::workspace::Workspace`] 交给每个目录视图同一个 [`Progress`]）。
 //!   关掉一个还有一趟在跑的标签页 ⇒ 那一趟照跑，结局照样落在这张表上（每一趟的状态住它自己那块看板里，不住标签页上）。
-//! - 每一趟一块**自己的**看板（`DropBoard` · `DownloadBoard` · …，开一趟就新建一块）—— 一类只有一块的话，
+//! - 每一趟一块**自己的**看板（`BatchBoard` · `SizeBoard` · …，开一趟就新建一块）—— 一类只有一块的话，
 //!   第二趟起来会把第一趟的取消、进度与结局一起清掉。
-//! - 表里每一行的字、进度、按钮全从那一块看板的读数现算（[`Job::view`]），这里不记第二份。
-//! - 停得了停不了：上传 / 下载 / 复制到另一台走传输台（停订即撤）；机器上复制 · 解压 · 算大小 · 删除是那台后端的阻塞档，
+//! - 表里每一行的字、进度、按钮全从那一块看板的读数现算（[`Job::view`]），这里不记第二份；剩多久是本机后端写好的那一句。
+//! - 停得了停不了：一组（上传 · 下载 · 复制到另一台也是）撤是 `files-batch-stop`；解压 · 算大小是那台后端的阻塞档，
 //!   它在握手时说了哪几条撤不动（`Offer::withdraw`）⇒「停」灰着、悬停说那台撤不动。
 //! - 有失败 ⇒ 表自动展开，状态栏「进度」上一个红点；收起后红点留着，直到人自己再点开看过。已完成的只留最近 50 行。
 
@@ -15,10 +15,8 @@ use std::sync::{Arc, Mutex};
 use copy_core::copy_text;
 
 use super::batch::BatchBoard;
-use super::download::DownloadBoard;
 use super::extract::ExtractBoard;
 use super::size::SizeBoard;
-use super::transfer::{DropBoard, Pending};
 use super::trip::{End, Landing};
 use batch_core::Phase;
 
@@ -28,21 +26,7 @@ pub const KEEP_FINISHED: usize = 50;
 /// 一趟是什么、它那块看板在哪。
 #[derive(Clone)]
 pub enum Trip {
-    /// 上传一摞：`dir` 是传到的那个目录（显示名），`items` 是这一摞（重试失败的那几个要用），`ask` 是整组开单那一问（同名冲突框）。
-    Upload {
-        board: DropBoard,
-        items: Vec<Pending>,
-        dir: String,
-        ask: BatchBoard,
-    },
-    /// 下载一个文件到本机 `dest`。
-    Download {
-        board: DownloadBoard,
-        name: String,
-        src: String,
-        dest: String,
-    },
-    /// 一组一条命令（复制为 · 复制到另一栏 · 复制到另一台 · 删除 · 改权限）：那块看板带着票、进度、冲突框与结局。
+    /// 一组一条命令（复制为 · 复制到另一栏 · 删除 · 改权限 · 上传 · 下载 · 复制到另一台）：那块看板带着票、进度、冲突框与结局。
     Batch {
         board: BatchBoard,
         icon: &'static str,
@@ -57,20 +41,18 @@ impl Trip {
     /// 这一趟开头那一问摆着吗（同名冲突 · 解压撞名）。
     pub fn is_asking(&self) -> bool {
         match self {
-            Trip::Upload { ask: board, .. } | Trip::Batch { board, .. } => board.is_asking(),
+            Trip::Batch { board, .. } => board.is_asking(),
             Trip::Extract { board, .. } => board.is_asking(),
-            Trip::Download { .. } | Trip::Size { .. } => false,
+            Trip::Size { .. } => false,
         }
     }
 
     /// 画这一趟开头那一问（模态；没在问 ⇒ 什么都不画）。挂在开它的那个标签页上画。
     pub fn ask_ui(&self, ui: &mut egui::Ui) {
         match self {
-            Trip::Upload { ask: board, .. } | Trip::Batch { board, .. } => {
-                super::batch::ask_ui(ui, board)
-            }
+            Trip::Batch { board, .. } => super::batch::ask_ui(ui, board),
             Trip::Extract { board, .. } => board.ui(ui),
-            Trip::Download { .. } | Trip::Size { .. } => {}
+            Trip::Size { .. } => {}
         }
     }
 }
@@ -89,12 +71,6 @@ pub enum State {
 pub enum Act {
     /// 停这一趟。
     Stop(u64),
-    /// 重传这一摞里失败的那几个（上传）。
-    RetryUpload(Vec<Pending>),
-    /// 再下一次（下载）：`row` ＝ 按下的那一行，重下那一趟顶替它（[`Progress::supersede`]）。
-    RetryDownload { row: u64, src: String, dest: String },
-    /// 接着传这一摞里没传的（上传停了之后；再开单，续传先对尾块）。
-    Resume(Vec<Pending>),
     /// 一组里没成的那几项另起一组（另一张票）：`at` ＝ 寻址的那台，`home` ＝ 在哪台的后端里做（同原来那一组）。
     RetryBatch {
         plan: batch_core::Plan,
@@ -128,8 +104,6 @@ pub struct Job {
     pub trip: Trip,
     /// 这一趟落在哪个远端目录（跑完要重列它）；`None` ＝ 不碰任何目录（下载 · 算大小）。
     pub dir: Option<String>,
-    /// 开这一趟的那一刻：算速度 · 约多久。
-    pub started: std::time::Instant,
     /// 跑完那一刻（UNIX 秒）；`None` ＝ 还在跑。
     pub ended: Option<u64>,
     /// 失败了还没被看过（展开过表就算看过）。
@@ -169,7 +143,6 @@ impl Progress {
             id,
             trip,
             dir,
-            started: std::time::Instant::now(),
             ended: None,
             unseen_fail: false,
             orphan: false,
@@ -183,21 +156,6 @@ impl Progress {
         if let Some(j) = self.lock().jobs.iter_mut().find(|j| j.id == id) {
             j.orphan = true;
         }
-    }
-
-    /// 重试那一趟（`new`）顶替按下的那一行（`old`）：挪到它的位置、旧的那一行不留（重试成了 ⇒ 表里只剩成了的那一行）。
-    /// 两行有一行不在 ⇒ 不动。
-    pub fn supersede(&self, old: u64, new: u64) {
-        let mut g = self.lock();
-        let (Some(at), Some(from)) = (
-            g.jobs.iter().position(|j| j.id == old),
-            g.jobs.iter().position(|j| j.id == new),
-        ) else {
-            return;
-        };
-        let job = g.jobs.remove(from);
-        let at = if from < at { at - 1 } else { at };
-        g.jobs[at] = job;
     }
 
     /// 一份快照（判据与画表用）。
@@ -284,45 +242,37 @@ impl Progress {
         {
             let transfers = copy_text("attach.chip.sending", &[]);
             match &j.trip {
-                Trip::Upload { board, items, .. } => {
-                    let name = board
-                        .cancels()
-                        .in_flight_names()
-                        .first()
-                        .cloned()
-                        .or_else(|| items.first().map(|p| p.name.clone()))
-                        .unwrap_or_default();
-                    let right = copy_text(
-                        "rsFilewinWorkspace.closeAsk.up",
-                        &[("pct", &pct(j).to_string())],
-                    );
-                    put(transfers, (ph::UPLOAD_SIMPLE, name, right));
-                }
-                Trip::Download { name, .. } => {
-                    let right = copy_text(
-                        "rsFilewinWorkspace.closeAsk.down",
-                        &[("pct", &pct(j).to_string())],
-                    );
-                    put(transfers, (ph::DOWNLOAD_SIMPLE, name.clone(), right));
-                }
                 Trip::Batch { board, icon } => {
-                    let name = board.title();
-                    match board.plan().verb {
+                    let plan = board.plan();
+                    // 上传 · 下载只一项 ⇒ 写那一项的名字（同此前一趟一项那一行），几项 ⇒ 那一组的标题。
+                    let name = match (plan.verb, plan.names.as_slice()) {
+                        (batch_core::Verb::Upload | batch_core::Verb::Download, [one]) => {
+                            one.clone()
+                        }
+                        _ => board.title(),
+                    };
+                    let pct = pct(j).to_string();
+                    match plan.verb {
                         batch_core::Verb::Copy => {
-                            let right = copy_text(
-                                "rsFilewinWorkspace.closeAsk.copy",
-                                &[("pct", &pct(j).to_string())],
-                            );
-                            put(transfers, (*icon, name, right));
+                            let right =
+                                copy_text("rsFilewinWorkspace.closeAsk.copy", &[("pct", &pct)]);
+                            put(transfers, (*icon, name, right))
+                        }
+                        batch_core::Verb::Upload => {
+                            let right =
+                                copy_text("rsFilewinWorkspace.closeAsk.up", &[("pct", &pct)]);
+                            put(transfers, (*icon, name, right))
+                        }
+                        batch_core::Verb::Download => {
+                            let right =
+                                copy_text("rsFilewinWorkspace.closeAsk.down", &[("pct", &pct)]);
+                            put(transfers, (*icon, name, right))
                         }
                         batch_core::Verb::Delete => put(
                             copy_text("rsFilewinWorkspace.closeAsk.deleting", &[]),
                             (*icon, name, String::new()),
                         ),
-                        batch_core::Verb::Chmod
-                        | batch_core::Verb::Download
-                        | batch_core::Verb::Pull
-                        | batch_core::Verb::Upload => put(transfers, (*icon, name, String::new())),
+                        batch_core::Verb::Chmod => put(transfers, (*icon, name, String::new())),
                     }
                 }
                 Trip::Extract { name, .. } => put(
@@ -345,14 +295,6 @@ impl Progress {
             return false;
         };
         match &j.trip {
-            Trip::Upload { board, .. } => {
-                board.cancels().request();
-                true
-            }
-            Trip::Download { board, .. } => {
-                board.cancels().request();
-                true
-            }
             Trip::Batch { board, .. } => board.stop(),
             _ => false,
         }
@@ -404,19 +346,16 @@ impl Job {
     /// 这一行画不画：那一趟开头那一问（同名要不要盖 · 删除 n 项？· 撞名另起一个？）摆着时还不算开跑。
     pub fn shown(&self) -> bool {
         match &self.trip {
-            Trip::Upload { ask, .. } => !ask.is_asking() && ask.phase() != Phase::Dropped,
             Trip::Batch { board, .. } => !board.is_asking() && !self.dropped(),
             Trip::Extract { board, .. } => !board.is_asking(),
-            Trip::Download { .. } | Trip::Size { .. } => true,
+            Trip::Size { .. } => true,
         }
     }
 
-    /// 这一趟没开过 · 已经交出去了，整行拿掉：人在那一问上答了「取消」；
-    /// 或一组开单回的是开了哪几单（下载一组：开了单的每一项各自一行，这一行不留）。
+    /// 这一趟没开过，整行拿掉：人在那一问上答了「取消」。
     pub fn dropped(&self) -> bool {
         match &self.trip {
-            Trip::Batch { board, .. } => matches!(board.phase(), Phase::Dropped | Phase::Opened),
-            Trip::Upload { ask, .. } => ask.phase() == Phase::Dropped,
+            Trip::Batch { board, .. } => board.phase() == Phase::Dropped,
             _ => false,
         }
     }
@@ -427,29 +366,6 @@ impl Job {
     pub fn landing(&self) -> Option<Landing> {
         let land = |end, receipt| Some(Landing { end, receipt });
         match &self.trip {
-            Trip::Upload { board, .. } => {
-                if board.rounds() == 0 {
-                    return None;
-                }
-                let o = board.last().unwrap_or_default();
-                if board.cancels().is_cancelled() {
-                    land(End::Stopped, None)
-                } else if o.failed.is_empty() {
-                    // 一摞全传成了 ⇒ 右下角一句回执（几项）；一项都没传（全照答跳过）⇒ 不说。
-                    let receipt = (o.ok > 0).then(|| {
-                        copy_text("rsFilewinProgress.upload.done", &[("n", &o.ok.to_string())])
-                    });
-                    land(End::Done, receipt)
-                } else {
-                    land(End::Failed, None)
-                }
-            }
-            Trip::Download { board, .. } => match (board.rounds(), board.last()) {
-                (0, _) => None,
-                (_, Some(super::download::Outcome::Done { .. })) => land(End::Done, None),
-                _ if board.cancels().is_cancelled() => land(End::Stopped, None),
-                _ => land(End::Failed, None),
-            },
             Trip::Batch { board, .. } => match board.phase() {
                 Phase::Running | Phase::Asking | Phase::Cut(_) => None,
                 Phase::Ended(r)
@@ -471,7 +387,7 @@ impl Job {
                 }
                 // 成了（连照答跳过的那几项）⇒ 回执是后端拼好的那一行，原样。
                 Phase::Ended(r) => land(End::Done, Some(r.said)),
-                Phase::Dropped | Phase::Opened => land(End::Done, None),
+                Phase::Dropped => land(End::Done, None),
                 Phase::Failed(_) => land(End::Failed, None),
             },
             Trip::Size { board, .. } => match (board.rounds(), board.last()) {
@@ -500,8 +416,6 @@ impl Job {
     /// 这一趟的字节读数 `(已走, 共)`（说不出 ⇒ `(0, 0)`）。
     pub fn amounts(&self) -> (u64, u64) {
         match &self.trip {
-            Trip::Upload { board, .. } => board.totals(),
-            Trip::Download { board, .. } => board.seen(),
             Trip::Batch { board, .. } => board.tick().bytes.unwrap_or((0, 0)),
             _ => (0, 0),
         }
@@ -510,13 +424,6 @@ impl Job {
     /// 那一行的标题（在跑时那一句）。
     pub fn title(&self) -> String {
         match &self.trip {
-            Trip::Upload { items, dir, .. } => copy_text(
-                "rsFilewinProgress.upload.running",
-                &[("n", &items.len().to_string()), ("dir", dir)],
-            ),
-            Trip::Download { name, .. } => {
-                copy_text("rsFilewinProgress.download.running", &[("name", name)])
-            }
             Trip::Batch { board, .. } => board.title(),
             Trip::Size { name, .. } => {
                 copy_text("rsFilewinProgress.size.running", &[("name", name)])
@@ -542,7 +449,8 @@ impl Job {
                 None => (label, Ok(Act::Stop(me.id))),
             })
         };
-        let bytes_nums = |got: u64, total: u64| -> String {
+        // 剩多久是本机后端写好的那一句（`files_batch` 帧的 `left_text`），这里只拼在字节数后面。
+        let bytes_nums = |got: u64, total: u64, left: Option<String>| -> String {
             if total == 0 {
                 return String::new();
             }
@@ -553,16 +461,13 @@ impl Job {
                     ("total", &copy_core::size_text(total)),
                 ],
             );
-            match eta(got, total, self.started.elapsed().as_secs_f64()) {
+            match left {
                 Some(left) => copy_text(
                     "rsFilewinProgress.nums.eta",
                     &[("bytes", &base), ("left", &left)],
                 ),
                 None => base,
             }
-        };
-        let frac_of = |got: u64, total: u64| -> Option<Option<f32>> {
-            Some((total > 0).then(|| got as f32 / total as f32))
         };
         let icon_for = |running: &'static str| match state {
             State::Running => running,
@@ -571,240 +476,7 @@ impl Job {
             State::Stopped => ph::STOP_CIRCLE,
         };
         let sep = copy_text("kit.text.sep", &[]);
-        fn fails_of<W: std::fmt::Display>(failed: &[(String, W)], sep: &str) -> String {
-            failed
-                .iter()
-                .map(|(n, why)| {
-                    copy_text(
-                        "rsFilewinProgress.detail.failedOne",
-                        &[("name", n), ("why", &why.to_string())],
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join(sep)
-        }
         match &self.trip {
-            Trip::Upload { board, items, .. } => {
-                let o = board.last();
-                let (got, total) = board.totals();
-                match state {
-                    State::Running => {
-                        let now_names = board.cancels().in_flight_names();
-                        let done = board.done_count();
-                        let mut detail = match now_names.first() {
-                            Some(n) => copy_text(
-                                "rsFilewinProgress.upload.detail",
-                                &[
-                                    ("name", n),
-                                    ("k", &(done + 1).min(items.len()).to_string()),
-                                    ("n", &items.len().to_string()),
-                                ],
-                            ),
-                            None => String::new(),
-                        };
-                        // 这一窗的上传改走后端链路分块写了 ⇒ 说一句为什么（一窗一次的那个事实，跟着每一摞的那一行走）。
-                        if let Some(why) = board.via_backend() {
-                            let said =
-                                copy_text("rsFilewinChunkUpload.route.switched", &[("why", &why)]);
-                            detail = if detail.is_empty() {
-                                said
-                            } else {
-                                format!("{detail}{sep}{said}")
-                            };
-                        }
-                        View {
-                            state,
-                            icon: ph::UPLOAD_SIMPLE,
-                            title: self.title(),
-                            detail,
-                            frac: frac_of(got, total),
-                            nums: bytes_nums(got, total),
-                            copy: None,
-                            button: stop_button(self),
-                        }
-                    }
-                    State::Done => {
-                        let o = o.unwrap_or_default();
-                        let mut detail = String::new();
-                        if o.skipped > 0 {
-                            detail = copy_text(
-                                "rsFilewinProgress.upload.skipped",
-                                &[("n", &o.skipped.to_string())],
-                            );
-                        }
-                        if !o.redone.is_empty() {
-                            let r = copy_text(
-                                "rsFilewinTransfer.ui.redone",
-                                &[("names", &o.redone.join(&sep))],
-                            );
-                            detail = if detail.is_empty() {
-                                r
-                            } else {
-                                format!("{detail}{sep}{r}")
-                            };
-                        }
-                        View {
-                            state,
-                            icon: icon_for(ph::UPLOAD_SIMPLE),
-                            title: copy_text(
-                                "rsFilewinProgress.upload.done",
-                                &[("n", &o.ok.to_string())],
-                            ),
-                            detail,
-                            frac: None,
-                            nums: ended,
-                            copy: None,
-                            button: None,
-                        }
-                    }
-                    State::Failed => {
-                        let o = o.unwrap_or_default();
-                        let again: Vec<Pending> = items
-                            .iter()
-                            .filter(|p| o.failed.iter().any(|(n, _)| *n == p.name))
-                            .cloned()
-                            .collect();
-                        View {
-                            state,
-                            icon: icon_for(ph::UPLOAD_SIMPLE),
-                            title: copy_text(
-                                "rsFilewinProgress.upload.failed",
-                                &[("n", &o.failed.len().to_string())],
-                            ),
-                            detail: fails_of(&o.failed, &sep),
-                            frac: None,
-                            nums: ended,
-                            copy: batch_core::copy_many(
-                                &copy_text(
-                                    "rsFilewinProgress.upload.failed",
-                                    &[("n", &o.failed.len().to_string())],
-                                ),
-                                &o.failed,
-                            ),
-                            button: (!again.is_empty()).then(|| {
-                                (
-                                    copy_text("rsFilewinBatch.btn.retry", &[]),
-                                    Ok(Act::RetryUpload(again)),
-                                )
-                            }),
-                        }
-                    }
-                    State::Stopped => {
-                        let o = o.unwrap_or_default();
-                        let rest: Vec<Pending> = items
-                            .iter()
-                            .filter(|p| o.failed.iter().any(|(n, _)| *n == p.name))
-                            .cloned()
-                            .collect();
-                        View {
-                            state,
-                            icon: icon_for(ph::UPLOAD_SIMPLE),
-                            title: copy_text(
-                                "rsFilewinProgress.upload.stopped",
-                                &[
-                                    ("a", &o.ok.to_string()),
-                                    (
-                                        "b",
-                                        &items.len().saturating_sub(o.ok + o.skipped).to_string(),
-                                    ),
-                                ],
-                            ),
-                            detail: String::new(),
-                            frac: None,
-                            nums: ended,
-                            copy: None,
-                            button: (!rest.is_empty()).then(|| {
-                                (
-                                    copy_text("rsFilewinBatch.btn.resume", &[]),
-                                    Ok(Act::Resume(rest)),
-                                )
-                            }),
-                        }
-                    }
-                }
-            }
-            Trip::Download {
-                board,
-                src,
-                dest,
-                name,
-            } => {
-                let (got, total) = board.seen();
-                match (state, board.last()) {
-                    (State::Running, _) => View {
-                        state,
-                        icon: ph::DOWNLOAD_SIMPLE,
-                        title: self.title(),
-                        detail: copy_text("rsFilewinProgress.download.detail", &[("dest", dest)]),
-                        frac: frac_of(got, total),
-                        nums: bytes_nums(got, total),
-                        copy: None,
-                        button: stop_button(self),
-                    },
-                    (State::Done, Some(super::download::Outcome::Done { dest, .. })) => View {
-                        state,
-                        icon: icon_for(ph::DOWNLOAD_SIMPLE),
-                        title: copy_text("rsFilewinProgress.download.done", &[("path", &dest)]),
-                        detail: board.note().unwrap_or_default(),
-                        frac: None,
-                        nums: ended,
-                        copy: None,
-                        button: None,
-                    },
-                    (State::Stopped, _) => View {
-                        state,
-                        icon: icon_for(ph::DOWNLOAD_SIMPLE),
-                        title: copy_text("rsFilewinProgress.download.stopped", &[("name", name)]),
-                        detail: String::new(),
-                        frac: None,
-                        nums: ended,
-                        copy: None,
-                        button: Some((
-                            copy_text("rsFilewinBatch.btn.resume", &[]),
-                            Ok(Act::RetryDownload {
-                                row: self.id,
-                                src: src.clone(),
-                                dest: dest.clone(),
-                            }),
-                        )),
-                    },
-                    (_, o) => View {
-                        state,
-                        icon: icon_for(ph::DOWNLOAD_SIMPLE),
-                        title: copy_text("rsFilewinProgress.download.failed", &[("name", name)]),
-                        detail: match &o {
-                            Some(super::download::Outcome::Failed { why, .. }) => why.said.clone(),
-                            _ => String::new(),
-                        },
-                        frac: None,
-                        nums: ended,
-                        copy: match &o {
-                            Some(super::download::Outcome::Failed { why, .. }) => {
-                                batch_core::copy_body(
-                                    &format!(
-                                        "{}\n{}",
-                                        copy_text(
-                                            "rsFilewinProgress.download.failed",
-                                            &[("name", name)]
-                                        ),
-                                        why.said
-                                    ),
-                                    &why.detail,
-                                )
-                            }
-                            _ => None,
-                        },
-                        button: Some((
-                            copy_text("front.act.retry", &[]),
-                            Ok(Act::RetryDownload {
-                                row: self.id,
-                                src: src.clone(),
-                                dest: dest.clone(),
-                            }),
-                        )),
-                    },
-                }
-            }
             Trip::Batch { board, icon } => {
                 let plan = board.plan();
                 let tick = board.tick();
@@ -854,7 +526,7 @@ impl Job {
                         ),
                         button: None,
                     },
-                    Phase::Running | Phase::Asking | Phase::Dropped | Phase::Opened => {
+                    Phase::Running | Phase::Asking | Phase::Dropped => {
                         let (got, total) = tick.bytes.unwrap_or((0, 0));
                         View {
                             state,
@@ -872,7 +544,7 @@ impl Job {
                                 String::new()
                             },
                             frac: Some(tick.frac()),
-                            nums: bytes_nums(got, total),
+                            nums: bytes_nums(got, total, board.left()),
                             copy: None,
                             button: if board.stopping() {
                                 None
@@ -937,27 +609,6 @@ impl Job {
             },
         }
     }
-}
-
-/// 约多久（照这一趟到此刻的平均速度）；刚开头（不足 2 秒或一个字节都没走）不说。
-pub fn eta(got: u64, total: u64, elapsed: f64) -> Option<String> {
-    if got == 0 || got >= total || elapsed < 2.0 {
-        return None;
-    }
-    let left = (total - got) as f64 / (got as f64 / elapsed);
-    let secs = left.ceil() as u64;
-    // 向上取整到这一档的单位（秒 / 分 / 时），再交短时长出字。
-    let up = if secs < 60 {
-        secs.max(1)
-    } else if secs < 3600 {
-        secs.div_ceil(60) * 60
-    } else {
-        secs.div_ceil(3600) * 3600
-    };
-    Some(copy_text(
-        "rsFilewinProgress.eta.about",
-        &[("dur", &copy_core::short_duration(up * 1000))],
-    ))
 }
 
 /// 画那张表（窗口底部一块）。回这一帧按了哪颗按钮。

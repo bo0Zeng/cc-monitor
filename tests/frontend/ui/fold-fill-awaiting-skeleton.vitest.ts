@@ -135,8 +135,6 @@ async function rig() {
     onLine(p: JsonlLinePayload) {
       if (tsv.admit(tab as never, p)) tsv.ingest(tab as never, p);
     },
-    refreshTabBar() {},
-    scheduleTabBarRefresh() {},
     userActive() {},
     forkFrom() {},
     runLabelOf: () => undefined,
@@ -164,7 +162,7 @@ async function rig() {
     retries: new Map(),
     toolUseNames: new Map(),
     runCards: new Map(),
-    unread: 0,
+    unreadSaid: null,
     fullRecord: async () => null,
     facts: { reset() {}, markStale() {}, refresh: async () => {}, needsFetch: false },
   };

@@ -85,7 +85,7 @@ const SYNC_ALLOWED: &[(&str, &str)] = &[
     ),
     (
         "footprint_client.rs::footprint_client_facts",
-        "读本进程的家目录与 PATH 两格（内存）",
+        "读本进程的家目录 · PATH · 运行时给的应用数据目录三格（内存，不 stat）",
     ),
     (
         "lib.rs::cc_get_auto_launch",
@@ -552,7 +552,7 @@ fn every_sync_command_is_on_the_whitelist_with_a_reason() {
     );
     // 正控：这两条确实在 async 那一侧（扫描器读得出 `async`，白名单那一向不是空真）。
     for cmd in [
-        "data_paths.rs::get_data_paths",
+        "diagnostics_report.rs::diagnostics_report",
         "backend_control.rs::backend_status",
     ] {
         assert!(a.async_cmds.contains(cmd), "`{cmd}` 不在 async 命令里");

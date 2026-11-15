@@ -112,9 +112,14 @@ impl crate::wire::typed::Handle for RotationTemp {
     }
 }
 
-/// 这个号在轮换的号表里吗（同 `Hop::roster`：账号 0 不在里头；开会话用的号算）。
-fn listed(ctx: &Ctx, s: &Session, account: &str) -> bool {
-    account == s.start || ctx.hop.roster().iter().any(|a| a == account)
+/// 这个号在这个会话那一家的号表里吗（号按（家, 号名）认：照 `Hop::facts` 列的本家号，别家同名不算；账号 0 不在里头；开会话用的号算）。
+fn listed(ctx: &Ctx, s: &Session, account: &str, now: u64, tz: &crate::common::time::Tz) -> bool {
+    account == s.start
+        || ctx
+            .hop
+            .facts(&s.agent, &ctx.row(&s.agent), now, tz)
+            .iter()
+            .any(|f| f.account == account)
 }
 
 /// 顺序 `line` 里把 `account` 拖到第 `to` 格之后，「接下来先用谁」那一串：第二格起到挪动那一截的尽头（第一格在用的号不在里头）。
@@ -141,7 +146,7 @@ pub(crate) fn temp_with(
         RotTempOp::Move { account, .. } | RotTempOp::Off { account, .. } => Some(account),
         RotTempOp::Clear => None,
     };
-    if let Some(a) = account.filter(|a| !listed(ctx, &s, a)) {
+    if let Some(a) = account.filter(|a| !listed(ctx, &s, a, now, tz)) {
         return Err(RotationTempErr::NotListed(copy_text(
             "beRotation.edit.notListed",
             &[("acct", a)],
@@ -246,13 +251,13 @@ impl crate::wire::typed::Handle for RotationUseNow {
 }
 
 /// 号名（同号牌那一格 · `accounts-list` 那一行）。
-fn label_of(account: &str) -> String {
-    crate::accounts::quota::name_words::account_text(account)
+fn label_of(agent: &str, account: &str) -> String {
+    crate::accounts::quota::name_words::account_text_of(agent, account)
 }
 
 /// 换到 `account` 被拒的那一句：「号名 此刻不可用：事实那一句」；事实说不出 ⇒「号名 此刻无法发送」。
-fn refused_line(account: &str, why: Option<String>) -> String {
-    let name = label_of(account);
+fn refused_line(agent: &str, account: &str, why: Option<String>) -> String {
+    let name = label_of(agent, account);
     match why {
         Some(why) => copy_text("rot.acct.refused", &[("account", &name), ("why", &why)]),
         None => copy_text("beRotation.edit.unusable", &[("acct", &name)]),
@@ -267,7 +272,7 @@ pub(crate) fn use_now_with(
     tz: &crate::common::time::Tz,
 ) -> Result<RotDone, RotationUseNowErr> {
     let s = session_of(ctx, &req.sid).ok_or_else(|| RotationUseNowErr::NoSession(no_session()))?;
-    if !listed(ctx, &s, &req.account) {
+    if !listed(ctx, &s, &req.account, now, tz) {
         return Err(RotationUseNowErr::NotListed(copy_text(
             "beRotation.edit.notListed",
             &[("acct", &req.account)],
@@ -290,7 +295,7 @@ pub(crate) fn use_now_with(
         Err(_) if s.off.contains(&req.account) => {
             return Err(RotationUseNowErr::Unusable(copy_text(
                 "beRotation.edit.offNow",
-                &[("acct", &label_of(&req.account))],
+                &[("acct", &label_of(&s.agent, &req.account))],
             )));
         }
         Err(_) => {
@@ -298,6 +303,7 @@ pub(crate) fn use_now_with(
                 .hop
                 .fact_one(&s.agent, &ctx.hop.book(), &req.account, &row, now, tz);
             return Err(RotationUseNowErr::Unusable(refused_line(
+                &s.agent,
                 &req.account,
                 fact.blocked.map(|b| b.text),
             )));

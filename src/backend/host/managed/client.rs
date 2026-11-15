@@ -110,6 +110,17 @@ pub fn tag(sock: &Path, sid: &str) -> std::io::Result<()> {
     })
 }
 
+/// 里面那个 ccm（自己的 pid `by`）起好 agent 那一跳时交它的 pid 与包没包一层（[`Ctl::Hop`]）：**只发不等回话**（起 agent 不多等）。
+/// `Ok` ＝ `hello` · `hop` · `bye` 写出去了，不是「写成了」：写没写成只看事实里有没有那一跳（托管进程随后写；
+/// 后端的观测侧见事实一改就重对一次打标）。旧托管进程不认 `hop` ⇒ 它不理，事实里一直没有那一跳，打标那一判照实落说不清。
+/// 连接失败 · `hop` 写不出去 ⇒ `Err`（没交上）；之后的再见写不出去不算（同 [`bye`]）。
+pub fn hop_started(sock: &Path, by: u32, pid: u32, wrapped: bool) -> std::io::Result<()> {
+    let s = open(sock, None)?;
+    send(&s, &Frame::Ctl(Ctl::Hop { by, pid, wrapped }))?;
+    bye(&s);
+    Ok(())
+}
+
 /// 连着的各端（问的这一条自己不算：去掉 `mine` 那一行）。
 pub fn clients(sock: &Path) -> std::io::Result<Vec<ClientRow>> {
     ask(sock, vec![Ctl::Clients], |c| match c {

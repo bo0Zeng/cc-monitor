@@ -5,8 +5,8 @@
 //! `t` 的闭集：`said` · `reply` · `retry` · `title` · `unread`；内容块 [`Block`] 是两家共有的词。
 //!
 //! 回包里的那一份记录后端照原样的一团写（出口的声明可能去过格），所以 [`ReadRow`] · [`RecordLine`] 及其回包对记录那一格是泛型：
-//! 后端写 `Value`（缺省），手机按完整记录 [`Record`] 一条一条地解（`face_core::record::OrUnread`：解不开的那一条成认不出那一条，整份不失败；核心交 Kotlin 之前照同一判法改那一格，`face_core::record::mend_records`）；TS 一侧照 `Record` 出（`ts(concrete)`）。
-//! 认不出那一条的句子与判法住 `face_core::record`；这里只有它的形状（[`Body::Unread`] · [`UnreadWhy`] · `t` 的闭集 [`BODY_TAGS`] · 摘录的截法 [`excerpt_of`]）。
+//! 后端写 `Value`（缺省），手机按完整记录 [`Record`] 一条一条地解（手机核心 `record::OrUnread`：解不开的那一条成认不出那一条，整份不失败；交 Kotlin 之前照同一判法改那一格，`record::mend_records`）；TS 一侧照 `Record` 出（`ts(concrete)`）。
+//! 认不出那一条的句子住 `face_core::record`、客户端的判法住手机核心 `record`；这里只有它的形状（[`Body::Unread`] · [`UnreadWhy`] · `t` 的闭集 [`BODY_TAGS`] · 摘录的截法 [`excerpt_of`]）。
 
 use crate::cells::{Tone, Words};
 use serde::{Deserialize, Serialize};
@@ -141,16 +141,6 @@ pub enum Body {
     },
     /// 一次上游失败、将重试（「重试中 N/M」那条细条）。
     Retry {
-        /// 原因 · 第几次 · 最多几次：出口那一下写 `text` 用，不上线。
-        #[serde(skip)]
-        #[cfg_attr(any(test, feature = "ts"), ts(skip))]
-        reason: ApiReason,
-        #[serde(skip)]
-        #[cfg_attr(any(test, feature = "ts"), ts(skip))]
-        attempt: Option<u32>,
-        #[serde(skip)]
-        #[cfg_attr(any(test, feature = "ts"), ts(skip))]
-        max: Option<u32>,
         /// 写好的那一行（「{原因} · 重试 a/b · {钟面} 起」）：出口那一下照看的那一台的时区写，界面照抄。还没到出口 ⇒ 缺。
         /// 一串的结局与整句另在会话事实 `retries[]`。
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -249,25 +239,24 @@ pub enum Block {
         input: serde_json::Value,
     },
     /// 一次工具调用的结果。只经 [`Block::tool_result`] 建（`bytes` 跟着内容算）。
+    #[serde(rename_all = "camelCase")]
     ToolResult {
         /// 对的是哪次工具调用。
         #[serde(rename = "for")]
         of: String,
         /// 结果内容（正文 / 图片块；原文是一个字符串时已归成一个正文块）。
         content: Vec<Block>,
-        #[serde(rename = "isError")]
         is_error: bool,
         /// 内容多少字节（各正文块的 UTF-8 字节 ＋ 各图的原图字节）：出口省掉内容之后照样有。
         #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
         bytes: u64,
         /// `bytes` 写成给人看的一格（`3.0 KB`）：后端照字节写好，两端照抄、不自己换算。
-        #[serde(rename = "sizeText")]
         size_text: crate::cells::Words,
     },
     /// 一张内联图（来源认得出的那一形才有这一块）：上线只交引用，图的字节按 `at` · `n` 另取（`history-image`）。
+    #[serde(rename_all = "camelCase")]
     Image {
         /// 图片类型（`image/png` …）。
-        #[serde(rename = "mediaType")]
         media_type: String,
         /// 原图多少字节（base64 解开之后）。
         #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
@@ -277,10 +266,6 @@ pub enum Block {
         at: u64,
         /// 这一行里第几张（从 0 起，按块的先后深度优先，工具结果里的也数）。
         n: u32,
-        /// 图的字节（base64）：后端取图那一条读它，**不上线**（解出来是空的）。
-        #[serde(skip)]
-        #[cfg_attr(any(test, feature = "ts"), ts(skip))]
-        data: String,
     },
 }
 
@@ -443,6 +428,10 @@ pub struct LineDiff {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "string"))]
     pub notice: Option<Words>,
+    /// 收着时那一颗「显示全部改动 +N −M」：`rows` 比 `shown` 多 ⇒ 写好的那一句；都画得下 ⇒ 缺（出口不画那一颗）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "string"))]
+    pub show_all_text: Option<Words>,
 }
 
 /// 行差里的一行（[`LineDiff::rows`]）。
@@ -540,6 +529,7 @@ pub struct AskOption {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(rename_all = "camelCase")]
 pub struct StepResult {
     /// 成功（`false` ＝ 失败或被拒）。
     pub ok: bool,
@@ -567,14 +557,9 @@ pub struct StepResult {
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub answer: Option<Answer>,
     /// 命令失败时的退出码（结果里写着才有）。
-    #[serde(rename = "exitCode", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub exit_code: Option<i32>,
-    /// 读文件那一类的结果（不上线）：右侧那一句只对它把 `lines` 说成「读了几行」（命令输出几行 · 搜索命中几行不说）。
-    /// 适配层照那一家的格式判，后端 `step_clock::said` 写字时读。
-    #[serde(skip)]
-    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
-    pub read: bool,
     /// 失败那一步的尾巴（「退出码 N」/「出错」，后端 `step_clock::said` 写）：结果块抬头照摆；没失败 ⇒ 缺。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<String>"))]
@@ -605,6 +590,10 @@ pub struct StepResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub kind: Option<ResultKind>,
+    /// 派出卡收着时那一句「交回结果 · N 字」（后端 `step_clock::said` 写）：只有交回那一种（`kind` 为 `handback`）有，别的 ⇒ 缺。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "string"))]
+    pub result_text: Option<Words>,
 }
 
 /// 派出子运行那次调用拿到的结果是哪一种（各家的格式知识，适配层判；界面只照它画）。
@@ -685,8 +674,9 @@ pub enum Speaker {
     /// 本地命令（斜杠命令）的输出回显。
     CommandOutput,
     /// 后台任务（子 agent / 后台命令）的收场通知。
+    #[serde(rename_all = "camelCase")]
     TaskNotification {
-        #[serde(rename = "taskId", skip_serializing_if = "Option::is_none")]
+        #[serde(skip_serializing_if = "Option::is_none")]
         #[cfg_attr(any(test, feature = "ts"), ts(optional))]
         task_id: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -695,7 +685,7 @@ pub enum Speaker {
         #[serde(skip_serializing_if = "Option::is_none")]
         #[cfg_attr(any(test, feature = "ts"), ts(optional))]
         summary: Option<String>,
-        #[serde(rename = "toolUseId", skip_serializing_if = "Option::is_none")]
+        #[serde(skip_serializing_if = "Option::is_none")]
         #[cfg_attr(any(test, feature = "ts"), ts(optional))]
         tool_use_id: Option<String>,
         /// 怎么收场的（那一家的状态词由适配层翻，只翻一处）；状态词认不出 · 没写 ⇒ 缺。
@@ -716,12 +706,7 @@ pub enum Speaker {
         #[cfg_attr(any(test, feature = "ts"), ts(optional))]
         name: Option<String>,
         handback: bool,
-        /// 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
-        /// 只在后端里用（搜索按它认）；上线的是解析好的 `doc`。
-        #[serde(default, skip_serializing)]
-        #[cfg_attr(any(test, feature = "ts"), ts(skip))]
-        body: Option<String>,
-        /// 正文解析好的块树（造记录那一下由 `body` 解一次，两端照树排版）。没有正文 ⇒ 缺。
+        /// 正文解析好的块树；两端照树排版。没有正文 ⇒ 缺。
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(any(test, feature = "ts"), ts(optional))]
         doc: Option<crate::md::Doc>,
@@ -731,12 +716,7 @@ pub enum Speaker {
         #[serde(skip_serializing_if = "Option::is_none")]
         #[cfg_attr(any(test, feature = "ts"), ts(optional))]
         from: Option<String>,
-        /// 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
-        /// 只在后端里用（搜索按它认）；上线的是解析好的 `doc`。
-        #[serde(default, skip_serializing)]
-        #[cfg_attr(any(test, feature = "ts"), ts(skip))]
-        body: Option<String>,
-        /// 正文解析好的块树（造记录那一下由 `body` 解一次，两端照树排版）。没有正文 ⇒ 缺。
+        /// 正文解析好的块树；两端照树排版。没有正文 ⇒ 缺。
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(any(test, feature = "ts"), ts(optional))]
         doc: Option<crate::md::Doc>,
@@ -747,12 +727,7 @@ pub enum Speaker {
     },
     /// （子 agent 那一侧）主会话后来发给它的话。
     Coordinator {
-        /// 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
-        /// 只在后端里用（搜索按它认）；上线的是解析好的 `doc`。
-        #[serde(default, skip_serializing)]
-        #[cfg_attr(any(test, feature = "ts"), ts(skip))]
-        body: Option<String>,
-        /// 正文解析好的块树（造记录那一下由 `body` 解一次，两端照树排版）。没有正文 ⇒ 缺。
+        /// 正文解析好的块树；两端照树排版。没有正文 ⇒ 缺。
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(any(test, feature = "ts"), ts(optional))]
         doc: Option<crate::md::Doc>,
@@ -767,12 +742,13 @@ pub enum Speaker {
         #[cfg_attr(any(test, feature = "ts"), ts(optional))]
         body: Option<String>,
     },
-    /// 上下文压缩后续接用的摘要（只经 [`Speaker::compact`] 来）。
+    /// 上下文压缩后续接用的摘要（正文在 [`UserText::text`]）。
     #[serde(rename_all = "camelCase")]
     CompactSummary {
-        /// 摘要有多少字（写好的数，`copy_core::count_text`；界面拼进「摘要 {n} 字」）。
-        #[cfg_attr(any(test, feature = "ts"), ts(as = "String"))]
-        chars_text: Words,
+        /// 那张卡收着时的标题（「上下文已压缩 · 摘要 n 字 · 钟面」）：出口那一下按看的那一台的时区写（`wire::stamp`），解析那一层不写 ⇒ 缺。界面照抄。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<String>"))]
+        title_text: Option<Words>,
     },
     /// 中断标记（人按了 Esc）。
     Interrupt,
@@ -1032,12 +1008,7 @@ mod lenient_tests {
                 runs: BTreeMap::new(),
                 error: None,
             },
-            Body::Retry {
-                reason: ApiReason::Unknown,
-                attempt: None,
-                max: None,
-                text: None,
-            },
+            Body::Retry { text: None },
             Body::Title {
                 text: String::new(),
                 by: TitleBy::Agent,
@@ -1079,13 +1050,11 @@ mod image_tests {
     /// 图那一块上线只交引用（类型 · 字节数 · 哪一行 · 第几张），图的字节留在后端（取图那一条才交）。
     #[test]
     fn an_image_goes_on_the_wire_as_a_reference_without_its_bytes() {
-        let data = "A".repeat(600 << 10);
         let b = Block::Image {
             media_type: "image/png".to_string(),
             bytes: 460_800,
             at: 1234,
             n: 2,
-            data: data.clone(),
         };
         let s = serde_json::to_string(&b).unwrap();
         assert!(s.len() <= 200, "一块图上线 {} 字节", s.len());
@@ -1093,9 +1062,9 @@ mod image_tests {
             serde_json::from_str::<Value>(&s).unwrap(),
             serde_json::json!({"type": "image", "mediaType": "image/png", "bytes": 460800, "at": 1234, "n": 2})
         );
-        // 手机按同一份解：字节那一格是空的。
+        // 手机按同一份解回同一块。
         let back: Block = serde_json::from_str(&s).unwrap();
-        assert!(matches!(back, Block::Image { ref data, .. } if data.is_empty()));
+        assert_eq!(back, b);
     }
 
     /// 取图的回包：类型 ＋ base64。

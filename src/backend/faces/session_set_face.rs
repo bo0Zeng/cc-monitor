@@ -27,7 +27,7 @@ fn pending() -> std::sync::MutexGuard<'static, Vec<(String, String, String, i64)
 
 /// 这台此刻活着的会话（交互进程、说得出会话 id 与目录的），各带台账里记的别名；再加上刚起、还没报到的那几条。
 fn live_here() -> Vec<Live> {
-    let table = crate::history::live_table::now(&crate::history::listing::agent_home());
+    let table = crate::history::live_table::now(&crate::agents::local_homes());
     let aliases = crate::platform::paths::data_home()
         .and_then(|d| crate::history::launch_book::read_book(&d).ok())
         .map(|b| b.aliases)
@@ -146,6 +146,7 @@ fn open_req(
             fork: None,
             prompt: None,
             model: None,
+            effort: None,
             permission_mode: None,
             rotation: None,
             alias: Some(r.alias.clone()),

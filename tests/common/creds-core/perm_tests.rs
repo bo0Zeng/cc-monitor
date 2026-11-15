@@ -481,7 +481,7 @@ fn a_file_created_through_create_private_is_born_owner_only() {
         create_private(&born).is_err(),
         "对已存在的路径应当直接失败（O_EXCL / CREATE_NEW），而不是跟随并截断它"
     );
-    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::remove_dir_all(&dir).expect("收掉这一条建的临时目录");
 }
 
 /// 量不动：句子只给原因词，系统原话另带在 `raw`（进复制详情 / 日志），不上句子。

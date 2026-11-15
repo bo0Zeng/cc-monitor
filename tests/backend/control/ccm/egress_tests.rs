@@ -50,6 +50,16 @@ fn launch_from(
     base: Option<&str>,
     vars: &[(&str, &str)],
 ) -> (plan::Direct, Option<Taken>) {
+    launch_bound(relay, base, vars, crate::agents::Bind::Preset)
+}
+
+/// 同 [`launch_from`]，这一家起会话时怎么绑号是 `bind`。
+fn launch_bound(
+    relay: plan::RelayAsk,
+    base: Option<&str>,
+    vars: &[(&str, &str)],
+    bind: crate::agents::Bind,
+) -> (plan::Direct, Option<Taken>) {
     let a: Vec<String> = ["--resume", "s1"].iter().map(|s| s.to_string()).collect();
     let crate::ccm_line::argv::Parsed::Opts(o) = crate::ccm_line::argv::test_support::parse(
         &crate::ccm_line::argv::test_support::mixed_to_split(&a),
@@ -65,7 +75,7 @@ fn launch_from(
             .find(|(n, _)| *n == k)
             .map(|(_, v)| v.to_string())
     };
-    let taken = onto(&mut p, crate::agents::proxy_of("claude"), &get);
+    let taken = onto(&mut p, crate::agents::proxy_of("claude"), bind, &get);
     let Plan::Direct(d) = p else {
         panic!("该是直路")
     };
@@ -224,18 +234,24 @@ fn the_description_is_left_before_exec_and_a_lost_own_upstream_stops_the_launch(
         origin: "0123abcd".into(),
         egress: Vec::new(),
         base: Some("https://gw.example/anthropic".into()),
+        account: Some("b".into()),
     };
     let proxy_only = Taken {
         origin: "4567cdef".into(),
         egress: vec![("HTTPS_PROXY".into(), "http://127.0.0.1:3128".into())],
         base: None,
+        account: None,
     };
     let own = crate::platform::fs::Own::issue_data_at(&root);
     assert_eq!(super::super::leave_upstream(&own_upstream, &own), Ok(()));
     let back = of(&root, "0123abcd").expect("落了盘");
     assert_eq!(
-        (back.base.as_deref(), back.pid),
-        (Some("https://gw.example/anthropic"), std::process::id())
+        (back.base.as_deref(), back.pid, back.account.as_deref()),
+        (
+            Some("https://gw.example/anthropic"),
+            std::process::id(),
+            Some("b")
+        )
     );
     // 数据目录那一格是个文件 ⇒ 写不成。
     let blocked = root.join("blocked");
@@ -244,4 +260,46 @@ fn the_description_is_left_before_exec_and_a_lost_own_upstream_stops_the_launch(
     assert!(super::super::leave_upstream(&own_upstream, &own).is_err());
     assert_eq!(super::super::leave_upstream(&proxy_only, &own), Ok(()));
     std::fs::remove_dir_all(&root).ok();
+}
+
+/// ★ 先不知道会话号的那一家（`Bind::Origin`，替身家那一形）：没设代理、上游也不是用户的，照样交回那一份 —— 带着起会话那个号，
+/// 中转第一发按来处读它绑号。先定会话号的那一家照旧不交回。
+#[test]
+fn an_origin_bound_family_always_leaves_its_launch_account() {
+    let bind = crate::agents::fake::upstream::UPSTREAM.bind;
+    let (d, taken) = launch_bound(ask, None, &[], bind);
+    let t = taken.expect("Origin 那一家恒交回");
+    assert_eq!(t.origin, "0123abcd");
+    assert!(t.egress.is_empty() && t.base.is_none());
+    assert_eq!(t.account.as_deref(), Some("x"), "{:?}", d.relay);
+    assert!(launch_taken(ask, &[]).1.is_none());
+}
+
+/// 中转地址拼进参数的那一家（`RelayVia::Args`：会话进程环境里读不到中转地址）⇒ 没设代理 · 上游不是用户的 · 先定会话号也交回那一份：
+/// 那份描述记着起 agent 的那个进程，会话归号据它认「经本机中转」。没注入中转 ⇒ 照旧不交。
+#[test]
+fn a_relay_spliced_into_args_always_leaves_its_description() {
+    let build = |relay: plan::RelayAsk| {
+        let a: Vec<String> = ["--resume", "s1"].iter().map(|s| s.to_string()).collect();
+        let crate::ccm_line::argv::Parsed::Opts(o) = crate::ccm_line::argv::test_support::parse(
+            &crate::ccm_line::argv::test_support::mixed_to_split(&a),
+        )
+        .expect("解析得动") else {
+            panic!()
+        };
+        let mut p = plan::build(&o, &env(relay), &plan::test_support::no_library, None)
+            .expect("算得出计划");
+        if let Plan::Direct(d) = &mut p {
+            if d.relay.is_some() {
+                d.relay_via = plan::RelayVia::Args;
+            }
+        }
+        onto(&mut p, None, crate::agents::Bind::Preset, &|_| None)
+    };
+    let t = build(ask).expect("拼进参数的中转 ⇒ 总交回那一份");
+    assert_eq!(t.origin, "0123abcd");
+    assert!(t.egress.is_empty() && t.base.is_none());
+    assert!(build(no_relay).is_none(), "没注入中转");
+    // 环境变量那一形照旧：没代理 · 不是用户的上游 · 先定会话号 ⇒ 不交。
+    assert!(launch_taken(ask, &[]).1.is_none());
 }

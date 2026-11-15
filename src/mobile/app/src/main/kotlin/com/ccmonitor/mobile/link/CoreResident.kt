@@ -4,6 +4,8 @@ import com.ccmonitor.mobile.core.claude.link.ResidentCore
 import com.ccmonitor.mobile.core.rs.Core
 import com.ccmonitor.mobile.core.rs.ResidentEvents
 import com.ccmonitor.mobile.core.ssh.ensureRustCore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /** [ResidentCore] 直通嵌的 Rust 核心（`Core.resident*`）；交回来的事按那台的编号经 [ResidentEvents] 分过来。 */
 object CoreResident : ResidentCore {
@@ -42,13 +44,6 @@ object CoreResident : ResidentCore {
         retry: Boolean,
     ) = Core.residentKick(handle, retry)
 
-    override fun stage(
-        handle: Long,
-        fd: Int,
-        name: String,
-        withinMs: Long,
-    ): Long = Core.transferStage(handle, fd, name, withinMs)
-
     override fun read(
         handle: Long,
         path: String,
@@ -57,6 +52,11 @@ object CoreResident : ResidentCore {
     ): Long = Core.transferRead(handle, path, cap, withinMs)
 
     override fun transferStop(id: Long) = Core.transferStop(id)
+
+    override fun attach(
+        handle: Long,
+        op: String,
+    ): String = Core.attach(handle, op)
 
     override fun batchStart(
         handle: Long,
@@ -82,10 +82,23 @@ object CoreResident : ResidentCore {
         return Core.pickMenu(handle, rows)
     }
 
-    override fun searchMerge(data: String): String {
-        ensureRustCore()
-        return Core.searchMerge(data)
-    }
+    /** core-claude 那两个读口要的那一口（`ColumnFace` · `GroupsFace`）：直通核心。 */
+    fun chatsColumn(ask: String): String = Core.chatsColumn(ask)
+
+    fun groupsMerge(data: String): String = Core.groupsMerge(data)
+
+    /** 逐台问一圈再合（`NeedsFace` · `SearchMerge` 那一行）：等各台都有结局才回，挪到 IO 线程上等。 */
+    suspend fun needsAll(data: String): String =
+        withContext(Dispatchers.IO) {
+            ensureRustCore()
+            Core.needsAll(data)
+        }
+
+    suspend fun searchAll(data: String): String =
+        withContext(Dispatchers.IO) {
+            ensureRustCore()
+            Core.searchAll(data)
+        }
 
     override fun deploy(
         handle: Long,

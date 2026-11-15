@@ -22,6 +22,12 @@ const REGISTERED: &[(&str, &str, &str)] = &[
     // **刻意不收窄针**（宁可宽松让人判断，也不要用严格的错误引入噪声）
     // —— 收窄会漏掉「新加一个 `sleep 1` 在循环里」那种真轮询。代价是一次性的也要登记一行，
     // 而那正是「默认拒绝」想要的：新加一处就得回答它是哪一类。
+    (
+        "src/backend/control/ccm/plan.rs",
+        "one-shot",
+        "`--ccm-print` 拼出的建会话那一串里，括号粘贴之后、补回车之前那一下 `sleep`（与真跑 `launch::PASTE_SETTLE` 同一个数，\
+             由 `launch::create_steps` 的 `Step::Settle` 渲出）：一次送字之内两步之间等一下，不在任何循环里，送完就没了。",
+    ),
 ];
 
 /// ★ **前提触发器**：本模块头注说「Rust 那半由 `src/frontend/clippy.toml` 的定时器那一组挡」——
@@ -126,7 +132,7 @@ fn scan() -> Vec<(String, usize)> {
     let root = repo_root();
     let mut files = frontend_ts();
     files.extend(shared_scripts());
-    // 🔴 **容器路那段 shell 由 Rust 渲出来**（`shared/ccm` 删了，产出方换了）⇒ 收进人群，
+    // 🔴 **容器路那段 shell 由 Rust 渲出来**（`control/ccm/plan.rs`）⇒ 收进人群，
     //    渲出去的 shell 里再长出 `sleep` 就当场要登记。
     //    ⚠ 它按 `is_shell` 那条针认（`contains("sleep ")`）—— 那正对：
     //    本表要认的是**那段 shell 里的 sleep**，不是 Rust 自己的节拍。
@@ -504,8 +510,8 @@ fn the_identity_poller_is_gone_for_good() {
     );
     // 反向锚点 ②：**抽取器没有空转** —— 渲给 shell 的那句键入载荷必须还看得见。
     assert!(
-        prod.contains("tmux -u send-keys -t {t}"),
-        "连容器路键入载荷那句 `tmux send-keys` 都扫不到 —— 剥法或路径坏了，上面那几条是零命中地绿"
+        prod.contains("create_steps"),
+        "连容器路建会话那一串（`launch::create_steps`）都扫不到 —— 剥法或路径坏了，上面那几条是零命中地绿"
     );
 }
 

@@ -180,4 +180,41 @@ fn pb太旧没有domains_要更新() {
     );
     assert_eq!(f.pb.state, "unsupported");
     assert!(f.domains.is_empty());
+    // 那一句与下一步分两格：那一句是「要更新」，为什么 · 怎么办在 `hint`，都不带换行。
+    assert_eq!(
+        f.pb.said,
+        Some(copy_core::copy_text("bePlan.dump.tooOld", &[]))
+    );
+    let hint = f.pb.hint.clone().expect("下一步那一格");
+    assert!(!hint.contains('\n') && !f.pb.said.unwrap().contains('\n'));
+}
+
+#[test]
+fn 设的pb路径底下没有_那一句与下一步分开() {
+    let f = form(
+        &Ask {
+            dir: "/nowhere",
+            path: "x",
+            domain: None,
+        },
+        Err(Missing::SetDir("/opt/pb".into())),
+        &no_slices,
+    );
+    assert_eq!(f.pb.state, "missing");
+    assert_eq!(
+        f.pb.said,
+        Some(copy_core::copy_text("bePlan.face.pbDirGone", &[]))
+    );
+    assert_eq!(
+        f.pb.hint,
+        Some(copy_core::copy_text(
+            "bePlan.face.pbDirGoneHint",
+            &[("dir", "/opt/pb")]
+        ))
+    );
+    assert_eq!(
+        f.pb,
+        crate::plan::locate::pb_missing(&Missing::SetDir("/opt/pb".into())),
+        "同 locate 那一份"
+    );
 }

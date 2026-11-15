@@ -49,14 +49,14 @@ vi.mock("../../../../src/frontend/ui/resume-menu", async (orig) => {
   const real = await orig<typeof import("../../../../src/frontend/ui/resume-menu")>();
   return {
     ...real,
-    resumeAccounts: vi.fn(async (_origin: string, _agent: string, f: { hasAccounts: boolean; agentName: string; last?: string }) =>
+    resumeAccounts: vi.fn(async (_origin: string, f: { hasAccounts: boolean; agentName: string; last?: string }) =>
       f.hasAccounts
         ? {
             kind: "list",
             items: [
               { name: "work", label: "work", quota: "5h 41%", last: f.last === "work" },
               { name: "home", label: "home", quota: null, last: f.last === "home" },
-              { name: null, label: "不指定账号 · ~/.claude", quota: null, last: false },
+              { name: null, label: "不指定账号", quota: null, last: false },
             ],
           }
         : { kind: "none", agentName: f.agentName },
@@ -113,6 +113,7 @@ function row(over: Record<string, unknown>): Record<string, unknown> {
     hidden: null,
     face: goldenFace("ended"),
     can: { resume: "yes", accounts: true, fork: true, delete: "yes" },
+    archive: null,
     // 核心按行写好的两格（界面照摆）：目录在这一端打得开 · 删除确认那一段字。
     reveal: true,
     deleteAsk: "核心·删除正文",
@@ -122,7 +123,7 @@ function row(over: Record<string, unknown>): Record<string, unknown> {
 
 type Rec = Record<string, unknown>;
 /** 每台的会话与组（替身照那台补上 `origin`）；`fail` 里的那几台读不到（本机逐字 `<local>`）；`notice` ＝ 那台说注解没并上的那一句。 */
-let world: { local: Rec[]; dev: Rec[]; groups: { local: Rec[]; dev: Rec[] }; fail: Set<string>; stale: Set<string>; notice: Record<string, string>; search: "ok" | "fail"; searchAt: (origin: string) => Searched };
+let world: { local: Rec[]; dev: Rec[]; groups: { local: Rec[]; dev: Rec[] }; fail: Set<string>; stale: Set<string>; notice: Record<string, string>; seen: number; behind: { seen: number; fail: boolean } | null; search: "ok" | "fail"; searchAt: (origin: string) => Searched };
 
 /**
  * 本机后端 `history-browse` 的替身：照入参里的几台把行按 `at` 并成一列（同一刻照台的先后）、分叉挂在展开了的父会话下、
@@ -133,13 +134,19 @@ function browse(args: Rec): Rec {
   if (args.here) machines.push([LOCAL, world.local.map((r) => ({ ...r, origin: LOCAL }))]);
   if ((args.remotes as string[]).includes("dev")) machines.push(["dev", world.dev.map((r) => ({ ...r, origin: "dev" }))]);
   const q = String(args.query ?? "");
+  // 远端那台带副本的代号（`seen`）；`behind` ＝ 这一问那台后端读到的是旧的那一份（代号小 · 那时 dev 读不到），答过一次就清掉。
+  const behind = world.behind;
+  world.behind = null;
+  const fail = behind?.fail ? new Set([...world.fail, "dev"]) : world.fail;
+  const seen = behind ? behind.seen : world.seen;
   const head = machines.map(([o, rs]) => {
     // `stale` 里的那台：读不到、行照上一次的副本出。
-    const read = world.stale.has(o) ? { is: "stale", why: "w", at: "09:30" } : world.fail.has(o) ? { is: "failed", why: `${o} 读不出` } : { is: "ok", notice: world.notice[o] ?? null };
+    const read = world.stale.has(o) ? { is: "stale", why: "w", at: "09:30" } : fail.has(o) ? { is: "failed", why: `${o} 读不出` } : { is: "ok", notice: world.notice[o] ?? null };
     const n = read.is !== "failed" ? rs.filter((r) => !q || String(r.label).includes(q)).length : 0;
-    return { origin: o, total: n, read };
+    if (o === LOCAL) return { origin: o, total: n, read };
+    return { origin: o, total: n, read, seen };
   });
-  const ok = machines.filter(([o]) => !world.fail.has(o));
+  const ok = machines.filter(([o]) => !fail.has(o));
   const rows = ok.flatMap(([, rs]) => rs.filter((r) => !q || String(r.label).includes(q))).sort((a, b) => Number(b.at) - Number(a.at));
   const id = (r: Rec, sid = r.sessionId) => `${String(r.origin)}\u0000${String(sid)}`;
   const present = new Set(rows.map((r) => id(r)));
@@ -149,7 +156,7 @@ function browse(args: Rec): Rec {
   const push = (r: Rec, child: boolean): void => {
     const kids = rows.filter((k) => k.forkedFromSessionId !== undefined && id(k, k.forkedFromSessionId) === id(r));
     const open = forks.has(id(r));
-    lines.push({ kind: "row", row: r, child, forks: kids.length, forksOpen: open, orphan: !child && r.forkedFromSessionId !== undefined && !nested(r) });
+    lines.push({ kind: "row", row: r, child, forks: kids.length, forksOpen: open, orphan: !child && r.forkedFromSessionId !== undefined && !nested(r), forksText: kids.length > 0 ? `分叉那颗（夹具 ${kids.length}）` : null });
     if (open) for (const k of kids) push(k, true);
   };
   const sections: Rec[] = [];
@@ -178,7 +185,7 @@ function browse(args: Rec): Rec {
     same: false,
     order: win.map((_, i) => key(i)),
     up: Object.fromEntries(win.map((l, i) => [key(i), l])),
-    head: { total: lines.length, info: { machines: head, projects: groups.length, grouped: groups.reduce((n, g) => n + Number(g.count), 0), sections } },
+    head: { total: lines.length, info: { machines: head, projects: groups.length, grouped: groups.reduce((n, g) => n + Number(g.count), 0), sections, said: `列表头那一句（夹具 ${String(args.by)}）` } },
   };
 }
 
@@ -231,11 +238,13 @@ beforeEach(() => {
     fail: new Set(),
     stale: new Set(),
     notice: {},
+    seen: 5,
+    behind: null,
     search: "ok",
     searchAt: (o) =>
       o === LOCAL
         ? {
-            sessions: [{ agent: "claude", sessionId: "a", projectPath: "/w/p", projectName: "p", jsonlPath: "/x/a.jsonl", title: "标题 a", label: "标题 a", starred: false, hidden: null, updatedAt: NOW, hits: [{ uuid: "u1", tsMs: NOW, kind: "user", before: "**前", matched: "词", after: "`后`" }], moreHits: 0, hitsTruncated: false, isBg: false, face: goldenFace("ended"), can: { resume: "yes", accounts: true, fork: true, delete: "yes" } }],
+            sessions: [{ agent: "claude", sessionId: "a", projectPath: "/w/p", projectName: "p", jsonlPath: "/x/a.jsonl", title: "标题 a", label: "标题 a", starred: false, hidden: null, updatedAt: NOW, hits: [{ uuid: "u1", tsMs: NOW, who: "〈谁〉", before: "**前", matched: "词", after: "`后`" }], moreHits: 0, hitsTruncated: false, isBg: false, face: goldenFace("ended"), can: { resume: "yes", accounts: true, fork: true, delete: "yes" } }],
             unreadable: 0,
             skipped: [],
           }
@@ -247,7 +256,7 @@ beforeEach(() => {
     const c = a as ChanCallArgs;
     const args = chanArgsJson(c) as Record<string, unknown>;
     // 本机后端那张机器表：本机 ＋ dev（历史页列哪几台、全文搜索问哪几台都照它）。
-    if (c.op === "machine-read") return chanReply({ machines: { "<local>": { state: "up" }, dev: { state: "up" } } });
+    if (c.op === "machine-read") return chanReply({ machines: { "<local>": { state: "up", name: copyText("detail.label.local"), offlineSaid: "" }, dev: { state: "up", name: "dev", offlineSaid: "" } } });
     if (c.op === "history-browse") return chanReply(browse(args));
     if (c.op === "history-search-merge") {
       // 替真后端：它自己问到各台（`world.searchAt`）、合一份（远端的行添那台的名字、本机不添；行尾 · 时间段两格那台写好）。本机没答上 ⇒ 整次失败。
@@ -256,7 +265,7 @@ beforeEach(() => {
       const per = ["<local>", "dev"].map((o) => [o, world.searchAt(o)] as const);
       const got = per.filter((p): p is readonly [string, Exclude<Searched, "down">] => p[1] !== "down");
       const ss: Record<string, unknown>[] = got.flatMap(([o, r]) =>
-        r.sessions.map((x) => ({ ...x, origin: o, atText: "12:00", spanText: "12:00–12:00", reveal: o === LOCAL, deleteAsk: `核心·删除正文 ${o}` })),
+        r.sessions.map((x) => ({ ...x, origin: o, atText: "12:00", spanText: "12:00–12:00", reveal: o === LOCAL, deleteAsk: `核心·删除正文 ${o}`, moreText: (x.moreHits as number) > 0 ? `核心·还有 ${String(x.moreHits)} 处` : null })),
       );
       return chanReply({
         totalHits: ss.reduce((n, x) => n + (x.hits as unknown[]).length + (x.moreHits as number), 0),
@@ -268,13 +277,16 @@ beforeEach(() => {
           ...[...new Set(got.flatMap(([, r]) => r.skipped))].map((a) => `核心·${a} 只按标题`),
         ],
         down: per.filter((p) => p[1] === "down").map(([o]) => ({ origin: o, said: `${o} 问不到` })),
-        summary: `核心·「${String((args.search as { query: string }).query)}」的结果头`,
+        // 结果头 · 空态那一句都由核心写（一台都没答上 ⇒ 没有结果头、空态是搜不了那一句；答了没中 ⇒ 没有匹配那一句）。
+        ...(got.length > 0 ? { summary: `核心·「${String((args.search as { query: string }).query)}」的结果头` } : {}),
+        ...(ss.length > 0 ? {} : { empty: got.length > 0 ? "核心·没有匹配" : "核心·没有一台答上" }),
       });
     }
     // 这一条恢复默认放在哪（那台答的；勾画在它上面）。
     if (c.op === "sessions-where") return chanReply({ results: (args.sids as string[]).map((sid) => ({ sid, standing: "none", names: [], terminals: [], run: "direct" })) });
     if (c.op === "history-annotate") return chanReply({ entry: { starred: false, customTitle: null, hide: "on", updatedAt: 1 }, prev: null });
     if (c.op === "files-delete-session") return chanReply({ path: "/x" });
+    if (c.op === "files-archive-session" || c.op === "files-unarchive-session") return chanReply(null);
     return undefined;
   });
 });
@@ -443,6 +455,24 @@ describe("一台读不到 · 有上一次的副本", () => {
   });
 });
 
+describe("回包先后不定", () => {
+  it("★ 后发的一问答回来的那台副本比已画的旧（代号小）⇒ 不盖回去，照现在的样子再问一次手上的", async () => {
+    world.local = [row({ sessionId: "a" })];
+    world.dev = [row({ sessionId: "b", at: NOW - 120_000 })];
+    const v = await opened();
+    expect(titles()).toEqual(["标题 a", "标题 b"]);
+    invokeMock.mock.calls.length = 0;
+    // 这一问发得晚，但那台后端读副本时同步还没落下：dev 那一格是旧的（代号 3 · 读不到）。
+    world.behind = { seen: 3, fail: true };
+    v.onListMoved(LOCAL);
+    await flush();
+    expect(titles(), "旧的那一包把已读好的 dev 盖回去了").toEqual(["标题 a", "标题 b"]);
+    expect(document.body.textContent).not.toContain("dev 读不出");
+    expect(calls("history-browse").map((a) => a.fresh), "旧包到了该照现在的样子再问一次手上的").toEqual([[], []]);
+    v.close();
+  });
+});
+
 describe("内容搜索", () => {
   it("回车搜内容；再搜失败 ⇒ 旧结果清掉、换成错误条", async () => {
     world.local = [row({ sessionId: "a" })];
@@ -460,6 +490,23 @@ describe("内容搜索", () => {
     await flush();
     expect(document.querySelector("mark")).toBeNull();
     expect(document.body.textContent).toContain(copyText("history.search.failed", { why: "" }).trim().split("·")[0].trim());
+    v.close();
+  });
+
+  it("★ 还有没摆出来的命中 ⇒「+N 处」那颗照抄核心写好的字", async () => {
+    world.local = [];
+    const base = world.searchAt;
+    world.searchAt = (o) => {
+      const r = base(o);
+      if (r === "down" || o !== LOCAL) return r;
+      return { ...r, sessions: r.sessions.map((x) => ({ ...x, moreHits: 3 })) };
+    };
+    const v = await opened();
+    const input = document.querySelector<HTMLInputElement>(".history-search")!;
+    input.value = "词";
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await flush();
+    expect(byText("button", "核心·还有 3 处"), "「+N 处」那颗没照抄核心那一格").toBeTruthy();
     v.close();
   });
 
@@ -548,6 +595,35 @@ describe("删除", () => {
   });
 });
 
+describe("归档", () => {
+  it("★ 菜单只照行上那一格画：有 ⇒ 出核心写的那一句，没有 ⇒ 不出；点了照 archived 交那台那一条", async () => {
+    world.local = [
+      row({ sessionId: "a", archive: { archived: false, label: "核心·归档 a", failed: "核心·a 没成" } }),
+      row({ sessionId: "b", archive: { archived: true, label: "核心·取消归档 b", failed: "核心·b 没成" } }),
+      row({ sessionId: "c" }),
+    ];
+    const v = await opened();
+    const key = (sid: string) => rows().find((r) => r.dataset.key?.endsWith(sid))!;
+    const item = (label: string) => [...document.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find((b) => b.textContent?.startsWith(label));
+    const on = (sid: string): string[] => {
+      closeMenu();
+      key(sid).dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 3, clientY: 3 }));
+      return [...document.querySelectorAll<HTMLElement>('[role^="menuitem"]')].map((e) => e.textContent ?? "").filter((t) => t.startsWith("核心·"));
+    };
+    expect(on("a")).toEqual(["核心·归档 a"]);
+    expect(on("b")).toEqual(["核心·取消归档 b"]);
+    expect(on("c"), "没有那一格 ⇒ 不出").toEqual([]);
+    on("a");
+    item("核心·归档 a")!.click();
+    await flush();
+    on("b");
+    item("核心·取消归档 b")!.click();
+    await flush();
+    expect([calls("files-archive-session"), calls("files-unarchive-session")]).toEqual([[{ sid: "a" }], [{ sid: "b" }]]);
+    v.close();
+  });
+});
+
 describe("分叉", () => {
   it("挂在父会话下、默认收起；父会话是 context ⇒ 淡显", async () => {
     world.local = [
@@ -558,7 +634,7 @@ describe("分叉", () => {
     expect(rows().map((r) => r.dataset.key?.split("\u0000")[1])).toEqual(["dad"]);
     expect(rows()[0].dataset.context).toBe("true");
     invokeMock.mock.calls.length = 0;
-    byText("button", copyText("history.row.forks", { n: 1 }))!.click();
+    byText("button", "分叉那颗（夹具 1）")!.click();
     await flush();
     // 展开交后端摊：下一问带上展开了的那一行。
     expect(calls("history-browse").map((a) => a.forks)).toEqual([[{ origin: "<local>", sid: "dad" }]]);
@@ -572,9 +648,9 @@ describe("按项目", () => {
   it("组按后端给的序列出、收着；点开出那一组的行；「全部展开」全开", async () => {
     world.local = [row({ sessionId: "a" }), row({ sessionId: "b", group: "claude:/w/q", projectPath: "/w/q", projectName: "q" })];
     const groups = [
-      { key: "claude:/w/p", agent: "claude", projectName: "p", projectPath: "/w/p", projectDir: "-w-p", count: 1, hasLive: false, starred: false, lastActivity: NOW, order: 2, failed: null },
-      { key: "claude:/w/q", agent: "claude", projectName: "q", projectPath: "/w/q", projectDir: "-w-q", count: 1, hasLive: false, starred: false, lastActivity: NOW, order: 1, failed: null },
-      { key: "dir:-w-x", agent: "claude", projectName: "-w-x", projectPath: "", projectDir: "-w-x", count: 0, hasLive: null, starred: false, lastActivity: 0, order: 0, failed: "读不了" },
+      { key: "claude:/w/p", agent: "claude", projectName: "p", projectPath: "/w/p", projectDir: "-w-p", count: 1, countText: "组头那一格（夹具 p）", hasLive: false, starred: false, lastActivity: NOW, order: 2, failed: null },
+      { key: "claude:/w/q", agent: "claude", projectName: "q", projectPath: "/w/q", projectDir: "-w-q", count: 1, countText: "组头那一格（夹具 q）", hasLive: false, starred: false, lastActivity: NOW, order: 1, failed: null },
+      { key: "dir:-w-x", agent: "claude", projectName: "-w-x", projectPath: "", projectDir: "-w-x", count: 0, countText: "", hasLive: null, starred: false, lastActivity: 0, order: 0, failed: "读不了" },
     ];
     world.groups.local = groups;
     const v = await opened();
@@ -584,7 +660,8 @@ describe("按项目", () => {
     expect(heads().map((h) => h.textContent?.slice(0, 1))).toEqual(["p", "q", "-"]);
     expect(rows()).toEqual([]);
     expect(heads()[2].textContent).toContain(copyText("history.group.failed"));
-    expect(document.body.textContent).toContain(copyText("history.list.countProjects", { p: 3, n: 2 }));
+    expect(document.body.textContent).toContain("列表头那一句（夹具 project）");
+    expect(heads()[0].textContent).toContain("组头那一格（夹具 p）");
     invokeMock.mock.calls.length = 0;
     heads()[0].click();
     await flush();
@@ -708,12 +785,13 @@ describe("内容头 · 恢复 ▾（乙4-④⑤）", () => {
     expect(inHead(copyText("history.menu.openWindow"))).toBeTruthy();
     expect(inHead(copyText("history.row.more"))).toBeTruthy();
     expect(head().textContent).toContain("p");
+    // 本机那一格照那台成品的名字（夹具里本机后端写的就是这一词），界面不自取。
     expect(head().textContent).toContain(copyText("detail.label.local"));
     expect(head().textContent).toContain("/w/p");
     expect(head().textContent, "时间段照抄那台写好的 spanText").toContain("09:10–12:00");
     inHead(copyText("history.resume.more"))!.click();
     await flush();
-    expect(vi.mocked(resumeAccounts).mock.calls[0].slice(0, 2)).toEqual(["<local>", "claude"]);
+    expect(vi.mocked(resumeAccounts).mock.calls[0][0]).toBe("<local>");
     const headings = [...document.querySelectorAll<HTMLElement>('[role="menu"] [role="presentation"]')].map((e) => e.textContent);
     expect(headings).toEqual([copyText("beProfile.slot.account"), copyText("resumeMenu.group.run")]);
     const items = menuItems();
@@ -765,7 +843,7 @@ describe("内容头 · 恢复 ▾（乙4-④⑤）", () => {
     inHead(copyText("history.resume.more"))!.click();
     await flush();
     expect(vi.mocked(resumeAccounts).mock.calls[0][0]).toBe("dev");
-    menuItem("不指定账号 · ~/.claude")!.click();
+    menuItem("不指定账号")!.click();
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     inHead(copyText("history.row.resume"))!.click();
     await flush();
@@ -784,7 +862,7 @@ describe("内容头 · 恢复 ▾（乙4-④⑤）", () => {
     world.local = [
       row({ sessionId: "cx", agent: "codex", agentTag: "Codex", can: { resume: "yes", accounts: false, fork: false, delete: "yes" } }),
       row({ sessionId: "l", face: liveFace("working"), can: { resume: "switch", accounts: true, fork: true, delete: "live" } }),
-      row({ sessionId: "bg", isBg: true, can: { resume: "bg", accounts: true, fork: false, delete: "yes" } }),
+      row({ sessionId: "bg", isBg: true, can: { resume: "bg", resumeWhy: copyText("history.row.bgHint"), accounts: true, fork: false, delete: "yes" } }),
     ];
     const v = await opened();
     await showRow("cx");
@@ -793,7 +871,7 @@ describe("内容头 · 恢复 ▾（乙4-④⑤）", () => {
     );
     inHead(copyText("history.resume.more"))!.click();
     await flush();
-    expect(vi.mocked(resumeAccounts).mock.calls[0][2]).toMatchObject({ hasAccounts: false, agentName: "Codex" });
+    expect(vi.mocked(resumeAccounts).mock.calls[0][1]).toMatchObject({ hasAccounts: false, agentName: "Codex" });
     const na = menuItem(copyText("history.resume.noAccounts", { agent: "Codex" }))!;
     expect((na as HTMLButtonElement).disabled).toBe(true);
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
@@ -1009,7 +1087,7 @@ describe("内容搜索的其余几态", () => {
     enter("无");
     await flush();
     const body = document.body.textContent ?? "";
-    expect(body).toContain(copyText("kit.menu.noMatch", { q: "无" }));
+    expect(body, "空态那一句照核心写好的摆").toContain("核心·没有匹配");
     expect(body).toContain(copyText("history.search.machineDown", { machine: "dev" }));
     expect(body).toContain("核心·codex 只按标题");
     expect(body).toContain("核心·读不动 2 份");
@@ -1019,6 +1097,21 @@ describe("内容搜索的其余几态", () => {
     await flush();
     expect(calls("history-search-merge").map((a) => (a.search as Record<string, unknown>).include_tools)).toContain(true);
     expect([...document.querySelectorAll<HTMLButtonElement>("button")].some((b) => b.textContent === copyText("history.filter.tools")), "已含工具输出还给那颗").toBe(false);
+    v.close();
+  });
+
+  it("★ 一台都没答上 ⇒ 空态照核心那一句（搜不了），不说「没有匹配」；不出结果头、不给［含工具输出与思考］", async () => {
+    world.local = [row({ sessionId: "a" })];
+    world.searchAt = () => "down";
+    const v = await opened();
+    enter("无");
+    await flush();
+    const body = document.body.textContent ?? "";
+    expect(body).toContain("核心·没有一台答上");
+    expect(body, "没问到当成没有").not.toContain("核心·没有匹配");
+    expect(body).not.toContain(copyText("kit.menu.noMatch", { q: "无" }));
+    expect(body, "没答上还出结果头").not.toContain("的结果头");
+    expect([...document.querySelectorAll<HTMLButtonElement>("button")].some((b) => b.textContent === copyText("history.filter.tools")), "没答上还给那颗").toBe(false);
     v.close();
   });
 });
@@ -1072,7 +1165,7 @@ describe("筛选浮层的其余几格 · 按项目收起与新建", () => {
 
   it("按项目：点开的组再点收起；组头的［新建］在那个目录起新会话", async () => {
     world.local = [row({ sessionId: "a" })];
-    const groups = [{ key: "claude:/w/p", agent: "claude", projectName: "p", projectPath: "/w/p", projectDir: "-w-p", count: 1, hasLive: false, starred: false, lastActivity: NOW, order: 1, failed: null }];
+    const groups = [{ key: "claude:/w/p", agent: "claude", projectName: "p", projectPath: "/w/p", projectDir: "-w-p", count: 1, countText: "组头那一格（夹具 p）", hasLive: false, starred: false, lastActivity: NOW, order: 1, failed: null }];
     world.groups.local = groups;
     const v = await opened();
     byText('[role="tab"]', copyText("history.page.byProject"))!.click();

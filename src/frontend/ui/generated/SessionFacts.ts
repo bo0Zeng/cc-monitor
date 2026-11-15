@@ -23,21 +23,25 @@ export type SessionFacts = {
  */
 touchedFiles: Array<string>, 
 /**
+ * 监控板 peek 那一格「改过的文件 N」（跟着 `touched_files` 写好，界面照抄）；一个都没碰过 ⇒ `null`。
+ */
+touchedText?: string, 
+/**
  * 最后一条带有效 usage 的 assistant 记录；一条都没有 ⇒ `null`。
  */
 usage: UsageFact | null, 
 /**
- * `usage.model` 写给人看的名字（那一家的模型那一处给：`agents::model_text`）；没有 usage · 认不出是哪一家 · 这一家认不出这个值 ⇒ `null`
+ * `usage.model` 写给人看的名字（那一家的模型那一处给：起会话面 `LaunchFace::model_text`）；没有 usage · 认不出是哪一家 · 这一家认不出这个值 ⇒ `null`
  * （界面照抄，不自己拼）。每次现给，不累加。
  */
 modelText: Words | null, 
 /**
  * 此刻是换模型清单里哪一项（原值，抽屉勾它）：终端没了时记下的那一项；否则那一家把 `usage.model` 认成清单里唯一对得上的那一项
- * （`agents::model_pick`）；认不出 · 对上不止一项 ⇒ `null`。每次现给，不进续算表。
+ * （起会话面 `LaunchFace::model_pick`）；认不出 · 对上不止一项 ⇒ `null`。每次现给，不进续算表。
  */
 modelPick: string | null, 
 /**
- * 会话的项目目录（会话起在哪个目录）：适配层读记录开头给（`agents::project_dir_of`），读到即锁定；
+ * 会话的项目目录（会话起在哪个目录）：适配层读记录开头给（`agents::project_dir_among`），读到即锁定；
  * 开头里还没有 ⇒ `null`，下一次再读。与会话宣告那一帧的 `project_dir` 同一个函数。
  */
 projectDir: string | null, 
@@ -98,7 +102,7 @@ notices: Array<NoticeRun>,
  */
 permissionMode: string | null, 
 /**
- * 同一档写给人看的那一句（那一家的权限档那一处给：`agents::permission_mode_text`，切档回包的 `modeText` 同一处）；
+ * 同一档写给人看的那一句（那一家的权限档那一处给：起会话面 `PermissionFace::text_of`，切档回包的 `modeText` 同一处）；
  * 没有档 · 认不出是哪一家 · 这一家认不出这一档 ⇒ `null`（界面照抄，不自己拼）。每次现给，不累加。
  */
 permissionModeText: Words | null, 

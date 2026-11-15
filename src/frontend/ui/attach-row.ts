@@ -7,7 +7,7 @@
  *   此刻没有可送的会话 ⇒ 不画、光标禁止。拖进来的目录照样进这一排，由那台判不收。
  * - 粘贴：剪贴板里只有文件 / 图片、没有字 ⇒ 进这一排（图片名 `image-<n>.<扩展名>`）；有字照旧贴字。
  *
- * 草稿与传都在 [`AttachDraft`]；这里只画、只接三个入口。宿主说此刻的草稿（没有 ⇒ 这一排与［＋］都收起）与送往哪里。
+ * 草稿名单在 [`AttachDraft`]（那一圈是本机后端的事）；这里只照它画、只接三个入口。宿主说此刻的草稿（没有 ⇒ 这一排与［＋］都收起）与送往哪里。
  */
 import { copyText } from "./copy-table";
 import { el } from "./kit/el";
@@ -160,7 +160,7 @@ export class AttachRow {
     setDisabled(this.plus, this.host.blocked());
     const chips = draft?.chips() ?? [];
     if (chips.length === 0) this.pasted = 0;
-    const keep = new Set(chips.map((c) => c.blob));
+    const keep = new Set(chips.flatMap((c) => (c.blob === null ? [] : [c.blob])));
     for (const [b, url] of this.thumbs) {
       if (keep.has(b)) continue;
       URL.revokeObjectURL?.(url);
@@ -173,7 +173,7 @@ export class AttachRow {
   }
 
   private thumbOf(c: Chip): string | null {
-    if (c.class !== "image" || typeof URL.createObjectURL !== "function") return null;
+    if (c.class !== "image" || c.blob === null || typeof URL.createObjectURL !== "function") return null;
     let url = this.thumbs.get(c.blob);
     if (url === undefined) {
       url = URL.createObjectURL(c.blob);
@@ -202,8 +202,8 @@ export class AttachRow {
     chip.append(name, state);
     const at = c.at;
     if (at.at === "failed") chip.title = at.detail === "" ? at.said : `${at.said}\n${at.detail}`;
-    if (at.at === "failed" && at.retry) chip.appendChild(this.retryBtn(draft, c));
-    chip.appendChild(button({ label: copyText("attach.chip.remove"), kind: "icon", size: "compact", icon: "close", hint: copyText("attach.chip.removeHint"), onClick: () => draft.remove(c.n) }));
+    if (at.at === "failed" && at.retry) chip.appendChild(this.retryBtn(draft));
+    chip.appendChild(button({ label: copyText("attach.chip.remove"), kind: "icon", size: "compact", icon: "close", hint: copyText("attach.chip.removeHint"), onClick: () => draft.remove(c.key) }));
     if (at.at === "sending" || at.at === "offline") {
       const bar = el("span", s.attachBar);
       bar.style.width = `${c.bytes === 0 ? 0 : Math.round((at.done / c.bytes) * 100)}%`;
@@ -212,7 +212,7 @@ export class AttachRow {
     return chip;
   }
 
-  private retryBtn(draft: AttachDraft, c: Chip): HTMLButtonElement {
-    return button({ label: copyText("front.act.retry"), kind: "ghost", size: "compact", onClick: () => draft.retry(c.n) });
+  private retryBtn(draft: AttachDraft): HTMLButtonElement {
+    return button({ label: copyText("front.act.retry"), kind: "ghost", size: "compact", onClick: () => draft.retry() });
   }
 }

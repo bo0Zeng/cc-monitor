@@ -9,7 +9,6 @@ use crate::copy::testing::{rects_of, PaintedText};
 use crate::find::testing::{window_on, wire_up, Declared, FakeBackend};
 use crate::shell::FileWindow;
 use crate::workspace::Workspace;
-use cmd_wire::bookmarks::normalize_dir;
 use comms_inward::chan::wire::{Body, CallError, PeerFault};
 
 /// 合成的那台书签后端：一份书签 ＋ 收到过的每一问（机器名 · 命令 · 入参）。
@@ -38,11 +37,19 @@ pub(crate) fn holding(origin: &str, dirs: &[&str]) -> Shelf {
         1,
         vec![at.to_string()],
         Ok(Bookmarks {
-            dirs: dirs.iter().map(|d| normalize_dir(d)).collect(),
+            dirs: dirs.iter().map(|d| d.to_string()).collect(),
             here: answers(&[(at, 0)][..dirs.len().min(1)]),
         }),
     );
     s
+}
+
+/// 合成后端照那台的规矩比目录（真那一份是后端 `control/bookmarks.rs` 私有的 `normalize_dir`）：这几条判据只用得到去尾斜杠。
+fn backend_form(d: &str) -> String {
+    match d.trim_end_matches('/') {
+        "" => "/".to_string(),
+        t => t.to_string(),
+    }
 }
 
 /// 「目录 ⇒ 第几条」那一份回答。
@@ -80,7 +87,7 @@ impl comms_inward::chan::router::Backends for Books {
         if op.0 == "bookmarks-edit" {
             let req: BookmarksEditReq = serde_json::from_value(args.clone()).expect("入参照类型");
             for d in &req.dirs {
-                let d = normalize_dir(d);
+                let d = backend_form(d);
                 let at = dirs.iter().position(|x| *x == d);
                 match (req.op, at) {
                     (BookmarkOp::Toggle | BookmarkOp::Remove, Some(i)) => {
@@ -98,7 +105,7 @@ impl comms_inward::chan::router::Backends for Books {
         let here = at
             .into_iter()
             .filter_map(|a| {
-                let i = dirs.iter().position(|x| *x == normalize_dir(&a))?;
+                let i = dirs.iter().position(|x| *x == backend_form(&a))?;
                 Some((a, i as u32))
             })
             .collect();

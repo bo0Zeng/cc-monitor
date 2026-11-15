@@ -31,11 +31,12 @@ export type Category = "Tab" | "Term" | "App" | "Beh" | "Panel";
  * - `main`：焦点在主区（消息流 · 会话头 · 没焦点）；
  * - `nav`：焦点在主区或标签页栏；
  * - `bare`：单键规则 —— 焦点在主区或标签页栏，且没有浮层 / 对话框 / 输入焦点。用户改成带修饰键的键 ⇒ 按 `any` 算；
- * - `bar`：焦点在标签页栏里（栏里的挪位 · 改名；带修饰键也只在栏里）。
+ * - `bar`：焦点在标签页栏里（栏里的挪位 · 改名；带修饰键也只在栏里）；
+ * - `session`：焦点在主区或会话的输入框里（回到底部：输入框里也按得到，这一下归我们、光标不动）。
  *
  * 作用范围不相交的几个动作可以分到同一个键上（`Alt+↑`：主区上一轮 · 栏里往上挪），按下时按焦点在哪取放行的那一个。
  */
-export type Scope = "any" | "idle" | "main" | "nav" | "bare" | "bar";
+export type Scope = "any" | "idle" | "main" | "nav" | "bare" | "bar" | "session";
 
 export interface Action {
   /** 稳定 id，进 config 的 key */
@@ -87,8 +88,10 @@ export const ACTIONS: ReadonlyArray<Action> = [
   { id: "tab.pop-out", label: copyText("history.menu.openWindow"), category: "Tab", default: "KeyN", available: true, scope: "bare" },
   // 在当前标签页上开右键菜单（会话头「更多」是同一份菜单）。菜单键是固定的另一个键。
   { id: "tab.context-menu", label: copyText("keybindingActions.tab.menu"), category: "Tab", default: "Shift+F10", available: true, scope: "nav", also: "ContextMenu" },
-  // 跳到下一个需手动的会话（等得最久的在前）。带 Ctrl：任何时候都要能按到。
-  { id: "needs.next", label: copyText("tabBar.needs.hint"), category: "Tab", default: "Ctrl+KeyJ", available: true, scope: "any" },
+  // 下一个待答请求（核心合好的那一列，在这里就能当场答完的）。带 Ctrl：任何时候都要能按到。
+  { id: "asks.next", label: copyText("tabBar.asks.hint"), category: "Tab", default: "Ctrl+KeyJ", available: true, scope: "any" },
+  // 下一个需手动（答不了的会话在前、计划项在后）：多半要去终端或别处，默认不绑（Ctrl+Shift+J 在 webview 里常是开发者工具，不抢）。
+  { id: "manual.next", label: copyText("tabBar.manual.hint"), category: "Tab", default: null, available: true, scope: "any" },
   // 会话内查找（大纲在同一块面板里）：只搜当前 tab 这一份会话；跨全部会话的全文搜索在历史页里。
   { id: "session.find", label: copyText("sessionHead.act.find"), category: "Tab", default: "Ctrl+KeyF", available: true, scope: "any" },
   // 会话内查找的两个开关：范围「全部 ⇄ 用户」· 含工具输出与思考。只在焦点在查找面板 / 查找条里时由它自己认（`find-strip.ts`，不经全局派发）。
@@ -101,7 +104,7 @@ export const ACTIONS: ReadonlyArray<Action> = [
   // 上 / 下一轮（轮次刻度的键盘那一半）· 回到底部。
   { id: "session.prev-turn", label: copyText("keybindingActions.session.prevTurn"), category: "Tab", default: "Alt+ArrowUp", available: true, scope: "main" },
   { id: "session.next-turn", label: copyText("keybindingActions.session.nextTurn"), category: "Tab", default: "Alt+ArrowDown", available: true, scope: "main" },
-  { id: "session.to-bottom", label: copyText("keybindingActions.session.toBottom"), category: "Tab", default: "End", available: true, scope: "main" },
+  { id: "session.to-bottom", label: copyText("keybindingActions.session.toBottom"), category: "Tab", default: "Ctrl+End", available: true, scope: "session" },
   // 标签页栏里（焦点在栏里时）：挪一格（跨过组边界就进 / 出那个组；组头上 ＝ 整组挪）· 出组 · 与上一个成组 · 改名（标签页上改它的名、组头上改组名）。
   { id: "tabBar.move-up", label: copyText("keybindingActions.tabBar.moveUp"), category: "Tab", default: "Alt+ArrowUp", available: true, scope: "bar" },
   { id: "tabBar.move-down", label: copyText("keybindingActions.tabBar.moveDown"), category: "Tab", default: "Alt+ArrowDown", available: true, scope: "bar" },
@@ -161,6 +164,17 @@ export function groupByCategory(): Map<Category, Action[]> {
   }
   return map;
 }
+
+/** Scope → 键位总览「何时生效」那一列的字（`bare` 改成带修饰键的键按 `any` 算，由总览照键挑档）。 */
+export const SCOPE_LABEL: Record<Scope, string> = {
+  any: copyText("keys.scope.any"),
+  idle: copyText("keys.scope.idle"),
+  main: copyText("keys.scope.main"),
+  nav: copyText("keys.scope.nav"),
+  bare: copyText("keys.scope.bare"),
+  bar: copyText("keys.group.bar"),
+  session: copyText("keys.scope.session"),
+};
 
 /** Category → 表头标签 */
 export const CATEGORY_LABEL: Record<Category, string> = {
